@@ -1,6 +1,6 @@
 # Spike 001 — Tauri 2 + existing Angular/Three.js renderer
 
-**Status:** first implementation draft (2026-11-10), **not a validated Windows build**. The packaging code passed five synthetic Node.js tests locally; Rust/Tauri compilation and the actual WebView2 graphics test have **not** run in the authoring environment (no Rust toolchain or npm registry connection).
+**Status:** first implementation draft (2026-11-10), **not a validated Windows build**. The packaging code passed seven synthetic Node.js tests locally; Rust/Tauri compilation and the actual WebView2 graphics test have **not** run in the authoring environment (no Rust toolchain or npm registry connection).
 
 ## What it does
 
@@ -11,6 +11,8 @@ This spike checks desktop/WebView compatibility and offline bundling only. It is
 Before compiling, `scripts/generate-spike-icon.mjs` builds disposable PNG/ICO icons for Tauri without redistributing any original art. The icons are not final VirgoStars branding.\n\nThe packager `scripts/prepare-synthetic-frontend.mjs` stages `astrological-charts/dist/demo/browser` plus only the locally generated synthetic asset pack. Each asset is independently verified against SHA-256, path and byte-size metadata and the manifest's synthetic source marker. The script rejects traversal, symlinks, collisions, tampered image data and unexpected compiled file types. A separate tiny bootstrap script changes the upstream demo's asset base to the **same Tauri application origin**, avoiding an HTTP image server after packaging. It modifies only a new ignored staging directory; upstream files are unchanged.
 
 ## Windows 11 setup
+
+**One-command guided build (PowerShell):** from `virgostars-desktop`, run `powershell -NoProfile -File .\\scripts\\build-windows-spike.ps1`. The script checks prerequisites, installs locked Charts dependencies, generates/reuses synthetic test assets, builds the demo, installs the pinned Tauri CLI, runs Node tests and attempts the Rust build. It changes only local development folders in the two checkouts and never accesses production.
 
 Prerequisites: Node.js 22 LTS and npm, the current stable Rust MSVC toolchain, Microsoft C++ Build Tools and WebView2. Place both authorized private checkouts as sibling folders `astrological-charts` and `virgostars-desktop`. No production VirgoStars or private user account is required.
 
