@@ -66,3 +66,11 @@ New test files cover: chart sizing using both dimensions, invalid sizes, support
 ## Security and publication boundary
 
 No production accounts, authentication secrets, real birth information, AWS deployment, private artwork, GitHub Actions, automatic updates, licensing decision or public release. The app remains a private experimental prototype.
+
+## Accessibility and compact navigation (follow-up draft)
+
+A stacked draft on the Angular shell adds compact navigation at widths ≤ 760px **without changing the central chart grid width**: the 60px icon rail expands over the workspace with a backdrop instead of resizing the chart. On first load under 1141px, the inspector starts collapsed, so it cannot obscure the chart until requested. Compact navigation and the inspector never open over each other.
+
+Keyboard behavior: Escape closes a temporary navigation/inspector overlay and restores focus to its toggle. The inspector implements WAI-ARIA tab behavior with roving tab stop, Arrow Left/Right/Up/Down and Home/End, while labels remain IT/EN localized. The UI remains explicitly synthetic; no astronomical renderer duplication, account or sync work is introduced.
+
+Source checks and Node pure-helper tests are tracked separately from the pending Windows Angular/Tauri/WebView2 build gate.

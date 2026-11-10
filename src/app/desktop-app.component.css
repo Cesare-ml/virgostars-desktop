@@ -113,11 +113,28 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
   .topbar { grid-template-columns:200px minmax(0,1fr) 174px; }
   .lab-indicator { display:none; }
 }
+/* The compact navigation is a grid item extending over the chart, not an
+   absolute-positioned replacement: opening it never shifts the chart grid. */
+.nav-backdrop { display:none; }
 @media (max-width:760px) {
   .workspace { --nav-width:60px; grid-template-columns:var(--nav-width) minmax(0,1fr); }
   .sidebar .sidebar-label,.sidebar .nav-label { display:none; }
   .sidebar .nav-item { justify-content:center; padding:0; }
   .sidebar .sidebar-heading { justify-content:center; padding-inline:0; }
+  .workspace.mobile-nav-open .sidebar {
+    position:relative; z-index:12; width:min(224px,84vw); overflow-y:auto;
+    box-shadow:12px 0 32px rgba(9,8,25,.22);
+  }
+  .workspace.mobile-nav-open .sidebar .nav-label,
+  .workspace.mobile-nav-open .sidebar .sidebar-label { display:block; }
+  .workspace.mobile-nav-open .sidebar .sidebar-heading {
+    justify-content:space-between; padding:0 4px 8px 12px;
+  }
+  .workspace.mobile-nav-open .sidebar .nav-item { justify-content:flex-start; padding:0 12px; }
+  .workspace.mobile-nav-open .nav-backdrop {
+    position:absolute; inset:0; z-index:11; display:block; width:100%; height:100%;
+    padding:0; border:0; border-radius:0; background:rgba(9,8,25,.38);
+  }
   .topbar { grid-template-columns:minmax(160px,1fr) auto; }
   .subject { display:none; }
   .chart-panel { padding:10px; }
