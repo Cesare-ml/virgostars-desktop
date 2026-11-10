@@ -6,9 +6,24 @@ This guide is for contributors who want to run VirgoStars Desktop without needin
 
 ## 1. Prerequisites
 
-Use Windows 11 x64 and install Node.js 22 LTS or 24, npm, Rust stable MSVC, Microsoft C++ Build Tools with the Desktop development with C++ workload, and WebView2. Clone authorized `astrological-charts` and `virgostars-desktop` repositories into sibling folders.
+Use Windows 11 x64 and install Node.js 22 LTS or 24, npm, **Rust stable MSVC 1.90.0 or newer**, Microsoft C++ Build Tools with the Desktop development with C++ workload, and WebView2. Clone authorized `astrological-charts` and `virgostars-desktop` repositories into sibling folders.
 
 Official references: [Tauri Windows prerequisites](https://tauri.app/start/prerequisites/) and [Angular 20 compatibility](https://angular.dev/reference/versions).
+
+### Rust 1.90 minimum — Windows troubleshooting
+
+The first native build attempt reported `rustc 1.89.0`, but Tauri 2.12.x and `muda` from its resolved dependency graph require at least **rustc 1.90.0**. The desktop Cargo manifest now declares `rust-version = "1.90"`, and the doctor checks the actual compiler version before running Cargo tests.
+
+From PowerShell run:
+
+```powershell
+rustup update stable
+rustup default stable
+rustc --version
+rustup show active-toolchain
+```
+
+`rustc --version` must be **1.90.0 or newer**. If `rustup show active-toolchain` reports an overridden 1.89 toolchain in this folder, check `rustup override list` and your project's `rust-toolchain.toml` before deciding whether to change the override. You can run `cargo +stable test` to test with installed stable independently. Do not delete `Cargo.lock` or run uncontrolled `cargo update` as a workaround for a compiler mismatch.
 
 ## 2. Diagnose without installing or changing anything
 
