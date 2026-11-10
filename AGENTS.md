@@ -14,6 +14,7 @@
 9. [Render lifecycle](docs/RENDER_LIFECYCLE.md): guard async UI completion from stale redraws and destruction; the upstream Charts renderer still owns WebGL lifecycle.
 10. [Windows first GUI smoke](docs/WINDOWS_GUI_SMOKE_2026-11-10.md): a native .exe launched but CSS appeared missing. Verify compiled CSS references and WebView2 loading before changing layout or CSP; never disable security policies as a workaround.
 11. [WebView2 style diagnostic](docs/WEBVIEW2_STYLE_DIAGNOSTIC.md): keep CSS marker checks local, read-only and accessible, with no remote fallback; report actual native status before changing CSP.
+12. [Angular critical CSS and Tauri CSP](docs/ANGULAR_CSP_CSS_FIX.md): keep `optimization.styles.inlineCritical=false` and reject deferred `media=print`/inline event-handler CSS. Do not weaken native CSP or introduce remote CSS to mask an unstyled window.
 
 ## Non-negotiable boundaries
 - The private repository is **not** presently open source. No LICENSE has been selected. Do not infer a license from dependencies or copy a LICENSE from another repository without approval.
