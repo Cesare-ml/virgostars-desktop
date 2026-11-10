@@ -7,7 +7,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const ACCEPTED_ARTWORK = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const ACCEPTED_BUILD = new Set(['.html', '.js', '.css', '.map', '.json', '.txt']);
-const SAFE_PART = /^[a-zA-Z0-9_.@-]+$/;
+const SAFE_PART = /^[a-zA-Z0-9_.@ -]+$/;
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
 function assertSafePath(p) {
