@@ -28,6 +28,15 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 Work in dedicated branches and pull requests. Read `AGENTS.md` before touching the repository once it is introduced. Keep architecture decisions, offline/privacy invariants, and tests with each code change. No production migrations, deploys, automatic Actions, app store releases, public visibility changes or LICENSE selection without maintainer approval.
 
+## Approved functional end-state (not yet implemented)
+
+The complete future feature scope is fixed in [docs/FEATURE_CATALOG.md](docs/FEATURE_CATALOG.md). It includes natal charts, transits, synodic/event navigation, returns, synastry, progressions, directions, traditional lots and methods, lunations, planetary hours, ephemerides and fixed stars; delivery is staged in the roadmap rather than promised for the first beta.
+
+- [House systems](docs/HOUSE_SYSTEMS.md): **standalone Egyptian + all Swiss Ephemeris-compatible systems** from the independent Rust engine; **no Egyptian + Placidus hybrid**.
+- [Fixed-star interpretations](docs/FIXED_STARS_INTEGRATION.md): position and selection inside Desktop; interpretation detail opens on the VirgoStars website through a verified canonical link, not a duplicated interpretation database.
+- Explicit exclusions: **physiognomy, radionics, cosmocentric mode and chakras**, plus legacy commented-out menu concepts. Do not create a UI for excluded modules.
+- All of the above are **planned requirements**, not implemented or validated features. The eventual app remains chart-centered with both light and dark visual modes.
+
 ## Planned documentation
 
 The first design pull request introduces architecture, stack decision, offline authentication/sync, security, release/update strategy, roadmap, contributor guidelines and licensing decision log. These are **proposals**, not implemented features.
