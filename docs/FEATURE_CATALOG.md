@@ -6,7 +6,7 @@ Questo documento definisce l'**obiettivo funzionale completo**: tutte le funzion
 
 ## Regole di prodotto
 
-- La **carta astrologica è sempre al centro, completamente visibile e grande quanto possibile**; menu laterali collassabili, pannelli contestuali, vista light/dark. Seguire le [linee guida UI](UI_DESIGN_GUIDELINES.md) quando integrate dal relativo PR.
+- La **carta astrologica è sempre al centro, completamente visibile e grande quanto possibile**; menu laterali collassabili, pannelli contestuali, vista light/dark. Seguire le [linee guida UI (PR di design separata, non ancora integrata)](https://github.com/Cesare-ml/virgostars-desktop/blob/docs/ui-design-guidelines-light-dark-20261110/docs/UI_DESIGN_GUIDELINES.md) quando integrate dal relativo PR.
 - Il programma autentica inizialmente un account VirgoStars; l'utente già autorizzato lavora anche offline sui dati locali e sincronizza quando online, nel rispetto di [OFFLINE_AUTH_AND_SYNC.md](OFFLINE_AUTH_AND_SYNC.md).
 - Il client usa VirgoStars-Ephemeris (motore astronomico Rust), astrological-functions (logica astrologica), astrological-charts (render Three.js), astrological-assets (asset approvati) e, dove applicabile, VirgoStars-Event-Ephemeris. **Non duplicare i calcoli astronomici nel desktop**.
 - Ogni funzione è attiva soltanto quando il motore effettivamente la supporta e supera i test: niente calcoli inventati, fallback silenziosi o API dichiarate pronte senza evidenze.
