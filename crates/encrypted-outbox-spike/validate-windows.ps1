@@ -63,7 +63,8 @@ if (-not $SkipNode) {
         Run-Gate "SQLite synthetic persistence + schema references" "node" @(
             "--experimental-sqlite", "--test",
             (Join-Path $repo "tests\sqlite-outbox-reference.test.mjs"),
-            (Join-Path $repo "tests\sqlite-schema-gate-reference.test.mjs")
+            (Join-Path $repo "tests\sqlite-schema-gate-reference.test.mjs"),
+            (Join-Path $repo "tests\sqlite-dependent-revisions.test.mjs")
         )
     }
 }
