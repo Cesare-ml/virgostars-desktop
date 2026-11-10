@@ -192,7 +192,7 @@ impl SyntheticEncryptedStore {
             "INSERT INTO local_entities(profile_id,entity_type,entity_id,payload_json,local_revision)
              VALUES (?1,'subject',?2,?3,1)
              ON CONFLICT(profile_id,entity_type,entity_id) DO UPDATE SET
-             payload_json=excluded.payload_json,
+             payload_json=excluded.payload_json, locally_deleted=0,
              local_revision=local_entities.local_revision+1",
             params![profile, entity, payload],
         ).map_err(storage_error)?;
