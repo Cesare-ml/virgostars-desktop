@@ -84,10 +84,12 @@ fn schema_catalog(conn: &Connection) -> Result<Vec<(String, String, String)>> {
            AND name NOT GLOB 'sqlite_*'
          ORDER BY type, name"
     ).map_err(storage_error)?;
-    stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-        .map_err(storage_error)?
+    let mapped = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(storage_error)?;
+    let catalog = mapped
         .collect::<rusqlite::Result<Vec<(String, String, String)>>>()
-        .map_err(storage_error)
+        .map_err(storage_error)?;
+    Ok(catalog)
 }
 
 fn validate_schema_v1(conn: &Connection) -> Result<()> {
@@ -143,7 +145,16 @@ impl SyntheticEncryptedStore {
         let cipher_version: String = conn.pragma_query_value(
             None, "cipher_version", |row| row.get(0)
         ).map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
-        if cipher_version.trim().is_empty() {
+        // cipher_integrity_check requires SQLCipher >= 4.2 and page HMACs.
+        // Versions predating that feature must NOT silently skip the check.
+        let version: Vec<u32> = cipher_version
+            .split('.')
+            .take(2)
+            .map(|part| part.parse::<u32>().unwrap_or(0))
+            .collect();
+        let supported = version.len() == 2
+            && (version[0] > 4 || (version[0] == 4 && version[1] >= 2));
+        if !supported {
             return Err(StoreError::CipherMissingOrInvalidKey);
         }
         // This forces the codec to actually read/decrypt database pages,
@@ -156,6 +167,22 @@ impl SyntheticEncryptedStore {
         if quick_check != "ok" {
             return Err(StoreError::CipherMissingOrInvalidKey);
         }
+        // A valid SQLite B-tree is not sufficient: SQLCipher authenticates the
+        // encrypted envelope via per-page HMAC. Any reported page error blocks
+        // opening, and disabling HMAC is not supported by this spike.
+        let hmac: i64 = conn.pragma_query_value(
+            None, "cipher_use_hmac", |row| row.get(0),
+        ).map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
+        if hmac != 1 { return Err(StoreError::CipherMissingOrInvalidKey); }
+        let mut cipher_stmt = conn.prepare("PRAGMA cipher_integrity_check")
+            .map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
+        let mut cipher_rows = cipher_stmt.query([])
+            .map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
+        if cipher_rows.next().map_err(|_| StoreError::CipherMissingOrInvalidKey)?.is_some() {
+            return Err(StoreError::CipherMissingOrInvalidKey);
+        }
+        drop(cipher_rows);
+        drop(cipher_stmt);
 
         // Keep this spike in DELETE journal mode; SQLite WAL + backup/rekey
         // behavior must receive a separate SQLCipher-specific security review.
@@ -282,10 +309,11 @@ impl SyntheticEncryptedStore {
              )
              ORDER BY o.sequence LIMIT ?2"
         ).map_err(storage_error)?;
-        stmt.query_map(params![profile, limit as i64], |row| row.get::<_, String>(0))
-            .map_err(storage_error)?
-            .collect::<rusqlite::Result<Vec<String>>>()
-            .map_err(storage_error)
+        let mapped = stmt.query_map(params![profile, limit as i64], |row| row.get::<_, String>(0))
+            .map_err(storage_error)?;
+        let ids = mapped.collect::<rusqlite::Result<Vec<String>>>()
+            .map_err(storage_error)?;
+        Ok(ids)
     }
 
     /// Accepted and conflict server receipts are committed atomically. No
@@ -459,6 +487,29 @@ mod tests {
         drop(db);
         assert!(SyntheticEncryptedStore::open(&path, &test_key(5)).is_err());
         assert!(StoreKey::from_external_key_material([0u8; 32]).is_err());
+    }
+
+    #[test]
+    fn altered_synthetic_ciphertext_is_rejected_before_schema_use() {
+        use std::io::{Seek, SeekFrom, Write};
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic-ciphertext.db");
+        let key = test_key(23);
+        {
+            let mut store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.create_synthetic_profile("synthetic-a").unwrap();
+            store.stage_synthetic_subject("synthetic-a", "synthetic-1",
+                "synthetic-m1", r#"{"label":"Fictional"}"#).unwrap();
+        }
+        // Corrupt one byte in an encrypted *temporary synthetic* page.
+        // No real account data, production database or credential is involved.
+        let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        assert!(file.metadata().unwrap().len() > 512);
+        file.seek(SeekFrom::Start(256)).unwrap();
+        file.write_all(&[0xAA]).unwrap();
+        file.sync_all().unwrap();
+        drop(file);
+        assert!(SyntheticEncryptedStore::open(&path, &key).is_err());
     }
 
     #[test]
