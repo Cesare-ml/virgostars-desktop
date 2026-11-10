@@ -1,109 +1,154 @@
+/** Stage ONLY original synthetic chart assets. Never vend original images or the upstream demo. */
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, copyFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(HERE, '..');
-const ACCEPTED_ARTWORK = new Set(['.png', '.jpg', '.jpeg', '.webp']);
-const ACCEPTED_BUILD = new Set(['.html', '.js', '.css', '.map', '.json', '.txt']);
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SAFE_PART = /^[a-zA-Z0-9_.@ -]+$/;
+const IMAGE_TYPES = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+const MAX_FILES = 2000;
+const MAX_FILE_BYTES = 10_000_000;
+const MAX_TOTAL_BYTES = 200_000_000;
+const MANIFEST_FILE = 'synthetic-assets-manifest.json';
 
-function assert(condition, message) { if (!condition) throw new Error(message); }
-function assertSafePath(p) {
-  assert(typeof p === 'string' && p.startsWith('img/') && !p.includes('\\'), 'Invalid synthetic asset path');
-  const parts = p.split('/');
-  assert(parts.length >= 2 && parts.every(x => x !== '.' && x !== '..' && SAFE_PART.test(x)), 'Unsafe synthetic asset path');
-  assert(ACCEPTED_ARTWORK.has(extname(p).toLowerCase()), 'Unsupported synthetic asset type');
+function requireCondition(valid, explanation) {
+  if (!valid) throw new Error(explanation);
+}
+function checkRegular(path, folder = false) {
+  const status = lstatSync(path);
+  requireCondition(!status.isSymbolicLink() && (folder ? status.isDirectory() : status.isFile()),
+    'Unsafe or invalid ' + (folder ? 'directory' : 'file') + ': ' + path);
+}
+function safePath(input) {
+  requireCondition(typeof input === 'string' && input.startsWith('img/') && !input.includes('\\'),
+    'Invalid synthetic asset path');
+  const parts = input.split('/');
+  requireCondition(parts.length >= 2 && parts.every(part => part !== '.' && part !== '..' &&
+    part.length < 200 && SAFE_PART.test(part)), 'Unsafe synthetic asset path: ' + input);
+  requireCondition(IMAGE_TYPES.has(extname(input).toLowerCase()), 'Unapproved synthetic file type: ' + input);
   return parts;
 }
-function assertRegularWithoutLinks(root, parts) {
-  let cur = root;
-  for (const part of parts) {
-    cur = join(cur, part);
-    const stat = lstatSync(cur);
-    assert(!stat.isSymbolicLink(), 'Symlink forbidden: ' + cur);
+function readSafeFile(root, parts) {
+  let current = root;
+  for (let i = 0; i < parts.length; i++) {
+    current = join(current, parts[i]);
+    checkRegular(current, i !== parts.length - 1);
   }
-  assert(lstatSync(cur).isFile(), 'Not a regular file: ' + cur);
-  return cur;
+  return readFileSync(current);
 }
-function copyBuildFolder(src, dest) {
-  for (const item of readdirSync(src, { withFileTypes: true })) {
-    assert(!item.isSymbolicLink(), 'Build symlink forbidden: ' + item.name);
-    const from = join(src, item.name), to = join(dest, item.name);
-    if (item.isDirectory()) { mkdirSync(to, { recursive: true }); copyBuildFolder(from, to); }
+function fingerprint(content) { return createHash('sha256').update(content).digest('hex'); }
+function listAssetFiles(root, prefix = '') {
+  const files = [];
+  for (const entry of readdirSync(join(root, prefix), { withFileTypes: true })) {
+    requireCondition(!entry.isSymbolicLink(), 'Symlink in staged assets: ' + entry.name);
+    const relative = prefix ? prefix + '/' + entry.name : entry.name;
+    if (entry.isDirectory()) files.push(...listAssetFiles(root, relative));
     else {
-      assert(item.isFile() && ACCEPTED_BUILD.has(extname(item.name).toLowerCase()), 'Unexpected built file: ' + item.name);
-      copyFileSync(from, to);
+      requireCondition(entry.isFile(), 'Unexpected filesystem object: ' + relative);
+      files.push(relative);
     }
   }
+  return files;
+}
+function verifyExisting(destination, files, metadata) {
+  checkRegular(destination, true);
+  const assets = join(destination, 'assets');
+  checkRegular(assets, true);
+  const meta = JSON.parse(readSafeFile(destination, [MANIFEST_FILE]).toString('utf8'));
+  requireCondition(meta.schemaVersion === 1 && meta.source?.repository === 'synthetic-local-fixtures',
+    'Existing asset stage is not a synthetic stage; inspect/delete only .local/frontend');
+  requireCondition(JSON.stringify(meta) === JSON.stringify(metadata),
+    'Existing synthetic assets differ; inspect/delete only .local/frontend before rebuilding');
+  const actualFiles = listAssetFiles(assets).sort();
+  const expectedFiles = files.map(item => item.path).sort();
+  requireCondition(JSON.stringify(actualFiles) === JSON.stringify(expectedFiles),
+    'Existing synthetic asset stage contains missing or unapproved files');
+  for (const file of files) {
+    const bytes = readSafeFile(assets, file.parts);
+    requireCondition(bytes.length === file.bytes.length && fingerprint(bytes) === file.sha256,
+      'Existing synthetic asset stage is modified: ' + file.path);
+  }
+  const top = readdirSync(destination).sort();
+  requireCondition(JSON.stringify(top) === JSON.stringify(['assets', MANIFEST_FILE].sort()),
+    'Existing asset stage contains non-asset material');
+  return { destination, count: files.length, reused: true };
 }
 
-export function prepareSyntheticFrontend(chartsPath, destinationPath) {
-  const charts = resolve(chartsPath), destination = resolve(destinationPath);
-  assert(existsSync(charts) && lstatSync(charts).isDirectory(), 'Missing sibling astrological-charts checkout');
-  assert(!lstatSync(charts).isSymbolicLink(), 'Charts checkout must not be a symlink');
-  const build = join(charts, 'dist/demo/browser');
-  const pack = join(charts, '.local/demo-pack');
-  const assetRoot = join(pack, 'public/assets');
-  const manifestPath = join(pack, 'manifests/approved-assets.json');
-  assert(existsSync(build) && existsSync(manifestPath) && existsSync(assetRoot), 'Build the charts demo and generate the synthetic pack first (see docs/SPIKE-001.md)');
-  assert(!lstatSync(build).isSymbolicLink() && !lstatSync(assetRoot).isSymbolicLink(), 'No symlinked input folders');
-  assert(!existsSync(destination), 'Destination exists; delete only the generated directory explicitly to rebuild: ' + destination);
+export function prepareSyntheticAssets(chartsPath, destinationPath) {
+  const charts = resolve(chartsPath);
+  const destination = resolve(destinationPath);
+  checkRegular(charts, true);
+  const pack = join(charts, '.local', 'demo-pack');
+  const assetRoot = join(pack, 'public', 'assets');
+  const manifestPath = join(pack, 'manifests', 'approved-assets.json');
+  for (const p of [join(charts,'.local'), pack, join(pack,'public'), assetRoot, join(pack,'manifests')]) checkRegular(p, true);
+  checkRegular(manifestPath);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  assert(manifest.schemaVersion === 1 && manifest.source?.repository === 'synthetic-local-fixtures' && manifest.source?.commit === 'none', 'Only the generated synthetic pack is permitted');
-  assert(Array.isArray(manifest.assets) && manifest.assets.length > 0 && manifest.assets.length <= 2000, 'Invalid synthetic asset list');
-  const items = [];
-  const caseFold = new Set();
-  for (const record of manifest.assets) {
-    const parts = assertSafePath(record.path);
-    const folded = record.path.toLowerCase();
-    assert(!caseFold.has(folded), 'Duplicate asset path (case insensitive): ' + record.path);
-    caseFold.add(folded);
-    assert(record.rightsHolder === 'Astrological Charts synthetic test fixture', 'Non-synthetic file in manifest');
-    assert(Number.isSafeInteger(record.bytes) && record.bytes >= 0 && record.bytes <= 10_000_000, 'Invalid synthetic asset size');
-    assert(typeof record.sha256 === 'string' && /^[a-f0-9]{64}$/.test(record.sha256), 'Invalid synthetic asset digest');
-    const source = assertRegularWithoutLinks(assetRoot, parts);
-    const bytes = readFileSync(source);
-    assert(bytes.length === record.bytes && createHash('sha256').update(bytes).digest('hex') === record.sha256, 'Tampered synthetic asset: ' + record.path);
-    items.push({ parts, bytes });
-  }
+  requireCondition(manifest.schemaVersion === 1 && manifest.source?.repository === 'synthetic-local-fixtures' &&
+    manifest.source?.commit === 'none' && manifest.source?.assetRoot === 'public/assets',
+    'Only the charts locally generated synthetic manifest is permitted');
+  requireCondition(Array.isArray(manifest.assets) && manifest.assets.length > 0 && manifest.assets.length <= MAX_FILES,
+    'Invalid synthetic asset count');
+
+  let totalBytes = 0;
+  const uniquePaths = new Set();
+  const files = manifest.assets.map(item => {
+    const parts = safePath(item.path);
+    const pathKey = item.path.normalize('NFC').toLowerCase();
+    requireCondition(!uniquePaths.has(pathKey), 'Case-insensitive duplicate synthetic asset: ' + item.path);
+    uniquePaths.add(pathKey);
+    requireCondition(item.rightsHolder === 'Astrological Charts synthetic test fixture' &&
+      typeof item.permissionBasis === 'string' && item.permissionBasis.startsWith('Original synthetic checkerboard data'),
+      'Unapproved rights provenance: ' + item.path);
+    requireCondition(Number.isSafeInteger(item.bytes) && item.bytes >= 0 && item.bytes <= MAX_FILE_BYTES &&
+      typeof item.sha256 === 'string' && /^[0-9a-f]{64}$/.test(item.sha256),
+      'Invalid synthetic asset metadata: ' + item.path);
+    totalBytes += item.bytes;
+    requireCondition(totalBytes <= MAX_TOTAL_BYTES, 'Synthetic asset pack exceeds safe size limit');
+    const bytes = readSafeFile(assetRoot, parts);
+    requireCondition(bytes.length === item.bytes && fingerprint(bytes) === item.sha256,
+      'Tampered synthetic asset: ' + item.path);
+    return {path:item.path, parts, sha256:item.sha256, bytes};
+  });
+
+  const metadata = { schemaVersion: 1, source: manifest.source,
+    files: files.map(({path,sha256,bytes})=>({path,sha256,bytes:bytes.length})) };
+  if (existsSync(destination)) return verifyExisting(destination, files, metadata);
   const staging = destination + '.staging-' + process.pid;
-  assert(!existsSync(staging), 'Staging destination already exists');
+  requireCondition(!existsSync(staging), 'A staging directory already exists; investigate before retrying');
   try {
-    mkdirSync(staging, { recursive: true });
-    copyBuildFolder(build, staging);
-    const htmlPath = join(staging, 'index.html');
-    let html = readFileSync(htmlPath, 'utf8');
-    assert(html.includes('</head>') && html.includes('<base href="/">'), 'Unexpected Angular demo index.html format');
-    assert(!html.includes('desktop-assets-bootstrap.js'), 'Already prepared desktop assets');
-    html = html.replace('</head>', '<script src="/desktop-assets-bootstrap.js"></script></head>');
-    writeFileSync(htmlPath, html);
-    copyFileSync(join(ROOT, 'scripts/desktop-assets-bootstrap.js'), join(staging, 'desktop-assets-bootstrap.js'));
-    for (const entry of items) {
-      const out = join(staging, 'assets', ...entry.parts);
-      mkdirSync(dirname(out), { recursive: true });
-      writeFileSync(out, entry.bytes, { flag: 'wx' });
+    mkdirSync(join(staging, 'assets'), {recursive:true});
+    for (const file of files) {
+      const target = join(staging, 'assets', ...file.parts);
+      mkdirSync(dirname(target), {recursive:true});
+      writeFileSync(target, file.bytes, {flag:'wx'});
     }
-    writeFileSync(join(staging, 'synthetic-assets-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+    writeFileSync(join(staging, MANIFEST_FILE), JSON.stringify(metadata,null,2)+'\n', {flag:'wx'});
     renameSync(staging, destination);
-    return { destination, count: items.length };
+    return { destination, count: files.length, reused:false };
   } catch (error) {
-    rmSync(staging, { recursive: true, force: true });
+    rmSync(staging, {recursive:true,force:true});
     throw error;
   }
 }
 
+// Name retained for compatibility with the existing npm command; now stages images only.
+export const prepareSyntheticFrontend = prepareSyntheticAssets;
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   try {
     const args = process.argv.slice(2);
-    const chartFlag = args.indexOf('--charts');
-    const outFlag = args.indexOf('--out');
-    assert(args.length % 2 === 0 && args.every((x, i) => i % 2 ? !!x : ['--charts', '--out'].includes(x)) &&
-      (chartFlag === -1 || outFlag === -1 || chartFlag !== outFlag), 'Usage: node scripts/prepare-synthetic-frontend.mjs [--charts DIR] [--out DIR]');
-    const charts = chartFlag >= 0 ? args[chartFlag+1] : resolve(ROOT, '../astrological-charts');
-    const out = outFlag >= 0 ? args[outFlag+1] : resolve(ROOT, '.local/frontend');
-    const result = prepareSyntheticFrontend(charts, out);
-    console.log('Prepared offline synthetic renderer: ' + result.count + ' verified assets in ' + result.destination);
-  } catch (error) { console.error('PREPARE FAILED:', error.message); process.exitCode = 1; }
+    requireCondition(args.length <= 4 && args.length % 2 === 0, 'Usage: --charts DIR --out DIR');
+    const flags = {};
+    for (let i=0;i<args.length;i+=2) {
+      requireCondition(['--charts','--out'].includes(args[i]) && args[i+1] && !Object.hasOwn(flags,args[i]),
+        'Invalid or duplicate option');
+      flags[args[i]]=args[i+1];
+    }
+    const result=prepareSyntheticAssets(flags['--charts'] ?? resolve(ROOT,'../astrological-charts'),
+      flags['--out'] ?? resolve(ROOT,'.local/frontend'));
+    console.log((result.reused ? 'Reused' : 'Staged') + ' ' + result.count +
+      ' SHA-256 verified synthetic assets. No demo HTML/JS copied.');
+  } catch (error) { console.error('SYNTHETIC ASSET STAGING FAILED:', error.message); process.exitCode=1; }
 }
