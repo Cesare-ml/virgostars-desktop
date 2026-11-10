@@ -1,5 +1,6 @@
 :host { display:block; height:100%; min-height:0; }
 .desktop-app {
+  --vs-component-css-marker: ready;
   --vs-bg:#F7F8FC; --vs-surface:#FFFFFF; --vs-surface-muted:#F0EDF7;
   --vs-text:#24243B; --vs-text-secondary:#61627A; --vs-border:#DADCE8;
   --vs-accent:#7146B5; --vs-accent-contrast:#FFFFFF;
@@ -126,3 +127,10 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
   .status-message { display:none; }
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+
+/* Compact read-only desktop CSS status, still visible as text if all CSS fails. */
+.style-health { white-space:nowrap; color:var(--vs-text-secondary); font-size:11px; }
+.style-health[data-state="ok"] { color:var(--vs-text-secondary); }
+.style-health:not([data-state="ok"]):not([data-state="checking"]) { color:#B14F37; font-weight:650; }
+.style-recheck { border:0; background:transparent; color:var(--vs-text-secondary); cursor:pointer; font-size:12px; padding:0 3px; }
+.style-recheck:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }

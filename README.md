@@ -31,6 +31,10 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 Work in dedicated branches and pull requests. Read `AGENTS.md` before touching the repository once it is introduced. Keep architecture decisions, offline/privacy invariants, and tests with each code change. No production migrations, deploys, automatic Actions, app store releases, public visibility changes or LICENSE selection without maintainer approval.
 
+## Diagnosing unstyled WebView2 windows
+
+The synthetic Desktop shell can now inspect global/component CSS markers and chart geometry inside the running app. Its footer reports a local CSS health status and an accessible recheck control. The optional post-build `npm run verify:css` checks compiled assets only; **neither check is proof of visual quality until tested on Windows**. See [WebView2 Style Diagnostic](docs/WEBVIEW2_STYLE_DIAGNOSTIC.md).
+
 ## Renderer lifecycle safety
 
 The Angular demo protects its rendering state against out-of-order async scene completions and window teardown. See [Render Lifecycle](docs/RENDER_LIFECYCLE.md); **real WebView2 behavior still requires Windows verification**.
