@@ -435,6 +435,26 @@ mod tests {
     }
 
     #[test]
+    fn new_edit_can_clear_an_existing_synthetic_tombstone() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &test_key(14)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_delete("synthetic-a", "synthetic-1", "synthetic-del").unwrap();
+        store.stage_synthetic_subject("synthetic-a", "synthetic-1", "synthetic-upsert",
+            r#"{"label":"Back"}"#).unwrap();
+        let locally_deleted: i64 = store.conn.query_row(
+            "SELECT locally_deleted FROM local_entities
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(locally_deleted, 0);
+        assert_eq!(store.pending_synthetic_ids("synthetic-a", 10).unwrap(), ["synthetic-del"]);
+        store.apply_synthetic_receipt("synthetic-a", "synthetic-del", "rev-del", true).unwrap();
+        assert!(store.pending_synthetic_ids("synthetic-a", 10).unwrap().is_empty());
+    }
+
+    #[test]
     fn identical_mutation_ids_are_isolated_between_profiles() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("synthetic.db");
