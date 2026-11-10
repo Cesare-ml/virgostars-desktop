@@ -1,0 +1,18 @@
+[package]
+name = "virgostars-encrypted-outbox-spike"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.89.0"
+publish = false
+description = "Isolated SQLCipher synthetic persistence experiment; not linked into VirgoStars Desktop"
+
+[dependencies]
+# SQLCipher only: DO NOT enable ordinary bundled SQLite or a plaintext fallback.
+# Feature verified against the rusqlite 0.41.1 upstream documentation.
+rusqlite = { version = "=0.41.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+zeroize = "1.8"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
