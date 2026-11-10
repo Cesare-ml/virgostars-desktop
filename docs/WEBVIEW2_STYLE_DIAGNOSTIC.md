@@ -64,3 +64,7 @@ Official Tauri security guidance states that CSP is injected into bundled HTML a
 - Tests use mocked DOM sizes and do not simulate graphics processing or privileged native IPC.
 
 No production changes, public repository publication, account synchronization, GitHub Actions, license decision, automatic merge or release. This branch follows the dedicated CSS packaging gate draft PR #16.
+
+## Potential root cause identified: Angular critical CSS optimization
+
+Angular production builds may emit `<link rel="stylesheet" ... media="print" onload="this.media='all'">`. Tauri's strict `script-src 'self'` can block that inline event handler. The follow-up [Angular CSP CSS Fix](ANGULAR_CSP_CSS_FIX.md) disables Angular `inlineCritical` and updates the bundle verifier to reject this deferred link rather than changing Tauri permissions. This is a plausible cause, not yet verified against the user's generated `index.html` or rebuilt Windows executable.
