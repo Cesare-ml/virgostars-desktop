@@ -44,7 +44,7 @@ test('Tauri 2.12 dependency tree rejects Rust 1.89 and supports stable 1.90+',()
 
 test('Windows preflight blocks rustc 1.89 with an actionable upgrade message',()=>{
   const report=dependencies({stage:'setup',platform:'win32',versions:{
-    rust:'rustc 1.89.0 (old-toolchain)\\nhost: x86_64-pc-windows-msvc',
+    rust:'rustc 1.89.0 (old-toolchain)\nhost: x86_64-pc-windows-msvc',
   }});
   const check=find(report,'rust-version');
   assert.equal(find(report,'rust-target').status,'pass');
@@ -54,7 +54,7 @@ test('Windows preflight blocks rustc 1.89 with an actionable upgrade message',()
 
 test('Windows preflight accepts rustc 1.90 on MSVC host',()=>{
   const report=dependencies({stage:'setup',platform:'win32',versions:{
-    rust:'rustc 1.90.0 (stable)\\nhost: x86_64-pc-windows-msvc',
+    rust:'rustc 1.90.0 (stable)\nhost: x86_64-pc-windows-msvc',
   }});
   assert.equal(find(report,'rust-target').status,'pass');
   assert.equal(find(report,'rust-version').status,'pass');
