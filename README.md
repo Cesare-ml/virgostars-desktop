@@ -31,3 +31,13 @@ Work in dedicated branches and pull requests. Read `AGENTS.md` before touching t
 ## Planned documentation
 
 The first design pull request introduces architecture, stack decision, offline authentication/sync, security, release/update strategy, roadmap, contributor guidelines and licensing decision log. These are **proposals**, not implemented features.
+
+## Desktop UI direction (approved concept)
+
+The UI design baseline is documented in [UI Design Guidelines](docs/UI_DESIGN_GUIDELINES.md), including light and dark theme token proposals, a chart-first centered workspace, panel behavior, accessibility, astronomy/rendering boundaries, and implementation acceptance checks.
+
+![VirgoStars Desktop — approved light visual reference](docs/design/virgostars-desktop-light-reference.webp)
+
+The image is a conceptual design reference, **not an implemented or scientifically validated chart**. The product name throughout this repository is **VirgoStars Desktop**.
+
+All future UI contributors must consult [AGENTS.md](AGENTS.md) before starting work. This does not change the repository's design-only status or undecided license.
