@@ -47,7 +47,12 @@ try {
     Invoke-Step 'Install local Desktop development dependencies' 'npm.cmd' @('install')
     Invoke-Step 'Run all available Node test files' 'npm.cmd' @('test')
     Invoke-Step 'Check compiled library and synthetic pack prerequisites' 'npm.cmd' @('run', 'doctor:build')
-    Invoke-Step 'Build the Angular UI, verify asset integrity and compile Tauri' 'npm.cmd' @('run', 'tauri:build')
+    Invoke-Step 'Build Angular and validate the offline assets' 'npm.cmd' @('run', 'build:ui')
+    Invoke-Step 'Generate temporary development icon' 'npm.cmd' @('run', 'prepare:icon')
+    Push-Location (Join-Path $desktop 'src-tauri')
+    try { Invoke-Step 'Run Rust unit tests' 'cargo' @('test') }
+    finally { Pop-Location }
+    Invoke-Step 'Compile and verify Angular/Tauri prototype' 'npm.cmd' @('run', 'tauri:build')
     Invoke-Step 'Verify generated Angular files and prototype executable exist' 'npm.cmd' @('run', 'doctor:verify')
     Write-Host 'Prototype build finished. No installer, signing, deployment or merge performed.'
     Write-Host 'Next: disconnect Internet and test WebView2, all chart modes, PNG export and native IPC.'
