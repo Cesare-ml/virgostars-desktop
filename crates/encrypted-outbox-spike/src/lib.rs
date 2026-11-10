@@ -205,6 +205,34 @@ impl SyntheticEncryptedStore {
         tx.commit().map_err(storage_error)
     }
 
+    /// Tombstone and pending delete intent commit together. The tombstone
+    /// remains after acknowledgment until a separately approved retention rule.
+    pub fn stage_synthetic_delete(
+        &mut self, profile: &str, entity: &str, mutation: &str,
+    ) -> Result<()> {
+        if !synthetic_id(profile) || !synthetic_id(entity) || !synthetic_id(mutation) {
+            return Err(StoreError::InvalidSyntheticInput);
+        }
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(storage_error)?;
+        tx.execute(
+            "INSERT INTO local_entities(
+                 profile_id,entity_type,entity_id,payload_json,locally_deleted,local_revision)
+             VALUES (?1,'subject',?2,NULL,1,1)
+             ON CONFLICT(profile_id,entity_type,entity_id) DO UPDATE SET
+                 payload_json=NULL, locally_deleted=1,
+                 local_revision=local_entities.local_revision+1",
+            params![profile, entity],
+        ).map_err(storage_error)?;
+        tx.execute(
+            "INSERT INTO local_outbox(
+                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
+             VALUES (?1,?2,'subject',?3,'delete',NULL,?4)",
+            params![profile, mutation, entity, FIXTURE_TIME],
+        ).map_err(storage_error)?;
+        tx.commit().map_err(storage_error)
+    }
+
     pub fn pending_synthetic_ids(&self, profile: &str, limit: usize) -> Result<Vec<String>> {
         if !synthetic_id(profile) || !(1..=500).contains(&limit) {
             return Err(StoreError::InvalidSyntheticInput);
@@ -386,6 +414,45 @@ mod tests {
         store.apply_synthetic_receipt("synthetic-a", "synthetic-m1", "rev-1", true).unwrap();
         assert_eq!(store.pending_synthetic_ids("synthetic-a", 50).unwrap(), ["synthetic-m3"]);
         assert!(store.apply_synthetic_receipt("synthetic-a", "synthetic-m2", "rev-2", false).is_err());
+    }
+
+    #[test]
+    fn deletion_keeps_tombstone_before_and_after_ack() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &test_key(12)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_delete("synthetic-a", "synthetic-1", "synthetic-del").unwrap();
+        assert_eq!(store.pending_synthetic_ids("synthetic-a", 10).unwrap(), ["synthetic-del"]);
+        store.apply_synthetic_receipt("synthetic-a", "synthetic-del", "rev-10", false).unwrap();
+        let locally_deleted: i64 = store.conn.query_row(
+            "SELECT locally_deleted FROM local_entities
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(locally_deleted, 1);
+        assert!(store.pending_synthetic_ids("synthetic-a", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn identical_mutation_ids_are_isolated_between_profiles() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &test_key(13)).unwrap();
+        for profile in ["synthetic-a", "synthetic-b"] {
+            store.create_synthetic_profile(profile).unwrap();
+            store.stage_synthetic_subject(profile, "synthetic-1",
+                "synthetic-m1", r#"{"label":"Fictional"}"#).unwrap();
+        }
+        store.apply_synthetic_receipt("synthetic-b", "synthetic-m1", "rev-b", false).unwrap();
+        assert_eq!(store.pending_synthetic_ids("synthetic-a", 10).unwrap(), ["synthetic-m1"]);
+        assert!(store.pending_synthetic_ids("synthetic-b", 10).unwrap().is_empty());
+        let a_revision: Option<String> = store.conn.query_row(
+            "SELECT server_revision FROM local_entities
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert!(a_revision.is_none());
     }
 
     #[test]
