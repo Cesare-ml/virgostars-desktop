@@ -31,6 +31,10 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 Work in dedicated branches and pull requests. Read `AGENTS.md` before touching the repository once it is introduced. Keep architecture decisions, offline/privacy invariants, and tests with each code change. No production migrations, deploys, automatic Actions, app store releases, public visibility changes or LICENSE selection without maintainer approval.
 
+## Windows CSS fix candidate (Angular critical CSS)
+
+The first Windows `.exe` proved Angular, Rust IPC and synthetic Three.js rendering, but appeared unstyled. Angular's default production critical-CSS optimization can defer CSS using `media="print"` and an inline `onload` event handler that Tauri's restrictive CSP may block. The desktop Angular production builder now disables `inlineCritical` without relaxing CSP. The offline bundle verifier rejects that deferred pattern. **This is a source fix whose native visual result still needs Windows validation.** See [Angular CSP CSS Fix](docs/ANGULAR_CSP_CSS_FIX.md).
+
 ## Diagnosing unstyled WebView2 windows
 
 The synthetic Desktop shell can now inspect global/component CSS markers and chart geometry inside the running app. Its footer reports a local CSS health status and an accessible recheck control. The optional post-build `npm run verify:css` checks compiled assets only; **neither check is proof of visual quality until tested on Windows**. See [WebView2 Style Diagnostic](docs/WEBVIEW2_STYLE_DIAGNOSTIC.md).
