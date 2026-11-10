@@ -1,0 +1,16 @@
+[package]
+name = "virgostars-desktop-spike"
+version = "0.0.1"
+description = "Offline synthetic VirgoStars chart renderer shell (unreleased prototype)"
+authors = ["VirgoStars project"]
+edition = "2021"
+
+[lib]
+name = "virgostars_desktop_spike_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

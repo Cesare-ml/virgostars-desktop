@@ -1,0 +1,5 @@
+node_modules/
+.local/
+src-tauri/target/
+*.log
+.DS_Store

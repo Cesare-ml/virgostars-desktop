@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VirgoStars Desktop Renderer Lab",
+  "version": "0.0.1",
+  "identifier": "it.virgostars.desktop.rendererlab",
+  "build": {
+    "devUrl": "http://127.0.0.1:4200",
+    "frontendDist": "../.local/frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VirgoStars Desktop — Synthetic Renderer Lab",
+        "width": 1360,
+        "height": 880,
+        "minWidth": 850,
+        "minHeight": 620
+      }
+    ],
+    "security": {
+      "capabilities": [],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:4177; font-src 'self' data:; connect-src 'self' ws://127.0.0.1:4200 http://127.0.0.1:4177; object-src 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

@@ -1,12 +1,12 @@
 # VirgoStars Desktop
 
-**Private design-stage repository — future free/open-source desktop application for astrologers and astrology researchers.**
+**Private experimental repository — future free/open-source desktop application for astrologers and astrology researchers.**
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. Users sign in with their VirgoStars account on first activation, then can work offline with previously authorized local data and synchronize safely when online.
 
 ## Current state (2026-11-10)
 
-- **Design only:** this repository does not yet ship an installer, runnable desktop UI, authentication client, synchronization engine, or astronomical integrations.
+- **Experimental Tauri renderer spike:** a minimal Tauri 2 Rust shell can be built using the real separate Astrological Charts Angular demo and an offline bundle of synthetic assets (see [Spike 001](docs/SPIKE-001.md)). **It has not yet been compiled or validated on Windows**, and there is no independent desktop UI, account login, synchronization engine, SQLite, or real astronomy integration.
 - **Proposed stack:** Tauri 2, Angular/TypeScript, Rust and a local SQLite database, subject to an architecture spike.
 - **Windows first, macOS later:** no Windows-specific application logic in cross-platform modules.
 - **Private for now.** The future open-source license is **not yet decided**. Do **not** add a LICENSE file, claim that code is CPAL/MIT licensed or publish this repository without an explicit decision.
@@ -27,6 +27,10 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 ## Contribution workflow
 
 Work in dedicated branches and pull requests. Read `AGENTS.md` before touching the repository once it is introduced. Keep architecture decisions, offline/privacy invariants, and tests with each code change. No production migrations, deploys, automatic Actions, app store releases, public visibility changes or LICENSE selection without maintainer approval.
+
+## Current working prototype (stacked draft PR)
+
+The first separate prototype branch adds `src-tauri/`, Node-based synthetic asset staging, offline bundle checks and five Node tests. This is **not yet an installer or production application**. Clone both authorized private repositories side-by-side and follow [Spike 001](docs/SPIKE-001.md). Neither production VirgoStars nor original artwork is required.
 
 ## Planned documentation
 

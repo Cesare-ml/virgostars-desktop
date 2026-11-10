@@ -1,6 +1,6 @@
 # VirgoStars Desktop — proposed system architecture
 
-Status: **DESIGN ONLY** (2026-11-10). No referenced component has been integrated here yet.
+Status: **DESIGN WITH ISOLATED UNVERIFIED RENDERER SPIKE** (2026-11-10). Spike 001 packages the upstream Angular demo as synthetic content for a minimal Tauri host, but does not implement the final desktop application or integrate native ephemerides, accounts or persistence.
 
 ## Product principles
 - Dedicated workstation for professional astrologers and researchers, not a web wrapper.
@@ -73,6 +73,10 @@ docs/                    approved decisions and plans
 4. Local database encryption approach (encrypted SQLite engine vs envelope encryption) and key rotation must be tested.
 5. Define exact offline access expiry/revocation/privacy behavior and the initial sync entity inventory.
 6. Isolate schema/renderer package versions; no silent switch of web or Astrolabio dependencies.
+
+## Isolated proof-of-concept boundary
+
+[Spike 001](SPIKE-001.md) temporarily hosts the **existing upstream demo application** in Tauri for WebView2/offline packaging verification. This is not the intended final Angular workspace: the proper desktop-owned layout and runtime package adapter follow only after hardware testing. Its content is fictional and generated locally.
 
 ## Cross-repository readiness as of 2026-11-10
 - VirgoStars-Ephemeris: Rust DE441 reader/prototypes, no validated full astronomical engine or bindings.
