@@ -6,7 +6,7 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 ## Current state (2026-11-10)
 
-- **Experimental desktop-owned Angular shell:** source now contains an Angular 20 application with a real astrological-charts renderer adapter, chart-first layout, collapsible navigation/inspector, light/dark themes, IT/EN labels, responsive sizing and PNG export paths. Synthetic assets are staged for Tauri 2 offline testing. **It has not been compiled or validated on Windows**; account login, sync, SQLite and real astronomy integration do not exist. See [Shell 001](docs/SHELL-001.md) and [Spike 001](docs/SPIKE-001.md).
+- **Experimental desktop-owned Angular shell:** source now contains an Angular 20 application with a real astrological-charts renderer adapter, chart-first layout, collapsible navigation/inspector, light/dark themes, IT/EN labels, responsive sizing and PNG export paths. Synthetic assets are staged for Tauri 2 offline testing. **It has not been compiled or validated on Windows**; account login, sync, SQLite and real astronomy integration do not exist. See [Shell 001](docs/SHELL-001.md), [Spike 001](docs/SPIKE-001.md) and [Native Runtime Bridge](docs/NATIVE_RUNTIME_BRIDGE.md).
 - **Proposed stack:** Tauri 2, Angular/TypeScript, Rust and a local SQLite database, subject to an architecture spike.
 - **Windows first, macOS later:** no Windows-specific application logic in cross-platform modules.
 - **Private for now.** The future open-source license is **not yet decided**. Do **not** add a LICENSE file, claim that code is CPAL/MIT licensed or publish this repository without an explicit decision.
