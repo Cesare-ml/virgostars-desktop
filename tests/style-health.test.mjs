@@ -50,7 +50,9 @@ test('small split window does not cause a false tiny-chart alarm',()=>{
 
 test('reads only CSS sentinel markers and computed layout from injected DOM objects',()=>{
   const requested=[];
-  const root={kind:'root'},shell={kind:'shell'},stage={kind:'stage'},canvas={kind:'canvas'};
+  const root={kind:'root'},shell={kind:'shell'};
+  const stage={kind:'stage',getBoundingClientRect:()=>({width:850,height:720})};
+  const canvas={kind:'canvas',getBoundingClientRect:()=>({width:650,height:650})};
   const styleMap=new Map([
     [root,{display:'block',getPropertyValue:key=>key==='--vs-global-css-marker'?'ready':''}],
     [shell,{display:'grid',getPropertyValue:key=>key==='--vs-component-css-marker'?'ready':''}],
@@ -60,9 +62,7 @@ test('reads only CSS sentinel markers and computed layout from injected DOM obje
     documentElement:root,
     defaultView:{getComputedStyle:element=>{requested.push(element.kind);return styleMap.get(element);}},
   };
-  const metrics=measureStyleHealth(documentRef,shell,
-    { ...stage,getBoundingClientRect:()=>({width:850,height:720}) },
-    { ...canvas,getBoundingClientRect:()=>({width:650,height:650}) });
+  const metrics=measureStyleHealth(documentRef,shell,stage,canvas);
   assert.deepEqual(requested,['root','shell','stage']);
   assert.equal(classifyStyleHealth(metrics),'ok');
   assert.deepEqual(Object.keys(metrics),[
