@@ -60,6 +60,14 @@ tests/                   synthetic integration/contract/security cases
 docs/                    approved decisions and plans
 ```
 
+## Approved astrology scope and external interpretation linking
+
+The product-wide end-state requirements are fixed in [FEATURE_CATALOG.md](FEATURE_CATALOG.md); rollout is phased. **Egizia as standalone plus all Swiss-compatible house systems** are required in the independent Rust astronomy provider, with an explicit exclusion for the mixed Egizia + Placido choice; see [HOUSE_SYSTEMS.md](HOUSE_SYSTEMS.md). The TypeScript domain and renderer must consume canonical provider results rather than implement alternative astronomical house calculations. Special systems such as Gauquelin require correctly modeled 36 sectors and distinct visualization.
+
+Fixed-star numerical data/rendering are local astronomy/chart concerns, but **interpretive content belongs to the VirgoStars website**. Desktop resolves a stable star ID to an approved HTTPS canonical web page and opens that page in the system browser; do not copy or synchronize the interpretive database. Offline, show supported stellar coordinates with an explicit online-only interpretation action; see [FIXED_STARS_INTEGRATION.md](FIXED_STARS_INTEGRATION.md).
+
+Out-of-scope modules: physiognomy, radionics, cosmocentric mode, chakras, the mixed Egizia + Placido system, and commented-only prototype menu concepts. Never infer requirements from dormant code.
+
 ## Workstation UX
 - Large interactive chart workspace with dockable/tabbed panes; natal/transit/synastry comparisons as upstream capabilities mature.
 - Local library with search and groups, note taking, reliable export, settings per account, clear sync/offline/conflict indicator.
