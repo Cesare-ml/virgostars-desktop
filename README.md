@@ -30,7 +30,7 @@ Work in dedicated branches and pull requests. Read `AGENTS.md` before touching t
 
 ## Quick read-only setup check
 
-Run `node scripts/desktop-doctor.mjs` or `npm run doctor` on Windows to diagnose Node, Rust MSVC, WebView2, upstream Charts and Angular/Tauri build prerequisites. `npm run doctor:json` produces a shareable report with no personal paths. See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md). This **does not prove the native app runs**; actual compilation and offline WebView2 testing remain pending.
+Run `node scripts/desktop-doctor.mjs` or `npm run doctor` on Windows to diagnose Node, Rust MSVC, WebView2, upstream Charts and Angular/Tauri build prerequisites. `npm run doctor:json` produces a shareable report with no personal paths. For the complete build attempt, use `scripts\\build-windows.cmd` (no PowerShell policy changes). See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md). This **does not prove the native app runs**; actual compilation and offline WebView2 testing remain pending.
 
 ## Current working prototype (stacked draft PR)
 
