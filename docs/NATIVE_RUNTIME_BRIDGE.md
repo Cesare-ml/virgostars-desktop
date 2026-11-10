@@ -41,8 +41,8 @@ Tauri command registration is not account authorization. When authentication and
 
 ## Tests and verification
 
-- `tests/native-runtime.test.mjs`: nine Node.js tests for schema validation, browser no-call, native command invocation, malformed response, exception isolation and future platform labels.
-- `tests/native-runtime-source.test.mjs`: four source contract checks for Rust command registration/feature flags, API imports and explicit UI disclosure.
+- `tests/native-runtime.test.mjs`: **9/9 passed locally on Node.js 22.16.0**, including schema validation, browser no-call, native command invocation, malformed response, exception isolation and future platform labels. The local protocol implementation's Git blob SHA matches the GitHub source.
+- `tests/native-runtime-source.test.mjs`: four source contract checks for Rust command registration/feature flags, API imports and explicit UI disclosure (**written; not yet run against a complete checkout**).
 - Rust: `cargo test` unit tests in `src-tauri/src/runtime_probe.rs` verify false capability flags and JSON camelCase serialization. **Not executed yet.**
 - Keep running all existing synthetic-asset tests; do not interpret them as full application or scientific correctness verification.
 
@@ -53,6 +53,7 @@ From an authorized Windows development checkout (see `SHELL-001.md` and `ASSET_P
 ```powershell
 npm test
 npm run build:ui
+npm run prepare:icon
 cd src-tauri
 cargo test
 cd ..
