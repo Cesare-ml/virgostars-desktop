@@ -113,4 +113,23 @@ button:focus-visible { outline: 2px solid var(--vs-focus); outline-offset: 3px; 
   .chart-footer span:last-child, .toolbar-center { display: none; }
   .mode-chip { display: none; }
 }
+
+/* On narrow windows the nav opens as an overlay: it never steals wheel width. */
+.nav-backdrop { display: none; }
+@media (max-width: 1180px) {
+  .app[data-mobile-nav="open"] .sidebar {
+    position: fixed; inset: 64px auto 58px 0; width: 224px; z-index: 20;
+    padding: 12px 8px; box-shadow: 14px 0 36px #07091733;
+  }
+  .app[data-mobile-nav="open"] .sidebar .nav-label { display: inline; }
+  .app[data-mobile-nav="open"] .sidebar .group-label { display: block; }
+  .app[data-mobile-nav="open"] .sidebar .nav-item,
+  .app[data-mobile-nav="open"] .sidebar .collapse-button {
+    justify-content: flex-start; padding: 8px 11px;
+  }
+  .app[data-mobile-nav="open"] .nav-backdrop {
+    position: fixed; display: block; inset: 64px 0 58px; z-index: 19;
+    width: 100%; border: 0; border-radius: 0; background: #07091744; cursor: default;
+  }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; } }

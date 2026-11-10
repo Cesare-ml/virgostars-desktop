@@ -8,8 +8,13 @@
   const inspectorToggle = document.getElementById("inspector-toggle");
   const inspectorClose = document.getElementById("inspector-close");
   const navToggle = document.getElementById("nav-toggle");
+  const navBackdrop = document.getElementById("nav-backdrop");
   const zoomLabel = document.getElementById("zoom-label");
+  const tabPanel = document.getElementById("tab-panel");
+  const tabs = [...document.querySelectorAll('[role="tab"][data-tab]')];
+  const policy = globalThis.VirgoStarsPreviewInteraction;
   let zoom = 1;
+  let wasCompact = policy.isCompact(window.innerWidth);
 
   const fit = () => {
     const bounds = stage.getBoundingClientRect();
@@ -22,10 +27,39 @@
     wheel.style.setProperty("--chart-zoom", String(zoom));
     zoomLabel.textContent = Math.round(zoom * 100) + "%";
   };
-  const setInspector = (open) => {
+  const compact = () => policy.isCompact(window.innerWidth);
+  const syncNavControl = () => {
+    const open = compact() ? app.dataset.mobileNav === "open" : app.dataset.nav === "open";
+    navToggle.setAttribute("aria-expanded", String(open));
+    navToggle.setAttribute("aria-label", open ? "Riduci menu" : "Espandi menu");
+    navToggle.title = open ? "Riduci menu" : "Espandi menu";
+  };
+  const setInspector = (open, restoreFocus = false) => {
     app.dataset.inspector = open ? "open" : "closed";
     inspectorToggle.setAttribute("aria-expanded", String(open));
+    if (restoreFocus) inspectorToggle.focus();
     requestAnimationFrame(fit);
+  };
+  const setMobileNav = (open, restoreFocus = false) => {
+    app.dataset.mobileNav = open ? "open" : "closed";
+    if (open) {
+      setInspector(false);
+      document.querySelector(".nav-item.is-active")?.focus();
+    } else if (restoreFocus) {
+      navToggle.focus();
+    }
+    syncNavControl();
+    requestAnimationFrame(fit);
+  };
+  const selectTab = (tab) => {
+    for (const item of tabs) {
+      const selected = item === tab;
+      item.setAttribute("aria-selected", String(selected));
+      item.tabIndex = selected ? 0 : -1;
+    }
+    const labels = { pianeti: "Pianeti", case: "Case", aspetti: "Aspetti" };
+    document.getElementById("panel-title").textContent = labels[tab.dataset.tab];
+    tabPanel.setAttribute("aria-labelledby", tab.id);
   };
 
   themeToggle.addEventListener("click", () => {
@@ -33,15 +67,25 @@
     app.dataset.theme = dark ? "dark" : "light";
     themeToggle.setAttribute("aria-pressed", String(dark));
     themeToggle.title = dark ? "Passa al tema chiaro" : "Passa al tema scuro";
+    themeToggle.setAttribute("aria-label", themeToggle.title);
   });
-  inspectorToggle.addEventListener("click", () => setInspector(app.dataset.inspector === "closed"));
-  inspectorClose.addEventListener("click", () => setInspector(false));
+  inspectorToggle.addEventListener("click", () => {
+    const open = app.dataset.inspector === "closed";
+    if (open) setMobileNav(false);
+    setInspector(open);
+    if (open) tabs.find((tab) => tab.getAttribute("aria-selected") === "true")?.focus();
+  });
+  inspectorClose.addEventListener("click", () => setInspector(false, true));
+  navBackdrop.addEventListener("click", () => setMobileNav(false, true));
   navToggle.addEventListener("click", () => {
-    const open = app.dataset.nav === "closed";
-    app.dataset.nav = open ? "open" : "closed";
-    navToggle.setAttribute("aria-expanded", String(open));
-    navToggle.setAttribute("aria-label", open ? "Riduci menu" : "Espandi menu");
-    requestAnimationFrame(fit);
+    if (compact()) {
+      setMobileNav(app.dataset.mobileNav !== "open");
+    } else {
+      const open = app.dataset.nav === "closed";
+      app.dataset.nav = open ? "open" : "closed";
+      syncNavControl();
+      requestAnimationFrame(fit);
+    }
   });
   document.querySelectorAll("[data-mode]").forEach((item) => {
     item.addEventListener("click", () => {
@@ -55,18 +99,45 @@
       document.getElementById("screen-title").textContent = mode;
       document.getElementById("mode-chip").textContent = mode;
       document.getElementById("mode-detail").textContent = mode;
+      if (compact() && app.dataset.mobileNav === "open") setMobileNav(false, true);
     });
   });
-  document.querySelectorAll("[data-tab]").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll("[data-tab]").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
-      const labels = { pianeti: "Pianeti", case: "Case", aspetti: "Aspetti" };
-      document.getElementById("panel-title").textContent = labels[tab.dataset.tab];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => selectTab(tab));
+    tab.addEventListener("keydown", (event) => {
+      const target = policy.nextTabIndex(event.key, index, tabs.length);
+      if (target === null) return;
+      event.preventDefault();
+      selectTab(tabs[target]);
+      tabs[target].focus();
     });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (app.dataset.mobileNav === "open") {
+      setMobileNav(false, true);
+      event.preventDefault();
+    } else if (app.dataset.inspector === "open") {
+      setInspector(false, true);
+      event.preventDefault();
+    }
   });
   document.getElementById("zoom-in").addEventListener("click", () => setZoom(zoom + 0.1));
   document.getElementById("zoom-out").addEventListener("click", () => setZoom(zoom - 0.1));
   document.getElementById("zoom-fit").addEventListener("click", () => setZoom(1));
-  new ResizeObserver(fit).observe(stage);
+
+  if (wasCompact) setInspector(false);
+  syncNavControl();
+  window.addEventListener("resize", () => {
+    const isNowCompact = compact();
+    if (isNowCompact !== wasCompact) {
+      setMobileNav(false);
+      if (isNowCompact) setInspector(false);
+      wasCompact = isNowCompact;
+    }
+    syncNavControl();
+  });
+  if (typeof ResizeObserver === "function") new ResizeObserver(fit).observe(stage);
+  else window.addEventListener("resize", fit);
   fit();
 })();

@@ -6,7 +6,7 @@
 
 In Windows File Explorer open `docs\\ui-prototype\\index.html` directly with Edge or Chrome. This example does **not** need a VirgoStars account, Node, Rust, a backend, or an internet connection.
 
-Try switching **light/dark**, collapsing the sidebar and right inspector, selecting chart modes/inspector tabs, resizing the window, and using **Zoom +/-** and **Adatta**. The central circular placeholder intentionally has **no invented planetary positions**; a real wheel must come from `astrological-charts` and validated libraries.
+Try switching **light/dark**, collapsing the sidebar and right inspector, selecting chart modes/inspector tabs, resizing the window, and using **Zoom +/-** and **Adatta**. Below 1181 px, the left menu becomes a narrow icon rail; use the menu button to open a temporary navigation drawer without reducing the chart. Press **Escape** or click outside the drawer to close it; the inspector also closes with Escape. In inspector tabs, the arrow keys and Home/End navigate the tab strip. The central circular placeholder intentionally has **no invented planetary positions**; a real wheel must come from `astrological-charts` and validated libraries.
 
 ## Run automated layout tests
 

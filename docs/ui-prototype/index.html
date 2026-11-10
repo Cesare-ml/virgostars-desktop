@@ -7,10 +7,11 @@
   <title>VirgoStars Desktop — Anteprima UI</title>
   <link rel="stylesheet" href="./styles.css">
   <script defer src="./chart-sizing.cjs"></script>
+  <script defer src="./ui-interactions.cjs"></script>
   <script defer src="./app.js"></script>
 </head>
 <body>
-<div class="app" id="app" data-theme="light" data-nav="open" data-inspector="open">
+<div class="app" id="app" data-theme="light" data-nav="open" data-mobile-nav="closed" data-inspector="open">
   <header class="topbar" aria-label="Barra superiore">
     <div class="brand"><div class="brand-mark" aria-hidden="true">✳</div><div><strong>VirgoStars</strong><small>Desktop · Anteprima UI</small></div></div>
     <div class="subject"><strong>Tema dimostrativo</strong><span>Dati sintetici · nessun account collegato</span></div>
@@ -22,9 +23,9 @@
   </header>
 
   <div class="main-grid">
-    <nav class="sidebar" aria-label="Navigazione principale">
+    <nav class="sidebar" id="nav-menu" aria-label="Navigazione principale">
       <div class="sidebar-top">
-        <button type="button" class="collapse-button" id="nav-toggle" aria-expanded="true" aria-label="Riduci menu" title="Espandi o riduci menu"><span class="nav-icon">☷</span><span class="nav-label">Riduci menu</span></button>
+        <button type="button" class="collapse-button" id="nav-toggle" aria-expanded="true" aria-controls="nav-menu" aria-label="Riduci menu" title="Espandi o riduci menu"><span class="nav-icon">☷</span><span class="nav-label">Riduci menu</span></button>
       </div>
       <div class="nav-group">
         <span class="group-label">Lavoro</span>
@@ -65,11 +66,11 @@
     <aside class="inspector" id="inspector" aria-label="Pannello contestuale">
       <div class="inspector-head"><strong>Informazioni</strong><button type="button" class="icon-button small" id="inspector-close" aria-label="Chiudi pannello informazioni">×</button></div>
       <div class="inspector-tabs" role="tablist" aria-label="Categorie di dati">
-        <button type="button" role="tab" aria-selected="true" data-tab="pianeti">Pianeti</button>
-        <button type="button" role="tab" aria-selected="false" data-tab="case">Case</button>
-        <button type="button" role="tab" aria-selected="false" data-tab="aspetti">Aspetti</button>
+        <button type="button" role="tab" aria-selected="true" id="tab-pianeti" aria-controls="tab-panel" tabindex="0" data-tab="pianeti">Pianeti</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-case" aria-controls="tab-panel" tabindex="-1" data-tab="case">Case</button>
+        <button type="button" role="tab" aria-selected="false" id="tab-aspetti" aria-controls="tab-panel" tabindex="-1" data-tab="aspetti">Aspetti</button>
       </div>
-      <div class="panel" id="tab-panel" role="tabpanel" tabindex="0" aria-live="polite">
+      <div class="panel" id="tab-panel" role="tabpanel" tabindex="0" aria-labelledby="tab-pianeti" aria-live="polite">
         <h2 id="panel-title">Pianeti</h2><p id="panel-description">Le posizioni saranno disponibili dopo il collegamento con le librerie VirgoStars.</p>
         <div class="empty-panel"><span class="empty-icon" aria-hidden="true">◌</span><strong>Nessun dato calcolato</strong><span>Questa anteprima verifica soltanto layout, interazioni e temi.</span></div>
       </div>
@@ -77,6 +78,7 @@
     </aside>
   </div>
 
+  <button type="button" class="nav-backdrop" id="nav-backdrop" aria-label="Chiudi menu di navigazione" tabindex="-1"></button>
   <footer class="toolbar" aria-label="Comandi grafico">
     <div class="toolbar-cluster"><button type="button" class="tool-button" id="zoom-out" aria-label="Riduci zoom">−</button><span id="zoom-label" aria-live="polite">100%</span><button type="button" class="tool-button" id="zoom-in" aria-label="Aumenta zoom">+</button><button type="button" class="tool-button fit-button" id="zoom-fit">Adatta</button></div>
     <div class="toolbar-center"><span class="toolbar-prompt">Primo prototipo: dimensioni e navigazione</span></div>
