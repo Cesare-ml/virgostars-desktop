@@ -53,6 +53,19 @@ test('rejects modified bytes and never creates the destination', () => {
   } finally { f.cleanup(); }
 });
 
+test('supports space-containing synthetic renderer filenames', () => {
+  const f = fixture();
+  try {
+    const oldFile = join(f.assets, 'sample.png'), newFile = join(f.assets, 'true node.png');
+    const bytes = readFileSync(oldFile);
+    writeFileSync(newFile, bytes);
+    rmSync(oldFile);
+    f.manifest.assets[0].path = 'img/true node.png'; f.save();
+    prepareSyntheticFrontend(f.charts, f.frontend);
+    assert.deepEqual(readFileSync(join(f.frontend, 'assets/img/true node.png')), bytes);
+  } finally { f.cleanup(); }
+});
+
 test('rejects traversal paths', () => {
   const f = fixture();
   try { f.manifest.assets[0].path = 'img/../secret.png'; f.save();
