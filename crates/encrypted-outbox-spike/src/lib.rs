@@ -68,6 +68,46 @@ fn synthetic_id(value: &str) -> bool {
         && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
+/** SQLCipher schema gate for the *exact* v1 metadata.
+ *
+ * The template connection contains only static public DDL and exists in memory;
+ * no user records, encryption keys or plaintext database files are created.
+ * SQLite itself normalizes both catalogues using the SAME linked engine, so
+ * table, index, CHECK/foreign-key definitions, and unexpected objects are
+ * compared rather than trusting user_version or table names alone.
+ * Upgrading the reference DDL must be an explicit, reviewed migration.
+ */
+fn schema_catalog(conn: &Connection) -> Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT type, name, sql FROM sqlite_master
+         WHERE type IN ('table','index','trigger','view')
+           AND name NOT GLOB 'sqlite_*'
+         ORDER BY type, name"
+    ).map_err(storage_error)?;
+    stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(storage_error)?
+        .collect::<rusqlite::Result<Vec<(String, String, String)>>>()
+        .map_err(storage_error)
+}
+
+fn validate_schema_v1(conn: &Connection) -> Result<()> {
+    let template = Connection::open_in_memory().map_err(storage_error)?;
+    template.execute_batch(SCHEMA_V1).map_err(storage_error)?;
+    if schema_catalog(conn)? != schema_catalog(&template)? {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    // Detect referential corruption created while foreign_keys was disabled.
+    // PRAGMA quick_check cannot detect all foreign-key violations.
+    let violation: Option<String> = conn.query_row(
+        "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1",
+        [], |row| row.get(0)
+    ).optional().map_err(storage_error)?;
+    if violation.is_some() {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    Ok(())
+}
+
 impl SyntheticEncryptedStore {
     pub fn open(path: &Path, key: &StoreKey) -> Result<Self> {
         // Best-effort symlink guard for a test-only path. Production must use
@@ -146,15 +186,9 @@ impl SyntheticEncryptedStore {
             1 => {}
             _ => return Err(StoreError::UnsupportedSchema),
         }
-        for table in [
-            "local_profiles", "local_entities", "local_outbox", "local_sync_cursors"
-        ] {
-            let found: Option<i64> = conn.query_row(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
-                [table], |row| row.get(0),
-            ).optional().map_err(storage_error)?;
-            if found != Some(1) { return Err(StoreError::UnsupportedSchema); }
-        }
+        // Do not trust a user_version=1 DB with same-named but altered tables,
+        // weakened CHECKs, missing indexes, triggers, or broken foreign keys.
+        validate_schema_v1(&conn)?;
         Ok(Self { conn })
     }
 
@@ -362,6 +396,58 @@ mod tests {
         assert!(SyntheticEncryptedStore::open(&path, &test_key(8)).is_err());
         let store = SyntheticEncryptedStore::open(&path, &key).expect("correct key");
         assert_eq!(store.pending_synthetic_ids("synthetic-a", 10).unwrap(), ["synthetic-m1"]);
+    }
+
+    #[test]
+    fn rejects_replaced_index_and_unexpected_schema_objects() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let key = test_key(18);
+        {
+            let store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.conn.execute_batch(
+                "DROP INDEX local_outbox_profile_fifo;
+                 CREATE INDEX local_outbox_profile_fifo ON local_outbox(mutation_id);"
+            ).unwrap();
+        }
+        // The DB still has all four required table names and user_version=1:
+        // accepting it would silently weaken FIFO/sync query assumptions.
+        assert!(matches!(
+            SyntheticEncryptedStore::open(&path, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+
+        let extra_path = dir.path().join("synthetic-extra.db");
+        {
+            let store = SyntheticEncryptedStore::open(&extra_path, &key).unwrap();
+            store.conn.execute_batch("CREATE TABLE surprise(value TEXT) STRICT;").unwrap();
+        }
+        assert!(matches!(
+            SyntheticEncryptedStore::open(&extra_path, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+    }
+
+    #[test]
+    fn rejects_profile_foreign_key_violations_even_with_valid_schema() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let key = test_key(19);
+        {
+            let store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.create_synthetic_profile("synthetic-a").unwrap();
+            store.conn.execute_batch(
+                "PRAGMA foreign_keys=OFF;
+                 INSERT INTO local_outbox(
+                    profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
+                 VALUES ('synthetic-a','synthetic-m1','subject','synthetic-missing-entity',
+                         'upsert','{}','2026-11-10T19:00:00Z');"
+            ).unwrap();
+        }
+        assert!(matches!(
+            SyntheticEncryptedStore::open(&path, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
     }
 
     #[test]
