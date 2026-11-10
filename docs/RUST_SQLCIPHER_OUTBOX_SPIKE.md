@@ -1,6 +1,6 @@
 # Rust SQLCipher outbox spike 003
 
-**Status:** isolated Rust **source prototype**, private, synthetic only; NOT linked into Tauri or approved for real accounts. Written on 2026-11-10. The Rust code has **not** been compiled or tested in the authoring environment (no Rust toolchain available). There are **8 authored Rust tests**, not 8 passing Rust tests.
+**Status:** isolated Rust **source prototype**, private, synthetic only; NOT linked into Tauri or approved for real accounts. Written on 2026-11-10. The Rust code has **not** been compiled or tested in the authoring environment (no Rust toolchain available). There are **10 authored Rust tests** including the follow-up schema integrity checks, not 10 passing Rust tests.
 
 ## Why this is separate
 
@@ -17,7 +17,7 @@ This crate builds on [PR #11's pure TypeScript outbox contract](OFFLINE_OUTBOX_R
 - Open calls SQLCipher \`PRAGMA key\` as its first database action, verifies non-empty \`cipher_version\`, reads \`sqlite_master\` and runs \`quick_check\` to reject incompatible/incorrect keys; refuses symlinks (best effort), empty and unknown schemas; validates foreign key enforcement.
 - A first-version schema is applied transactionally only for a genuinely new file. This is **not** a production migration runner; v2/rollback/backup tests remain required.
 - Synthetic-only APIs enforce \`synthetic-\` identifiers and JSON size/validity; atomic subject update or explicit delete tombstone + outbox insert; one unresolved per entity in FIFO batch; conflict and accepted receipts; remote page + cursor in one transaction with a synthetic failure injection. A later synthetic upsert clears the local tombstone but does not bypass the preceding queued delete or conflict.
-- Eight Rust unit tests (unexecuted here) for encrypted file header/reopen, wrong key, plaintext refusal, mutation rollback, same-entity conflicts, profile isolation, deletion/tombstone semantics and pull cursor rollback.
+- Ten Rust unit tests (unexecuted here) for encrypted file header/reopen, wrong key, plaintext refusal, mutation rollback, same-entity conflicts, profile isolation, deletion/tombstone semantics and pull cursor rollback.
 
 ## How to verify on Windows 11
 
@@ -46,3 +46,13 @@ Additional security acceptance before any integration:
 **Not verified:** compiling Rust, running Rust unit tests, SQLCipher runtime behavior, correct encryption on disk, Windows 11/macOS build, key custody, crash durability, Tauri integration, npm lockfiles, actual cloud sync.
 
 This is a source code step only, not an encrypted shipping database. No automatic GitHub Actions, merge, deployment, visibility, licensing or release changes.
+
+## Follow-up: fail-closed v1 schema integrity gate (draft PR #15)
+
+The first source version trusted `PRAGMA user_version=1` and four table names. That is insufficient: an attacker, corrupted migration or accidental manual edit can retain the same names while changing the outbox indexes, constraints or tables.
+
+The follow-up adds `validate_schema_v1` on **every encrypted open**, after the SQLCipher/key/data-page checks and before exposing a usable store. It creates an in-memory **DDL-only** template from the checked-in schema (no sensitive user data, disk files or keys), compares its complete `sqlite_master` catalogue (tables, indexes, triggers, views) to the encrypted file under the same linked SQLite engine, and checks `pragma_foreign_key_check`. Any difference or dangling foreign key rejects the store as `UnsupportedSchema`. This intentionally blocks ad hoc v1 schema modifications; future schema evolution requires a reviewed, versioned migration.
+
+Additional Rust tests attempt to reopen a database after replacing an index, adding an unexpected table or introducing an invalid foreign key while enforcement was disabled. These tests remain **authored but unexecuted** until Cargo/SQLCipher is available. There are now **10 Rust unit tests authored**.
+
+The test-only in-memory metadata template is not a plaintext fallback for personal data and is not a user database. The production gate still requires SQLCipher compilation, real Windows file encryption tests, OS-bound key management, a reviewed `Cargo.lock`, migration tooling, and backend authorization. Verify the `sqlite_master` DDL normalizations across supported SQLite versions during upgrade rehearsals; a mismatch must fail closed, not silently migrate.
