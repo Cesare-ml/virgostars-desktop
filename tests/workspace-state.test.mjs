@@ -69,3 +69,10 @@ test('Angular shell implements compact overlays and accessible tab traversal',()
   assert.match(css,/\.workspace\.mobile-nav-open \.sidebar/);
   assert.match(css,/\.workspace\.mobile-nav-open \.nav-backdrop/);
 });
+
+test('compact startup state is computed before first Angular view check', () => {
+  const component=readFileSync(new URL('../src/app/desktop-app.component.ts',import.meta.url),'utf8');
+  assert.match(component,/inspectorCollapsed = typeof window !== 'undefined' && isOverlayInspectorWidth\(window\.innerWidth\)/);
+  assert.match(component,/compactViewport = typeof window !== 'undefined' && isCompactNavigationWidth\(window\.innerWidth\)/);
+  assert.doesNotMatch(component,/this\.updateViewport\(true\)/);
+});
