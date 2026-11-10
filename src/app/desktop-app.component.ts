@@ -54,9 +54,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   inspectorTab: InspectorTab = 'planets';
   selectedPlanet: DemoPlanet | null = null;
   navCollapsed = false;
-  inspectorCollapsed = false;
-  compactViewport = false;
-  overlayInspectorViewport = false;
+  // Set initial responsive state before Angular's first render/change detection.
+  // Changing template-bound fields synchronously in ngAfterViewInit would
+  // otherwise risk ExpressionChangedAfterItHasBeenCheckedError in dev mode.
+  inspectorCollapsed = typeof window !== 'undefined' && isOverlayInspectorWidth(window.innerWidth);
+  compactViewport = typeof window !== 'undefined' && isCompactNavigationWidth(window.innerWidth);
+  overlayInspectorViewport = typeof window !== 'undefined' && isOverlayInspectorWidth(window.innerWidth);
   mobileNavOpen = false;
   busy = true;
   ready = false;
@@ -74,7 +77,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     try {
       // No network fallback. Both Angular and generated test assets are embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');
-      this.updateViewport(true);
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
       this.initialized = true;
@@ -106,12 +108,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if(this.initialized) window.dispatchEvent(new Event('resize'));
   }
 
-  private updateViewport(initial = false): void {
+  private updateViewport(): void {
     const compact = isCompactNavigationWidth(window.innerWidth);
     const overlay = isOverlayInspectorWidth(window.innerWidth);
-    if (initial || compact !== this.compactViewport) this.mobileNavOpen = false;
+    if (compact !== this.compactViewport) this.mobileNavOpen = false;
     // At narrow sizes, data panels open on demand rather than hiding the wheel.
-    if ((initial && overlay) || (overlay && !this.overlayInspectorViewport)) this.inspectorCollapsed = true;
+    if (overlay && !this.overlayInspectorViewport) this.inspectorCollapsed = true;
     this.compactViewport = compact;
     this.overlayInspectorViewport = overlay;
     this.cd.markForCheck();
