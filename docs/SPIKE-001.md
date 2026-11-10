@@ -1,4 +1,6 @@
-# Spike 001 — Tauri 2 + existing Angular/Three.js renderer
+# Spike 001 — original Tauri 2 renderer-host experiment
+
+**Historical note:** subsequent [Shell 001](SHELL-001.md) extends this stack with the desktop-owned Angular app. Build and frontend output commands for the current branch are in Shell 001; the description below covers the original host-only proof of concept.
 
 **Status:** first implementation draft (2026-11-10), **not a validated Windows build**. The packaging code passed eight synthetic Node.js tests locally; Rust/Tauri compilation and the actual WebView2 graphics test have **not** run in the authoring environment (no Rust toolchain or npm registry connection).
 
