@@ -1,18 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { diagnoseEnvironment, formatReport, supportsNode } from '../scripts/desktop-doctor.mjs';
 
+// OS-native join must match the doctor's node:path.join on Windows and macOS/Linux.
 const root='/fake/desktop', charts='/fake/astrological-charts';
 const baseFiles=new Set([
-  charts+'/package.json', root+'/package.json',root+'/angular.json',root+'/src-tauri/tauri.conf.json'
+  join(charts,'package.json'), join(root,'package.json'),join(root,'angular.json'),join(root,'src-tauri','tauri.conf.json')
 ]);
 function dependencies({stage='setup', platform='linux', additional=[], versions={}}={}) {
   const files=new Set([...baseFiles,...additional]);
   const map={
-    [root+'/package.json']:{ dependencies:{ 'grafici-astrologici':'file:../astrological-charts/dist/grafici-astrologici' } },
-    [charts+'/package.json']:{name:'grafici-astrologici'},
-    [root+'/angular.json']:{projects:{desktop:{architect:{build:{options:{outputPath:'dist/desktop'}}}}}},
-    [root+'/src-tauri/tauri.conf.json']:{build:{frontendDist:'../dist/desktop/browser'},bundle:{active:false}},
+    [join(root,'package.json')]:{ dependencies:{ 'grafici-astrologici':'file:../astrological-charts/dist/grafici-astrologici' } },
+    [join(charts,'package.json')]:{name:'grafici-astrologici'},
+    [join(root,'angular.json')]:{projects:{desktop:{architect:{build:{options:{outputPath:'dist/desktop'}}}}}},
+    [join(root,'src-tauri','tauri.conf.json')]:{build:{frontendDist:'../dist/desktop/browser'},bundle:{active:false}},
   };
   const command=(name,args)=>{
     if(name==='cargo') return 'cargo 1.9';
@@ -50,9 +52,9 @@ test('build stage clearly blocks absent renderer and asset pack',()=>{
 
 test('build stage passes with compiled package, synthetic pack and CLI',()=>{
   const report=dependencies({stage:'build',additional:[
-    charts+'/dist/grafici-astrologici/package.json',
-    charts+'/.local/demo-pack/manifests/approved-assets.json',
-    root+'/node_modules/.bin/ng'
+    join(charts,'dist','grafici-astrologici','package.json'),
+    join(charts,'.local','demo-pack','manifests','approved-assets.json'),
+    join(root,'node_modules','.bin','ng')
   ]});
   assert.equal(report.counts.blocked,0);
   assert.equal(find(report,'charts-library').status,'pass');
@@ -61,10 +63,10 @@ test('build stage passes with compiled package, synthetic pack and CLI',()=>{
 test('wrong local renderer dependency never silently passes',()=>{
   const report=diagnoseEnvironment({root,charts,nodeVersion:'v22.16.0',
     exists:file=>baseFiles.has(file),command:()=> 'installed',
-    json:file=>file===charts+'/package.json' ? {name:'grafici-astrologici'} :
-      file===root+'/package.json' ? {dependencies:{'grafici-astrologici':'https://example.org/not-approved'}} :
-      file===root+'/angular.json' ? {projects:{desktop:{architect:{build:{options:{outputPath:'dist/desktop'}}}}}} :
-      file===root+'/src-tauri/tauri.conf.json' ? {build:{frontendDist:'../dist/desktop/browser'},bundle:{active:false}} : null,
+    json:file=>file===join(charts,'package.json') ? {name:'grafici-astrologici'} :
+      file===join(root,'package.json') ? {dependencies:{'grafici-astrologici':'https://example.org/not-approved'}} :
+      file===join(root,'angular.json') ? {projects:{desktop:{architect:{build:{options:{outputPath:'dist/desktop'}}}}}} :
+      file===join(root,'src-tauri','tauri.conf.json') ? {build:{frontendDist:'../dist/desktop/browser'},bundle:{active:false}} : null,
   });
   assert.equal(find(report,'renderer-contract').status,'blocked');
 });
@@ -91,10 +93,22 @@ test('Windows MSVC toolchain requires windows-msvc host',()=>{
 test('warning on uncertain WebView2 registry presence is not a false missing report',()=>{
   const report=diagnoseEnvironment({platform:'win32',root,charts,exists:file=>baseFiles.has(file),
     command:(name,args)=>name==='reg.exe'?null:'installed',
-    json:file=>file===charts+'/package.json'?{name:'grafici-astrologici'}:
-      file===root+'/package.json'?{dependencies:{'grafici-astrologici':'file:../astrological-charts/dist/grafici-astrologici'}}:
-      file===root+'/angular.json'?{projects:{desktop:{architect:{build:{options:{outputPath:'dist/desktop'}}}}}}:
-      file===root+'/src-tauri/tauri.conf.json'?{build:{frontendDist:'../dist/desktop/browser'},bundle:{active:false}}:null,
+    json:file=>file===join(charts,'package.json')?{name:'grafici-astrologici'}:
+      file===join(root,'package.json')?{dependencies:{'grafici-astrologici':'file:../astrological-charts/dist/grafici-astrologici'}}:
+      file===join(root,'angular.json')?{projects:{desktop:{architect:{build:{options:{outputPath:'dist/desktop'}}}}}}:
+      file===join(root,'src-tauri','tauri.conf.json')?{build:{frontendDist:'../dist/desktop/browser'},bundle:{active:false}}:null,
   });
   assert.equal(find(report,'webview2').status,'warning');
+});
+
+test('Windows-mode build fixtures locate the .cmd Angular CLI and compiled renderer',()=>{
+  const report=dependencies({stage:'build',platform:'win32',additional:[
+    join(charts,'dist','grafici-astrologici','package.json'),
+    join(charts,'.local','demo-pack','manifests','approved-assets.json'),
+    join(root,'node_modules','.bin','ng.cmd'),
+  ]});
+  assert.equal(find(report,'renderer-contract').status,'pass');
+  assert.equal(find(report,'frontend-target').status,'pass');
+  assert.equal(find(report,'desktop-dependencies').status,'pass');
+  assert.equal(report.counts.blocked,0);
 });
