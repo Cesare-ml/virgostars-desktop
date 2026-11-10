@@ -31,7 +31,7 @@ From `virgostars-desktop`:
 powershell -NoProfile -File .\scripts\build-windows-spike.ps1
 ```
 
-The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies, runs tests, builds the Angular UI with exact asset verification, compiles Tauri and checks expected output files. It stops at the first failed command.
+The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies, runs Node and Rust unit tests, builds the Angular UI with exact asset verification, compiles Tauri and checks expected output files. It stops at the first failed command.
 
 It does not change PowerShell execution policy, delete generated folders automatically, access production, deploy software, or merge a PR. A successful build is not proof of scientific/visual accuracy.
 
