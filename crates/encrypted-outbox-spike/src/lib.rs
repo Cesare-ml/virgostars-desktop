@@ -491,7 +491,7 @@ mod tests {
 
     #[test]
     fn altered_synthetic_ciphertext_is_rejected_before_schema_use() {
-        use std::io::{Seek, SeekFrom, Write};
+        use std::io::{Read, Seek, SeekFrom, Write};
         let dir = tempdir().unwrap();
         let path = dir.path().join("synthetic-ciphertext.db");
         let key = test_key(23);
@@ -503,10 +503,13 @@ mod tests {
         }
         // Corrupt one byte in an encrypted *temporary synthetic* page.
         // No real account data, production database or credential is involved.
-        let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        let mut file = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
         assert!(file.metadata().unwrap().len() > 512);
         file.seek(SeekFrom::Start(256)).unwrap();
-        file.write_all(&[0xAA]).unwrap();
+        let mut before = [0_u8; 1];
+        file.read_exact(&mut before).unwrap();
+        file.seek(SeekFrom::Start(256)).unwrap();
+        file.write_all(&[before[0] ^ 0xFF]).unwrap();
         file.sync_all().unwrap();
         drop(file);
         assert!(SyntheticEncryptedStore::open(&path, &key).is_err());
