@@ -1,6 +1,6 @@
 # Rust SQLCipher outbox spike 003
 
-**Status:** isolated Rust **source prototype**, private, synthetic only; NOT linked into Tauri or approved for real accounts. Written on 2026-11-10. The Rust code has **not** been compiled or tested in the authoring environment (no Rust toolchain available).
+**Status:** isolated Rust **source prototype**, private, synthetic only; NOT linked into Tauri or approved for real accounts. Written on 2026-11-10. The Rust code has **not** been compiled or tested in the authoring environment (no Rust toolchain available). There are **8 authored Rust tests**, not 8 passing Rust tests.
 
 ## Why this is separate
 
@@ -16,8 +16,8 @@ This crate builds on [PR #11's pure TypeScript outbox contract](OFFLINE_OUTBOX_R
 - A 32-byte \`StoreKey\` wrapper with \`zeroize\`; the caller must provide cryptographically random key material from a separately reviewed OS secure-storage provider. There is **no key-generation, DPAPI, Keychain, token or account integration** in this crate.
 - Open calls SQLCipher \`PRAGMA key\` as its first database action, verifies non-empty \`cipher_version\`, reads \`sqlite_master\` and runs \`quick_check\` to reject incompatible/incorrect keys; refuses symlinks (best effort), empty and unknown schemas; validates foreign key enforcement.
 - A first-version schema is applied transactionally only for a genuinely new file. This is **not** a production migration runner; v2/rollback/backup tests remain required.
-- Synthetic-only APIs enforce \`synthetic-\` identifiers and JSON size/validity; atomic subject update + outbox insert; one unresolved per entity in FIFO batch; conflict and accepted receipts; remote page + cursor in one transaction with a synthetic failure injection.
-- Rust unit tests (unexecuted here) for encrypted file header/reopen, wrong key, plaintext refusal, mutation rollback, same-entity conflicts and pull cursor rollback.
+- Synthetic-only APIs enforce \`synthetic-\` identifiers and JSON size/validity; atomic subject update or explicit delete tombstone + outbox insert; one unresolved per entity in FIFO batch; conflict and accepted receipts; remote page + cursor in one transaction with a synthetic failure injection. A later synthetic upsert clears the local tombstone but does not bypass the preceding queued delete or conflict.
+- Eight Rust unit tests (unexecuted here) for encrypted file header/reopen, wrong key, plaintext refusal, mutation rollback, same-entity conflicts, profile isolation, deletion/tombstone semantics and pull cursor rollback.
 
 ## How to verify on Windows 11
 
