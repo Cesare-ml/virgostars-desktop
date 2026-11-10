@@ -1,4 +1,4 @@
-<div class="desktop-app" [attr.data-theme]="theme">
+<div #shell class="desktop-app" [attr.data-theme]="theme">
   <header class="topbar">
     <div class="brand" aria-label="VirgoStars Desktop">
       <span class="brand-symbol" aria-hidden="true">✦</span>
@@ -64,7 +64,11 @@
         <span class="status-message" role="status">{{t(status)}}</span>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
       </div>
-      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span></footer>
+      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span> ·
+        <span class="style-health" [attr.data-state]="styleCode" role="status">{{t(styleStatus)}}</span>
+        <button type="button" class="style-recheck" [attr.title]="t('style.recheck')"
+          [attr.aria-label]="t('style.recheck')" (click)="recheckStyles()">⟳</button>
+      </footer>
     </main>
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
