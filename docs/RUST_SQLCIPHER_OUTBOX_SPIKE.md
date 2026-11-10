@@ -1,6 +1,6 @@
 # Rust SQLCipher outbox spike 003
 
-**Status:** isolated Rust **source prototype**, private, synthetic only; NOT linked into Tauri or approved for real accounts. Written on 2026-11-10. The Rust code has **not** been compiled or tested in the authoring environment (no Rust toolchain available). There are **11 authored Rust tests** including schema integrity and ciphertext-tamper cases, not 11 passing Rust tests.
+**Status:** isolated Rust **source prototype**, private, synthetic only; NOT linked into Tauri or approved for real accounts. Written on 2026-11-10. The Rust code has **not** been compiled or tested in the authoring environment (no Rust toolchain available). There are **14 authored Rust tests** including schema integrity, ciphertext tampering and dependent-revision behavior, not 14 passing Rust tests.
 
 ## Why this is separate
 
@@ -17,7 +17,7 @@ This crate builds on [PR #11's pure TypeScript outbox contract](OFFLINE_OUTBOX_R
 - Open calls SQLCipher \`PRAGMA key\` as its first database action, verifies non-empty \`cipher_version\`, reads \`sqlite_master\` and runs \`quick_check\` to reject incompatible/incorrect keys; refuses symlinks (best effort), empty and unknown schemas; validates foreign key enforcement.
 - A first-version schema is applied transactionally only for a genuinely new file. This is **not** a production migration runner; v2/rollback/backup tests remain required.
 - Synthetic-only APIs enforce \`synthetic-\` identifiers and JSON size/validity; atomic subject update or explicit delete tombstone + outbox insert; one unresolved per entity in FIFO batch; conflict and accepted receipts; remote page + cursor in one transaction with a synthetic failure injection. A later synthetic upsert clears the local tombstone but does not bypass the preceding queued delete or conflict.
-- Eleven Rust unit tests (unexecuted here) for encrypted file header/reopen, wrong key, plaintext refusal, mutation rollback, same-entity conflicts, profile isolation, deletion/tombstone semantics and pull cursor rollback.
+- Fourteen Rust unit tests (unexecuted here) for encrypted file header/reopen, wrong key, plaintext refusal, mutation rollback, same-entity conflicts, profile isolation, deletion/tombstone semantics and pull cursor rollback.
 
 ## How to verify on Windows 11
 
@@ -53,7 +53,7 @@ The first source version trusted `PRAGMA user_version=1` and four table names. T
 
 The follow-up adds `validate_schema_v1` on **every encrypted open**, after the SQLCipher/key/data-page checks and before exposing a usable store. It creates an in-memory **DDL-only** template from the checked-in schema (no sensitive user data, disk files or keys), compares its complete `sqlite_master` catalogue (tables, indexes, triggers, views) to the encrypted file under the same linked SQLite engine, and checks `pragma_foreign_key_check`. Any difference or dangling foreign key rejects the store as `UnsupportedSchema`. This intentionally blocks ad hoc v1 schema modifications; future schema evolution requires a reviewed, versioned migration.
 
-Additional Rust tests attempt to reopen a database after replacing an index, adding an unexpected table or introducing an invalid foreign key while enforcement was disabled. These tests remain **authored but unexecuted** until Cargo/SQLCipher is available. There are now **11 Rust unit tests authored**.
+Additional Rust tests attempt to reopen a database after replacing an index, adding an unexpected table or introducing an invalid foreign key while enforcement was disabled. These tests remain **authored but unexecuted** until Cargo/SQLCipher is available. There are now **14 Rust unit tests authored**.
 
 The test-only in-memory metadata template is not a plaintext fallback for personal data and is not a user database. The production gate still requires SQLCipher compilation, real Windows file encryption tests, OS-bound key management, a reviewed `Cargo.lock`, migration tooling, and backend authorization. Verify the `sqlite_master` DDL normalizations across supported SQLite versions during upgrade rehearsals; a mismatch must fail closed, not silently migrate.
 
@@ -78,9 +78,21 @@ The script runs `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, t
 ### Verification as of 2026-11-10
 
 - **17/17 Node.js 22.16.0 tests passed** after executing both existing synthetic SQLite persistence and schema-gate suites together.
-- **11 authored Rust tests, not yet executed or compiled here**: this environment does not contain the Rust toolchain.
+- **14 authored Rust tests, not yet executed or compiled here**: this environment does not contain the Rust toolchain.
 - The PowerShell gate is authored but **has not been executed on Windows**.
-- SQLCipher HMAC checks follow the official documented API, but actual native ciphertext correctness, codec linkage and 11 Rust outcomes are still unknown.
+- SQLCipher HMAC checks follow the official documented API, but actual native ciphertext correctness, codec linkage and 14 Rust outcomes are still unknown.
 - Required future gates: reviewed Cargo.lock, Windows/MSVC/SQLCipher build, correct key/wrong key and tampered file checks, OS secure key store, encrypted backup/migration design, Windows and macOS integration review.
 
 **Do not use real personal birth data with this prototype.**
+    
+## Dependent local edits and remote tombstones (follow-up, 2026-11-11)
+
+The synthetic storage spike now records `base_server_revision` when an individual local edit or delete is staged. A mutation is **eligible for an outbound batch only when that stored base exactly matches the entity's current acknowledged server revision** (including NULL-to-NULL for new subjects), and only when there is no older unresolved same-entity mutation. The matching check is repeated **inside the transaction when processing a synthetic receipt**, so a fabricated/stale receipt cannot silently acknowledge a blocked operation.
+
+Example: two edits to one subject are queued offline with the same base. The first is acknowledged with a newer server revision. The second **remains durably pending and is deliberately not sent**; unrelated entities can continue. No client-side automatic rebase, last-write-wins, conflict resolution or background network push exists. A future authorized owner-safe API must define an explicit resolution/rebase operation with auditability before the blocked second edit can be delivered. This is a safe fail-closed **prototype limitation**, not an end-user-ready queue.
+
+A pulled authoritative upsert now resets `locally_deleted=0` when a prior local delete was already acknowledged and no unacknowledged changes remain. Otherwise an obsolete tombstone could hide a restored server record. Pull still aborts rather than overwrite an entity with pending/conflicted local writes.
+
+**Regression evidence:** `tests/sqlite-dependent-revisions.test.mjs` has four Node SQLite tests on synthetic-only data, covering stale-base blocking, newly staged edits capturing the updated server revision, tombstone restoration and conflict blocking. On Node.js 22.16.0, **4/4 passed**, using the **exact committed test and reference schema content** (Git blob SHAs: test `65d06258bd0749d6ff62a043178056c2535ea4c2`, schema `013b80914fb2fc1bbb66ff266e7f7a069b96e794`). The Windows validation script now runs this suite alongside the previous two SQLite suites. These four passing **Node SQLite reference tests do not validate the Rust/SQLCipher implementation**.
+
+Three new Rust unit tests have been authored for the same scenarios; total **14 Rust tests**, not compiled or run here. `cargo fmt`, `cargo clippy`, `cargo test`, Windows SQLCipher binary/linking, OS secure key storage and production-grade migrations remain outstanding. **No actual VirgoStars account data is used.**
