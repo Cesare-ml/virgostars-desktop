@@ -13,11 +13,17 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { classifyStyleHealth, measureStyleHealth, type StyleHealthCode } from './style-health';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
   Mars:'name.mars', Jupiter:'name.jupiter', Saturn:'name.saturn',
   Uranus:'name.uranus', Neptune:'name.neptune', Pluto:'name.pluto',
+};
+const STYLE_STATUS_KEYS: Record<StyleHealthCode,MessageKey> = {
+  ok:'style.ok',both_missing:'style.both_missing',global_missing:'style.global_missing',
+  component_missing:'style.component_missing',layout_unexpected:'style.layout_unexpected',
+  canvas_small:'style.canvas_small'
 };
 const MODE_KEYS: Record<ChartMode,MessageKey> = {
   natal:'mode.natal',transits:'mode.transits',synastry:'mode.synastry',latitude:'mode.latitude',
@@ -31,6 +37,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
   styleUrls:['./desktop-app.component.css']
 })
 export class DesktopAppComponent implements AfterViewInit, OnDestroy {
+  @ViewChild('shell', {static:true}) readonly shell!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
 
@@ -44,6 +51,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
+  private styleFrame: number | null = null;
 
   readonly modes = CHART_MODES;
   readonly planets = fictionalPlanets();
@@ -60,6 +68,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ready = false;
   status: MessageKey = 'chart.loading';
   runtimeStatus: MessageKey = 'runtime.checking';
+  styleStatus: MessageKey = 'style.checking';
+  styleCode: StyleHealthCode | 'checking' | 'unavailable' = 'checking';
   error = '';
 
   t(key:MessageKey): string { return translate(this.locale,key); }
@@ -78,8 +88,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
       this.initialized = true;
-      this.resizeObserver = new ResizeObserver(() => this.fitStage());
+      this.resizeObserver = new ResizeObserver(() => {
+        this.fitStage();
+        this.scheduleStyleCheck();
+      });
       this.resizeObserver.observe(this.stage.nativeElement);
+      this.scheduleStyleCheck();
       void this.draw();
     } catch (error) {
       this.renderError(error);
@@ -97,9 +111,43 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    if (this.styleFrame !== null) cancelAnimationFrame(this.styleFrame);
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
+  }
+
+  /** Check only two expected CSS markers and chart dimensions, with no network request. */
+  recheckStyles(): void { this.scheduleStyleCheck(true); }
+
+  private scheduleStyleCheck(showChecking = false): void {
+    if (this.destroyed) return;
+    if (showChecking) {
+      this.styleStatus = 'style.checking';
+      this.styleCode = 'checking';
+      this.cd.markForCheck();
+    }
+    if (this.styleFrame !== null) cancelAnimationFrame(this.styleFrame);
+    // Allow external CSS and Angular component styles two paint opportunities.
+    this.styleFrame = requestAnimationFrame(() => {
+      this.styleFrame = requestAnimationFrame(() => {
+        this.styleFrame = null;
+        if (this.destroyed) return;
+        try {
+          const metrics = measureStyleHealth(
+            document, this.shell.nativeElement, this.stage.nativeElement, this.canvas.nativeElement
+          );
+          const result = classifyStyleHealth(metrics);
+          this.styleCode = result;
+          this.styleStatus = STYLE_STATUS_KEYS[result];
+        } catch {
+          this.styleCode = 'unavailable';
+          this.styleStatus = 'style.unavailable';
+        }
+        // Never expose page URLs, CSS text or private runtime details in UI status.
+        this.cd.markForCheck();
+      });
+    });
   }
 
   private fitStage(): void {
@@ -134,6 +182,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.exporting || this.destroyed) return;
     this.theme = this.theme === 'light' ? 'dark' : 'light';
     if(this.initialized) void this.draw();
+    this.scheduleStyleCheck();
     this.cd.markForCheck();
   }
   setMode(mode:ChartMode): void {
