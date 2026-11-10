@@ -30,7 +30,7 @@ Work in dedicated branches and pull requests. Read `AGENTS.md` before touching t
 
 ## Current working prototype (stacked draft PR)
 
-The first separate prototype branch adds `src-tauri/`, Node-based synthetic asset staging, offline bundle checks, eight existing Node tests and an unverified follow-up Angular shell. This is **not yet an installer or production application**. Clone both authorized private repositories side-by-side and follow [Spike 001](docs/SPIKE-001.md). Neither production VirgoStars nor original artwork is required.
+The first separate prototype branch adds `src-tauri/`, Node-based synthetic asset staging, offline bundle checks, eight existing Node tests and an unverified follow-up Angular shell. The subsequent asset-pipeline hardening adds an isolated synthetic-only staging process and verifies the Angular bundle without compiling the old charts demo. See [offline asset pipeline](docs/ASSET_PIPELINE.md). This is **not yet an installer or production application**. Clone both authorized private repositories side-by-side and follow [Spike 001](docs/SPIKE-001.md). Neither production VirgoStars nor original artwork is required.
 
 ## Planned documentation
 
