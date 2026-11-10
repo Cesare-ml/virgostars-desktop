@@ -12,6 +12,7 @@ import {
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
+import { RenderGeneration } from './render-generation';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -41,6 +42,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private initialized = false;
   private destroyed = false;
+  private readonly drawGeneration = new RenderGeneration();
+  private exporting = false;
 
   readonly modes = CHART_MODES;
   readonly planets = fictionalPlanets();
@@ -94,6 +97,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
   }
@@ -126,6 +130,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   toggleTheme(): void {
+    // Do not change chart skin while a PNG export is rendering offscreen.
+    if (this.exporting || this.destroyed) return;
     this.theme = this.theme === 'light' ? 'dark' : 'light';
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
@@ -178,21 +184,33 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.mode==='latitude' ? 'latitudini' : 'carta-astrale'];
   }
   async draw(): Promise<void> {
-    if(this.destroyed) return;
+    const ticket = this.drawGeneration.begin();
+    if(ticket === null) return;
     this.busy=true; this.ready=false; this.error=''; this.status='chart.loading';
     this.cd.markForCheck();
     try {
+      // Capture the request's mode, overlay and skin before awaiting the library.
       const [natal,transits,synastry,kind] = this.chartArguments();
-      await this.renderer.disegnaScena(natal,transits,synastry,kind,this.options());
-      if(!this.destroyed) { this.ready=true; this.status='chart.ready'; }
+      const options = this.options();
+      await this.renderer.disegnaScena(natal,transits,synastry,kind,options);
+      // The upstream service may skip superseded scene-generation requests.
+      // Do not show an obsolete request as ready (or clear the current spinner).
+      if(this.drawGeneration.isCurrent(ticket)) {
+        this.ready=true;
+        this.status='chart.ready';
+      }
     } catch(error) {
-      if(!this.destroyed) this.renderError(error);
+      if(this.drawGeneration.isCurrent(ticket)) this.renderError(error);
     } finally {
-      if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); }
+      if(this.drawGeneration.isCurrent(ticket)) {
+        this.busy=false;
+        this.cd.markForCheck();
+      }
     }
   }
   async exportPng(): Promise<void> {
-    if(!this.ready || this.busy) return;
+    if(!this.ready || this.busy || this.destroyed || this.exporting) return;
+    this.exporting=true;
     this.busy=true; this.status='exporting'; this.cd.markForCheck();
     try {
       const [natal,transits,synastry,kind]=this.chartArguments();
@@ -205,7 +223,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       link.click();
       this.status='exported';
     } catch(error) { if(!this.destroyed) this.renderError(error); }
-    finally { if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); } }
+    finally { this.exporting=false; if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); } }
   }
   private renderError(_error:unknown): void {
     // Do not print private birth records or paths; detailed diagnostics remain
