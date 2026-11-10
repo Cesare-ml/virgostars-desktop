@@ -68,6 +68,48 @@ fn synthetic_id(value: &str) -> bool {
         && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
+/** SQLCipher schema gate for the *exact* v1 metadata.
+ *
+ * The template connection contains only static public DDL and exists in memory;
+ * no user records, encryption keys or plaintext database files are created.
+ * SQLite itself normalizes both catalogues using the SAME linked engine, so
+ * table, index, CHECK/foreign-key definitions, and unexpected objects are
+ * compared rather than trusting user_version or table names alone.
+ * Upgrading the reference DDL must be an explicit, reviewed migration.
+ */
+fn schema_catalog(conn: &Connection) -> Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT type, name, sql FROM sqlite_master
+         WHERE type IN ('table','index','trigger','view')
+           AND name NOT GLOB 'sqlite_*'
+         ORDER BY type, name"
+    ).map_err(storage_error)?;
+    let mapped = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(storage_error)?;
+    let catalog = mapped
+        .collect::<rusqlite::Result<Vec<(String, String, String)>>>()
+        .map_err(storage_error)?;
+    Ok(catalog)
+}
+
+fn validate_schema_v1(conn: &Connection) -> Result<()> {
+    let template = Connection::open_in_memory().map_err(storage_error)?;
+    template.execute_batch(SCHEMA_V1).map_err(storage_error)?;
+    if schema_catalog(conn)? != schema_catalog(&template)? {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    // Detect referential corruption created while foreign_keys was disabled.
+    // PRAGMA quick_check cannot detect all foreign-key violations.
+    let violation: Option<String> = conn.query_row(
+        "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1",
+        [], |row| row.get(0)
+    ).optional().map_err(storage_error)?;
+    if violation.is_some() {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    Ok(())
+}
+
 impl SyntheticEncryptedStore {
     pub fn open(path: &Path, key: &StoreKey) -> Result<Self> {
         // Best-effort symlink guard for a test-only path. Production must use
@@ -103,7 +145,16 @@ impl SyntheticEncryptedStore {
         let cipher_version: String = conn.pragma_query_value(
             None, "cipher_version", |row| row.get(0)
         ).map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
-        if cipher_version.trim().is_empty() {
+        // cipher_integrity_check requires SQLCipher >= 4.2 and page HMACs.
+        // Versions predating that feature must NOT silently skip the check.
+        let version: Vec<u32> = cipher_version
+            .split('.')
+            .take(2)
+            .map(|part| part.parse::<u32>().unwrap_or(0))
+            .collect();
+        let supported = version.len() == 2
+            && (version[0] > 4 || (version[0] == 4 && version[1] >= 2));
+        if !supported {
             return Err(StoreError::CipherMissingOrInvalidKey);
         }
         // This forces the codec to actually read/decrypt database pages,
@@ -116,6 +167,22 @@ impl SyntheticEncryptedStore {
         if quick_check != "ok" {
             return Err(StoreError::CipherMissingOrInvalidKey);
         }
+        // A valid SQLite B-tree is not sufficient: SQLCipher authenticates the
+        // encrypted envelope via per-page HMAC. Any reported page error blocks
+        // opening, and disabling HMAC is not supported by this spike.
+        let hmac: i64 = conn.pragma_query_value(
+            None, "cipher_use_hmac", |row| row.get(0),
+        ).map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
+        if hmac != 1 { return Err(StoreError::CipherMissingOrInvalidKey); }
+        let mut cipher_stmt = conn.prepare("PRAGMA cipher_integrity_check")
+            .map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
+        let mut cipher_rows = cipher_stmt.query([])
+            .map_err(|_| StoreError::CipherMissingOrInvalidKey)?;
+        if cipher_rows.next().map_err(|_| StoreError::CipherMissingOrInvalidKey)?.is_some() {
+            return Err(StoreError::CipherMissingOrInvalidKey);
+        }
+        drop(cipher_rows);
+        drop(cipher_stmt);
 
         // Keep this spike in DELETE journal mode; SQLite WAL + backup/rekey
         // behavior must receive a separate SQLCipher-specific security review.
@@ -146,15 +213,9 @@ impl SyntheticEncryptedStore {
             1 => {}
             _ => return Err(StoreError::UnsupportedSchema),
         }
-        for table in [
-            "local_profiles", "local_entities", "local_outbox", "local_sync_cursors"
-        ] {
-            let found: Option<i64> = conn.query_row(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
-                [table], |row| row.get(0),
-            ).optional().map_err(storage_error)?;
-            if found != Some(1) { return Err(StoreError::UnsupportedSchema); }
-        }
+        // Do not trust a user_version=1 DB with same-named but altered tables,
+        // weakened CHECKs, missing indexes, triggers, or broken foreign keys.
+        validate_schema_v1(&conn)?;
         Ok(Self { conn })
     }
 
@@ -196,11 +257,19 @@ impl SyntheticEncryptedStore {
              local_revision=local_entities.local_revision+1",
             params![profile, entity, payload],
         ).map_err(storage_error)?;
+        // Pin the server revision AT THE TIME of the local edit. A later
+        // ACK must never implicitly rebase a second offline edit.
+        let base_revision: Option<String> = tx.query_row(
+            "SELECT server_revision FROM local_entities
+             WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
+            params![profile, entity], |row| row.get(0),
+        ).map_err(storage_error)?;
         tx.execute(
             "INSERT INTO local_outbox(
-                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
-             VALUES (?1,?2,'subject',?3,'upsert',?4,?5)",
-            params![profile, mutation, entity, payload, FIXTURE_TIME],
+                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,
+                 base_server_revision,created_at_utc)
+             VALUES (?1,?2,'subject',?3,'upsert',?4,?5,?6)",
+            params![profile, mutation, entity, payload, base_revision, FIXTURE_TIME],
         ).map_err(storage_error)?;
         tx.commit().map_err(storage_error)
     }
@@ -224,11 +293,17 @@ impl SyntheticEncryptedStore {
                  local_revision=local_entities.local_revision+1",
             params![profile, entity],
         ).map_err(storage_error)?;
+        let base_revision: Option<String> = tx.query_row(
+            "SELECT server_revision FROM local_entities
+             WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
+            params![profile, entity], |row| row.get(0),
+        ).map_err(storage_error)?;
         tx.execute(
             "INSERT INTO local_outbox(
-                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
-             VALUES (?1,?2,'subject',?3,'delete',NULL,?4)",
-            params![profile, mutation, entity, FIXTURE_TIME],
+                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,
+                 base_server_revision,created_at_utc)
+             VALUES (?1,?2,'subject',?3,'delete',NULL,?4,?5)",
+            params![profile, mutation, entity, base_revision, FIXTURE_TIME],
         ).map_err(storage_error)?;
         tx.commit().map_err(storage_error)
     }
@@ -239,7 +314,11 @@ impl SyntheticEncryptedStore {
         }
         let mut stmt = self.conn.prepare(
             "SELECT o.mutation_id FROM local_outbox o
+             INNER JOIN local_entities e
+               ON e.profile_id=o.profile_id
+               AND e.entity_type=o.entity_type AND e.entity_id=o.entity_id
              WHERE o.profile_id=?1 AND o.state='pending'
+               AND o.base_server_revision IS e.server_revision
              AND NOT EXISTS (
                SELECT 1 FROM local_outbox earlier
                WHERE earlier.profile_id=o.profile_id
@@ -248,10 +327,11 @@ impl SyntheticEncryptedStore {
              )
              ORDER BY o.sequence LIMIT ?2"
         ).map_err(storage_error)?;
-        stmt.query_map(params![profile, limit as i64], |row| row.get::<_, String>(0))
-            .map_err(storage_error)?
-            .collect::<rusqlite::Result<Vec<String>>>()
-            .map_err(storage_error)
+        let mapped = stmt.query_map(params![profile, limit as i64], |row| row.get::<_, String>(0))
+            .map_err(storage_error)?;
+        let ids = mapped.collect::<rusqlite::Result<Vec<String>>>()
+            .map_err(storage_error)?;
+        Ok(ids)
     }
 
     /// Accepted and conflict server receipts are committed atomically. No
@@ -265,12 +345,25 @@ impl SyntheticEncryptedStore {
         }
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(storage_error)?;
-        let row: Option<(i64, String)> = tx.query_row(
-            "SELECT sequence,entity_id FROM local_outbox
+        let row: Option<(i64, String, Option<String>)> = tx.query_row(
+            "SELECT sequence,entity_id,base_server_revision FROM local_outbox
              WHERE profile_id=?1 AND mutation_id=?2 AND entity_type='subject' AND state='pending'",
-            params![profile, mutation], |row| Ok((row.get(0)?, row.get(1)?)),
+            params![profile, mutation], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).optional().map_err(storage_error)?;
-        let Some((sequence, entity)) = row else { return Err(StoreError::InvalidSyntheticInput); };
+        let Some((sequence, entity, recorded_base)) = row else {
+            return Err(StoreError::InvalidSyntheticInput);
+        };
+        let current_server_revision: Option<String> = tx.query_row(
+            "SELECT server_revision FROM local_entities
+             WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
+            params![profile, entity], |row| row.get(0),
+        ).map_err(storage_error)?;
+        if recorded_base != current_server_revision {
+            // This mutation was staged before a previous local change was ACKed
+            // with a newer server revision. Hold it pending for an explicit
+            // future rebase/conflict workflow; never silently send or accept.
+            return Err(StoreError::InvalidSyntheticInput);
+        }
         let first: i64 = tx.query_row(
             "SELECT min(sequence) FROM local_outbox
              WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
@@ -322,6 +415,7 @@ impl SyntheticEncryptedStore {
              VALUES (?1,'subject',?2,?3,'synthetic-remote-rev')
              ON CONFLICT(profile_id,entity_type,entity_id)
              DO UPDATE SET payload_json=excluded.payload_json,
+                           locally_deleted=0,
                            server_revision=excluded.server_revision",
             params![profile, entity, payload],
         ).map_err(storage_error)?;
@@ -365,6 +459,58 @@ mod tests {
     }
 
     #[test]
+    fn rejects_replaced_index_and_unexpected_schema_objects() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let key = test_key(18);
+        {
+            let store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.conn.execute_batch(
+                "DROP INDEX local_outbox_profile_fifo;
+                 CREATE INDEX local_outbox_profile_fifo ON local_outbox(mutation_id);"
+            ).unwrap();
+        }
+        // The DB still has all four required table names and user_version=1:
+        // accepting it would silently weaken FIFO/sync query assumptions.
+        assert!(matches!(
+            SyntheticEncryptedStore::open(&path, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+
+        let extra_path = dir.path().join("synthetic-extra.db");
+        {
+            let store = SyntheticEncryptedStore::open(&extra_path, &key).unwrap();
+            store.conn.execute_batch("CREATE TABLE surprise(value TEXT) STRICT;").unwrap();
+        }
+        assert!(matches!(
+            SyntheticEncryptedStore::open(&extra_path, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+    }
+
+    #[test]
+    fn rejects_profile_foreign_key_violations_even_with_valid_schema() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let key = test_key(19);
+        {
+            let store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.create_synthetic_profile("synthetic-a").unwrap();
+            store.conn.execute_batch(
+                "PRAGMA foreign_keys=OFF;
+                 INSERT INTO local_outbox(
+                    profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
+                 VALUES ('synthetic-a','synthetic-m1','subject','synthetic-missing-entity',
+                         'upsert','{}','2026-11-10T19:00:00Z');"
+            ).unwrap();
+        }
+        assert!(matches!(
+            SyntheticEncryptedStore::open(&path, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+    }
+
+    #[test]
     fn rejects_plaintext_db_and_unsupported_key() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("plaintext-not-permitted.db");
@@ -373,6 +519,32 @@ mod tests {
         drop(db);
         assert!(SyntheticEncryptedStore::open(&path, &test_key(5)).is_err());
         assert!(StoreKey::from_external_key_material([0u8; 32]).is_err());
+    }
+
+    #[test]
+    fn altered_synthetic_ciphertext_is_rejected_before_schema_use() {
+        use std::io::{Read, Seek, SeekFrom, Write};
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic-ciphertext.db");
+        let key = test_key(23);
+        {
+            let mut store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.create_synthetic_profile("synthetic-a").unwrap();
+            store.stage_synthetic_subject("synthetic-a", "synthetic-1",
+                "synthetic-m1", r#"{"label":"Fictional"}"#).unwrap();
+        }
+        // Corrupt one byte in an encrypted *temporary synthetic* page.
+        // No real account data, production database or credential is involved.
+        let mut file = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        assert!(file.metadata().unwrap().len() > 512);
+        file.seek(SeekFrom::Start(256)).unwrap();
+        let mut before = [0_u8; 1];
+        file.read_exact(&mut before).unwrap();
+        file.seek(SeekFrom::Start(256)).unwrap();
+        file.write_all(&[before[0] ^ 0xFF]).unwrap();
+        file.sync_all().unwrap();
+        drop(file);
+        assert!(SyntheticEncryptedStore::open(&path, &key).is_err());
     }
 
     #[test]
@@ -473,6 +645,70 @@ mod tests {
             [], |row| row.get(0),
         ).unwrap();
         assert!(a_revision.is_none());
+    }
+
+    #[test]
+    fn later_offline_edit_waits_for_explicit_rebase_after_first_ack() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &test_key(25)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m1",
+            r#"{"label":"first"}"#).unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m2",
+            r#"{"label":"second"}"#).unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-2","synthetic-m3",
+            r#"{"label":"unrelated"}"#).unwrap();
+        assert_eq!(store.pending_synthetic_ids("synthetic-a",50).unwrap(),
+                   ["synthetic-m1","synthetic-m3"]);
+        store.apply_synthetic_receipt("synthetic-a","synthetic-m1","rev-new",false).unwrap();
+        // The second edit was based on the old (null) revision and is still
+        // durable locally, but MUST NOT be sent without an approved rebasing step.
+        assert_eq!(store.pending_synthetic_ids("synthetic-a",50).unwrap(),["synthetic-m3"]);
+        assert!(store.apply_synthetic_receipt("synthetic-a","synthetic-m2","rev-newer",false).is_err());
+        let stale: (Option<String>, String) = store.conn.query_row(
+            "SELECT base_server_revision,state FROM local_outbox
+             WHERE mutation_id='synthetic-m2'",[],|row|Ok((row.get(0)?,row.get(1)?)),
+        ).unwrap();
+        assert_eq!(stale,(None,"pending".to_owned()));
+        drop(store);
+        let reopened = SyntheticEncryptedStore::open(&path,&test_key(25)).unwrap();
+        assert_eq!(reopened.pending_synthetic_ids("synthetic-a",50).unwrap(),["synthetic-m3"]);
+    }
+
+    #[test]
+    fn fresh_edit_after_ack_captures_new_server_base_revision() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &test_key(26)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m1",r#"{"a":1}"#).unwrap();
+        store.apply_synthetic_receipt("synthetic-a","synthetic-m1","rev-1",false).unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m2",r#"{"a":2}"#).unwrap();
+        assert_eq!(store.pending_synthetic_ids("synthetic-a",50).unwrap(),["synthetic-m2"]);
+        let recorded: String = store.conn.query_row(
+            "SELECT base_server_revision FROM local_outbox WHERE mutation_id='synthetic-m2'",
+            [],|row|row.get(0),
+        ).unwrap();
+        assert_eq!(recorded,"rev-1");
+    }
+
+    #[test]
+    fn remote_upsert_clears_acknowledged_local_deletion_tombstone() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path,&test_key(27)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_delete("synthetic-a","synthetic-1","synthetic-del").unwrap();
+        store.apply_synthetic_receipt("synthetic-a","synthetic-del","rev-del",false).unwrap();
+        store.apply_synthetic_remote_page("synthetic-a","synthetic-1",r#"{"a":3}"#,
+            "cursor-after-delete",false).unwrap();
+        let row: (i64,String) = store.conn.query_row(
+            "SELECT locally_deleted,payload_json FROM local_entities
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-1'",
+            [],|row|Ok((row.get(0)?,row.get(1)?)),
+        ).unwrap();
+        assert_eq!(row,(0,r#"{"a":3}"#.to_owned()));
     }
 
     #[test]
