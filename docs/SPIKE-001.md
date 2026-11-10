@@ -1,6 +1,6 @@
 # Spike 001 — Tauri 2 + existing Angular/Three.js renderer
 
-**Status:** first implementation draft (2026-11-10), **not a validated Windows build**. The packaging code passed seven synthetic Node.js tests locally; Rust/Tauri compilation and the actual WebView2 graphics test have **not** run in the authoring environment (no Rust toolchain or npm registry connection).
+**Status:** first implementation draft (2026-11-10), **not a validated Windows build**. The packaging code passed eight synthetic Node.js tests locally; Rust/Tauri compilation and the actual WebView2 graphics test have **not** run in the authoring environment (no Rust toolchain or npm registry connection).
 
 ## What it does
 
