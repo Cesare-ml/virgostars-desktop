@@ -26,7 +26,7 @@ In astrological-charts:
     npm ci
     npm run build:library
     npm run demo:pack
-    npm run build:demo
+    # No upstream demo build needed
 
 Skip demo:pack only if the synthetic .local/demo-pack already exists. Never substitute private artwork.
 
@@ -34,17 +34,16 @@ In virgostars-desktop:
 
     npm install
     npm test
-    npm run prepare:frontend
-    npm run build:ui
-    npm run tauri:build
+    npm run build:ui        # stages images, builds Angular, verifies offline bundle
+    npm run tauri:build     # repeats safe verification before building Tauri
 
 The desktop package refers to the sibling compiled chart package using the npm file dependency (file:../astrological-charts/dist/grafici-astrologici). Run the upstream library build before npm install.
 
-The existing synthetic staging command hashes and validates a generated local manifest, then produces .local/frontend/assets. The new Angular builder copies only its assets subdirectory to dist/desktop/browser/assets. The previous demo's JavaScript and HTML are *not* packaged in this new frontend, although its build is still needed by the first staging tool. A future PR should remove this historical dependency.
+The synthetic-only staging command now reads the generated manifest and images **without building the old demo**. It places only approved synthetic assets under .local/frontend/assets. The desktop Angular builder emits dist/desktop/browser/assets, then the new verifier checks exact SHA-256 matches, no extra images and the actual desktop entrypoint. See [asset pipeline](ASSET_PIPELINE.md).
 
 After setup, run npm run start in one console and npm run tauri:dev in a second; dev mode requires the Angular loopback server only. A completed Tauri build should embed Angular and synthetic assets, without an image server.
 
-The existing PowerShell helper scripts/build-windows-spike.ps1 now builds the charts library and stages assets. Generated .local/frontend is intentionally not overwritten: remove only that ignored generated directory manually if rebuilding the synthetic stage.
+The existing PowerShell helper scripts/build-windows-spike.ps1 now builds the charts library and stages assets. A previously generated .local/frontend is reused only when all expected synthetic files and hashes match. If it contains stale demo files, unauthorized files or changed content, the script fails closed; inspect and manually delete **only** that ignored generated directory before staging again.
 
 Current package-lock.json and Cargo.lock have **not** been generated in this environment; they must be created/reviewed in the next Windows build verification. The desktop Rust build still has bundle.active=false, so it does not emit an MSI/NSIS installer.
 
@@ -59,7 +58,8 @@ New test files cover: chart sizing using both dimensions, invalid sizes, support
 - [ ] Check WebView2 CSP and no external requests.
 - [ ] Visually inspect 1920x1080, 1600x900, 1440x900, 1366x768, 1280x720 with 125/150% OS scaling, including keyboard and contrast.
 - [ ] Measure WebGL resource lifecycle; test context-loss recovery.
-- [ ] Replace old demo staging with an asset-only process and stabilize the nullable overlay API.
+- [x] Replace old demo staging with asset-only preparation and post-build verifier (Node fixture tests pass; real Windows build still unverified).
+- [ ] Stabilize the nullable overlay API and validate packaged WebView2 rendering.
 
 **No test is assumed to pass merely because it was written.** New source has not been built against Angular/Tauri here. Do not merge/release or change repo visibility without validation.
 
