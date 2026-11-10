@@ -257,11 +257,19 @@ impl SyntheticEncryptedStore {
              local_revision=local_entities.local_revision+1",
             params![profile, entity, payload],
         ).map_err(storage_error)?;
+        // Pin the server revision AT THE TIME of the local edit. A later
+        // ACK must never implicitly rebase a second offline edit.
+        let base_revision: Option<String> = tx.query_row(
+            "SELECT server_revision FROM local_entities
+             WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
+            params![profile, entity], |row| row.get(0),
+        ).map_err(storage_error)?;
         tx.execute(
             "INSERT INTO local_outbox(
-                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
-             VALUES (?1,?2,'subject',?3,'upsert',?4,?5)",
-            params![profile, mutation, entity, payload, FIXTURE_TIME],
+                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,
+                 base_server_revision,created_at_utc)
+             VALUES (?1,?2,'subject',?3,'upsert',?4,?5,?6)",
+            params![profile, mutation, entity, payload, base_revision, FIXTURE_TIME],
         ).map_err(storage_error)?;
         tx.commit().map_err(storage_error)
     }
@@ -285,11 +293,17 @@ impl SyntheticEncryptedStore {
                  local_revision=local_entities.local_revision+1",
             params![profile, entity],
         ).map_err(storage_error)?;
+        let base_revision: Option<String> = tx.query_row(
+            "SELECT server_revision FROM local_entities
+             WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
+            params![profile, entity], |row| row.get(0),
+        ).map_err(storage_error)?;
         tx.execute(
             "INSERT INTO local_outbox(
-                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
-             VALUES (?1,?2,'subject',?3,'delete',NULL,?4)",
-            params![profile, mutation, entity, FIXTURE_TIME],
+                 profile_id,mutation_id,entity_type,entity_id,operation,payload_json,
+                 base_server_revision,created_at_utc)
+             VALUES (?1,?2,'subject',?3,'delete',NULL,?4,?5)",
+            params![profile, mutation, entity, base_revision, FIXTURE_TIME],
         ).map_err(storage_error)?;
         tx.commit().map_err(storage_error)
     }
@@ -300,7 +314,11 @@ impl SyntheticEncryptedStore {
         }
         let mut stmt = self.conn.prepare(
             "SELECT o.mutation_id FROM local_outbox o
+             INNER JOIN local_entities e
+               ON e.profile_id=o.profile_id
+               AND e.entity_type=o.entity_type AND e.entity_id=o.entity_id
              WHERE o.profile_id=?1 AND o.state='pending'
+               AND o.base_server_revision IS e.server_revision
              AND NOT EXISTS (
                SELECT 1 FROM local_outbox earlier
                WHERE earlier.profile_id=o.profile_id
@@ -327,12 +345,25 @@ impl SyntheticEncryptedStore {
         }
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(storage_error)?;
-        let row: Option<(i64, String)> = tx.query_row(
-            "SELECT sequence,entity_id FROM local_outbox
+        let row: Option<(i64, String, Option<String>)> = tx.query_row(
+            "SELECT sequence,entity_id,base_server_revision FROM local_outbox
              WHERE profile_id=?1 AND mutation_id=?2 AND entity_type='subject' AND state='pending'",
-            params![profile, mutation], |row| Ok((row.get(0)?, row.get(1)?)),
+            params![profile, mutation], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).optional().map_err(storage_error)?;
-        let Some((sequence, entity)) = row else { return Err(StoreError::InvalidSyntheticInput); };
+        let Some((sequence, entity, recorded_base)) = row else {
+            return Err(StoreError::InvalidSyntheticInput);
+        };
+        let current_server_revision: Option<String> = tx.query_row(
+            "SELECT server_revision FROM local_entities
+             WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
+            params![profile, entity], |row| row.get(0),
+        ).map_err(storage_error)?;
+        if recorded_base != current_server_revision {
+            // This mutation was staged before a previous local change was ACKed
+            // with a newer server revision. Hold it pending for an explicit
+            // future rebase/conflict workflow; never silently send or accept.
+            return Err(StoreError::InvalidSyntheticInput);
+        }
         let first: i64 = tx.query_row(
             "SELECT min(sequence) FROM local_outbox
              WHERE profile_id=?1 AND entity_type='subject' AND entity_id=?2",
@@ -384,6 +415,7 @@ impl SyntheticEncryptedStore {
              VALUES (?1,'subject',?2,?3,'synthetic-remote-rev')
              ON CONFLICT(profile_id,entity_type,entity_id)
              DO UPDATE SET payload_json=excluded.payload_json,
+                           locally_deleted=0,
                            server_revision=excluded.server_revision",
             params![profile, entity, payload],
         ).map_err(storage_error)?;
@@ -613,6 +645,70 @@ mod tests {
             [], |row| row.get(0),
         ).unwrap();
         assert!(a_revision.is_none());
+    }
+
+    #[test]
+    fn later_offline_edit_waits_for_explicit_rebase_after_first_ack() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &test_key(25)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m1",
+            r#"{"label":"first"}"#).unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m2",
+            r#"{"label":"second"}"#).unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-2","synthetic-m3",
+            r#"{"label":"unrelated"}"#).unwrap();
+        assert_eq!(store.pending_synthetic_ids("synthetic-a",50).unwrap(),
+                   ["synthetic-m1","synthetic-m3"]);
+        store.apply_synthetic_receipt("synthetic-a","synthetic-m1","rev-new",false).unwrap();
+        // The second edit was based on the old (null) revision and is still
+        // durable locally, but MUST NOT be sent without an approved rebasing step.
+        assert_eq!(store.pending_synthetic_ids("synthetic-a",50).unwrap(),["synthetic-m3"]);
+        assert!(store.apply_synthetic_receipt("synthetic-a","synthetic-m2","rev-newer",false).is_err());
+        let stale: (Option<String>, String) = store.conn.query_row(
+            "SELECT base_server_revision,state FROM local_outbox
+             WHERE mutation_id='synthetic-m2'",[],|row|Ok((row.get(0)?,row.get(1)?)),
+        ).unwrap();
+        assert_eq!(stale,(None,"pending".to_owned()));
+        drop(store);
+        let reopened = SyntheticEncryptedStore::open(&path,&test_key(25)).unwrap();
+        assert_eq!(reopened.pending_synthetic_ids("synthetic-a",50).unwrap(),["synthetic-m3"]);
+    }
+
+    #[test]
+    fn fresh_edit_after_ack_captures_new_server_base_revision() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &test_key(26)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m1",r#"{"a":1}"#).unwrap();
+        store.apply_synthetic_receipt("synthetic-a","synthetic-m1","rev-1",false).unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1","synthetic-m2",r#"{"a":2}"#).unwrap();
+        assert_eq!(store.pending_synthetic_ids("synthetic-a",50).unwrap(),["synthetic-m2"]);
+        let recorded: String = store.conn.query_row(
+            "SELECT base_server_revision FROM local_outbox WHERE mutation_id='synthetic-m2'",
+            [],|row|row.get(0),
+        ).unwrap();
+        assert_eq!(recorded,"rev-1");
+    }
+
+    #[test]
+    fn remote_upsert_clears_acknowledged_local_deletion_tombstone() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic.db");
+        let mut store = SyntheticEncryptedStore::open(&path,&test_key(27)).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_delete("synthetic-a","synthetic-1","synthetic-del").unwrap();
+        store.apply_synthetic_receipt("synthetic-a","synthetic-del","rev-del",false).unwrap();
+        store.apply_synthetic_remote_page("synthetic-a","synthetic-1",r#"{"a":3}"#,
+            "cursor-after-delete",false).unwrap();
+        let row: (i64,String) = store.conn.query_row(
+            "SELECT locally_deleted,payload_json FROM local_entities
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-1'",
+            [],|row|Ok((row.get(0)?,row.get(1)?)),
+        ).unwrap();
+        assert_eq!(row,(0,r#"{"a":3}"#.to_owned()));
     }
 
     #[test]
