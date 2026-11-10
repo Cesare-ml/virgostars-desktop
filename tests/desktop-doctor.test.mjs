@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { diagnoseEnvironment, formatReport, supportsNode } from '../scripts/desktop-doctor.mjs';
+import { diagnoseEnvironment, formatReport, supportsNode, supportsRustVersion } from '../scripts/desktop-doctor.mjs';
 
 // OS-native join must match the doctor's node:path.join on Windows and macOS/Linux.
 const root='/fake/desktop', charts='/fake/astrological-charts';
@@ -18,7 +18,7 @@ function dependencies({stage='setup', platform='linux', additional=[], versions=
   };
   const command=(name,args)=>{
     if(name==='cargo') return 'cargo 1.9';
-    if(name==='rustc') return versions.rust || 'rustc 1.9\nhost: x86_64-pc-windows-msvc';
+    if(name==='rustc') return versions.rust || 'rustc 1.90.0\nhost: x86_64-pc-windows-msvc';
     if(name==='npm' || name==='where.exe') return 'installed';
     if(name.endsWith('vswhere.exe')) return 'VS installed';
     if(name==='reg.exe') return 'registry present';
@@ -31,6 +31,33 @@ const find=(report,key)=>report.checks.find(item=>item.id===key);
 test('Node 22.12+ / 24 satisfy the declared Desktop engines',()=>{
   for(const version of ['v22.12.0','v22.16.0','v24.0.0','v24.7.1'])assert.equal(supportsNode(version),true,version);
   for(const version of ['v22.11.0','v20.19.0','v25.0.0','weird','v22.10'])assert.equal(supportsNode(version),false,version);
+});
+
+test('Tauri 2.12 dependency tree rejects Rust 1.89 and supports stable 1.90+',()=>{
+  for (const version of ['rustc 1.90.0 (1159e78c4 2026-01-01)', 'rustc 1.90.1', 'rustc 1.91.0', 'rustc 2.0.0']) {
+    assert.equal(supportsRustVersion(version), true, version);
+  }
+  for (const version of ['rustc 1.89.0 (deadbeef 2026-01-01)', 'rustc 1.88.9', 'rustc 1.90.0-nightly (abcdef)', 'rustc', '', null]) {
+    assert.equal(supportsRustVersion(version), false, String(version));
+  }
+});
+
+test('Windows preflight blocks rustc 1.89 with an actionable upgrade message',()=>{
+  const report=dependencies({stage:'setup',platform:'win32',versions:{
+    rust:'rustc 1.89.0 (old-toolchain)\\nhost: x86_64-pc-windows-msvc',
+  }});
+  const check=find(report,'rust-version');
+  assert.equal(find(report,'rust-target').status,'pass');
+  assert.equal(check.status,'blocked');
+  assert.match(check.remedy,/rustup update stable/);
+});
+
+test('Windows preflight accepts rustc 1.90 on MSVC host',()=>{
+  const report=dependencies({stage:'setup',platform:'win32',versions:{
+    rust:'rustc 1.90.0 (stable)\\nhost: x86_64-pc-windows-msvc',
+  }});
+  assert.equal(find(report,'rust-target').status,'pass');
+  assert.equal(find(report,'rust-version').status,'pass');
 });
 
 test('setup allows installing missing build outputs after prerequisite checks',()=>{
