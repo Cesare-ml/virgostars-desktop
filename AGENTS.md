@@ -10,6 +10,7 @@
 5. [Shell 001](docs/SHELL-001.md) for the Angular UI prototype and safe build prerequisites.
 6. [Offline asset pipeline](docs/ASSET_PIPELINE.md) before modifying Angular asset handling; the synthetic manifest is not permission to redistribute original art.
 7. [Native runtime bridge](docs/NATIVE_RUNTIME_BRIDGE.md) before adding Tauri IPC. The v1 command is read-only; never re-purpose it for login or astronomical calculations.
+8. [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md): run the read-only doctor before attempting a native build, and report exact failures without logging credentials or absolute user paths.
 
 ## Non-negotiable boundaries
 - The private repository is **not** presently open source. No LICENSE has been selected. Do not infer a license from dependencies or copy a LICENSE from another repository without approval.
