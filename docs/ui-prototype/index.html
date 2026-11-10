@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>VirgoStars Desktop — Anteprima UI</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./chart-sizing.cjs"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+<div class="app" id="app" data-theme="light" data-nav="open" data-inspector="open">
+  <header class="topbar" aria-label="Barra superiore">
+    <div class="brand"><div class="brand-mark" aria-hidden="true">✳</div><div><strong>VirgoStars</strong><small>Desktop · Anteprima UI</small></div></div>
+    <div class="subject"><strong>Tema dimostrativo</strong><span>Dati sintetici · nessun account collegato</span></div>
+    <div class="top-actions">
+      <span class="mode-chip" id="mode-chip">Tema natale</span>
+      <button type="button" id="theme-toggle" class="icon-button" aria-pressed="false" title="Passa al tema scuro" aria-label="Cambia tema">◐</button>
+      <button type="button" id="inspector-toggle" class="icon-button" aria-expanded="true" aria-controls="inspector" title="Mostra o nascondi pannello dati" aria-label="Mostra o nascondi pannello dati">▤</button>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <nav class="sidebar" aria-label="Navigazione principale">
+      <div class="sidebar-top">
+        <button type="button" class="collapse-button" id="nav-toggle" aria-expanded="true" aria-label="Riduci menu" title="Espandi o riduci menu"><span class="nav-icon">☷</span><span class="nav-label">Riduci menu</span></button>
+      </div>
+      <div class="nav-group">
+        <span class="group-label">Lavoro</span>
+        <button type="button" class="nav-item is-active" data-mode="Tema natale" aria-current="page" title="Tema natale"><span class="nav-icon">◎</span><span class="nav-label">Tema natale</span></button>
+        <button type="button" class="nav-item" data-mode="Transiti" title="Transiti"><span class="nav-icon">⇄</span><span class="nav-label">Transiti</span></button>
+        <button type="button" class="nav-item" data-mode="Tempo reale" title="Tempo reale"><span class="nav-icon">◷</span><span class="nav-label">Tempo reale</span></button>
+        <button type="button" class="nav-item" data-mode="Sinastrie" title="Sinastrie"><span class="nav-icon">♧</span><span class="nav-label">Sinastrie</span></button>
+      </div>
+      <div class="nav-group">
+        <span class="group-label">Analisi</span>
+        <button type="button" class="nav-item" data-mode="Direzioni" title="Direzioni"><span class="nav-icon">↗</span><span class="nav-label">Direzioni</span></button>
+        <button type="button" class="nav-item" data-mode="Rivoluzioni" title="Rivoluzioni"><span class="nav-icon">⟳</span><span class="nav-label">Rivoluzioni</span></button>
+        <button type="button" class="nav-item" data-mode="Ingressi" title="Ingressi"><span class="nav-icon">➝</span><span class="nav-label">Ingressi</span></button>
+      </div>
+      <div class="nav-group">
+        <span class="group-label">Archivio</span>
+        <button type="button" class="nav-item" data-mode="Archivio" title="Archivio"><span class="nav-icon">▱</span><span class="nav-label">Archivio</span></button>
+        <button type="button" class="nav-item" data-mode="Impostazioni" title="Impostazioni"><span class="nav-icon">⚙</span><span class="nav-label">Impostazioni</span></button>
+      </div>
+      <div class="nav-footer"><span class="nav-label">Layout di prova, non applicazione completa</span></div>
+    </nav>
+
+    <main class="workspace" id="workspace" aria-label="Area grafico astrologico">
+      <div class="workspace-heading"><div><h1 id="screen-title">Tema natale</h1><p>Grafico centrale · area interattiva</p></div><span class="prototype-tag">PROTOTIPO UI</span></div>
+      <div class="chart-stage" id="chart-stage">
+        <div class="chart-wheel" id="chart-wheel" role="img" aria-label="Area di riserva per la ruota astrologica, non contiene calcoli o posizioni planetarie">
+          <div class="chart-rim"></div><div class="chart-mid"></div><div class="chart-inner"></div>
+          <div class="chart-center">
+            <div class="chart-emblem" aria-hidden="true">✳</div>
+            <strong>Area del grafico</strong>
+            <span>Qui verrà integrato il renderer<br>astrological-charts</span>
+          </div>
+        </div>
+      </div>
+      <div class="chart-footer"><span id="chart-dimension" aria-live="polite">Adattamento automatico</span><span>Grafica illustrativa, nessun calcolo astronomico</span></div>
+    </main>
+
+    <aside class="inspector" id="inspector" aria-label="Pannello contestuale">
+      <div class="inspector-head"><strong>Informazioni</strong><button type="button" class="icon-button small" id="inspector-close" aria-label="Chiudi pannello informazioni">×</button></div>
+      <div class="inspector-tabs" role="tablist" aria-label="Categorie di dati">
+        <button type="button" role="tab" aria-selected="true" data-tab="pianeti">Pianeti</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="case">Case</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="aspetti">Aspetti</button>
+      </div>
+      <div class="panel" id="tab-panel" role="tabpanel" tabindex="0" aria-live="polite">
+        <h2 id="panel-title">Pianeti</h2><p id="panel-description">Le posizioni saranno disponibili dopo il collegamento con le librerie VirgoStars.</p>
+        <div class="empty-panel"><span class="empty-icon" aria-hidden="true">◌</span><strong>Nessun dato calcolato</strong><span>Questa anteprima verifica soltanto layout, interazioni e temi.</span></div>
+      </div>
+      <div class="panel secondary"><h2>Parametri</h2><div class="info-line"><span>Modalità</span><strong id="mode-detail">Tema natale</strong></div><div class="info-line"><span>Calcoli</span><strong>Non connessi</strong></div><div class="info-line"><span>Account</span><strong>Demo offline</strong></div></div>
+    </aside>
+  </div>
+
+  <footer class="toolbar" aria-label="Comandi grafico">
+    <div class="toolbar-cluster"><button type="button" class="tool-button" id="zoom-out" aria-label="Riduci zoom">−</button><span id="zoom-label" aria-live="polite">100%</span><button type="button" class="tool-button" id="zoom-in" aria-label="Aumenta zoom">+</button><button type="button" class="tool-button fit-button" id="zoom-fit">Adatta</button></div>
+    <div class="toolbar-center"><span class="toolbar-prompt">Primo prototipo: dimensioni e navigazione</span></div>
+    <div class="toolbar-cluster"><span class="status-dot" aria-hidden="true"></span><span>Solo anteprima</span></div>
+  </footer>
+</div>
+</body>
+</html>
