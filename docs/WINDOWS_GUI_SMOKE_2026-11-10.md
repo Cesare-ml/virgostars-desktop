@@ -44,3 +44,7 @@ Get-ChildItem .\dist\desktop\browser\styles*.css | Select-Object Name, Length
 - [ ] MSI/NSIS, code signing and distribution (intentionally out of scope).
 
 No merge, publishing, production change or GitHub Actions as part of this smoke-test fix.
+
+## Follow-up: runtime CSS probe
+
+A separate stacked draft adds a footer status for the **actually computed** global and component CSS markers and chart geometry, with an accessible recheck control. See [WebView2 Style Diagnostic](WEBVIEW2_STYLE_DIAGNOSTIC.md). This instrumentation is not yet evidence of a visually fixed Windows release.
