@@ -34,3 +34,13 @@ The fixed suite should have **56 tests**, but this is a prediction and not a pas
 Do **not** run `npm audit fix --force` blindly; it can introduce breaking dependency updates. Plan a separate audit to identify actionable packages, dev-only vulnerabilities and safe version upgrades.
 
 The repository remains private, the license remains undecided, and no GitHub Actions, merge, deployment or publishing is authorized by this report.
+
+## Second build attempt: Rust compiler minimum
+
+The maintainer subsequently reached the `[VirgoStars Desktop] Run Rust unit tests` step of the Windows batch launcher. Cargo stopped **before compiling tests** because the installed compiler was `rustc 1.89.0`, while the resolved Tauri 2.12.x / `muda` dependency graph demanded **rustc >= 1.90.0**. The output listed `muda 0.20.0`, `tauri 2.12.5`, `tauri-build 2.7.4`, and related dependencies with that requirement.
+
+This is an **environment/toolchain compatibility failure**, not evidence of incorrect ephemeris calculation or a failed Rust unit test. The user can update the stable MSVC toolchain with `rustup update stable` / `rustup default stable`, check `rustc --version`, and rerun `cargo test`. A project-level rustup override may need separate inspection if Rust 1.89 remains selected.
+
+Follow-up changes in the Windows doctor and Cargo manifest: the setup preflight rejects Rust 1.89 before installation/build; `Cargo.toml` now declares `rust-version = "1.90"`; regression tests are added for 1.89 and 1.90. **Those new tests and the complete native build have not yet been rerun on the maintainer's Windows PC.**
+
+The batch launcher executes Desktop Node tests and Angular build before the Rust test step, so reaching Rust suggests the preceding steps completed in that specific invocation, but the full logs are needed to independently confirm their detailed results.
