@@ -8,7 +8,7 @@ A minimal Tauri 2 Rust shell hosts the **real Angular/Three.js Astrological Char
 
 This spike checks desktop/WebView compatibility and offline bundling only. It is **not** the final large-chart workstation UI.
 
-The packager `scripts/prepare-synthetic-frontend.mjs` stages `astrological-charts/dist/demo/browser` plus only the locally generated synthetic asset pack. Each asset is independently verified against SHA-256, filename, dimensions/size metadata and the manifest's synthetic source marker. The script rejects traversal, symlinks, collisions, tampered image data and unexpected compiled file types. A separate tiny bootstrap script changes the upstream demo's asset base to the **same Tauri application origin**, avoiding an HTTP image server after packaging. It modifies only a new ignored staging directory; upstream files are unchanged.
+Before compiling, `scripts/generate-spike-icon.mjs` builds disposable PNG/ICO icons for Tauri without redistributing any original art. The icons are not final VirgoStars branding.\n\nThe packager `scripts/prepare-synthetic-frontend.mjs` stages `astrological-charts/dist/demo/browser` plus only the locally generated synthetic asset pack. Each asset is independently verified against SHA-256, path and byte-size metadata and the manifest's synthetic source marker. The script rejects traversal, symlinks, collisions, tampered image data and unexpected compiled file types. A separate tiny bootstrap script changes the upstream demo's asset base to the **same Tauri application origin**, avoiding an HTTP image server after packaging. It modifies only a new ignored staging directory; upstream files are unchanged.
 
 ## Windows 11 setup
 

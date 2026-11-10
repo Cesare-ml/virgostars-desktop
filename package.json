@@ -8,8 +8,9 @@
     "test": "node --test tests/*.test.mjs",
     "check": "npm run test",
     "prepare:frontend": "node scripts/prepare-synthetic-frontend.mjs",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "npm run prepare:frontend && tauri build"
+    "tauri:dev": "npm run prepare:icon && tauri dev",
+    "tauri:build": "npm run prepare:frontend && npm run prepare:icon && tauri build",
+    "prepare:icon": "node scripts/generate-spike-icon.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.2"
