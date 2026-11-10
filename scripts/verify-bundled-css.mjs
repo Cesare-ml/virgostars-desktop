@@ -3,7 +3,8 @@
  * This is a build-artifact guard, NOT a WebView2 network or CSP runtime test.
  */
 import { lstatSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const fail = (message) => { throw new Error('DESKTOP CSS BUNDLE: ' + message); };
 
@@ -40,4 +41,16 @@ export function inspectDesktopStyles(bundleDir) {
     names.push(href);
   }
   return { stylesheets: names.length, files: names };
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  try {
+    const report = inspectDesktopStyles(join(projectRoot, 'dist', 'desktop', 'browser'));
+    console.log('Desktop Angular CSS: ' + report.stylesheets + ' local stylesheet(s) verified: ' + report.files.join(', '));
+    console.log('This verifies build artifacts, NOT whether Windows WebView2 actually loaded CSS.');
+  } catch (error) {
+    console.error('DESKTOP CSS BUILD CHECK FAILED: ' + (error instanceof Error ? error.message : 'unknown error'));
+    process.exitCode = 1;
+  }
 }
