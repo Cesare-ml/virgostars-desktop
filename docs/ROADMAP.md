@@ -12,7 +12,7 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 - [ ] Bootstrap Tauri 2 + desktop-owned Angular strict TypeScript + Rust, runnable on Windows. **Partial:** a Tauri 2 Rust host of the upstream Angular charts demo is in a stacked experimental PR; Windows compilation not yet tested.
 - [ ] Desktop-owned Angular shell verified on Windows. **Partial:** chart-first shell, collapsible navigation/inspector, light/dark theme, IT/EN labels and modes in a stacked draft PR; native build and accessibility/visual QA still pending.
 - [ ] Use genuine astrological-charts Three.js renderer on synthetic assets; test WebView2/WebGL, PNG output and context loss. **Partial:** Angular desktop source imports the renderer; the new synthetic-only staging and post-build bundle verifier have passing isolated Node tests. WebView2 rendering and export remain untested.
-- [ ] Rust IPC typed request/response fixture with deterministic astronomy result; no full-accuracy claims.
+- [ ] Rust IPC and independently validated astronomy integration. **Partial:** versioned read-only runtime-capability command registered in Rust and consumed by the Angular shell; Node contract tests and Rust unit tests added, native build/IPC still unverified. **No astronomical computation** is provided by the runtime probe.
 - [ ] Confirm Tauri choice or record a measured Electron fallback; Windows installer smoke test.
 
 ## Gate 2 — Local-first storage/offline
