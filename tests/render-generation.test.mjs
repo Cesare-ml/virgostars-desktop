@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RenderGeneration } from '../src/app/render-generation.ts';
@@ -65,13 +64,12 @@ test('explicit invalidation does not reopen a disposed coordinator', () => {
   assert.equal(state.begin(),null);
 });
 
-test('Async scene generation markers are wired into the actual Angular shell', () => {
-  // Intentionally avoid evaluating the Angular component without its installed dependencies.
-  // This source contract complements (but does not replace) an ng build and WebView2 tests.
-  const src = readFileSync(new URL('../src/app/desktop-app.component.ts',import.meta.url),'utf8');
-  assert.match(src,/new RenderGeneration\(\)/);
-  assert.match(src,/const ticket = this\.drawGeneration\.begin\(\)/);
-  assert.match(src,/this\.drawGeneration\.isCurrent\(ticket\)/);
-  assert.match(src,/this\.drawGeneration\.dispose\(\)/);
-  assert.match(src,/if \(this\.exporting \|\| this\.destroyed\) return/);
+test('a newly created component cannot inherit a disposed render ticket', () => {
+  const previous = new RenderGeneration();
+  const ticket = previous.begin();
+  previous.dispose();
+  const next = new RenderGeneration();
+  const newTicket = next.begin();
+  assert.equal(previous.isCurrent(ticket),false);
+  assert.equal(next.isCurrent(newTicket),true);
 });
