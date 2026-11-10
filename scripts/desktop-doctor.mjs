@@ -27,6 +27,14 @@ export function supportsNode(version) {
   return (major === 22 && minor >= 12) || major === 24;
 }
 
+/** The resolved Tauri 2.12.x dependency graph requires a stable Rust compiler >= 1.90.0. */
+export function supportsRustVersion(versionOutput) {
+  const match = /^rustc\s+(\d+)\.(\d+)\.(\d+)(?:\s|$)/.exec(versionOutput ?? '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 1 || (major === 1 && (minor > 90 || (minor === 90 && patch >= 0)));
+}
+
 /** Deliberately small, injectable interface for deterministic tests. */
 export function diagnoseEnvironment({
   root = ROOT, charts = resolve(ROOT, '../astrological-charts'),
@@ -57,6 +65,11 @@ export function diagnoseEnvironment({
   add('rust-target', rust && (platform !== 'win32' || /host:\s*\S+-pc-windows-msvc/.test(rust)) ? STATUS.pass : STATUS.blocked,
     rust ? 'Rust toolchain detected' : 'rustc not found',
     'For Windows use rustup default stable-msvc, then restart the terminal.');
+  const rustSupported = supportsRustVersion(rust);
+  add('rust-version', rustSupported ? STATUS.pass : STATUS.blocked,
+    rustSupported ? 'Rust compiler satisfies the current Tauri dependency minimum (>= 1.90.0)' :
+      'Rust compiler is too old or not detected; current Tauri dependencies require rustc >= 1.90.0',
+    'Run rustup update stable, then rustup default stable and rustc --version. If a directory override is active, check rustup show.');
 
   if (platform === 'win32') {
     const vswhere = join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
