@@ -61,13 +61,14 @@ if (-not $SkipNode) {
         Write-Warning "Node.js missing; reference tests were not run."
     } else {
         Run-Gate "SQLite synthetic persistence + schema references" "node" @(
-            "--experimental-sqlite", "--test",
+            "--experimental-sqlite", "--experimental-strip-types", "--test",
             (Join-Path $repo "tests\sqlite-outbox-reference.test.mjs"),
             (Join-Path $repo "tests\sqlite-schema-gate-reference.test.mjs"),
             (Join-Path $repo "tests\sqlite-dependent-revisions.test.mjs"),
             (Join-Path $repo "tests\sqlite-ack-ledger.test.mjs"),
             (Join-Path $repo "tests\sqlite-v2-migration-boundary.test.mjs"),
-            (Join-Path $repo "tests\ack-fingerprint-001.test.mjs")
+            (Join-Path $repo "tests\ack-fingerprint-001.test.mjs"),
+            (Join-Path $repo "tests\ack-fingerprint-typed.test.mjs")
         )
     }
 }
