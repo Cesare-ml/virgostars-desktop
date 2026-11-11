@@ -1,11 +1,11 @@
 # VirgoStars Desktop — proposed system architecture
 
-Status: **DESIGN WITH ISOLATED UNVERIFIED RENDERER SPIKE** (2026-11-10). Spike 001 packages the upstream Angular demo as synthetic content for a minimal Tauri host, but does not implement the final desktop application or integrate native ephemerides, accounts or persistence.
+Status: **DESIGN WITH EXECUTED WINDOWS SYNTHETIC GUI SMOKE** (updated 2026-11-11). A first experimental Tauri .exe launched on Windows with synthetic Three.js chart and native runtime IPC; actual astronomical computation, local persistence, full CSS visual acceptance, optional accounts and cloud sync are not integrated.
 
 ## Product principles
 - Dedicated workstation for professional astrologers and researchers, not a web wrapper.
-- VirgoStars account required for *first successful online activation* and cloud services; subsequently work from authorized locally cached profile while offline.
-- Local-first: offline edits save atomically and become pending sync operations; network reconnection is eventually consistent and never erases local work.
+- First launch, current sky, local calculation, city search, chart creation and saved archive work **without any VirgoStars account or online activation**. A later optional account connects for server-side sync and conflicts, without blocking local usage.
+- Local-first: guest local edits save atomically; after optional account linking, offline edits also create durable pending sync operations. Network reconnection is eventually consistent and never erases local work.
 - Site and Desktop share user-owned entities via future, scoped, versioned APIs, not direct PostgreSQL access.
 - Windows first, future macOS, with multiplatform shell and storage abstraction.
 - Code can become public after licensing/privacy/rights review; repo remains private for now.
@@ -62,16 +62,24 @@ docs/                    approved decisions and plans
 
 ## Workstation UX
 - Large interactive chart workspace with dockable/tabbed panes; natal/transit/synastry comparisons as upstream capabilities mature.
-- Local library with search and groups, note taking, reliable export, settings per account, clear sync/offline/conflict indicator.
+- Local guest library with search, groups, notes, reliable export and settings; optional account-linked profiles add clear pending/synced/conflict indicators only after deliberate connection.
 - Multiple windows/screens are an **advanced goal**, not a v1 promise: the upstream renderer uses some shared global rendering state and must be isolated/tested first.
 - Never present fake precision: missing kernels, unsupported house systems, absent birth times and unavailable calculation types display explicit capability/accuracy warnings.
+
+## Immediate architecture priorities (2026-11-11)
+
+- [Offline-first usable MVP](OFFLINE_FIRST_MVP.md): current sky and clock, continuous date/time corrections, natal charts, local archive, transits, settings and Light/Dark skins **without any account**.
+- [Live Angular–Rust calculations](LIVE_CALCULATION_PIPELINE.md): bounded latest-only IPC/worker scheduling; distinction between UI fps and ephemeris throughput; no unbounded memory or WebGL resources; numerical parity fixtures.
+- [Offline places and timezone rules](OFFLINE_PLACES_AND_TIMEZONES.md): local indexed city search and historical tzdb, manual coordinates, optional online enrichment; no GPS assumption.
+- [Optional sync/reconciliation](OPTIONAL_SYNC_AND_DUPLICATES.md): local-first IDs and per-account mapping, first-link inventory preview, safe keep-both default, no silent name-based merges.
+- Core engine remains Rust `VirgoStars-Ephemeris` with `astrological-functions` composition and `astrological-charts` incremental updates; no runtime requests to third-party ephemerides.
 
 ## Design constraints / open questions
 1. Server routes/auth still require a separate production-safe backend change and migrations; treat them as *not built*.
 2. Determine whether a Rust-native and/or a Rust-WASM ephemeris adapter is the least redundant and best tested boundary.
 3. Validate WebView2 Three.js and macOS WKWebView; capture resource/memory/graphic metrics before final tech decision.
 4. Local database encryption approach (encrypted SQLite engine vs envelope encryption) and key rotation must be tested.
-5. Define exact offline access expiry/revocation/privacy behavior and the initial sync entity inventory.
+5. Separate persistent **guest local** access from future **optional cloud** authorization/revocation; define exact cloud account inventory and opt-in sync behavior without imposing an offline grace period on guest charts.
 6. Isolate schema/renderer package versions; no silent switch of web or Astrolabio dependencies.
 
 ## Isolated proof-of-concept boundary
