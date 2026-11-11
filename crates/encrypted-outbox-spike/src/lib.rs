@@ -1,5 +1,3 @@
-pub mod ack_fingerprint;
-
 //! VirgoStars Desktop SQLCipher storage spike.
 //!
 //! ISOLATED / SYNTHETIC ONLY: not linked into the Tauri application, not a
@@ -9,6 +7,10 @@ pub mod ack_fingerprint;
 //!
 //! SQLite is NEVER used as a plaintext alternative. A missing SQLCipher
 //! codec, incorrect key, unknown schema or plaintext file fails closed.
+
+pub mod ack_fingerprint;
+mod ack_v2;
+pub use ack_v2::AckV2Disposition;
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::fmt::Write as _;
