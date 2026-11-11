@@ -14,9 +14,8 @@ foreach ($tool in @('node', 'npm', 'rustc', 'cargo')) {
         throw "$tool not found. See docs/SPIKE-001.md for Windows requirements."
     }
 }
-if (Test-Path (Join-Path $desktop '.local/frontend')) {
-    throw 'Generated .local/frontend exists. Inspect and remove only that directory before rebuilding.'
-}
+# The synthetic assets stage is verified and safely reusable by the new preparer.
+# Never delete it automatically; an unexpected or modified stage fails closed.
 
 Push-Location $charts
 try {
@@ -28,8 +27,7 @@ try {
     }
     npm run build:library
     if ($LASTEXITCODE -ne 0) { throw 'Charts library build failed.' }
-    npm run build:demo
-    if ($LASTEXITCODE -ne 0) { throw 'Charts demo build failed.' }
+    # No upstream demo build: Desktop has its own Angular app.
 }
 finally { Pop-Location }
 
@@ -39,11 +37,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Desktop npm install failed.' }
     npm test
     if ($LASTEXITCODE -ne 0) { throw 'Desktop Node tests failed.' }
-    npm run prepare:frontend
-    if ($LASTEXITCODE -ne 0) { throw 'Synthetic offline asset staging failed.' }
+    # tauri:build now runs staged-assets verification, Angular build, and post-build bundle verification.
     npm run tauri:build
     if ($LASTEXITCODE -ne 0) { throw 'Tauri desktop build failed.' }
-    Write-Host 'Desktop Angular shell + Tauri build attempted. Inspect src-tauri/target/release.'
+    Write-Host 'Desktop Angular/Tauri build completed. Inspect src-tauri/target/release.'
     Write-Host 'This is NOT an installer or production release; test offline WebView2 rendering on Windows.'
 }
 finally { Pop-Location }

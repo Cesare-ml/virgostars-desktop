@@ -8,6 +8,7 @@
 3. `docs/LICENSING_AND_PUBLICATION.md`; applicable upstream `AGENTS.md` and public package contracts.
 4. Existing issues, draft PRs and recent commits, including UI guidelines in separate design PR #2. Avoid conflicts or duplicate work.
 5. [Shell 001](docs/SHELL-001.md) for the Angular UI prototype and safe build prerequisites.
+6. [Offline asset pipeline](docs/ASSET_PIPELINE.md) before modifying Angular asset handling; the synthetic manifest is not permission to redistribute original art.
 
 ## Non-negotiable boundaries
 - The private repository is **not** presently open source. No LICENSE has been selected. Do not infer a license from dependencies or copy a LICENSE from another repository without approval.
