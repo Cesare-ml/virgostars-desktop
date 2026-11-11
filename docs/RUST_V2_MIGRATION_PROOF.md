@@ -13,13 +13,13 @@ or production. No automatic schema upgrade is enabled.
   approved as a reference in draft PR #19.
 - `SyntheticEncryptedStore::migrate_synthetic_v1_to_v2` is an **explicit call**.
   It checks the current v1 schema catalogue and referential integrity, begins
-  an immediate transaction, applies v2 DDL, compares the complete resulting
+  an immediate transaction, rejects any non-synthetic profile/entity/mutation identifiers, applies v2 DDL, compares the complete resulting
   metadata to a same-engine memory-only v1+v2 DDL template, checks foreign keys
   and `user_version=2`, then commits.
-- Three new Rust unit tests **authored but not executed** cover successful
+- Four new Rust unit tests **authored but not executed** cover successful
   encrypted migration preserving a pending mutation, forced pre-commit
   rollback, and rejection of an altered v1 schema. The isolated crate now
-  contains **17 authored Rust tests**.
+  contains **18 authored Rust tests**.
 - The normal `SyntheticEncryptedStore::open` deliberately **rejects v2**.
   Even if a test calls the explicit migration on an already-open v1 handle,
   every public read/write method checks the schema version and refuses
@@ -36,7 +36,7 @@ isolated synthetic test database.
 
 `tests/sqlite-v2-migration-boundary.test.mjs` mirrors these *transactional
 SQLite invariants* using Node's **plaintext in-memory SQLite test engine**, not
-SQLCipher. The five tests check:
+SQLCipher. The six tests check:
 
 1. v1→v2 preserves unacknowledged synthetic records and FK integrity.
 2. Injected failure before COMMIT restores the entire v1 schema, version and
@@ -44,10 +44,11 @@ SQLCipher. The five tests check:
 3. Repeated migration is refused.
 4. A modified v1 index is rejected even if `user_version` still equals 1.
 5. Orphaned profile/entity foreign keys block migration.
+6. Existing non-fictional profile identifiers block the synthetic-only migration.
 
-**Executed:** 2026-11-11, Node 22.16.0, **5/5 passed**.
+**Executed:** 2026-11-11, Node 22.16.0, **6/6 passed**.
 The checked-in test matches the exact locally executed Git blob
-`0d9a04859c8f29e2625a3c06bfd635761690c185`.
+`8987bf4d041b19d0a35df90a1310e26da52d9f61`.
 Both v1 and v2 schemas also matched their current Git blob hashes:
 `013b80914fb2fc1bbb66ff266e7f7a069b96e794` and
 `306e343ff3f8e3e9637ee4111379ea5b8527c699`.
