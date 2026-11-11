@@ -21,7 +21,7 @@ Angular dev WebView
   -> Angular validates envelope and never executes synthetic chart commands
 ```
 
-**No real chart data, notes, birth time/place, or actual LLM messages leave the Desktop** in this spike. The command is **not** a login, token vault or real AI integration.
+**Readiness is configuration-only**, not confirmation that the backend is online or that a user is authenticated. Only an actual staging request can establish those conditions.\n\n**No real chart data, notes, birth time/place, or actual LLM messages leave the Desktop** in this spike. The command is **not** a login, token vault or real AI integration.
 
 ## Build protection
 
@@ -32,7 +32,7 @@ Rust module `src-tauri/src/copilot_staging_bridge.rs` and IPC command are regist
 
 Additionally at runtime the command requires `VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED=1`. By default it does nothing. Normal release builds do not compile/register the command, even if the feature is accidentally supplied.
 
-Angular injects the native transport only when `isDevMode() && isTauri()`; browser and compiled production Angular get `null` and the AI request button remains disabled. In a native dev build *without* the Rust feature or staging configuration, an attempted preview fails gracefully and does not contact a server.
+Angular injects the native transport only when `isDevMode() && isTauri()`; browser and compiled production Angular get `null`. In a native dev build, the UI calls the separate read-only `copilot_staging_ready` native command and leaves the AI request button **disabled** unless Rust returns `true` for the explicit feature/flag + valid loopback origin + synthetic JWT shape. The readiness probe never performs HTTP, exports a JWT, or proves a valid backend session. If the Rust feature/command is absent or the environment is incomplete, the probe fails closed and the button stays disabled.
 
 No generic HTTP client is exposed to the webview and native CSP (`connect-src 'self'`) has not been changed.
 
@@ -59,7 +59,7 @@ Run a DEBUG Tauri build **with** the explicit Cargo feature. The existing Tauri 
 - Strict typed focus allowlist: only natal Venus/Sun or transiting Saturn.
 - Fixed backend endpoint path; URL origin restricted to literal HTTP `127.0.0.1` with explicit port, no hostnames, query/fragment, credentials, additional paths or redirects.
 - HTTP request with bounded JSON only, native JWT from process environment, no WebView exposure of tokens.
-- Five-second timeout and redirect policy NONE.
+- Five-second timeout, redirect policy NONE and `reqwest::ClientBuilder::no_proxy()` to prevent forwarding the local synthetic test JWT to inherited `HTTP_PROXY`/`ALL_PROXY` processes.
 - Reject non-200 responses, unexpected content type, response bodies over 8 KiB (checked incrementally), and non-synthetic/AI-enabled envelopes.
 - All errors converted to generic client-safe codes; no API key, token, host or HTTP body is logged.
 - No cloud/HTTP functionality in normal releases.
@@ -69,8 +69,8 @@ The backend has its own staging JWT middleware and per-user rate limit. Neither 
 ## Verification
 
 **Added source tests:**
-- Rust `#[cfg(test)]`: focus allowlist, URL/SSRF restrictions, staging JWT shape, FACT_ONLY envelope gate.
-- Node `tests/copilot-native-staging-transport.test.mjs`: only the expected command, forged payload rejection, browser denial, stale-result cancellation, error redaction, and source-gate checks.
+- Rust `#[cfg(test)]`: focus allowlist, URL/SSRF restrictions, staging JWT shape, *pure* fail-closed readiness predicate (no process-global env mutation), FACT_ONLY envelope gate.
+- Node `tests/copilot-native-staging-transport.test.mjs`: only the expected command, separate boolean-only readiness probe, forged payload rejection, browser denial, stale-result cancellation, error redaction, proxy bypass and source-gate checks.
 
 **Required commands once checked out on Windows and Node/Rust toolchains available:**
 
