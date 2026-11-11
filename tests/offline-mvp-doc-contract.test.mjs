@@ -14,7 +14,7 @@ test('P0 desktop product explicitly allows first-run guest and full offline usag
   for (const text of [core, roadmap, agents, doc('docs/ARCHITECTURE.md'),
     doc('docs/OFFLINE_AUTH_AND_SYNC.md'),doc('README.md')]) {
     assert.match(text, /offline/i);
-    assert.match(text, /without (an?y? )?(virgostars )?account|no.account|without registration|without any account/i);
+    assert.match(text, /without (an?y? )?(virgostars )?account|no.account|without registration|without any account|never require a virgostars login/i);
   }
 });
 
