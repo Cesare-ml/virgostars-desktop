@@ -21,7 +21,7 @@ Angular dev WebView
   -> Angular validates envelope and never executes synthetic chart commands
 ```
 
-**Readiness is configuration-only**, not confirmation that the backend is online or that a user is authenticated. Only an actual staging request can establish those conditions.
+**Readiness now performs an authenticated staging check.** The Rust command `copilot_staging_ready` requires the explicit staging feature/flag, validated local origin and syntactically valid synthetic test JWT, then issues a **bounded authenticated GET** to `/api/v1/ai/copilot-preview/capabilities`. It accepts only HTTP 200 with `VirgoStarsCopilotPreviewCapabilities@0.1.0`, `STAGING_SYNTHETIC`, `providerEnabled=false`, `modelSelectorAvailable=false`, and the exact allowed focus/actions. Offline, 401/403, wrong contract or connection failures return only `false` to Angular, leaving the button disabled. The request is to a test-only **synthetic user**, not the production account system or an OAuth session.
 
 **No real chart data, notes, birth time/place, or actual LLM messages leave the Desktop** in this spike. The command is **not** a login, token vault or real AI integration.
 
@@ -34,7 +34,7 @@ Rust module `src-tauri/src/copilot_staging_bridge.rs` and IPC command are regist
 
 Additionally at runtime the command requires `VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED=1`. By default it does nothing. Normal release builds do not compile/register the command, even if the feature is accidentally supplied.
 
-Angular injects the native transport only when `isDevMode() && isTauri()`; browser and compiled production Angular get `null`. In a native dev build, the UI calls the separate read-only `copilot_staging_ready` native command and leaves the AI request button **disabled** unless Rust returns `true` for the explicit feature/flag + valid loopback origin + synthetic JWT shape. The readiness probe never performs HTTP, exports a JWT, or proves a valid backend session. If the Rust feature/command is absent or the environment is incomplete, the probe fails closed and the button stays disabled.
+Angular injects the native transport only when `isDevMode() && isTauri()`; browser and compiled production Angular get `null`. In a native dev build, the UI calls the separate read-only `copilot_staging_ready` native command and leaves the AI request button **disabled** unless Rust returns `true` for the explicit feature/flag + valid loopback origin + synthetic JWT shape. The readiness probe performs a bounded, authenticated loopback HTTP GET, but exports **only a boolean** and never the JWT, origin or response contents to Angular. It proves only that the test backend accepted the synthetic staging JWT for the capabilities call—not account login or production authorization. If the Rust feature/command is absent or the environment is incomplete, the probe fails closed and the button stays disabled.
 
 No generic HTTP client is exposed to the webview and native CSP (`connect-src 'self'`) has not been changed.
 
@@ -58,10 +58,12 @@ Run a DEBUG Tauri build **with** the explicit Cargo feature. The existing Tauri 
 
 ## Security checks in native Rust
 
+- The preview request button stays disabled unless the *backend actually returns* an authenticated, validated staging-only capabilities envelope; a configured URL alone is insufficient.
+- The native Rust reader limits both GET and POST JSON bodies to 8 KiB and rejects invalid content types before deserializing.
 - Strict typed focus allowlist: only natal Venus/Sun or transiting Saturn.
 - Fixed backend endpoint path; URL origin restricted to literal HTTP `127.0.0.1` with explicit port, no hostnames, query/fragment, credentials, additional paths or redirects.
 - HTTP request with bounded JSON only, native JWT from process environment, no WebView exposure of tokens.
-- Five-second timeout, redirect policy NONE and `reqwest::ClientBuilder::no_proxy()` to prevent forwarding the local synthetic test JWT to inherited `HTTP_PROXY`/`ALL_PROXY` processes.
+- Shared five-second timeout, redirect policy NONE and `reqwest::ClientBuilder::no_proxy()` for both the read-only GET capabilities and the POST preview, preventing forwarding the synthetic JWT to inherited `HTTP_PROXY`/`ALL_PROXY` processes.
 - Reject non-200 responses, unexpected content type, response bodies over 8 KiB (checked incrementally), and non-synthetic/AI-enabled envelopes.
 - All errors converted to generic client-safe codes; no API key, token, host or HTTP body is logged.
 - No cloud/HTTP functionality in normal releases.
