@@ -72,7 +72,8 @@ fn fts_query(input: &str) -> Option<String> {
         .take(MAX_TOKENS)
         .map(|word| format!("\"{}\"*", word))
         .collect();
-    if words.is_empty() || words.iter().map(String::len).sum::<usize>() < 4 {
+    // One-letter prefixes over two million localities can produce very large posting lists.
+    if words.is_empty() || input.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
         return None;
     }
     Some(words.join(" "))
@@ -172,6 +173,7 @@ mod tests {
         assert_eq!(fts_query("San José"), Some("\"San\"* \"José\"*".into()));
         assert_eq!(fts_query("Firenze"), Some("\"Firenze\"*".into()));
         assert!(fts_query(" ").is_none());
+        assert!(fts_query("x").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
         assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
     }
