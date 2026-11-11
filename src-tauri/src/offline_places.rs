@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn synthetic_fts_catalog_produces_bounded_responses() {
         let mut path = std::env::temp_dir();
-        path.push(format!("vs-place-search-test-{}-{}-{}.sqlite", std::process::id(), std::thread::current().name().unwrap_or("test"), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        path.push(format!("vs-place-search-test-{}-{}.sqlite", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let _ = std::fs::remove_file(&path);
         let db = Connection::open(&path).unwrap();
         db.execute_batch(
