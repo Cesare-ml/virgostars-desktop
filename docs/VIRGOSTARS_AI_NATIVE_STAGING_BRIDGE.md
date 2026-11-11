@@ -21,7 +21,9 @@ Angular dev WebView
   -> Angular validates envelope and never executes synthetic chart commands
 ```
 
-**Readiness is configuration-only**, not confirmation that the backend is online or that a user is authenticated. Only an actual staging request can establish those conditions.\n\n**No real chart data, notes, birth time/place, or actual LLM messages leave the Desktop** in this spike. The command is **not** a login, token vault or real AI integration.
+**Readiness is configuration-only**, not confirmation that the backend is online or that a user is authenticated. Only an actual staging request can establish those conditions.
+
+**No real chart data, notes, birth time/place, or actual LLM messages leave the Desktop** in this spike. The command is **not** a login, token vault or real AI integration.
 
 ## Build protection
 
