@@ -27,6 +27,8 @@ pub struct PlaceMatch {
     state_id: Option<i64>,
     region: Option<String>,
     time_zone: Option<String>,
+    country_name: Option<String>,
+    country_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,20 +96,32 @@ fn search_database(path: &Path, query: &str, limit: u8) -> Result<PlaceSearchV1,
     let version: String = connection
         .query_row("SELECT value FROM catalog_meta WHERE key='schemaVersion'", [], |row| row.get(0))
         .map_err(|_| "PLACE_CATALOG_INVALID")?;
-    if version != "1" {
-        return Err("PLACE_CATALOG_VERSION");
-    }
+    let sql = match version.as_str() {
+        // Existing local packs remain readable without a guessed country mapping.
+        "1" => "WITH candidate AS (
+                    SELECT rowid FROM places_fts WHERE places_fts MATCH ?1 LIMIT ?2
+                 )
+                 SELECT p.id, p.nome, p.nome_it, p.lat_micro, p.lng_micro,
+                        p.pop, p.stato_id, p.regione, p.tz,
+                        NULL AS country_name, NULL AS country_code
+                 FROM candidate c JOIN places p ON p.id=c.rowid
+                 ORDER BY COALESCE(p.pop,0) DESC, p.nome COLLATE NOCASE, p.id
+                 LIMIT ?3",
+        // A v2 pack contains an explicitly mapped local lookup for stato_id.
+        "2" => "WITH candidate AS (
+                    SELECT rowid FROM places_fts WHERE places_fts MATCH ?1 LIMIT ?2
+                 )
+                 SELECT p.id, p.nome, p.nome_it, p.lat_micro, p.lng_micro,
+                        p.pop, p.stato_id, p.regione, p.tz,
+                        co.country_name, co.iso2
+                 FROM candidate c JOIN places p ON p.id=c.rowid
+                 LEFT JOIN country_lookup co ON co.stato_id=p.stato_id
+                 ORDER BY COALESCE(p.pop,0) DESC, p.nome COLLATE NOCASE, p.id
+                 LIMIT ?3",
+        _ => return Err("PLACE_CATALOG_VERSION"),
+    };
     let mut statement = connection
-        .prepare(
-            "WITH candidate AS (
-               SELECT rowid FROM places_fts WHERE places_fts MATCH ?1 LIMIT ?2
-             )
-             SELECT p.id, p.nome, p.nome_it, p.lat_micro, p.lng_micro,
-                    p.pop, p.stato_id, p.regione, p.tz
-             FROM candidate c JOIN places p ON p.id=c.rowid
-             ORDER BY COALESCE(p.pop,0) DESC, p.nome COLLATE NOCASE, p.id
-             LIMIT ?3",
-        )
+        .prepare(sql)
         .map_err(|_| "PLACE_CATALOG_INVALID")?;
     let rows = statement
         .query_map(params![fts, CANDIDATE_LIMIT, i64::from(limit)], |row| {
@@ -121,6 +135,8 @@ fn search_database(path: &Path, query: &str, limit: u8) -> Result<PlaceSearchV1,
                 state_id: row.get(6)?,
                 region: row.get(7)?,
                 time_zone: row.get(8)?,
+                country_name: row.get(9)?,
+                country_code: row.get(10)?,
             })
         })
         .map_err(|_| "PLACE_QUERY_FAILED")?;
@@ -216,8 +232,41 @@ mod tests {
         assert_eq!(result.items[0].name, "Firenze");
         assert_eq!(result.items[0].lat_micro, 43_769_560);
         assert_eq!(search_database(&path, "Flor", 2).unwrap().items[0].id, 1);
+        assert!(search_database(&path, "Flor", 2).unwrap().items[0].country_name.is_none());
         assert_eq!(search_database(&path, "Flor", 0).err(), Some("PLACE_LIMIT_INVALID"));
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn country_mapping_is_loaded_from_explicit_v2_lookup_not_state_id_guess() {
+        let path = std::env::temp_dir().join(format!(
+            "vs-city-country-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch(
+            "CREATE TABLE places (id INTEGER PRIMARY KEY, nome TEXT NOT NULL,
+                nome_it TEXT, lat_micro INTEGER, lng_micro INTEGER, pop INTEGER,
+                stato_id INTEGER, regione TEXT, tz TEXT, tz_offs TEXT);
+             CREATE TABLE catalog_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+             CREATE TABLE country_lookup (stato_id INTEGER PRIMARY KEY,
+                country_name TEXT NOT NULL, iso2 TEXT);
+             INSERT INTO catalog_meta VALUES ('schemaVersion','2');
+             INSERT INTO country_lookup VALUES (100,'Italia','IT');
+             INSERT INTO places VALUES
+               (1,'Firenze',NULL,43769560,11255810,350000,100,'Toscana','Europe/Rome','+0100');
+             CREATE VIRTUAL TABLE places_fts USING fts5(
+               nome,nome_it,content='places',content_rowid='id',
+               tokenize='unicode61 remove_diacritics 2',prefix='2 3');
+             INSERT INTO places_fts(places_fts) VALUES ('rebuild');",
+        ).unwrap();
+        drop(db);
+        let result = search_database(&path, "Firenze", 12).unwrap();
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].country_name.as_deref(), Some("Italia"));
+        assert_eq!(result.items[0].country_code.as_deref(), Some("IT"));
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
