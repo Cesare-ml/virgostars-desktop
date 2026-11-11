@@ -15,7 +15,8 @@ pub fn run() {
     #[cfg(all(debug_assertions, feature = "copilot-staging"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         runtime_probe::desktop_runtime_info,
-        copilot_staging_bridge::copilot_staging_preview
+        copilot_staging_bridge::copilot_staging_preview,
+        copilot_staging_bridge::copilot_staging_ready
     ]);
     builder
         .run(tauri::generate_context!())
