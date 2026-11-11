@@ -47,6 +47,10 @@ test('purchased worldwide city catalog is evaluated before licensing or package 
   }
   assert.match(sized,/pg_total_relation_size/);
   assert.match(sized,/TABLESAMPLE/);
+  assert.match(sized,/284 MB/);
+  assert.match(sized,/310 MB/);
+  assert.match(sized,/595 MB/);
+  assert.match(sized,/pg_stat_user_indexes/);
 });
 
 test('offline city search is never an online-account prerequisite',()=>{
