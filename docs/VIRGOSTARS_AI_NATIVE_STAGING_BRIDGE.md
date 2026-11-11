@@ -65,6 +65,7 @@ Run a DEBUG Tauri build **with** the explicit Cargo feature. The existing Tauri 
 - Fixed backend endpoint path; URL origin restricted to literal HTTP `127.0.0.1` with explicit port, no hostnames, query/fragment, credentials, additional paths or redirects.
 - HTTP request with bounded JSON only, native JWT from process environment, no WebView exposure of tokens.
 - Shared five-second timeout, redirect policy NONE and `reqwest::ClientBuilder::no_proxy()` for both the read-only GET capabilities and the POST preview, preventing forwarding the synthetic JWT to inherited `HTTP_PROXY`/`ALL_PROXY` processes.
+- **Native single-flight backpressure:** an atomic RAII permit covers both the authenticated GET capabilities and POST preview. At most **one local staging HTTP request** may be in flight per Desktop process; overlapping GET fails closed as `false`, and overlapping POST returns sanitized `copilot_staging_busy` (the UI displays only a generic temporary error). The permit is released automatically on completion, HTTP failure, timeout or native future cancellation, so abandoned WebView requests cannot accumulate unbounded native work. The client never queues retries in the background. The native network timeout remains five seconds. This is a staging development constraint, not the production AI request scheduler.
 - Reject non-200 responses, unexpected content type, response bodies over 8 KiB (checked incrementally), and non-synthetic/AI-enabled envelopes.
 - All errors converted to generic client-safe codes; no API key, token, host or HTTP body is logged.
 - No cloud/HTTP functionality in normal releases.
@@ -74,7 +75,7 @@ The backend has its own staging JWT middleware and per-user rate limit. Neither 
 ## Verification
 
 **Added source tests:**
-- Rust `#[cfg(test)]`: focus allowlist, URL/SSRF restrictions, staging JWT shape, *pure* fail-closed readiness predicate (no process-global env mutation), exact capability contract, FACT_ONLY envelope gate, minimal JSON projection (removes unexpected secrets), and rejection of mismatched focus, provider costs, personal disclosures, unsafe commands and IDs.
+- Rust `#[cfg(test)]`: focus allowlist, URL/SSRF restrictions, staging JWT shape, *pure* fail-closed readiness predicate (no process-global env mutation), exact capability contract, FACT_ONLY envelope gate, minimal JSON projection (removes unexpected secrets), and rejection of mismatched focus, provider costs, personal disclosures, unsafe commands and IDs. Includes a pure atomic-permit test for concurrent acquisition and automatic release after scope exit (without mutating shared process state).
 - Node `tests/copilot-native-staging-transport.test.mjs`: only the expected command, separate boolean-only readiness probe, forged payload rejection, browser denial, stale-result cancellation, error redaction, proxy bypass, source-gate checks, and a regression assertion that Rust sends **only the projected** response over Tauri IPC.
 
 **Required commands once checked out on Windows and Node/Rust toolchains available:**
