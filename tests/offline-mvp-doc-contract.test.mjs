@@ -41,6 +41,12 @@ test('purchased worldwide city catalog is evaluated before licensing or package 
   assert.match(places,/optional remote supplement/i);
   assert.match(places,/Nominatim/i);
   assert.match(places,/historical/i);
+  const sized=doc('docs/OWNED_CITY_CATALOG_SIZING.md');
+  for(const field of ['nome','nome_it','lat','lng','pop','stato_id','regione','tz','tz_offs']) {
+    assert.ok(sized.includes('`'+field+'`'),field);
+  }
+  assert.match(sized,/pg_total_relation_size/);
+  assert.match(sized,/TABLESAMPLE/);
 });
 
 test('offline city search is never an online-account prerequisite',()=>{
