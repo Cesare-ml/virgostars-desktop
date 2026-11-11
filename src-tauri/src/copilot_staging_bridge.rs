@@ -9,6 +9,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 const PATH: &str = "/api/v1/ai/copilot-preview/message";
+const CAPABILITIES_PATH: &str = "/api/v1/ai/copilot-preview/capabilities";
 const MAX_RESPONSE_BYTES: usize = 8192;
 const STAGING_ENABLED_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED";
 const STAGING_ORIGIN_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN";
@@ -70,14 +71,106 @@ fn staging_configured(enabled: Option<&str>, origin: Option<&str>, bearer: Optio
         && bearer.is_some_and(|value| staging_test_bearer(value).is_ok())
 }
 
-/// Local, read-only capability check. It does not contact the backend, validate
-/// a user session, or make the host's token available to the WebView.
+fn validate_staging_capabilities(value: &Value) -> bool {
+    if value.get("contract").and_then(Value::as_str) != Some("VirgoStarsCopilotPreviewCapabilities")
+        || value.get("version").and_then(Value::as_str) != Some("0.1.0")
+        || value.get("stage").and_then(Value::as_str) != Some("STAGING_SYNTHETIC")
+        || value.get("enabled").and_then(Value::as_bool) != Some(true)
+        || value.get("providerEnabled").and_then(Value::as_bool) != Some(false)
+        || value.get("modelSelectorAvailable").and_then(Value::as_bool) != Some(false)
+    {
+        return false;
+    }
+    let actions = match value.get("actions").and_then(Value::as_array) {
+        Some(value) => value,
+        None => return false,
+    };
+    let focus_options = match value.get("focusOptions").and_then(Value::as_array) {
+        Some(value) => value,
+        None => return false,
+    };
+    actions.len() == 1
+        && actions[0].as_str() == Some("describe_focus")
+        && focus_options.len() == 3
+        && ["NATAL:VENUS", "NATAL:SUN", "TRANSIT:SATURN"]
+            .iter()
+            .all(|item| focus_options.iter().any(|value| value.as_str() == Some(*item)))
+}
+
+fn staging_http_client() -> Result<Client, &'static str> {
+    Client::builder()
+        .timeout(Duration::from_secs(5))
+        // Do not leak the synthetic staging JWT to HTTP(S)_PROXY/ALL_PROXY.
+        .no_proxy()
+        .redirect(redirect::Policy::none())
+        .build()
+        .map_err(|_| "copilot_staging_client_unavailable")
+}
+
+async fn bounded_json(mut response: reqwest::Response) -> Result<Value, &'static str> {
+    let is_json = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|s| s.to_str().ok())
+        .map(|s| s.split(';').next() == Some("application/json"))
+        .unwrap_or(false);
+    if !is_json {
+        return Err("copilot_staging_unexpected_response");
+    }
+    if response.content_length().is_some_and(|len| len > MAX_RESPONSE_BYTES as u64) {
+        return Err("copilot_staging_response_too_large");
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "copilot_staging_backend_unavailable")?
+    {
+        if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+            return Err("copilot_staging_response_too_large");
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&bytes).map_err(|_| "copilot_staging_unexpected_response")
+}
+
+/// Checks an actual AUTHENTICATED Virgo Stars staging capability response.
+/// The Rust process keeps the short-lived staging JWT; only a boolean crosses
+/// IPC. No real charts, notes, credentials or vendor endpoints are sent.
 #[tauri::command]
-pub fn copilot_staging_ready() -> bool {
+pub async fn copilot_staging_ready() -> bool {
     let enabled = std::env::var(STAGING_ENABLED_ENV).ok();
     let origin = std::env::var(STAGING_ORIGIN_ENV).ok();
     let bearer = std::env::var(STAGING_TEST_BEARER_ENV).ok();
-    staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref())
+    if !staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref()) {
+        return false;
+    }
+    let base = match origin.as_deref().and_then(|raw| staging_origin(raw).ok()) {
+        Some(url) => url,
+        None => return false,
+    };
+    let endpoint = match base.join(CAPABILITIES_PATH) {
+        Ok(url) => url,
+        Err(_) => return false,
+    };
+    let client = match staging_http_client() {
+        Ok(client) => client,
+        Err(_) => return false,
+    };
+    let response = match client
+        .get(endpoint)
+        .bearer_auth(bearer.as_deref().unwrap_or_default())
+        .header(header::ACCEPT, "application/json")
+        .send()
+        .await
+    {
+        Ok(response) if response.status() == StatusCode::OK => response,
+        _ => return false,
+    };
+    match bounded_json(response).await {
+        Ok(value) => validate_staging_capabilities(&value),
+        Err(_) => false,
+    }
 }
 
 fn validate_preview_envelope(value: &Value) -> Result<(), &'static str> {
@@ -113,14 +206,7 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
 
     // No URLs or credentials are accepted from Angular's IPC payload.
     let endpoint = origin.join(PATH).map_err(|_| "copilot_staging_invalid_origin")?;
-    let client = Client::builder()
-        .timeout(Duration::from_secs(5))
-        // Ignore inherited HTTP(S)_PROXY / ALL_PROXY variables. A synthetic
-        // staging-user JWT must never be forwarded to a proxy process.
-        .no_proxy()
-        .redirect(redirect::Policy::none())
-        .build()
-        .map_err(|_| "copilot_staging_client_unavailable")?;
+    let client = staging_http_client().map_err(str::to_owned)?;
     let payload = json!({
         "action": "describe_focus",
         "focus": { "layer": focus.layer, "bodyId": focus.body_id }
@@ -142,31 +228,7 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
         StatusCode::OK => {}
         _ => return Err("copilot_staging_backend_unavailable".into()),
     }
-    let json_content_type = response
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|s| s.to_str().ok())
-        .map(|s| s.split(';').next() == Some("application/json"))
-        .unwrap_or(false);
-    if !json_content_type {
-        return Err("copilot_staging_unexpected_response".into());
-    }
-    if response.content_length().is_some_and(|len| len > MAX_RESPONSE_BYTES as u64) {
-        return Err("copilot_staging_response_too_large".into());
-    }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| "copilot_staging_backend_unavailable")?
-    {
-        if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
-            return Err("copilot_staging_response_too_large".into());
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    let envelope: Value = serde_json::from_slice(&bytes)
-        .map_err(|_| "copilot_staging_unexpected_response")?;
+    let envelope = bounded_json(response).await.map_err(str::to_owned)?;
     validate_preview_envelope(&envelope).map_err(str::to_owned)?;
     Ok(envelope)
 }
@@ -234,6 +296,33 @@ mod tests {
         assert!(!staging_configured(Some("1"), Some("https://example.com"), Some(token)));
         assert!(!staging_configured(Some("1"), Some(origin), None));
         assert!(!staging_configured(Some("1"), Some(origin), Some("bad-token")));
+    }
+
+    #[test]
+    fn capabilities_must_be_exactly_the_staging_mock_contract() {
+        let valid = json!({
+            "contract": "VirgoStarsCopilotPreviewCapabilities",
+            "version": "0.1.0",
+            "stage": "STAGING_SYNTHETIC",
+            "enabled": true,
+            "providerEnabled": false,
+            "modelSelectorAvailable": false,
+            "actions": ["describe_focus"],
+            "focusOptions": ["NATAL:VENUS", "NATAL:SUN", "TRANSIT:SATURN"]
+        });
+        assert!(validate_staging_capabilities(&valid));
+        for (field, bad_value) in [
+            ("stage", json!("PRODUCTION")),
+            ("enabled", json!(false)),
+            ("providerEnabled", json!(true)),
+            ("modelSelectorAvailable", json!(true)),
+            ("actions", json!(["freeform_prompt"])),
+            ("focusOptions", json!(["NATAL:VENUS"]))
+        ] {
+            let mut invalid = valid.clone();
+            invalid[field] = bad_value;
+            assert!(!validate_staging_capabilities(&invalid), "{field}");
+        }
     }
 
     #[test]
