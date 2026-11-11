@@ -1,6 +1,20 @@
 # Purchased city catalog — observed schema and reproducible size check
 
-**Product note 2026-11-11. Dataset owner reports that the previously purchased catalog can be used for the Desktop application. Formal license/notice provenance will still be recorded before publishing any data or binary. Actual catalog bytes and converted SQLite bytes remain UNMEASURED.**
+**Product note 2026-11-11. Dataset owner reports that the previously purchased catalog can be used for the Desktop application. Formal license/notice provenance will still be recorded before publishing any data or binary. The owner has now measured the **PostgreSQL** size as ~284 MB table heap, ~310 MB indexes and ~595 MB total (displayed rounded). Converted SQLite and compressed installer bytes remain UNMEASURED.**
+
+## Actual PostgreSQL storage measurement (owner-reported, 2026-11-11)
+
+A read-only `pg_relation_size` / `pg_indexes_size` / `pg_total_relation_size` query in pgAdmin returned:
+
+| Measure | Observed |
+| --- | ---: |
+| Table heap (~data~) | **284 MB** |
+| PostgreSQL indexes | **310 MB** |
+| Total relation footprint | **595 MB** |
+
+The rounded values need not add exactly because PostgreSQL renders each separately. More than half the reported storage is in PostgreSQL indexes; **those indexes do not transfer as-is to SQLite**. SQLite will use a purpose-built set of indexes and possibly FTS5, whose byte cost must be measured. This report does **not** predict that converted SQLite will necessarily be 284 MB or below 595 MB.
+
+**Recommendation now:** prioritize measuring the **full worldwide offline SQLite** rather than excluding it based on the earlier guessed 1 GB. If a slim full catalog with adequate indexes compresses to an acceptable shipped size, favor the full always-offline collection. Otherwise use a compact built-in pack plus one-time optional expanded offline download. Keep GeoNames as an alternative/comparator, not an automatic replacement for purchased data.
 
 ## Evidence from owner-supplied PostgreSQL table screenshot
 
@@ -51,7 +65,20 @@ SELECT
   pg_total_relation_size('public.NOME_TABELLA'::regclass) AS total_bytes;
 ```
 
-2. Inspect columns and types (reads only system catalog):
+2. Inspect existing **individual index sizes** (read-only metadata, no table scan):
+
+~~~sql
+SELECT indexrelname AS index_name,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS index_size,
+       pg_relation_size(indexrelid) AS index_bytes
+FROM pg_stat_user_indexes
+WHERE relid = 'public.NOME_TABELLA'::regclass
+ORDER BY index_bytes DESC;
+~~~
+
+This helps explain where the existing **310 MB** of PostgreSQL index storage goes and informs a leaner SQLite index design. Do not mechanically reproduce every PostgreSQL index.
+
+3. Inspect columns and types (reads only system catalog):
 
 ```sql
 SELECT column_name, data_type, udt_name, is_nullable
@@ -60,7 +87,7 @@ WHERE table_schema = 'public' AND table_name = 'NOME_TABELLA'
 ORDER BY ordinal_position;
 ```
 
-3. **Optional** sampled data density (uses `TABLESAMPLE`; estimates only and may scan pages depending on storage; actual table name required):
+4. **Optional** sampled data density (uses `TABLESAMPLE`; estimates only and may scan pages depending on storage; actual table name required):
 
 ```sql
 SELECT
