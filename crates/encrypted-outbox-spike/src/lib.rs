@@ -14,6 +14,7 @@ use std::path::Path;
 use zeroize::Zeroizing;
 
 const SCHEMA_V1: &str = include_str!("../../../contracts/sqlite/0001_local_outbox.sql");
+const SCHEMA_V2: &str = include_str!("../../../contracts/sqlite/0002_ack_ledger.sql");
 const FIXTURE_TIME: &str = "2026-11-10T19:00:00Z";
 const MAX_JSON_BYTES: usize = 262_144;
 
@@ -103,6 +104,32 @@ fn validate_schema_v1(conn: &Connection) -> Result<()> {
     let violation: Option<String> = conn.query_row(
         "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1",
         [], |row| row.get(0)
+    ).optional().map_err(storage_error)?;
+    if violation.is_some() {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    Ok(())
+}
+
+/// Validate the full v2 catalogue inside the same SQLCipher engine used by
+/// the encrypted connection. This is ONLY the reference migration gate:
+/// v2 account writes and ACK receipts are intentionally NOT enabled.
+fn validate_schema_v2(conn: &Connection) -> Result<()> {
+    let template = Connection::open_in_memory().map_err(storage_error)?;
+    template.execute_batch(SCHEMA_V1).map_err(storage_error)?;
+    template.execute_batch(SCHEMA_V2).map_err(storage_error)?;
+    if schema_catalog(conn)? != schema_catalog(&template)? {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    let version: i64 = conn.pragma_query_value(
+        None, "user_version", |row| row.get(0),
+    ).map_err(storage_error)?;
+    if version != 2 {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    let violation: Option<String> = conn.query_row(
+        "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1",
+        [], |row| row.get(0),
     ).optional().map_err(storage_error)?;
     if violation.is_some() {
         return Err(StoreError::UnsupportedSchema);
@@ -219,7 +246,44 @@ impl SyntheticEncryptedStore {
         Ok(Self { conn })
     }
 
+    /// A v1 handle MUST become read-only in effect after test-only migration.
+    /// The normal constructor still rejects v2, and all state-changing methods
+    /// must reject a migrated in-memory handle until an authenticated v2 ACK
+    /// writer with durable deduplication has been implemented and reviewed.
+    fn require_v1(&self) -> Result<()> {
+        let version: i64 = self.conn.pragma_query_value(
+            None, "user_version", |row| row.get(0),
+        ).map_err(storage_error)?;
+        if version != 1 {
+            return Err(StoreError::UnsupportedSchema);
+        }
+        Ok(())
+    }
+
+    /// EXPLICIT synthetic-only v1→v2 migration proof. No automatic migrations,
+    /// Tauri commands or use with actual user data. The current normal open
+    /// intentionally rejects v2 even after a successful reference migration.
+    pub fn migrate_synthetic_v1_to_v2(&mut self) -> Result<()> {
+        self.migrate_synthetic_v1_to_v2_inner(false)
+    }
+
+    fn migrate_synthetic_v1_to_v2_inner(&mut self, abort_before_commit: bool) -> Result<()> {
+        self.require_v1()?;
+        validate_schema_v1(&self.conn)?;
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(storage_error)?;
+        tx.execute_batch(SCHEMA_V2).map_err(storage_error)?;
+        // Every mutation, cursor and profile must survive; DDL, indexes and
+        // FK integrity are validated before committing the migration.
+        validate_schema_v2(&tx)?;
+        if abort_before_commit {
+            return Err(StoreError::StorageFailure);
+        }
+        tx.commit().map_err(storage_error)
+    }
+
     pub fn create_synthetic_profile(&self, profile: &str) -> Result<()> {
+        self.require_v1()?;
         if !synthetic_id(profile) { return Err(StoreError::InvalidSyntheticInput); }
         self.conn.execute(
             "INSERT OR IGNORE INTO local_profiles(profile_id) VALUES (?1)", [profile],
@@ -243,6 +307,7 @@ impl SyntheticEncryptedStore {
     pub fn stage_synthetic_subject(
         &mut self, profile: &str, entity: &str, mutation: &str, payload: &str,
     ) -> Result<()> {
+        self.require_v1()?;
         if !synthetic_id(profile) || !synthetic_id(entity) || !synthetic_id(mutation) {
             return Err(StoreError::InvalidSyntheticInput);
         }
@@ -279,6 +344,7 @@ impl SyntheticEncryptedStore {
     pub fn stage_synthetic_delete(
         &mut self, profile: &str, entity: &str, mutation: &str,
     ) -> Result<()> {
+        self.require_v1()?;
         if !synthetic_id(profile) || !synthetic_id(entity) || !synthetic_id(mutation) {
             return Err(StoreError::InvalidSyntheticInput);
         }
@@ -309,6 +375,7 @@ impl SyntheticEncryptedStore {
     }
 
     pub fn pending_synthetic_ids(&self, profile: &str, limit: usize) -> Result<Vec<String>> {
+        self.require_v1()?;
         if !synthetic_id(profile) || !(1..=500).contains(&limit) {
             return Err(StoreError::InvalidSyntheticInput);
         }
@@ -339,6 +406,7 @@ impl SyntheticEncryptedStore {
     pub fn apply_synthetic_receipt(
         &mut self, profile: &str, mutation: &str, revision: &str, conflict: bool,
     ) -> Result<()> {
+        self.require_v1()?;
         if !synthetic_id(profile) || !synthetic_id(mutation) || revision.is_empty() ||
             revision.len() > 128 || !revision.is_ascii() {
             return Err(StoreError::InvalidSyntheticInput);
@@ -397,6 +465,7 @@ impl SyntheticEncryptedStore {
         &mut self, profile: &str, entity: &str, payload: &str,
         cursor: &str, fail_before_commit: bool,
     ) -> Result<()> {
+        self.require_v1()?;
         if !synthetic_id(profile) || !synthetic_id(entity) ||
             cursor.is_empty() || cursor.len() > 256 {
             return Err(StoreError::InvalidSyntheticInput);
@@ -436,6 +505,103 @@ mod tests {
 
     fn test_key(byte: u8) -> StoreKey {
         StoreKey::from_external_key_material([byte; 32]).expect("test key")
+    }
+
+    #[test]
+    fn explicit_v2_migration_is_atomic_preserves_pending_and_blocks_v1_writes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("fictional-encrypted-v2.db");
+        let key = test_key(31);
+        {
+            let mut store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.create_synthetic_profile("synthetic-a").unwrap();
+            store.stage_synthetic_subject(
+                "synthetic-a", "synthetic-1", "synthetic-m1", r#"{"label":"Fictional"}"#,
+            ).unwrap();
+            store.migrate_synthetic_v1_to_v2().unwrap();
+            validate_schema_v2(&store.conn).unwrap();
+            assert_eq!(store.conn.pragma_query_value(
+                None, "user_version", |row| row.get::<_, i64>(0),
+            ).unwrap(), 2);
+            let acknowledged: i64 = store.conn.query_row(
+                "SELECT count(*) FROM local_ack_ledger", [], |row| row.get(0),
+            ).unwrap();
+            let pending: i64 = store.conn.query_row(
+                "SELECT count(*) FROM local_outbox", [], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(acknowledged, 0);
+            assert_eq!(pending, 1);
+            assert!(matches!(
+                store.stage_synthetic_delete("synthetic-a", "synthetic-1", "synthetic-m2"),
+                Err(StoreError::UnsupportedSchema)
+            ));
+            assert!(matches!(
+                store.pending_synthetic_ids("synthetic-a", 10),
+                Err(StoreError::UnsupportedSchema)
+            ));
+            assert!(matches!(
+                store.migrate_synthetic_v1_to_v2(),
+                Err(StoreError::UnsupportedSchema)
+            ));
+        }
+        let header = std::fs::read(&path).unwrap();
+        assert_ne!(&header[..16], b"SQLite format 3\0");
+        // A v2 archive must never be interpreted as a fresh v1 or silently
+        // rewritten without the separately reviewed v2 runtime.
+        assert!(matches!(
+            SyntheticEncryptedStore::open(&path, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+    }
+
+    #[test]
+    fn aborting_v2_migration_rolls_back_schema_version_and_ledger() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("fictional-aborted-v2.db");
+        let key = test_key(32);
+        {
+            let mut store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+            store.create_synthetic_profile("synthetic-a").unwrap();
+            store.stage_synthetic_subject(
+                "synthetic-a", "synthetic-1", "synthetic-m1", r#"{"label":"Fictional"}"#,
+            ).unwrap();
+            assert!(matches!(
+                store.migrate_synthetic_v1_to_v2_inner(true),
+                Err(StoreError::StorageFailure)
+            ));
+            validate_schema_v1(&store.conn).unwrap();
+            let ledger: Option<String> = store.conn.query_row(
+                "SELECT name FROM sqlite_master WHERE name='local_ack_ledger'",
+                [], |row| row.get(0),
+            ).optional().unwrap();
+            assert!(ledger.is_none());
+            assert_eq!(store.pending_synthetic_ids("synthetic-a", 10).unwrap(),
+                ["synthetic-m1"]);
+        }
+        let reopened = SyntheticEncryptedStore::open(&path, &key).unwrap();
+        validate_schema_v1(&reopened.conn).unwrap();
+        assert_eq!(reopened.pending_synthetic_ids("synthetic-a", 10).unwrap(),
+            ["synthetic-m1"]);
+    }
+
+    #[test]
+    fn migrate_requires_original_v1_catalog_not_just_version_number() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("fictional-tampered-v1.db");
+        let key = test_key(33);
+        let mut store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+        store.conn.execute_batch(
+            "DROP INDEX local_outbox_profile_fifo;
+             CREATE INDEX local_outbox_profile_fifo ON local_outbox(mutation_id);"
+        ).unwrap();
+        assert!(matches!(
+            store.migrate_synthetic_v1_to_v2(),
+            Err(StoreError::UnsupportedSchema)
+        ));
+        let version: i64 = store.conn.pragma_query_value(
+            None, "user_version", |row| row.get(0),
+        ).unwrap();
+        assert_eq!(version, 1);
     }
 
     #[test]
