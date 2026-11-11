@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   COPILOT_PREVIEW_MESSAGE_PATH,
   isCopilotPreviewFocus,
@@ -116,4 +119,22 @@ test('reject overlong response, bad revision and unwanted extra commands', () =>
   ]) assert.throws(() => readCopilotPreviewReply({
     ...base, data: { ...base.data, ...data },
   }, focus), /invalid_response/);
+});
+
+test('Angular inspector is opt-in, accessible, and never configures external vendors', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const template = readFileSync(resolve(here, '../src/app/desktop-app.component.html'), 'utf8');
+  const component = readFileSync(resolve(here, '../src/app/desktop-app.component.ts'), 'utf8');
+  const injection = readFileSync(resolve(here, '../src/app/copilot-preview-token.ts'), 'utf8');
+  const csp = JSON.parse(readFileSync(resolve(here, '../src-tauri/tauri.conf.json'), 'utf8'));
+  assert.match(template, /role="tab" id="tab-ai"/);
+  assert.match(template, /aria-live="polite"/);
+  assert.match(template, /\[disabled\]="!copilotConnected \|\| copilotBusy"/);
+  assert.match(template, /ai\.preview\.notice/);
+  assert.match(component, /inject\(VIRGOSTARS_COPILOT_PREVIEW_TRANSPORT, \{ optional: true \}\)/);
+  assert.match(component, /this\.invalidateCopilotRequest\(\)/);
+  assert.match(injection, /new InjectionToken/);
+  assert.match(csp.app.security.csp, /connect-src 'self'/);
+  assert.doesNotMatch(csp.app.security.csp, /api\.openai\.com|api\.anthropic\.com/);
+  assert.doesNotMatch(template, /apiKey|modelSelector|select.*provider/i);
 });
