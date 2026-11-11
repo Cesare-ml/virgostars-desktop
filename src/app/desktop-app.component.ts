@@ -70,9 +70,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ] as const;
   copilotFocus: CopilotPreviewFocus = { layer: 'NATAL', bodyId: 'VENUS' };
   copilotBusy = false;
+  copilotPreviewReady = false;
   copilotAnswer = '';
   copilotIllustrativeAspects = 0;
-  copilotStatus: MessageKey = 'ai.preview.ready';
+  copilotStatus: MessageKey = 'ai.preview.unconfigured';
 
   theme: UiTheme = 'light';
   locale: Locale = 'it';
@@ -94,13 +95,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
-  get copilotConnected(): boolean { return this.copilotTransport !== null; }
+  // Means the optional *local staging bridge* is configured, not cloud login.
+  get copilotConnected(): boolean { return this.copilotPreviewReady; }
   get copilotFocusKey(): string { return this.copilotFocus.layer + ':' + this.copilotFocus.bodyId; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
 
   ngAfterViewInit(): void {
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
+    void this.checkCopilotPreview();
     try {
       // No network fallback. Both Angular and generated test assets are embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');
@@ -117,6 +120,23 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     } catch (error) {
       this.renderError(error);
     }
+  }
+
+  private async checkCopilotPreview(): Promise<void> {
+    // A Tauri/Angular development build alone does not imply the Cargo
+    // command exists. The native status probe returns only a boolean and
+    // never sends account or test credentials into Angular.
+    if (!this.copilotTransport) return;
+    let configured = false;
+    try {
+      configured = await this.copilotTransport.isAvailable();
+    } catch {
+      configured = false;
+    }
+    if (this.destroyed) return;
+    this.copilotPreviewReady = configured === true;
+    this.copilotStatus = configured ? 'ai.preview.ready' : 'ai.preview.unconfigured';
+    this.cd.markForCheck();
   }
 
   private async checkRuntime(): Promise<void> {
@@ -211,7 +231,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.copilotBusy = false;
     this.copilotAnswer = '';
     this.copilotIllustrativeAspects = 0;
-    this.copilotStatus = 'ai.preview.ready';
+    this.copilotStatus = this.copilotConnected ? 'ai.preview.ready' : 'ai.preview.unconfigured';
     this.mode = mode;
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
@@ -248,14 +268,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.copilotBusy = false;
     this.copilotAnswer = '';
     this.copilotIllustrativeAspects = 0;
-    this.copilotStatus = 'ai.preview.ready';
+    this.copilotStatus = this.copilotConnected ? 'ai.preview.ready' : 'ai.preview.unconfigured';
     this.cd.markForCheck();
   }
 
   async askCopilotPreview(): Promise<void> {
     // This preview never sends a real chart, birth data, notes or arbitrary prompts.
     // Without the optional native authenticated transport the button stays disabled.
-    if (this.destroyed || this.copilotTransport === null) return;
+    if (this.destroyed || this.copilotTransport === null || !this.copilotConnected) return;
     this.invalidateCopilotRequest();
     const ticket = this.copilotRequestRevision;
     const controller = new AbortController();
