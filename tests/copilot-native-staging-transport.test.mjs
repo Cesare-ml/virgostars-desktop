@@ -194,6 +194,20 @@ test('native failure is sanitized; no environment, token or service details reac
   );
 });
 
+test('native HTTP concurrency is bounded across readiness and preview commands', () => {
+  const rust = read('src-tauri/src/copilot_staging_bridge.rs');
+  assert.match(rust, /static STAGING_HTTP_IN_FLIGHT: AtomicBool = AtomicBool::new\(false\)/);
+  assert.match(rust, /compare_exchange\(false, true, Ordering::Acquire, Ordering::Relaxed\)/);
+  assert.match(rust, /impl Drop for StagingHttpPermit<'_>/);
+  assert.match(rust, /self\.gate\.store\(false, Ordering::Release\)/);
+  // GET /capabilities returns false if the single native slot is busy.
+  assert.match(rust, /None => return false,/);
+  // POST returns a generic local error without spawning another request.
+  assert.match(rust, /ok_or_else\(\|\| "copilot_staging_busy"\.to_owned\(\)\)/);
+  assert.equal((rust.match(/StagingHttpPermit::acquire\(&STAGING_HTTP_IN_FLIGHT\)/g) || []).length, 2);
+  assert.match(rust, /fn native_http_guard_limits_overlap_and_recovers_after_drop\(\)/);
+});
+
 test('release builds omit the staging command; Angular development-only wiring', () => {
   const lib = read('src-tauri/src/lib.rs');
   const command = read('src-tauri/src/copilot_staging_bridge.rs');
