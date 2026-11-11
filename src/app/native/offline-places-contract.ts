@@ -1,0 +1,103 @@
+/**
+ * Read-only offline city search contract shared with the Rust Tauri command.
+ * Only bounded result lists cross IPC. City sources stay on local disk.
+ */
+export interface OfflinePlaceV1 {
+  readonly id: number;
+  readonly name: string;
+  readonly italianName: string | null;
+  readonly latMicro: number;
+  readonly lngMicro: number;
+  readonly population: number | null;
+  readonly stateId: number | null;
+  readonly region: string | null;
+  readonly timeZone: string | null;
+}
+
+export type PlaceQueryState =
+  | Readonly<{kind: 'ready'; items: readonly OfflinePlaceV1[]}>
+  | Readonly<{kind: 'query_too_short' | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable' | 'stale'; items: readonly []}>;
+
+export interface PlaceSearchTransport {
+  isNative(): boolean;
+  invoke(command: 'search_offline_places', args: {query: string; limit: number}): Promise<unknown>;
+}
+
+function object(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
+function optionalString(x: unknown): x is string | null {
+  return x === null || (typeof x === 'string' && x.length <= 255);
+}
+function int(x: unknown): x is number {
+  return Number.isSafeInteger(x);
+}
+function optionalInt(x: unknown): x is number | null {
+  return x === null || int(x);
+}
+
+export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1[] {
+  if (!object(raw) || raw['protocolVersion'] !== 1 || !Array.isArray(raw['items']) ||
+      raw['items'].length > 30) {
+    throw new Error('Invalid offline place protocol');
+  }
+  const ids = new Set<number>();
+  return raw['items'].map((input: unknown) => {
+    if (!object(input) ||
+        !int(input['id']) || input['id'] <= 0 || ids.has(input['id']) ||
+        typeof input['name'] !== 'string' || !input['name'].trim() || input['name'].length > 255 ||
+        !optionalString(input['italianName']) ||
+        !int(input['latMicro']) || Math.abs(input['latMicro']) > 90_000_000 ||
+        !int(input['lngMicro']) || Math.abs(input['lngMicro']) > 180_000_000 ||
+        !optionalInt(input['population']) || (input['population'] !== null && input['population'] < 0) ||
+        !optionalInt(input['stateId']) || (input['stateId'] !== null && input['stateId'] < 0) ||
+        !optionalString(input['region']) || !optionalString(input['timeZone'])) {
+      throw new Error('Invalid offline place record');
+    }
+    ids.add(input['id']);
+    return {
+      id: input['id'], name: input['name'], italianName: input['italianName'],
+      latMicro: input['latMicro'], lngMicro: input['lngMicro'],
+      population: input['population'], stateId: input['stateId'],
+      region: input['region'], timeZone: input['timeZone'],
+    };
+  });
+}
+
+/**
+ * Latest request wins. The view can update the typed search text immediately,
+ * while all stale native results/errors are ignored.
+ * Caller should debounce input (e.g. 120 ms) before invoking this method.
+ */
+export class OfflinePlaceSearch {
+  private generation = 0;
+  private disposed = false;
+
+  constructor(private readonly transport: PlaceSearchTransport) {}
+
+  async search(query: string, limit = 12): Promise<PlaceQueryState> {
+    if (this.disposed) return {kind: 'stale', items: []};
+    const ticket = ++this.generation;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 30) {
+      return {kind: 'unavailable', items: []};
+    }
+    if (query.trim().length < 2 || [...query].length > 80) {
+      return {kind: 'query_too_short', items: []};
+    }
+    try {
+      if (!this.transport.isNative()) return {kind: 'not_native', items: []};
+      const raw = await this.transport.invoke('search_offline_places', {query, limit});
+      if (ticket !== this.generation || this.disposed) return {kind: 'stale', items: []};
+      return {kind: 'ready', items: decodeOfflinePlaceResults(raw)};
+    } catch (error: unknown) {
+      if (ticket !== this.generation || this.disposed) return {kind: 'stale', items: []};
+      const code = String(error);
+      if (code === 'PLACE_SEARCH_BUSY') return {kind: 'busy', items: []};
+      if (code === 'PLACE_CATALOG_UNAVAILABLE') return {kind: 'catalog_unavailable', items: []};
+      // Never propagate Rust file paths, SQL texts, stack traces or user data.
+      return {kind: 'unavailable', items: []};
+    }
+  }
+  clear(): void { this.generation++; }
+  dispose(): void { this.disposed = true; this.clear(); }
+}
