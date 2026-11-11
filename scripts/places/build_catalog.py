@@ -194,7 +194,7 @@ def search_catalog(database: Path, text: str, limit: int = 20) -> list[dict]:
     if not words or not (1 <= limit <= 100):
         return []
     query = " ".join('"' + word.replace('"', '""') + '"*' for word in words[:5])
-    connection = sqlite3.connect(f"file:{database.resolve().as_posix()}?mode=ro", uri=True)
+    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute("""
