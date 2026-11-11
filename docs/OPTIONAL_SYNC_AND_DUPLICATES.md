@@ -1,7 +1,7 @@
 # Optional VirgoStars login, local archive and no-loss synchronization
 
 **Approved direction 2026-11-11. Status: DESIGN ONLY; no authentication, online sync or real-profile migration implemented.**
-The app must be fully usable as a **guest/local-only program** from first launch onward. An optional VirgoStars account provides cloud backup and multi-device synchronization, not permission to use the core program.
+The app must be fully usable as a **guest/local-only program, without an account**, from first launch onward. An optional VirgoStars account provides cloud backup and multi-device synchronization, not permission to use the core program.
 
 ## Initial state machine — reverse the old mandatory-login assumption
 
