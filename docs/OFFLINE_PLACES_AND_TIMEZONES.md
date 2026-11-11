@@ -11,6 +11,10 @@
 - The clock's location comes from the user's saved default place. Do not query precise GPS or infer location without explicit consent. When first opening offline with no place, still display system time and request a place before claiming an accurate house/Ascendant chart.
 - If online, offer **optional** search/refresh for cities missing from the local index. The offline catalog is the default and continues to work if a web request fails. The online API must be explicitly approved and rate-limited; a server account/login must not be required to use core geocoding.
 
+## 2026-11-11 schema evidence and sizing guide
+
+Owner-provided PostgreSQL sample shows `id`, `nome`, `nome_it`, `lat`, `lng`, `pop`, `stato_id`, `regione`, `tz` and `tz_offs`. The owner confirms the acquired dataset is usable for the project; exact distribution notice/provenance should be recorded before the free desktop release. The appropriate next step is **not to reject the full 1,951,599-row source because of an unmeasured 1 GB guess**: run the read-only PostgreSQL size inspection and privately benchmark a slim indexed SQLite export. See [Owned City Catalog Sizing](OWNED_CITY_CATALOG_SIZING.md).
+
 ## 2026-11-11 evaluation update — existing purchased city collection
 
 The maintainer owns a previously purchased **PostgreSQL collection containing 1,951,599 city records worldwide**. This is a **candidate source**, not permission to embed or publish it. We have **not** inspected the actual purchased dataset, its fields, license, indexes or measured size. The previous frontend's city record shape (city, lat/lon, country, region, timezone ID/offset) is only contextual evidence of UI expectations; do not assume the purchased PostgreSQL schema matches.
