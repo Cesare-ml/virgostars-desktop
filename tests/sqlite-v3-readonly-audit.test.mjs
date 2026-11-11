@@ -78,12 +78,20 @@ function audit(db,limit=MAX){
   for(const d of decisions){
    if(!sid(d.replacement_mutation_id)||fingerprint(request(d,true))!==d.original_fingerprint)throw Error('archived fingerprint mismatch');
    if(!d.remote_revision||d.remote_revision.length>128||! /^[\x20-\x7e]+$/.test(d.remote_revision))throw Error('invalid remote revision');
-   if(find(outbox,'mutation_id',d.original_mutation_id,d.profile_id))throw Error('retired original is queued');
+   if(find(outbox,'mutation_id',d.original_mutation_id,d.profile_id)||find(acks,'mutation_id',d.original_mutation_id,d.profile_id))throw Error('retired original is still active');
    const repl=find(outbox,'mutation_id',d.replacement_mutation_id,d.profile_id);
    if(repl){
     if(repl.entity_type!==d.entity_type||repl.entity_id!==d.entity_id||repl.operation!==d.original_operation||
       repl.payload_json!==d.original_payload_json||repl.base_server_revision!==d.remote_revision||repl.created_at_utc!==d.decided_at_utc)throw Error('requeued snapshot changed');
-   } else if(!find(acks,'mutation_id',d.replacement_mutation_id,d.profile_id)&&!find(decisions,'original_mutation_id',d.replacement_mutation_id,d.profile_id))throw Error('orphan replacement');
+   } else {
+    const ack=find(acks,'mutation_id',d.replacement_mutation_id,d.profile_id);
+    if(ack){if(ack.entity_type!==d.entity_type||ack.entity_id!==d.entity_id)throw Error('ACK belongs to different subject');}
+    else {
+      const chain=find(decisions,'original_mutation_id',d.replacement_mutation_id,d.profile_id);
+      if(!chain)throw Error('orphan replacement');
+      if(chain.entity_type!==d.entity_type||chain.entity_id!==d.entity_id||chain.original_operation!==d.original_operation||chain.original_payload_json!==d.original_payload_json||chain.original_base_server_revision!==d.remote_revision||chain.original_created_at_utc!==d.decided_at_utc)throw Error('inconsistent decision chain');
+    }
+   }
   }
   db.exec('COMMIT');return {outbox_rows:outbox.length,acknowledgements:acks.length,decision_rows:decisions.length};
  }catch(e){db.exec('ROLLBACK');throw e;}
@@ -97,4 +105,6 @@ test('ACK and outbox sharing same mutation ID is caught',()=>{const db=open();tr
 test('changing replacement base revision after decision is caught',()=>{const db=open();try{keepLocal(db);db.prepare('UPDATE local_outbox SET base_server_revision=? WHERE mutation_id=?').run('rev-forged',NEW);assert.throws(()=>audit(db),/requeued snapshot changed/);}finally{db.close();}});
 test('changing queued replacement ID to retired original bypasses insert trigger but is audited',()=>{const db=open();try{keepLocal(db);db.prepare('UPDATE local_outbox SET mutation_id=? WHERE mutation_id=?').run(OLD,NEW);assert.throws(()=>audit(db),/retired original is queued|overlapping mutation/);}finally{db.close();}});
 test('ACKed replacement is valid terminal and audit returns counts',()=>{const db=open();try{keepLocal(db);db.prepare('DELETE FROM local_outbox WHERE mutation_id=?').run(NEW);db.prepare("INSERT INTO local_ack_ledger(profile_id,mutation_id,entity_type,entity_id,request_fingerprint,result,server_revision,acknowledged_at_utc) VALUES (?,?, 'subject',?,?, 'accepted','rev-final',?)").run(PROFILE,NEW,ENTITY,'a'.repeat(64),DECIDED);assert.deepEqual(audit(db),{outbox_rows:0,acknowledgements:1,decision_rows:1});}finally{db.close();}});
+test('retired original ID cannot simultaneously be acknowledged',()=>{const db=open();try{keepLocal(db);db.prepare("INSERT INTO local_ack_ledger(profile_id,mutation_id,entity_type,entity_id,request_fingerprint,result,server_revision,acknowledged_at_utc) VALUES (?,?, 'subject',?,?, 'accepted','rev-forged',?)").run(PROFILE,OLD,ENTITY,'a'.repeat(64),DECIDED);assert.throws(()=>audit(db),/retired original is still active/);}finally{db.close();}});
+test('acked replacement cannot point to a different entity',()=>{const db=open();try{keepLocal(db);db.prepare('DELETE FROM local_outbox WHERE mutation_id=?').run(NEW);db.prepare("INSERT INTO local_ack_ledger(profile_id,mutation_id,entity_type,entity_id,request_fingerprint,result,server_revision,acknowledged_at_utc) VALUES (?,?, 'subject',?,?, 'accepted','rev-forged',?)").run(PROFILE,NEW,'synthetic-other','a'.repeat(64),DECIDED);assert.throws(()=>audit(db),/ACK belongs to different subject/);}finally{db.close();}});
 test('bounds prevent silently partial audit',()=>{const db=open();try{assert.throws(()=>audit(db,0),/over limit/);}finally{db.close();}});
