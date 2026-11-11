@@ -188,6 +188,93 @@ fn validate_preview_envelope(value: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// Defense-in-depth at the native-to-WebView boundary: accept only the
+/// server-owned synthetic FACT_ONLY preview and build a new allowlisted JSON
+/// envelope. Never relay arbitrary server keys (for example tokens, prompts,
+/// unapproved commands or private chart material) into the Angular WebView.
+fn project_preview_envelope(value: &Value, expected: &Focus) -> Result<Value, &'static str> {
+    const INVALID: &str = "copilot_staging_unexpected_response";
+    validate_preview_envelope(value)?;
+    if value.get("methodApproved").and_then(Value::as_bool) != Some(false)
+        || value.get("contentOrigin").and_then(Value::as_str) != Some("DETERMINISTIC_FACT")
+        || value.get("providerCostUsd").and_then(Value::as_f64) != Some(0.0)
+    {
+        return Err(INVALID);
+    }
+    let disclosure = value.get("disclosures").ok_or(INVALID)?;
+    if disclosure.get("birthDataIncluded").and_then(Value::as_bool) != Some(false)
+        || disclosure.get("personalChartIncluded").and_then(Value::as_bool) != Some(false)
+        || disclosure.get("aiGeneratedTextPresent").and_then(Value::as_bool) != Some(false)
+    {
+        return Err(INVALID);
+    }
+    let data = value.get("data").ok_or(INVALID)?;
+    let answer = data.get("answer").and_then(Value::as_str).ok_or(INVALID)?;
+    let answer_units = answer.encode_utf16().count();
+    if answer.trim().is_empty() || answer_units > 4000 {
+        return Err(INVALID);
+    }
+    // Revisions must round-trip as exact integers into JavaScript.
+    let revision = data.get("chartRevision").and_then(Value::as_u64).ok_or(INVALID)?;
+    if revision > 9_007_199_254_740_991 {
+        return Err(INVALID);
+    }
+    if data.get("source").and_then(Value::as_str) != Some("MOCK_DETERMINISTIC") {
+        return Err(INVALID);
+    }
+    let remote_focus = data.get("focus").ok_or(INVALID)?;
+    if remote_focus.get("layer").and_then(Value::as_str) != Some(expected.layer.as_str())
+        || remote_focus.get("bodyId").and_then(Value::as_str) != Some(expected.body_id.as_str())
+    {
+        return Err(INVALID);
+    }
+    let commands = data.get("chartCommands").and_then(Value::as_array).ok_or(INVALID)?;
+    if commands.len() != 1 {
+        return Err(INVALID);
+    }
+    let command = &commands[0];
+    if command.get("type").and_then(Value::as_str) != Some("chart.highlightAspects") {
+        return Err(INVALID);
+    }
+    let aspects = command.get("aspectIds").and_then(Value::as_array).ok_or(INVALID)?;
+    if aspects.len() > 80 {
+        return Err(INVALID);
+    }
+    let mut unique = std::collections::HashSet::new();
+    let mut aspect_ids = Vec::with_capacity(aspects.len());
+    for raw in aspects {
+        let id = raw.as_str().ok_or(INVALID)?;
+        let suffix = id.strip_prefix("synthetic:").ok_or(INVALID)?;
+        if suffix.is_empty()
+            || suffix.len() > 96
+            || !suffix.bytes().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == b':' || ch == b'-')
+            || !unique.insert(id)
+        {
+            return Err(INVALID);
+        }
+        aspect_ids.push(id.to_owned());
+    }
+    Ok(json!({
+        "contract": "VirgoStarsCopilotMockPreviewEnvelope",
+        "version": "0.1.0",
+        "stage": "STAGING_SYNTHETIC",
+        "syntheticFixture": true,
+        "astrologyIsReal": false,
+        "methodApproved": false,
+        "providerInvoked": false,
+        "interpretationStatus": "FACT_ONLY",
+        "data": {
+            "answer": answer,
+            "chartRevision": revision,
+            "source": "MOCK_DETERMINISTIC",
+            "focus": { "layer": expected.layer.as_str(), "bodyId": expected.body_id.as_str() },
+            // Synthetic identifiers are display-only in Angular; never applied
+            // to the actual chart renderer.
+            "chartCommands": [{ "type": "chart.highlightAspects", "aspectIds": aspect_ids }]
+        }
+    }))
+}
+
 #[tauri::command]
 pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
     if !focus.allowed() {
@@ -209,7 +296,7 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
     let client = staging_http_client().map_err(str::to_owned)?;
     let payload = json!({
         "action": "describe_focus",
-        "focus": { "layer": focus.layer, "bodyId": focus.body_id }
+        "focus": { "layer": focus.layer.as_str(), "bodyId": focus.body_id.as_str() }
     });
     let response = client
         .post(endpoint)
@@ -229,8 +316,7 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
         _ => return Err("copilot_staging_backend_unavailable".into()),
     }
     let envelope = bounded_json(response).await.map_err(str::to_owned)?;
-    validate_preview_envelope(&envelope).map_err(str::to_owned)?;
-    Ok(envelope)
+    project_preview_envelope(&envelope, &focus).map_err(str::to_owned)
 }
 
 #[cfg(test)]
