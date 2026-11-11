@@ -47,7 +47,7 @@ The country-enriched package uses `catalog_meta.schemaVersion=2` and adds a comp
 
 **Without `--countries-csv`**, the prior v1 pack remains available. Rust continues reading v1 with `countryName: null` and `countryCode: null`, never guessing. Rust v2 uses a fixed `LEFT JOIN country_lookup` query, while Angular shows the mapped country name only when present. The TypeScript decoder accepts old v1 responses as well as new fields and validates ISO2 codes.
 
-The chosen city is still an **unsaved preview** and does not yet compute a real chart. Persisting selected country, coordinates, IANA timezone and a stable source ID in the local guest archive requires a separate storage integration.
+The chosen city is still an **unsaved preview** and does not yet compute a real chart. Switching inspector tabs restores the temporary selection, but closing the app still loses it; this is intentional until the guest archive is integrated. Persisting selected country, coordinates, IANA timezone and a stable source ID in the local guest archive requires a separate storage integration.
 
 ## Tests and acceptance
 
