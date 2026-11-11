@@ -59,6 +59,42 @@ test('native bridge forwards only fixed focus, not URL, API key, model or user t
   }
 });
 
+test('local readiness probe is boolean-only and does not transfer a token', async () => {
+  const calls = [];
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke(command, args) {
+      calls.push({ command, args });
+      return true;
+    },
+  });
+  assert.equal(await transport.isAvailable(), true);
+  assert.deepEqual(calls, [{ command: 'copilot_staging_ready', args: undefined }]);
+});
+
+test('missing debug feature or staging configuration leaves preview unavailable', async () => {
+  const disabled = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke(command) {
+      assert.equal(command, 'copilot_staging_ready');
+      return false;
+    },
+  });
+  assert.equal(await disabled.isAvailable(), false);
+  const commandMissing = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { throw new Error('unknown IPC command with sensitive details'); },
+  });
+  assert.equal(await commandMissing.isAvailable(), false);
+  let called = false;
+  const browser = createNativeCopilotStagingTransport({
+    isNative: () => false,
+    async invoke() { called = true; return true; },
+  });
+  assert.equal(await browser.isAvailable(), false);
+  assert.equal(called, false);
+});
+
 test('browser and remote request injection fail before native invocation', async () => {
   let called = 0;
   const native = {
@@ -140,12 +176,18 @@ test('release builds omit the staging command; Angular development-only wiring',
   assert.match(lib, /cfg\(all\(debug_assertions, feature = "copilot-staging"\)\)/);
   assert.match(lib, /cfg\(not\(all\(debug_assertions, feature = "copilot-staging"\)\)\)/);
   assert.match(lib, /copilot_staging_bridge::copilot_staging_preview/);
+  assert.match(lib, /copilot_staging_bridge::copilot_staging_ready/);
   assert.match(cargo, /copilot-staging\s*=\s*\["dep:reqwest"\]/);
   assert.match(command, /host_str\(\) != Some\("127\.0\.0\.1"\)/);
   assert.match(command, /Policy::none\(\)/);
+  assert.match(command, /\.no_proxy\(\)/);
   assert.match(command, /MAX_RESPONSE_BYTES/);
   assert.match(main, /isDevMode\(\) && isTauri\(\)/);
   assert.match(main, /VIRGOSTARS_COPILOT_PREVIEW_TRANSPORT/);
+  const component = read('src/app/desktop-app.component.ts');
+  assert.match(component, /await this\.copilotTransport\.isAvailable\(\)/);
+  assert.match(component, /this\.copilotPreviewReady = configured === true/);
+  assert.match(component, /!this\.copilotConnected\) return/);
   assert.match(config.app.security.csp, /connect-src 'self'/);
   assert.doesNotMatch(config.app.security.csp, /api\.openai\.com|api\.anthropic\.com/);
 });
