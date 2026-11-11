@@ -64,7 +64,8 @@ if (-not $SkipNode) {
             "--experimental-sqlite", "--test",
             (Join-Path $repo "tests\sqlite-outbox-reference.test.mjs"),
             (Join-Path $repo "tests\sqlite-schema-gate-reference.test.mjs"),
-            (Join-Path $repo "tests\sqlite-dependent-revisions.test.mjs")
+            (Join-Path $repo "tests\sqlite-dependent-revisions.test.mjs"),
+            (Join-Path $repo "tests\sqlite-ack-ledger.test.mjs")
         )
     }
 }
