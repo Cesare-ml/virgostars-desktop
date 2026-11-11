@@ -183,6 +183,25 @@ test('abort during native HTTP ignores stale response; no native cancel guarante
   await assert.rejects(transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, ctrl.signal), /cancelled/);
 });
 
+test('native single-flight busy gets one safe status but arbitrary IPC errors stay redacted', async () => {
+  const busy = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { throw 'copilot_staging_busy'; },
+  });
+  await assert.rejects(
+    busy.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+    error => error.message === 'copilot_preview_busy',
+  );
+  const forged = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { throw 'copilot_staging_busy plus SECRET_TOKEN'; },
+  });
+  await assert.rejects(
+    forged.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+    error => error.message === 'copilot_preview_native_unavailable',
+  );
+});
+
 test('native failure is sanitized; no environment, token or service details reach UI', async () => {
   const transport = createNativeCopilotStagingTransport({
     isNative: () => true,
@@ -241,6 +260,9 @@ test('release builds omit the staging command; Angular development-only wiring',
   assert.match(component, /await this\.copilotTransport\.isAvailable\(\)/);
   assert.match(component, /this\.copilotPreviewReady = available === true/);
   assert.match(component, /recheckCopilotPreview\(\): void/);
+  assert.match(component, /'copilot_preview_busy'/);
+  const translations = read('src/app/translations.ts');
+  assert.match(translations, /"ai\.preview\.busy":/);
   assert.match(component, /this\.copilotProbeBusy = true/);
   const template = read('src/app/desktop-app.component.html');
   assert.match(template, /\(click\)="recheckCopilotPreview\(\)"/);
