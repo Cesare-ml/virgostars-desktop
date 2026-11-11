@@ -13,6 +13,8 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { OfflineCityPickerComponent } from './offline-city-picker.component';
+import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { classifyStyleHealth, measureStyleHealth, type StyleHealthCode } from './style-health';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
@@ -32,7 +34,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule],
+  imports:[CommonModule,OfflineCityPickerComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -62,6 +64,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   mode: ChartMode = 'natal';
   inspectorTab: InspectorTab = 'planets';
   selectedPlanet: DemoPlanet | null = null;
+  selectedCity: OfflinePlaceV1 | null = null;
   navCollapsed = false;
   inspectorCollapsed = false;
   busy = true;
@@ -193,6 +196,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   setInspectorTab(tab:InspectorTab): void {
     this.inspectorTab = tab;
+    this.cd.markForCheck();
+  }
+  selectOfflineCity(place:OfflinePlaceV1): void {
+    // Local picker selection does not rewrite synthetic chart positions.
+    this.selectedCity = place;
+    this.cd.markForCheck();
+  }
+  clearOfflineCity(): void {
+    this.selectedCity = null;
     this.cd.markForCheck();
   }
   selectPlanet(name:DemoPlanet): void {
