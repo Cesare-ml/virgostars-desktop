@@ -137,6 +137,34 @@ fn validate_schema_v2(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Prevent this test-only migration from touching a non-fictional profile,
+/// even if an external encrypted file happens to have the expected v1 DDL.
+/// Run the check inside BEGIN IMMEDIATE so identifiers cannot change between
+/// verification and the migration transaction.
+fn validate_synthetic_fixture_rows(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT profile_id, NULL AS entity_id, NULL AS mutation_id FROM local_profiles
+         UNION ALL SELECT profile_id, entity_id, NULL FROM local_entities
+         UNION ALL SELECT profile_id, entity_id, mutation_id FROM local_outbox
+         UNION ALL SELECT profile_id, NULL, NULL FROM local_sync_cursors"
+    ).map_err(storage_error)?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?))
+    }).map_err(storage_error)?;
+    for row in rows {
+        let (profile, entity, mutation) = row.map_err(storage_error)?;
+        if !synthetic_id(&profile)
+            || entity.as_ref().is_some_and(|id| !synthetic_id(id))
+            || mutation.as_ref().is_some_and(|id| !synthetic_id(id))
+        {
+            return Err(StoreError::InvalidSyntheticInput);
+        }
+    }
+    Ok(())
+}
+
 impl SyntheticEncryptedStore {
     pub fn open(path: &Path, key: &StoreKey) -> Result<Self> {
         // Best-effort symlink guard for a test-only path. Production must use
@@ -272,6 +300,7 @@ impl SyntheticEncryptedStore {
         validate_schema_v1(&self.conn)?;
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(storage_error)?;
+        validate_synthetic_fixture_rows(&tx)?;
         tx.execute_batch(SCHEMA_V2).map_err(storage_error)?;
         // Every mutation, cursor and profile must survive; DDL, indexes and
         // FK integrity are validated before committing the migration.
@@ -582,6 +611,29 @@ mod tests {
         validate_schema_v1(&reopened.conn).unwrap();
         assert_eq!(reopened.pending_synthetic_ids("synthetic-a", 10).unwrap(),
             ["synthetic-m1"]);
+    }
+
+    #[test]
+    fn synthetic_migration_rejects_any_nonfictional_profile_rows() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("fictional-safety-gate.db");
+        let key = test_key(34);
+        let mut store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+        // Bypass the fixture-only public methods to simulate a foreign file
+        // with otherwise valid encrypted SQLCipher v1 tables.
+        store.conn.execute(
+            "INSERT INTO local_profiles(profile_id) VALUES ('actual-account-id')", [],
+        ).unwrap();
+        assert!(matches!(
+            store.migrate_synthetic_v1_to_v2(),
+            Err(StoreError::InvalidSyntheticInput)
+        ));
+        validate_schema_v1(&store.conn).unwrap();
+        let ledger: Option<String> = store.conn.query_row(
+            "SELECT name FROM sqlite_master WHERE name='local_ack_ledger'",
+            [], |row| row.get(0),
+        ).optional().unwrap();
+        assert!(ledger.is_none());
     }
 
     #[test]
