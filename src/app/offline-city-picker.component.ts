@@ -1,5 +1,5 @@
 import {CommonModule} from '@angular/common';
-import {ChangeDetectorRef, Component, EventEmitter, Input, OnDestroy, Output, inject} from '@angular/core';
+import {ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject} from '@angular/core';
 import {offlinePlaceSearch} from './native/offline-places';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {OfflineCityPickerState, type CityPickerStatus} from './offline-city-picker-state';
@@ -19,12 +19,19 @@ const STATUS_KEYS: Record<CityPickerStatus, MessageKey> = {
   templateUrl:'./offline-city-picker.component.html',
   styleUrls:['./offline-city-picker.component.css']
 })
-export class OfflineCityPickerComponent implements OnDestroy {
+export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   @Input() locale: Locale = 'it';
+  @Input() selectedPlace: OfflinePlaceV1 | null = null;
   @Output() readonly locationSelected = new EventEmitter<OfflinePlaceV1>();
   @Output() readonly locationEdited = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);
   readonly state = new OfflineCityPickerState(offlinePlaceSearch, () => this.cd.markForCheck());
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // Closing/reopening inspector tabs destroys this component, not the parent
+    // selection. Restore its verified source ID/coordinates in the temporary UI.
+    if (changes['selectedPlace'] && this.selectedPlace) this.state.restore(this.selectedPlace);
+  }
 
   t(key: MessageKey): string { return translate(this.locale,key); }
   get message(): string { return this.t(STATUS_KEYS[this.state.status]); }
