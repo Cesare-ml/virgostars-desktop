@@ -4,6 +4,10 @@
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
 
+## Source country labels for offline city results
+
+The city source has `stato_id` as an internal foreign key; **country labels must be imported from the owner's actual related lookup table**, not inferred. An optional `--countries-csv` now produces an enriched v2 SQLite resource with validated name/ISO2, while v1 remains readable. See [Country Lookup](docs/OWNED_COUNTRY_LOOKUP.md). The purchased country data are **not in GitHub**, and full native search/installer validation is pending.
+
 ## Preparing the complete offline city catalog
 
 The purchased **1,951,599-city** reference database is intended to ship with the Windows installer after a private, validated PostgreSQL CSV → SQLite conversion.
