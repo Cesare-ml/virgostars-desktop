@@ -60,6 +60,18 @@ if (-not $SkipNode) {
         $failures.Add("Node synthetic reference tests")
         Write-Warning "Node.js missing; reference tests were not run."
     } else {
+        $tsc = Get-Command tsc -ErrorAction SilentlyContinue
+        if ($null -eq $tsc) {
+            $failures.Add("TypeScript strict ACK contract")
+            Write-Warning "TypeScript compiler missing; the shared ACK contract cannot be type-checked."
+        } else {
+            Run-Gate "TypeScript strict ACK contract" "tsc" @(
+                "--target", "es2022", "--module", "nodenext",
+                "--moduleResolution", "nodenext", "--lib", "es2022,dom",
+                "--strict", "--noEmit", "--skipLibCheck",
+                (Join-Path $repo "contracts\sync\ack-fingerprint-001.ts")
+            )
+        }
         Run-Gate "SQLite synthetic persistence + schema references" "node" @(
             "--experimental-sqlite", "--experimental-strip-types", "--test",
             (Join-Path $repo "tests\sqlite-outbox-reference.test.mjs"),
