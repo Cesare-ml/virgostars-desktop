@@ -64,8 +64,11 @@ export function createNativeCopilotStagingTransport(
         });
         if (signal.aborted) throw failure('copilot_preview_cancelled');
         return response;
-      } catch {
+      } catch (error: unknown) {
         if (signal.aborted) throw failure('copilot_preview_cancelled');
+        // Only this exact local Rust error is safe to classify separately.
+        // Never echo arbitrary IPC errors (which may include native details).
+        if (error === 'copilot_staging_busy') throw failure('copilot_preview_busy');
         throw failure('copilot_preview_native_unavailable');
       }
     },
