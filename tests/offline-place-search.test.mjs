@@ -142,3 +142,37 @@ test('Rust native command is registered and only read-only local resource path i
   assert.match(cargo,/rusqlite\s*=\s*\{.*"bundled"/);
   assert.doesNotMatch(rust,/https?:\/\/|reqwest|Command::new|database_password/);
 });
+
+
+test('older v1 place payloads remain valid with unknown country fields',()=>{
+  const places=decodeOfflinePlaceResults(response);
+  assert.equal(places[0].countryName,null);
+  assert.equal(places[0].countryCode,null);
+});
+
+test('v2 places preserve explicit country mapping without assuming stateId is ISO',()=>{
+  const result=decodeOfflinePlaceResults({protocolVersion:1,items:[
+    {...city,countryName:'Costa Rica',countryCode:'CR'}
+  ]});
+  assert.equal(result[0].countryName,'Costa Rica');
+  assert.equal(result[0].countryCode,'CR');
+  assert.equal(result[0].stateId,12);
+});
+
+test('v2 country metadata rejects invalid codes and untrusted value types',()=>{
+  for(const candidate of [
+    {...city,countryName:123,countryCode:'IT'},
+    {...city,countryName:'Italy',countryCode:'ITA'},
+    {...city,countryName:'Italy',countryCode:'iT'},
+    {...city,countryName:'Italy',countryCode:{}},
+  ])assert.throws(()=>decodeOfflinePlaceResults({protocolVersion:1,items:[candidate]}));
+});
+
+test('Rust queries v1 and v2 resource schemas using fixed SQL branches',()=>{
+  const rust=readFileSync(new URL('../src-tauri/src/offline_places.rs',import.meta.url),'utf8');
+  assert.match(rust,/"1" => "WITH candidate AS/);
+  assert.match(rust,/"2" => "WITH candidate AS/);
+  assert.match(rust,/LEFT JOIN country_lookup/);
+  assert.match(rust,/country_name: row.get\(9\)/);
+  assert.match(rust,/country_code: row.get\(10\)/);
+});
