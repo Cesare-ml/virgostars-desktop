@@ -33,4 +33,4 @@
 The eventual repository should provide a Windows one-command bootstrap script and `npm run dev` with a synthetic/offline demo that does not need a VirgoStars account, any private upstream repository or a production database. Document required Node LTS, Rust toolchain, C++ Build Tools, WebView2 and commands in `docs/CONTRIBUTING.md` once code exists. This is a design requirement, not an available script yet.
 
 ## Status language
-Use **Proposed**, **Designed**, **Prototype**, **Locally tested**, **Integrated**, **Released** consistently. At present, this repository is in **Designed** state; no usable desktop app exists.
+Use **Proposed**, **Designed**, **Prototype**, **Locally tested**, **Integrated**, **Released** consistently. At present, the project remains **Designed** with an **experimental renderer/Tauri source spike** that has not passed real Windows build/WebView2 tests. No released or fully usable VirgoStars Desktop application exists.

@@ -9,9 +9,9 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 - [ ] Create minimal local developer quickstart with synthetic-only fixtures and pinned tool versions.
 
 ## Gate 1 — Tauri/Angular proof of concept (no real accounts)
-- [ ] Bootstrap Tauri 2 + Angular strict TypeScript + Rust, runnable on Windows.
+- [ ] Bootstrap Tauri 2 + desktop-owned Angular strict TypeScript + Rust, runnable on Windows. **Partial:** a Tauri 2 Rust host of the upstream Angular charts demo is in a stacked experimental PR; Windows compilation not yet tested.
 - [ ] Synthetic UI shell, tabbed chart workspace, keyboard-accessible navigation and settings.
-- [ ] Use genuine astrological-charts Three.js renderer on synthetic assets; test WebView2/WebGL, PNG output and context loss.
+- [ ] Use genuine astrological-charts Three.js renderer on synthetic assets; test WebView2/WebGL, PNG output and context loss. **Partial:** upstream demo reuse and an offline synthetic packaging script implemented; real desktop rendering not yet verified.
 - [ ] Rust IPC typed request/response fixture with deterministic astronomy result; no full-accuracy claims.
 - [ ] Confirm Tauri choice or record a measured Electron fallback; Windows installer smoke test.
 
