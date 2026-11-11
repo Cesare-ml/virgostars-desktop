@@ -411,6 +411,97 @@ mod tests {
         }
     }
 
+    fn synthetic_preview_fixture() -> Value {
+        json!({
+            "contract": "VirgoStarsCopilotMockPreviewEnvelope",
+            "version": "0.1.0",
+            "requestId": "server-request-id-is-not-forwarded",
+            "stage": "STAGING_SYNTHETIC",
+            "syntheticFixture": true,
+            "astrologyIsReal": false,
+            "methodApproved": false,
+            "providerInvoked": false,
+            "providerCostUsd": 0,
+            "contentOrigin": "DETERMINISTIC_FACT",
+            "interpretationStatus": "FACT_ONLY",
+            "disclosures": {
+                "notice": "fictional sample",
+                "birthDataIncluded": false,
+                "personalChartIncluded": false,
+                "aiGeneratedTextPresent": false
+            },
+            "data": {
+                "answer": "VENUS (NATAL). Aspetti presenti: 1. Demo FACT_ONLY.",
+                "chartRevision": 1,
+                "source": "MOCK_DETERMINISTIC",
+                "focus": { "layer": "NATAL", "bodyId": "VENUS" },
+                "chartCommands": [{
+                    "type": "chart.highlightAspects",
+                    "aspectIds": ["synthetic:transit:saturn:venus"]
+                }]
+            }
+        })
+    }
+
+    #[test]
+    fn preview_projects_only_allowlisted_fields_across_native_ipc() {
+        let mut input = synthetic_preview_fixture();
+        input["accessToken"] = json!("LEAK_SENTINEL");
+        input["data"]["privateChart"] = json!("PRIVATE_CHART_SENTINEL");
+        input["data"]["chartCommands"][0]["prompt"] = json!("DO_NOT_FORWARD");
+        let projected = project_preview_envelope(&input, &focus("NATAL", "VENUS"))
+            .expect("synthetic preview should validate");
+        assert_eq!(projected["data"]["answer"], input["data"]["answer"]);
+        assert_eq!(projected["data"]["focus"], input["data"]["focus"]);
+        assert_eq!(projected["data"]["chartCommands"], json!([{
+            "type": "chart.highlightAspects",
+            "aspectIds": ["synthetic:transit:saturn:venus"]
+        }]));
+        assert!(projected.get("requestId").is_none());
+        assert!(projected.get("accessToken").is_none());
+        assert!(projected.get("disclosures").is_none());
+        assert!(projected["data"].get("privateChart").is_none());
+        assert!(projected["data"]["chartCommands"][0].get("prompt").is_none());
+        assert_eq!(projected["interpretationStatus"], "FACT_ONLY");
+    }
+
+    #[test]
+    fn preview_refuses_wrong_focus_commands_and_flags() {
+        let baseline = synthetic_preview_fixture();
+        let expected = focus("NATAL", "VENUS");
+        assert!(project_preview_envelope(&baseline, &expected).is_ok());
+        assert!(project_preview_envelope(&baseline, &focus("NATAL", "SUN")).is_err());
+
+        let mut wrong = baseline.clone();
+        wrong["methodApproved"] = json!(true);
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["providerCostUsd"] = json!(1);
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["disclosures"]["birthDataIncluded"] = json!(true);
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["data"]["source"] = json!("REAL_MODEL");
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["data"]["chartRevision"] = json!(9_007_199_254_740_992_u64);
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["data"]["answer"] = json!("");
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["data"]["chartCommands"][0]["type"] = json!("chart.setTransitInstant");
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["data"]["chartCommands"][0]["aspectIds"] = json!(["real:aspect"]);
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        wrong = baseline.clone();
+        wrong["data"]["chartCommands"][0]["aspectIds"] =
+            json!(["synthetic:transit:saturn:venus", "synthetic:transit:saturn:venus"]);
+        assert!(project_preview_envelope(&wrong, &expected).is_err());
+    }
+
     #[test]
     fn preview_must_remain_synthetic_fact_only() {
         let valid = json!({
