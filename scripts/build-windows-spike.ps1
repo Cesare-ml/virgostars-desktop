@@ -26,6 +26,8 @@ try {
         npm run demo:pack
         if ($LASTEXITCODE -ne 0) { throw 'Synthetic asset generation failed.' }
     }
+    npm run build:library
+    if ($LASTEXITCODE -ne 0) { throw 'Charts library build failed.' }
     npm run build:demo
     if ($LASTEXITCODE -ne 0) { throw 'Charts demo build failed.' }
 }
@@ -37,9 +39,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Desktop npm install failed.' }
     npm test
     if ($LASTEXITCODE -ne 0) { throw 'Desktop Node tests failed.' }
+    npm run prepare:frontend
+    if ($LASTEXITCODE -ne 0) { throw 'Synthetic offline asset staging failed.' }
     npm run tauri:build
     if ($LASTEXITCODE -ne 0) { throw 'Tauri desktop build failed.' }
-    Write-Host 'Synthetic desktop build finished. Inspect src-tauri/target/release.'
+    Write-Host 'Desktop Angular shell + Tauri build attempted. Inspect src-tauri/target/release.'
     Write-Host 'This is NOT an installer or production release; test offline WebView2 rendering on Windows.'
 }
 finally { Pop-Location }

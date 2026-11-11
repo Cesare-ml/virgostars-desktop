@@ -1,21 +1,40 @@
 {
-  "name": "virgostars-desktop-spike",
+  "name": "virgostars-desktop",
   "version": "0.0.1",
   "private": true,
-  "description": "Private Tauri shell test using the real Astrological Charts Angular demo and synthetic offline assets",
+  "description": "Private experimental VirgoStars desktop Angular workstation with real Astrological Charts renderer",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
-    "check": "npm run test",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "check": "npm run test && npm run build:ui",
     "prepare:frontend": "node scripts/prepare-synthetic-frontend.mjs",
+    "prepare:icon": "node scripts/generate-spike-icon.mjs",
+    "start": "ng serve desktop --host 127.0.0.1 --port 4200",
+    "build:ui": "ng build desktop",
     "tauri:dev": "npm run prepare:icon && tauri dev",
-    "tauri:build": "npm run prepare:frontend && npm run prepare:icon && tauri build",
-    "prepare:icon": "node scripts/generate-spike-icon.mjs"
+    "tauri:build": "npm run build:ui && npm run prepare:icon && tauri build"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.2"
+    "@angular-devkit/build-angular": "20.3.5",
+    "@angular/cli": "20.3.5",
+    "@angular/compiler-cli": "20.3.35",
+    "@tauri-apps/cli": "2.12.2",
+    "@types/three": "0.170.0",
+    "typescript": "5.8.3"
   },
   "engines": {
     "node": "^22.12.0 || ^24.0.0"
+  },
+  "dependencies": {
+    "@angular/common": "20.3.35",
+    "@angular/core": "20.3.35",
+    "@angular/compiler": "20.3.35",
+    "@angular/platform-browser": "20.3.35",
+    "grafici-astrologici": "file:../astrological-charts/dist/grafici-astrologici",
+    "gsap": "^3.12.5",
+    "moment-timezone": "^0.5.46",
+    "rxjs": "^7.8.0",
+    "three": "0.170.0",
+    "tslib": "^2.8.1"
   }
 }

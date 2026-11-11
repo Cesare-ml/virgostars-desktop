@@ -1,0 +1,108 @@
+<div class="desktop-app" [attr.data-theme]="theme">
+  <header class="topbar">
+    <div class="brand" aria-label="VirgoStars Desktop">
+      <span class="brand-symbol" aria-hidden="true">✦</span>
+      <span class="brand-name">VirgoStars</span>
+      <span class="brand-edition">Desktop</span>
+    </div>
+    <div class="subject" aria-label="Synthetic demonstration chart">
+      <span class="subject-title">{{t('subject')}}</span>
+      <span class="subject-caption">{{t('fixture')}}</span>
+    </div>
+    <div class="top-actions">
+      <span class="lab-indicator">{{t('lab')}}</span>
+      <button type="button" class="small-control" [attr.aria-label]="t('language')" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button>
+      <button type="button" class="small-control" [attr.aria-label]="themeToggleLabel" [attr.title]="themeToggleLabel" (click)="toggleTheme()">{{theme === 'light' ? '☾' : '☼'}}</button>
+    </div>
+  </header>
+
+  <div class="workspace" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed">
+    <nav class="sidebar" [attr.aria-label]="t('navigation')">
+      <div class="sidebar-heading">
+        <span class="sidebar-label">{{t('navigation')}}</span>
+        <button type="button" class="sidebar-toggle" [attr.title]="t('navigation.toggle')" [attr.aria-label]="t('navigation.toggle')" [attr.aria-expanded]="!navCollapsed" (click)="toggleNavigation()">☷</button>
+      </div>
+      <div class="nav-list">
+        <button type="button" class="nav-item" *ngFor="let item of modes"
+          [class.selected]="mode===item"
+          [disabled]="busy"
+          [attr.title]="modeLabel(item)"
+          [attr.aria-current]="mode===item ? 'page' : null"
+          (click)="setMode(item)">
+          <span class="nav-mark" aria-hidden="true">{{item==='natal'?'◎':item==='transits'?'◉':item==='synastry'?'◇':'⊕'}}</span>
+          <span class="nav-label">{{modeLabel(item)}}</span>
+        </button>
+      </div>
+      <div class="nav-separator"></div>
+      <button type="button" class="nav-item" disabled [attr.title]="t('archive')">
+        <span class="nav-mark" aria-hidden="true">▤</span><span class="nav-label">{{t('archive')}}</span>
+      </button>
+      <button type="button" class="nav-item" disabled [attr.title]="t('research')">
+        <span class="nav-mark" aria-hidden="true">⌕</span><span class="nav-label">{{t('research')}}</span>
+      </button>
+      <div class="sidebar-bottom"><span class="sidebar-label">{{t('noaccount')}}</span><span class="nav-mark" aria-hidden="true">○</span></div>
+    </nav>
+
+    <main class="chart-panel">
+      <div class="chart-header">
+        <div><h1>{{modeLabel(mode)}}</h1><p>{{t('chart.status')}}</p></div>
+        <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
+          [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
+          (click)="toggleInspector()">☷</button>
+      </div>
+      <section class="chart-stage" #stage [attr.aria-label]="t('chart')">
+        <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
+        <span class="fixture-label">{{t('fixture')}}</span>
+        <div class="chart-message" *ngIf="busy" role="status">{{t('chart.loading')}}</div>
+        <p class="chart-error" *ngIf="error" role="alert">{{error}}</p>
+      </section>
+      <div class="chart-toolbar" role="toolbar" [attr.aria-label]="t('chart')">
+        <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
+        <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>
+        <button type="button" class="toolbar-button fit-button" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
+        <div class="toolbar-spacer"></div>
+        <span class="status-message" role="status">{{t(status)}}</span>
+        <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
+      </div>
+      <footer>{{t('footer')}}</footer>
+    </main>
+
+    <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
+      <div class="inspector-head">
+        <h2>{{t('inspector')}}</h2>
+        <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
+      </div>
+      <div class="inspector-tabs" role="tablist">
+        <button type="button" role="tab" id="tab-planets" aria-controls="inspector-content"
+          [attr.aria-selected]="inspectorTab==='planets'" (click)="setInspectorTab('planets')">{{t('tab.planets')}}</button>
+        <button type="button" role="tab" id="tab-houses" aria-controls="inspector-content"
+          [attr.aria-selected]="inspectorTab==='houses'" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
+        <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content"
+          [attr.aria-selected]="inspectorTab==='settings'" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
+      </div>
+      <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
+        <div *ngIf="inspectorTab==='planets'">
+          <p class="inspector-hint">{{t('planets.help')}}</p>
+          <div class="data-head"><span>{{t('tab.planets')}}</span><span>λ</span></div>
+          <button type="button" class="data-line" *ngFor="let planet of planets"
+            [class.active]="selectedPlanet===planet.name"
+            [attr.aria-pressed]="selectedPlanet===planet.name"
+            (click)="selectPlanet(planet.name)">
+            <span>{{planetLabel(planet.name)}}</span><span class="numeric">{{formatDegrees(planet.longitude)}}</span>
+          </button>
+        </div>
+        <div *ngIf="inspectorTab==='houses'">
+          <p class="inspector-hint">{{t('houses.help')}}</p>
+          <div class="data-head"><span>{{t('tab.houses')}}</span><span>λ</span></div>
+          <div class="data-line static" *ngFor="let house of houses"><span>{{house.number}}</span><span class="numeric">{{formatDegrees(house.longitude)}}</span></div>
+        </div>
+        <div *ngIf="inspectorTab==='settings'">
+          <p class="inspector-hint">{{t('settings.help')}}</p>
+          <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
+          <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
+          <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>

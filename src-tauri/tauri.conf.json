@@ -1,17 +1,17 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "VirgoStars Desktop Renderer Lab",
+  "productName": "VirgoStars Desktop Lab",
   "version": "0.0.1",
   "identifier": "it.virgostars.desktop.rendererlab",
   "build": {
     "devUrl": "http://127.0.0.1:4200",
-    "frontendDist": "../.local/frontend"
+    "frontendDist": "../dist/desktop/browser"
   },
   "app": {
     "windows": [
       {
         "label": "main",
-        "title": "VirgoStars Desktop — Synthetic Renderer Lab",
+        "title": "VirgoStars Desktop — UI laboratory",
         "width": 1360,
         "height": 880,
         "minWidth": 850,

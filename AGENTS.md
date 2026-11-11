@@ -6,7 +6,8 @@
 1. `README.md`; `docs/ADR-0001-TECH-STACK.md`; `docs/ARCHITECTURE.md`.
 2. `docs/OFFLINE_AUTH_AND_SYNC.md`; `docs/SECURITY_AND_PRIVACY.md`; `docs/ROADMAP.md`.
 3. `docs/LICENSING_AND_PUBLICATION.md`; applicable upstream `AGENTS.md` and public package contracts.
-4. Existing issues, draft PRs and recent commits. Avoid conflicts or duplicate work.
+4. Existing issues, draft PRs and recent commits, including UI guidelines in separate design PR #2. Avoid conflicts or duplicate work.
+5. [Shell 001](docs/SHELL-001.md) for the Angular UI prototype and safe build prerequisites.
 
 ## Non-negotiable boundaries
 - The private repository is **not** presently open source. No LICENSE has been selected. Do not infer a license from dependencies or copy a LICENSE from another repository without approval.
@@ -33,4 +34,4 @@
 The eventual repository should provide a Windows one-command bootstrap script and `npm run dev` with a synthetic/offline demo that does not need a VirgoStars account, any private upstream repository or a production database. Document required Node LTS, Rust toolchain, C++ Build Tools, WebView2 and commands in `docs/CONTRIBUTING.md` once code exists. This is a design requirement, not an available script yet.
 
 ## Status language
-Use **Proposed**, **Designed**, **Prototype**, **Locally tested**, **Integrated**, **Released** consistently. At present, the project remains **Designed** with an **experimental renderer/Tauri source spike** that has not passed real Windows build/WebView2 tests. No released or fully usable VirgoStars Desktop application exists.
+Use **Proposed**, **Designed**, **Prototype**, **Locally tested**, **Integrated**, **Released** consistently. At present, the project remains **Prototype source / unverified Windows build**. The desktop-owned Angular shell and Tauri demo code are not validated on real Windows WebView2 yet. No released or production-ready application exists.
