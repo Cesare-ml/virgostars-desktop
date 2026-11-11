@@ -4,6 +4,7 @@ version = "0.0.1"
 description = "Offline synthetic VirgoStars chart renderer shell (unreleased prototype)"
 authors = ["VirgoStars project"]
 edition = "2021"
+rust-version = "1.90"
 
 [lib]
 name = "virgostars_desktop_spike_lib"

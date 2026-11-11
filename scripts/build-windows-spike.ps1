@@ -1,46 +1,60 @@
-# Windows-only build launcher for the synthetic renderer proof of concept.
-# Does not use VirgoStars credentials, production data, or original artwork.
+# Read-only diagnostics followed by a Windows x64 prototype build.
+# Never auto-deletes files, accesses VirgoStars accounts or deploys anything.
 param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
+    throw 'This build script targets Windows. For source-only checks, run node scripts/desktop-doctor.mjs.'
+}
 $desktop = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $charts = Join-Path (Split-Path $desktop -Parent) 'astrological-charts'
-if (-not (Test-Path (Join-Path $charts 'package.json'))) {
-    throw 'Clone the authorized private astrological-charts repository beside virgostars-desktop.'
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw 'Node.js 22 or 24 is required. Install the supported Node LTS release.'
 }
-foreach ($tool in @('node', 'npm', 'rustc', 'cargo')) {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        throw "$tool not found. See docs/SPIKE-001.md for Windows requirements."
+if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
+    throw 'npm.cmd was not found. Reinstall Node.js/npm; do not change PowerShell execution policy.'
+}
+
+function Invoke-Step {
+    param([string] $Description, [string] $Command, [string[]] $Arguments)
+    Write-Host "STEP: $Description"
+    & $Command @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed (exit $LASTEXITCODE). See docs/WINDOWS_BUILD_GATE.md; no changes were deployed."
     }
 }
-# The synthetic assets stage is verified and safely reusable by the new preparer.
-# Never delete it automatically; an unexpected or modified stage fails closed.
+
+Push-Location $desktop
+try {
+    Invoke-Step 'Read-only Windows setup preflight' 'node' @('scripts/desktop-doctor.mjs', '--stage=setup', '--strict')
+}
+finally { Pop-Location }
 
 Push-Location $charts
 try {
-    npm ci
-    if ($LASTEXITCODE -ne 0) { throw 'Charts npm ci failed.' }
+    Invoke-Step 'Install Charts dependencies using existing reviewed lockfile' 'npm.cmd' @('ci')
+    Invoke-Step 'Build upstream graphics library (not its demo)' 'npm.cmd' @('run', 'build:library')
     if (-not (Test-Path '.local/demo-pack/manifests/approved-assets.json')) {
-        npm run demo:pack
-        if ($LASTEXITCODE -ne 0) { throw 'Synthetic asset generation failed.' }
+        Invoke-Step 'Generate strictly synthetic development graphics' 'npm.cmd' @('run', 'demo:pack')
     }
-    npm run build:library
-    if ($LASTEXITCODE -ne 0) { throw 'Charts library build failed.' }
-    # No upstream demo build: Desktop has its own Angular app.
 }
 finally { Pop-Location }
 
 Push-Location $desktop
 try {
-    npm install
-    if ($LASTEXITCODE -ne 0) { throw 'Desktop npm install failed.' }
-    npm test
-    if ($LASTEXITCODE -ne 0) { throw 'Desktop Node tests failed.' }
-    # tauri:build now runs staged-assets verification, Angular build, and post-build bundle verification.
-    npm run tauri:build
-    if ($LASTEXITCODE -ne 0) { throw 'Tauri desktop build failed.' }
-    Write-Host 'Desktop Angular/Tauri build completed. Inspect src-tauri/target/release.'
-    Write-Host 'This is NOT an installer or production release; test offline WebView2 rendering on Windows.'
+    # The first npm install generates a local lockfile; review it before committing.
+    Invoke-Step 'Install local Desktop development dependencies' 'npm.cmd' @('install')
+    Invoke-Step 'Run all available Node test files' 'npm.cmd' @('test')
+    Invoke-Step 'Check compiled library and synthetic pack prerequisites' 'npm.cmd' @('run', 'doctor:build')
+    Invoke-Step 'Build Angular and validate the offline assets' 'npm.cmd' @('run', 'build:ui')
+    Invoke-Step 'Generate temporary development icon' 'npm.cmd' @('run', 'prepare:icon')
+    Push-Location (Join-Path $desktop 'src-tauri')
+    try { Invoke-Step 'Run Rust unit tests' 'cargo' @('test') }
+    finally { Pop-Location }
+    Invoke-Step 'Compile and verify Angular/Tauri prototype' 'npm.cmd' @('run', 'tauri:build')
+    Invoke-Step 'Verify generated Angular files and prototype executable exist' 'npm.cmd' @('run', 'doctor:verify')
+    Write-Host 'Prototype build finished. No installer, signing, deployment or merge performed.'
+    Write-Host 'Next: disconnect Internet and test WebView2, all chart modes, PNG export and native IPC.'
 }
 finally { Pop-Location }
