@@ -2,6 +2,7 @@
 //!
 //! This module is absent from release builds. It is NOT the future authentication
 //! implementation: a separate reviewed system-browser PKCE + OS vault is required.
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use reqwest::{header, redirect, Client, StatusCode, Url};
@@ -14,6 +15,30 @@ const MAX_RESPONSE_BYTES: usize = 8192;
 const STAGING_ENABLED_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED";
 const STAGING_ORIGIN_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN";
 const STAGING_TEST_BEARER_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER";
+
+// Keep HTTP requests bounded across all Tauri IPC callers, not only Angular.
+// The WebView can abandon a request without cancelling native HTTP.
+static STAGING_HTTP_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+struct StagingHttpPermit<'a> {
+    gate: &'a AtomicBool,
+}
+
+impl<'a> StagingHttpPermit<'a> {
+    fn acquire(gate: &'a AtomicBool) -> Option<Self> {
+        gate.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .ok()
+            .map(|_| Self { gate })
+    }
+}
+
+impl Drop for StagingHttpPermit<'_> {
+    fn drop(&mut self) {
+        // Released on success, failure, timeout, or future cancellation.
+        self.gate.store(false, Ordering::Release);
+    }
+}
+
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -145,6 +170,10 @@ pub async fn copilot_staging_ready() -> bool {
     if !staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref()) {
         return false;
     }
+    let _permit = match StagingHttpPermit::acquire(&STAGING_HTTP_IN_FLIGHT) {
+        Some(permit) => permit,
+        None => return false,
+    };
     let base = match origin.as_deref().and_then(|raw| staging_origin(raw).ok()) {
         Some(url) => url,
         None => return false,
@@ -290,6 +319,8 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
     let token = std::env::var(STAGING_TEST_BEARER_ENV)
         .map_err(|_| "copilot_staging_test_auth_missing".to_owned())?;
     let bearer = staging_test_bearer(&token).map_err(str::to_owned)?;
+    let _permit = StagingHttpPermit::acquire(&STAGING_HTTP_IN_FLIGHT)
+        .ok_or_else(|| "copilot_staging_busy".to_owned())?;
 
     // No URLs or credentials are accepted from Angular's IPC payload.
     let endpoint = origin.join(PATH).map_err(|_| "copilot_staging_invalid_origin")?;
@@ -500,6 +531,22 @@ mod tests {
         wrong["data"]["chartCommands"][0]["aspectIds"] =
             json!(["synthetic:transit:saturn:venus", "synthetic:transit:saturn:venus"]);
         assert!(project_preview_envelope(&wrong, &expected).is_err());
+    }
+
+    #[test]
+    fn native_http_guard_limits_overlap_and_recovers_after_drop() {
+        let gate = AtomicBool::new(false);
+        let first = StagingHttpPermit::acquire(&gate).expect("first request permitted");
+        assert!(StagingHttpPermit::acquire(&gate).is_none(), "overlapping request must fail");
+        assert!(gate.load(Ordering::Acquire));
+        drop(first);
+        assert!(!gate.load(Ordering::Acquire));
+        {
+            let _second = StagingHttpPermit::acquire(&gate).expect("guard reusable after failure");
+            assert!(StagingHttpPermit::acquire(&gate).is_none());
+        }
+        assert!(!gate.load(Ordering::Acquire), "scope exit must release permit");
+        assert!(StagingHttpPermit::acquire(&gate).is_some());
     }
 
     #[test]
