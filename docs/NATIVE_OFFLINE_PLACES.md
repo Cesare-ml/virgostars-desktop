@@ -54,7 +54,7 @@ Rust tests in `src-tauri/src/offline_places.rs`: quoted-prefix sanitization, two
 
 Node tests in `tests/offline-place-search.test.mjs`: TypeScript DTO validation, wrong versions and coordinate bounds, no browser fallback, bounded native invocation, stale results/errors, busy/missing error codes, resource/command registration check.
 
-At time of PR creation these tests have **not been compiled/executed with Cargo on Windows**, and the Node suite has not been run against an installed full Angular workspace. The source contract is independent of Angular/Three.js for later fixture-based validation.
+**Actually validated locally** on Node.js 22.16.0: **10/10 pure TypeScript decoder/client tests passed** using the exact committed TypeScript file (matching Git blob SHA), and `tsc --noEmit --strict` passed for the same module. The extra Rust/source-registration Node test is authored but **has not run** in the complete checkout. **Rust Cargo tests, actual Windows Tauri build and full-catalog IPC remain unverified**, as Rust/Cargo is unavailable in the authoring environment. This is not a release or proof of usable city search UI.
 
 ## Windows next tests
 
