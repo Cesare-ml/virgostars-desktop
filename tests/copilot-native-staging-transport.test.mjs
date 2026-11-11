@@ -184,6 +184,11 @@ test('release builds omit the staging command; Angular development-only wiring',
   assert.match(command, /MAX_RESPONSE_BYTES/);
   assert.match(main, /isDevMode\(\) && isTauri\(\)/);
   assert.match(main, /VIRGOSTARS_COPILOT_PREVIEW_TRANSPORT/);
+  const tsconfig = JSON.parse(read('tsconfig.json'));
+  const nativeSource = read('src/app/native/copilot-staging-transport.ts');
+  assert.equal(tsconfig.compilerOptions.rewriteRelativeImportExtensions, true);
+  assert.match(nativeSource, /from '\.\.\/copilot-preview-client\.ts'/);
+
   const component = read('src/app/desktop-app.component.ts');
   assert.match(component, /await this\.copilotTransport\.isAvailable\(\)/);
   assert.match(component, /this\.copilotPreviewReady = configured === true/);
