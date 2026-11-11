@@ -72,6 +72,19 @@ test('local readiness probe is boolean-only and does not transfer a token', asyn
   assert.deepEqual(calls, [{ command: 'copilot_staging_ready', args: undefined }]);
 });
 
+test('native capabilities probe rejects non-boolean or misleading success results', async () => {
+  for (const spoofed of [null, undefined, 1, 'true', {}, { enabled: true }]) {
+    const transport = createNativeCopilotStagingTransport({
+      isNative: () => true,
+      async invoke(command) {
+        assert.equal(command, 'copilot_staging_ready');
+        return spoofed;
+      },
+    });
+    assert.equal(await transport.isAvailable(), false);
+  }
+});
+
 test('missing debug feature or staging configuration leaves preview unavailable', async () => {
   const disabled = createNativeCopilotStagingTransport({
     isNative: () => true,
@@ -182,6 +195,13 @@ test('release builds omit the staging command; Angular development-only wiring',
   assert.match(command, /Policy::none\(\)/);
   assert.match(command, /\.no_proxy\(\)/);
   assert.match(command, /MAX_RESPONSE_BYTES/);
+  assert.match(command, /CAPABILITIES_PATH: &str = "\/api\/v1\/ai\/copilot-preview\/capabilities"/);
+  assert.match(command, /\.get\(endpoint\)/);
+  assert.match(command, /\.bearer_auth\(/);
+  assert.match(command, /validate_staging_capabilities\(&value\)/);
+  assert.match(command, /bounded_json\(response\)\.await/);
+  assert.match(command, /providerEnabled/);
+  assert.match(command, /modelSelectorAvailable/);
   assert.match(main, /isDevMode\(\) && isTauri\(\)/);
   assert.match(main, /VIRGOSTARS_COPILOT_PREVIEW_TRANSPORT/);
   const tsconfig = JSON.parse(read('tsconfig.json'));
