@@ -12,7 +12,7 @@ The original conflict must already be recorded through the preceding v2 conflict
 
 ### Migration and SQL guard
 
-`contracts/sqlite/0003_conflict_decisions.sql` adds the history table, a profile/entity lookup index and a trigger. The trigger refuses a raw new outbox row with an **already ACKed ID** or an **original/replacement ID already recorded in decision history**. This hardens the database even if a future caller bypasses the application enqueue method.
+`contracts/sqlite/0003_conflict_decisions.sql` adds the history table, a profile/entity lookup index, a mutation-ID reservation trigger, and two append-only history triggers. The mutation-ID trigger refuses a raw new outbox row with an **already ACKed ID** or an **original/replacement ID already recorded in decision history**. Two additional SQL triggers reject direct UPDATE and DELETE of any committed decision-history row. These safeguards protect append-only history even if a future caller bypasses the application enqueue method.
 
 `PRAGMA user_version=3` is applied ONLY through an explicit `BEGIN IMMEDIATE` migration after a verified schema v2, FK integrity and synthetic-ID gate. A failed migration rolls back all new DDL and leaves the v2 database usable. The normal Rust v1/v2 constructors still **refuse v3**.
 
@@ -40,11 +40,11 @@ From the repository root with Node >=22.16:
 node --experimental-sqlite --experimental-strip-types --test tests/sqlite-v3-manual-keep-local.test.mjs
 ```
 
-**Executed in the authoring environment, Node 22.16.0: 11/11 PASS.** Cases cover explicit migration, failed migration rollback, preservation of full original content/new ID, idempotent same decision and refusal of inconsistent replays, invalid hashes/IDs, multiple pending dependents, changed local entity, atomic rollback, raw SQL ID-resurrection refusal, close/reopen persistence, and separation of two fictional profiles.
+**Executed in the authoring environment, Node 22.16.0: 12/12 PASS for the new v3 suite; 29/29 PASS across the v2 enqueue, v2 conflict and v3 decision suites together.** Cases cover explicit migration, failed migration rollback, preservation of full original content/new ID, idempotent same decision and refusal of inconsistent replays, invalid hashes/IDs, multiple pending dependents, changed local entity, atomic rollback, raw SQL ID-resurrection refusal, close/reopen persistence, and separation of two fictional profiles, plus rejection of direct SQL UPDATE/DELETE against the immutable decision history.
 
 Exact tested Git blobs:
-- `contracts/sqlite/0003_conflict_decisions.sql`: `5d4470173079110f5685f32c509acaea29ac6fbf`
-- `tests/sqlite-v3-manual-keep-local.test.mjs`: `fc8c6d96918158e1ecd4ea6a35f8376927d779dc`
+- `contracts/sqlite/0003_conflict_decisions.sql`: `960f1894d0c592597451df779d4d3df783b0d140`
+- `tests/sqlite-v3-manual-keep-local.test.mjs`: `8e9f3a56690490b84572d55ee6884fdb9ad564d7`
 
 The tests use **temporary plaintext Node SQLite with fictional input**, not SQLCipher encryption, Rust or live VirgoStars accounts. The manual Windows validation script now also includes this suite.
 
