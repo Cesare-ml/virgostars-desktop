@@ -14,6 +14,8 @@ import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { classifyStyleHealth, measureStyleHealth, type StyleHealthCode } from './style-health';
+import { requestCopilotPreview, type CopilotPreviewFocus } from './copilot-preview-client';
+import { VIRGOSTARS_COPILOT_PREVIEW_TRANSPORT } from './copilot-preview-token';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -42,6 +44,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
 
   private readonly cd = inject(ChangeDetectorRef);
+  // No transport is provided until reviewed optional account authentication exists.
+  // Angular/Tauri keeps all provider secrets and tokens out of this component.
+  private readonly copilotTransport = inject(VIRGOSTARS_COPILOT_PREVIEW_TRANSPORT, { optional: true });
   private readonly renderer = new GraficoRenderService();
   private readonly natal: TemaRender = makeFictionalTheme(0);
   private readonly transit: TemaRender = makeFictionalTheme(23);
@@ -52,10 +57,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
   private styleFrame: number | null = null;
+  private copilotAbort?: AbortController;
+  private copilotRequestRevision = 0;
 
   readonly modes = CHART_MODES;
   readonly planets = fictionalPlanets();
   readonly houses = fictionalHouses();
+  readonly copilotFocusOptions = [
+    { key: 'NATAL:VENUS', label: 'ai.preview.venus' },
+    { key: 'NATAL:SUN', label: 'ai.preview.sun' },
+    { key: 'TRANSIT:SATURN', label: 'ai.preview.saturn' },
+  ] as const;
+  copilotFocus: CopilotPreviewFocus = { layer: 'NATAL', bodyId: 'VENUS' };
+  copilotBusy = false;
+  copilotAnswer = '';
+  copilotIllustrativeAspects = 0;
+  copilotStatus: MessageKey = 'ai.preview.ready';
 
   theme: UiTheme = 'light';
   locale: Locale = 'it';
@@ -77,6 +94,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
+  get copilotConnected(): boolean { return this.copilotTransport !== null; }
+  get copilotFocusKey(): string { return this.copilotFocus.layer + ':' + this.copilotFocus.bodyId; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
 
   ngAfterViewInit(): void {
@@ -113,6 +132,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.destroyed = true;
     if (this.styleFrame !== null) cancelAnimationFrame(this.styleFrame);
     this.drawGeneration.dispose();
+    this.invalidateCopilotRequest();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
   }
@@ -187,6 +207,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   setMode(mode:ChartMode): void {
     if(this.busy || mode === this.mode) return;
+    this.invalidateCopilotRequest();
+    this.copilotBusy = false;
+    this.copilotAnswer = '';
+    this.copilotIllustrativeAspects = 0;
+    this.copilotStatus = 'ai.preview.ready';
     this.mode = mode;
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
@@ -199,7 +224,65 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     // Inspector-only selection; the upstream renderer does not yet expose a stable
     // planet selection contract. Never pretend the chart itself is highlighted.
     this.selectedPlanet = this.selectedPlanet === name ? null : name;
+    if (this.selectedPlanet === 'Venus') this.selectCopilotFocus('NATAL:VENUS');
+    if (this.selectedPlanet === 'Sun') this.selectCopilotFocus('NATAL:SUN');
+    if (this.selectedPlanet === 'Saturn' && this.mode === 'transits') {
+      this.selectCopilotFocus('TRANSIT:SATURN');
+    }
     this.cd.markForCheck();
+  }
+
+  private invalidateCopilotRequest(): void {
+    this.copilotRequestRevision += 1;
+    this.copilotAbort?.abort();
+    this.copilotAbort = undefined;
+  }
+
+  selectCopilotFocus(key: 'NATAL:VENUS' | 'NATAL:SUN' | 'TRANSIT:SATURN'): void {
+    this.invalidateCopilotRequest();
+    this.copilotFocus = key === 'NATAL:SUN'
+      ? { layer: 'NATAL', bodyId: 'SUN' }
+      : key === 'TRANSIT:SATURN'
+        ? { layer: 'TRANSIT', bodyId: 'SATURN' }
+        : { layer: 'NATAL', bodyId: 'VENUS' };
+    this.copilotBusy = false;
+    this.copilotAnswer = '';
+    this.copilotIllustrativeAspects = 0;
+    this.copilotStatus = 'ai.preview.ready';
+    this.cd.markForCheck();
+  }
+
+  async askCopilotPreview(): Promise<void> {
+    // This preview never sends a real chart, birth data, notes or arbitrary prompts.
+    // Without the optional native authenticated transport the button stays disabled.
+    if (this.destroyed || this.copilotTransport === null) return;
+    this.invalidateCopilotRequest();
+    const ticket = this.copilotRequestRevision;
+    const controller = new AbortController();
+    this.copilotAbort = controller;
+    const focus = this.copilotFocus;
+    this.copilotBusy = true;
+    this.copilotAnswer = '';
+    this.copilotIllustrativeAspects = 0;
+    this.copilotStatus = 'ai.preview.waiting';
+    this.cd.markForCheck();
+    try {
+      const reply = await requestCopilotPreview(this.copilotTransport, focus, controller.signal);
+      if (this.destroyed || ticket !== this.copilotRequestRevision) return;
+      this.copilotAnswer = reply.answer;
+      this.copilotIllustrativeAspects = reply.illustrativeAspectCount;
+      this.copilotStatus = 'ai.preview.synthetic';
+    } catch {
+      if (!this.destroyed && ticket === this.copilotRequestRevision) {
+        this.copilotStatus = 'ai.preview.error';
+      }
+    } finally {
+      if (!this.destroyed && ticket === this.copilotRequestRevision) {
+        this.copilotBusy = false;
+        this.copilotAbort = undefined;
+        this.cd.markForCheck();
+      }
+    }
   }
   zoom(direction:-1|1): void {
     if(!this.ready || this.busy) return;
