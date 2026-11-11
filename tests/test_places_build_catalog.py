@@ -10,6 +10,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "places"))
 from build_catalog import build_catalog, convert_row, microdegrees, search_catalog  # noqa: E402
+from prepare_tauri_bundle import prepare  # noqa: E402
 
 COLS = ("id", "nome", "nome_it", "lat", "lng", "pop", "stato_id", "regione", "tz", "tz_offs")
 
@@ -97,6 +98,27 @@ class CityPackTests(unittest.TestCase):
         self.assertEqual(search_catalog(self.out, ""), [])
         self.assertEqual(search_catalog(self.out, "\" OR 1=1 --"), [])
         self.assertEqual(search_catalog(self.out, "Florence", limit=1000), [])
+
+    def test_tauri_packaging_override_includes_verified_catalog(self):
+        target = self.root / ".local" / "places" / "world-cities.sqlite"
+        build_catalog(self.csvfile, target, expected_rows=3)
+        config_file = prepare(self.root, expected=3)
+        result = json.loads(config_file.read_text())
+        self.assertTrue(result["bundle"]["active"])
+        resources = result["bundle"]["resources"]
+        self.assertIn("../.local/places/world-cities.sqlite", resources)
+        self.assertEqual(resources["../.local/places/world-cities.sqlite"], "places/world-cities.sqlite")
+
+    def test_tauri_packaging_fails_on_tampered_manifest(self):
+        target = self.root / ".local" / "places" / "world-cities.sqlite"
+        build_catalog(self.csvfile, target, expected_rows=3)
+        manifest_file = target.with_suffix(".manifest.json")
+        details = json.loads(manifest_file.read_text())
+        details["sha256"] = "0" * 64
+        manifest_file.write_text(json.dumps(details))
+        with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+            prepare(self.root, expected=3)
+
 
 
 if __name__ == "__main__":
