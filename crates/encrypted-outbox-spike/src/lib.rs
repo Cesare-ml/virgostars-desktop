@@ -23,6 +23,7 @@ use zeroize::Zeroizing;
 
 const SCHEMA_V1: &str = include_str!("../../../contracts/sqlite/0001_local_outbox.sql");
 const SCHEMA_V2: &str = include_str!("../../../contracts/sqlite/0002_ack_ledger.sql");
+const SCHEMA_V3: &str = include_str!("../../../contracts/sqlite/0003_conflict_decisions.sql");
 const FIXTURE_TIME: &str = "2026-11-10T19:00:00Z";
 const MAX_JSON_BYTES: usize = 262_144;
 
@@ -145,6 +146,47 @@ fn validate_schema_v2(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// The v3 catalogue must match an independently constructed in-memory
+/// v1+v2+v3 DDL template including its mutation-reuse trigger. This verifies
+/// only synthetic schema structure; it is not a production migration review.
+fn validate_schema_v3(conn: &Connection) -> Result<()> {
+    let template = Connection::open_in_memory().map_err(storage_error)?;
+    template.execute_batch(SCHEMA_V1).map_err(storage_error)?;
+    template.execute_batch(SCHEMA_V2).map_err(storage_error)?;
+    template.execute_batch(SCHEMA_V3).map_err(storage_error)?;
+    if schema_catalog(conn)? != schema_catalog(&template)? {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    let version: i64 = conn.pragma_query_value(
+        None, "user_version", |row| row.get(0),
+    ).map_err(storage_error)?;
+    if version != 3 {
+        return Err(StoreError::UnsupportedSchema);
+    }
+    let bad: Option<String> = conn.query_row(
+        "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1",
+        [], |row| row.get(0),
+    ).optional().map_err(storage_error)?;
+    if bad.is_some() { return Err(StoreError::UnsupportedSchema); }
+    let mut stmt = conn.prepare(
+        "SELECT profile_id,entity_id,original_mutation_id,replacement_mutation_id
+         FROM local_conflict_decisions"
+    ).map_err(storage_error)?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?,row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,row.get::<_, String>(3)?))
+    }).map_err(storage_error)?;
+    for row in rows {
+        let (profile,entity,original,replacement) = row.map_err(storage_error)?;
+        if !synthetic_id(&profile) || !synthetic_id(&entity)
+            || !synthetic_id(&original) || !synthetic_id(&replacement)
+        {
+            return Err(StoreError::InvalidSyntheticInput);
+        }
+    }
+    Ok(())
+}
+
 /// Prevent this test-only migration from touching a non-fictional profile,
 /// even if an external encrypted file happens to have the expected v1 DDL.
 /// Run the check inside BEGIN IMMEDIATE so identifiers cannot change between
@@ -184,6 +226,12 @@ impl SyntheticEncryptedStore {
     /// No user account, backup migration, login or real data is supported.
     pub fn open_synthetic_v2(path: &Path, key: &StoreKey) -> Result<Self> {
         Self::open_expected_synthetic_schema(path, key, 2)
+    }
+
+    /// Explicit v3 prototype open. Earlier constructors fail closed on v3.
+    /// No real account/profile support or automatic schema upgrade.
+    pub fn open_synthetic_v3(path: &Path, key: &StoreKey) -> Result<Self> {
+        Self::open_expected_synthetic_schema(path, key, 3)
     }
 
     fn open_expected_synthetic_schema(path: &Path, key: &StoreKey, expected: i64) -> Result<Self> {
@@ -287,6 +335,7 @@ impl SyntheticEncryptedStore {
             }
             1 if expected == 1 => {}
             2 if expected == 2 => {}
+            3 if expected == 3 => {}
             _ => return Err(StoreError::UnsupportedSchema),
         }
         // Never accept a v2 file via v1 or silently migrate. Both explicit
@@ -295,6 +344,10 @@ impl SyntheticEncryptedStore {
             1 => validate_schema_v1(&conn)?,
             2 => {
                 validate_schema_v2(&conn)?;
+                validate_synthetic_fixture_rows(&conn)?;
+            }
+            3 => {
+                validate_schema_v3(&conn)?;
                 validate_synthetic_fixture_rows(&conn)?;
             }
             _ => return Err(StoreError::UnsupportedSchema),
@@ -336,6 +389,25 @@ impl SyntheticEncryptedStore {
         if abort_before_commit {
             return Err(StoreError::StorageFailure);
         }
+        tx.commit().map_err(storage_error)
+    }
+
+    /// EXPERIMENTAL: migrate *fictional-only* encrypted v2 to the v3 conflict
+    /// history schema. This is an explicit call, not a startup migration.
+    /// v2 methods still reject v3 after this transaction commits.
+    pub fn migrate_synthetic_v2_to_v3(&mut self) -> Result<()> {
+        self.migrate_synthetic_v2_to_v3_inner(false)
+    }
+
+    fn migrate_synthetic_v2_to_v3_inner(&mut self, abort_before_commit: bool) -> Result<()> {
+        self.require_v2_for_ack()?;
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(storage_error)?;
+        validate_schema_v2(&tx)?;
+        validate_synthetic_fixture_rows(&tx)?;
+        tx.execute_batch(SCHEMA_V3).map_err(storage_error)?;
+        validate_schema_v3(&tx)?;
+        if abort_before_commit { return Err(StoreError::StorageFailure); }
         tx.commit().map_err(storage_error)
     }
 
@@ -562,6 +634,59 @@ mod tests {
 
     fn test_key(byte: u8) -> StoreKey {
         StoreKey::from_external_key_material([byte; 32]).expect("test key")
+    }
+
+    #[test]
+    fn explicit_synthetic_v3_upgrade_keeps_pending_and_requires_matching_open() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic-v3.db");
+        let key = test_key(41);
+        let mut store = SyntheticEncryptedStore::open(&path, &key).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1",
+            "synthetic-m1",r#"{"label":"Fictional"}"#).unwrap();
+        store.migrate_synthetic_v1_to_v2().unwrap();
+        store.migrate_synthetic_v2_to_v3().unwrap();
+        validate_schema_v3(&store.conn).unwrap();
+        let pending: i64 = store.conn.query_row(
+            "SELECT count(*) FROM local_outbox", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(pending, 1);
+        assert!(matches!(store.migrate_synthetic_v2_to_v3(),Err(StoreError::UnsupportedSchema)));
+        drop(store);
+        assert!(SyntheticEncryptedStore::open(&path,&key).is_err());
+        assert!(SyntheticEncryptedStore::open_synthetic_v2(&path,&key).is_err());
+        let reopened = SyntheticEncryptedStore::open_synthetic_v3(&path,&key).unwrap();
+        validate_schema_v3(&reopened.conn).unwrap();
+    }
+
+    #[test]
+    fn synthetic_v3_migration_rollback_preserves_v2_and_outbox() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic-v3-failure.db");
+        let key = test_key(42);
+        let mut store = SyntheticEncryptedStore::open(&path,&key).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.stage_synthetic_subject("synthetic-a","synthetic-1",
+            "synthetic-m1",r#"{"label":"Fictional"}"#).unwrap();
+        store.migrate_synthetic_v1_to_v2().unwrap();
+        assert!(matches!(
+            store.migrate_synthetic_v2_to_v3_inner(true),
+            Err(StoreError::StorageFailure)
+        ));
+        validate_schema_v2(&store.conn).unwrap();
+        let old: Option<String> = store.conn.query_row(
+            "SELECT name FROM sqlite_master WHERE name='local_conflict_decisions'",
+            [], |row| row.get(0),
+        ).optional().unwrap();
+        assert!(old.is_none());
+        drop(store);
+        let reopened = SyntheticEncryptedStore::open_synthetic_v2(&path,&key).unwrap();
+        validate_schema_v2(&reopened.conn).unwrap();
+        let pending: i64 = reopened.conn.query_row(
+            "SELECT count(*) FROM local_outbox", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(pending,1);
     }
 
     #[test]
