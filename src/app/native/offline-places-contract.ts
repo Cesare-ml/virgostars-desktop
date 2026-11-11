@@ -72,8 +72,9 @@ export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1
 export class OfflinePlaceSearch {
   private generation = 0;
   private disposed = false;
+  private readonly transport: PlaceSearchTransport;
 
-  constructor(private readonly transport: PlaceSearchTransport) {}
+  constructor(transport: PlaceSearchTransport) { this.transport = transport; }
 
   async search(query: string, limit = 12): Promise<PlaceQueryState> {
     if (this.disposed) return {kind: 'stale', items: []};
