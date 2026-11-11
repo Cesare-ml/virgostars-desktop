@@ -12,6 +12,8 @@ export interface OfflinePlaceV1 {
   readonly stateId: number | null;
   readonly region: string | null;
   readonly timeZone: string | null;
+  readonly countryName: string | null;
+  readonly countryCode: string | null;
 }
 
 export type PlaceQueryState =
@@ -43,7 +45,11 @@ export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1
   }
   const ids = new Set<number>();
   return raw['items'].map((input: unknown) => {
-    if (!object(input) ||
+    if (!object(input)) throw new Error('Invalid offline place record');
+    // v1 packs do not include the optional country lookup.
+    const countryName = input['countryName'] ?? null;
+    const countryCode = input['countryCode'] ?? null;
+    if (
         !int(input['id']) || input['id'] <= 0 || ids.has(input['id']) ||
         typeof input['name'] !== 'string' || !input['name'].trim() || input['name'].length > 255 ||
         !optionalString(input['italianName']) ||
@@ -51,7 +57,9 @@ export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1
         !int(input['lngMicro']) || Math.abs(input['lngMicro']) > 180_000_000 ||
         !optionalInt(input['population']) || (input['population'] !== null && input['population'] < 0) ||
         !optionalInt(input['stateId']) || (input['stateId'] !== null && input['stateId'] < 0) ||
-        !optionalString(input['region']) || !optionalString(input['timeZone'])) {
+        !optionalString(input['region']) || !optionalString(input['timeZone']) ||
+        !optionalString(countryName) ||
+        !(countryCode === null || (typeof countryCode === 'string' && /^[A-Z]{2}$/.test(countryCode)))) {
       throw new Error('Invalid offline place record');
     }
     ids.add(input['id']);
@@ -60,6 +68,7 @@ export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1
       latMicro: input['latMicro'], lngMicro: input['lngMicro'],
       population: input['population'], stateId: input['stateId'],
       region: input['region'], timeZone: input['timeZone'],
+      countryName, countryCode,
     };
   });
 }
