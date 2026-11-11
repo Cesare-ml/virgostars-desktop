@@ -1,6 +1,6 @@
 # Offline city catalog — how to prepare and distribute all 1,951,599 places
 
-**Approved direction: 2026-11-11:** bundle the entire purchased worldwide catalog for offline use from first launch, after a local conversion and rights check. **Status: converter and packaging tools are authored; no purchased records or built SQLite binary have been uploaded; Rust read-only search IPC and a TypeScript adapter have been written in draft code, but the Angular picker is not wired and Windows native tests are pending.** See [Native Offline Search](NATIVE_OFFLINE_PLACES.md).
+**Approved direction: 2026-11-11:** bundle the entire purchased worldwide catalog for offline use from first launch, after a local conversion and rights check. **Status: converter and packaging tools are authored; no purchased records or built SQLite binary have been uploaded; Rust read-only search IPC and a TypeScript adapter have been written in draft code, and an Angular Settings/Parametri picker with bounded autocomplete is implemented in draft code. The picker is NOT yet connected to guest chart saving, and Windows native tests are pending.** See [Native Offline Search](NATIVE_OFFLINE_PLACES.md).
 
 ## Source and measured dimensions
 
