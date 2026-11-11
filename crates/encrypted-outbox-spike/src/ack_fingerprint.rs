@@ -122,7 +122,7 @@ fn validate(request: &AckRequest) -> Result<()> {
         rev.is_empty() || rev.len() > 128 || !printable_ascii(rev)
     }) { return Err(invalid()); }
     match request.operation.as_str() {
-        "upsert" if request.payload.is_some() => Ok(()),
+        "upsert" if request.payload.as_ref().is_some_and(|value| !value.is_null()) => Ok(()),
         "delete" if request.payload.is_none() => Ok(()),
         _ => Err(invalid()),
     }
@@ -214,6 +214,9 @@ mod tests {
         assert_eq!(fingerprint(&request), Err(invalid()));
         request.payload = None;
         assert!(fingerprint(&request).is_ok());
+        request.operation = "upsert".into();
+        request.payload = Some(Value::Null);
+        assert_eq!(fingerprint(&request), Err(invalid()));
         let unknown = r#"{"profile":"synthetic-a","mutation":"synthetic-m",
           "entityType":"subject","entity":"synthetic-e","operation":"delete",
           "baseRevision":null,"createdAt":"2026-11-11T16:02:00Z",
