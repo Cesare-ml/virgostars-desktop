@@ -31,7 +31,8 @@ export function createNativeCopilotStagingTransport(
 ): VirgoStarsCopilotPreviewTransport {
   return Object.freeze({
     async isAvailable(): Promise<boolean> {
-      // No network request, no token exchange, no implicit login.
+      // Rust performs a bounded, authenticated GET to the local Virgo Stars
+      // staging /capabilities route. No token or backend URL reaches Angular.
       // The command is absent in all normal/release native builds.
       if (!native.isNative()) return false;
       try {
