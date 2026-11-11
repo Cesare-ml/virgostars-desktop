@@ -28,6 +28,10 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 Work in dedicated branches and pull requests. Read `AGENTS.md` before touching the repository once it is introduced. Keep architecture decisions, offline/privacy invariants, and tests with each code change. No production migrations, deploys, automatic Actions, app store releases, public visibility changes or LICENSE selection without maintainer approval.
 
+## Renderer lifecycle safety
+
+The Angular demo protects its rendering state against out-of-order async scene completions and window teardown. See [Render Lifecycle](docs/RENDER_LIFECYCLE.md); **real WebView2 behavior still requires Windows verification**.
+
 ## Quick read-only setup check
 
 Run `node scripts/desktop-doctor.mjs` or `npm run doctor` on Windows to diagnose Node, Rust MSVC, WebView2, upstream Charts and Angular/Tauri build prerequisites. `npm run doctor:json` produces a shareable report with no personal paths. For the complete build attempt, use `scripts\\build-windows.cmd` (no PowerShell policy changes). See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md). This **does not prove the native app runs**; actual compilation and offline WebView2 testing remain pending.
