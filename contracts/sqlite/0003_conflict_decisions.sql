@@ -38,4 +38,11 @@ WHEN EXISTS(SELECT 1 FROM local_ack_ledger a
 BEGIN
   SELECT RAISE(ABORT,'already used mutation id');
 END;
+-- A user's recorded decision is audit history, not a mutable queue row.
+CREATE TRIGGER local_conflict_decisions_no_update
+BEFORE UPDATE ON local_conflict_decisions
+BEGIN SELECT RAISE(ABORT,'conflict decision history is immutable'); END;
+CREATE TRIGGER local_conflict_decisions_no_delete
+BEFORE DELETE ON local_conflict_decisions
+BEGIN SELECT RAISE(ABORT,'conflict decision history is immutable'); END;
 PRAGMA user_version=3;
