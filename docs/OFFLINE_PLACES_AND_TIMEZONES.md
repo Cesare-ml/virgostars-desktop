@@ -11,6 +11,50 @@
 - The clock's location comes from the user's saved default place. Do not query precise GPS or infer location without explicit consent. When first opening offline with no place, still display system time and request a place before claiming an accurate house/Ascendant chart.
 - If online, offer **optional** search/refresh for cities missing from the local index. The offline catalog is the default and continues to work if a web request fails. The online API must be explicitly approved and rate-limited; a server account/login must not be required to use core geocoding.
 
+## 2026-11-11 evaluation update — existing purchased city collection
+
+The maintainer owns a previously purchased **PostgreSQL collection containing 1,951,599 city records worldwide**. This is a **candidate source**, not permission to embed or publish it. We have **not** inspected the actual purchased dataset, its fields, license, indexes or measured size. The previous frontend's city record shape (city, lat/lon, country, region, timezone ID/offset) is only contextual evidence of UI expectations; do not assume the purchased PostgreSQL schema matches.
+
+**Provisional preference: offline-first hybrid with an optional remote supplement**, not a forced decision to use either the purchased collection or GeoNames. Three candidate packaging strategies must be measured:
+
+| Strategy | Offline behavior | Installation | Legal dependency |
+| --- | --- | --- | --- |
+| A. Convert the full purchased `1,951,599` cities to slim read-only SQLite | Nearly full purchased-catalog search offline; manual coordinates still possible | Embedded DB footprint measured after export, indexing and compression | Purchased license must explicitly allow redistribution as part of a free/possibly open-source desktop application; buying access alone is not such permission |
+| B. Bundle a curated GeoNames city subset (`cities15000`, `cities500` or selected subsets) with optional full offline catalog download | Common cities offline by default; users can optionally install wider offline coverage | Smaller default footprint, user-selectable expansion | GeoNames attribution and version/provenance review; optional pack signed and checksum-verified |
+| C. Lightweight offline subset + online lookup | Common cities and manual coordinates offline; remote fills only missing places | Small installation, network only for enrichment | Online provider terms, request/rate budget and user privacy; if using purchased data through VirgoStars backend, license must permit that service use too |
+
+**Key insight:** Two million *minimal* records in a **read-only, indexed SQLite file** are not equivalent to requiring a PostgreSQL server on users' PCs. No definitive MB size or memory cost can be inferred from row count alone. Read-only SQLite queries retrieve indexed pages rather than loading every place in RAM. Measure actual DB size and FTS index size with the real licensed input before rejecting strategy A. Avoid bundling imported PostgreSQL caches, logs, user data, or unnecessary columns.
+
+### Preferred architecture (works with any selected dataset)
+
+- `LocalPlaceProvider`: lookup by normalized city name, aliases, region/country and prefix, with bounded results and FTS/indexes. **Always queried first**. Cached default place and saved natal chart remain usable with the network fully disconnected.
+- `RemotePlaceProvider`: **optional** search via a reviewed provider only on user request, or after a clearly disclosed zero-local-result fallback with opt-in. Candidate: owner-operated VirgoStars query service over the existing PostgreSQL collection, **if licensed for hosted access**, with publicly documented anonymous rate-limited endpoints that do not require an account. A third-party provider is a separate option after terms/price/privacy review.
+- `PlaceReconciler`: user compares remote and local candidate IDs, country/region and lat/lon; preserve original saved coordinates/time zone/instant. Never treat identical names as identical location IDs. No automatic silent replacement of local records after an online match.
+- `PlacesDatasetUpdater`: reference catalog releases are **independent** of personal cloud account sync. Signed/checksummed and rolled back atomically. Optional full pack stored outside the executable in application data, not in Angular asset memory.
+- `TimezonePort`: stable IANA tz identifier + **versioned IANA tzdb rules** independent of which city dataset provided the place. A present-day `tz_offs` field is **not** valid historical offset evidence. tzdb records many historic transitions but does not promise fully accurate civil time before 1970 everywhere.
+- `CustomPlaceProvider`: manual coordinates, editable timezone selection, favorites and recently used. Manual entry is always available even when no city search result exists; birth chart creation does not require online enrichment or a matching official place name.
+
+### Provider constraints and user privacy
+
+- GeoNames downloadable exports are CC BY (attribution required), have daily refreshes and offer a free web service with stated request quotas; confirm current terms, API keys, allowed usage and application-level limits before implementing remote search. https://www.geonames.org/export/
+- **Do not embed public OSMF Nominatim as typeahead/autocomplete**: its official public endpoint policy explicitly prohibits client-side automatic autocomplete, caps requests (absolute max 1 req/s across the application) and has other restrictions. Self-hosted/other providers have distinct terms. https://operations.osmfoundation.org/policies/nominatim/
+- Internet place searches can reveal the city being entered, potentially a birthplace. Explain when a query leaves the device, send **only** the minimum search string and optional country/region (never subject name, date/time of birth, notes or complete chart), limit/cancel/debounce searches, avoid logging query content, and make online lookup disable-able.
+- An owner-operated VirgoStars online catalog is not automatically more up-to-date than GeoNames: a once-purchased PostgreSQL dataset needs an **approved refresh pipeline** and version/provenance; do not advertise "always updated" without an actual schedule and source.
+- SQLite reference city DB is separate from the guest user's encrypted personal archive. Public city data do not need SQLCipher; saved personal natal charts may require it. Never let a location catalog update modify saved subject fields.
+
+### Required proof before dataset choice
+
+1. **Rights audit (blocking):** identify purchased vendor/product, original order/license, permission for local software redistribution/free/open source, modified extracts, direct anonymous hosted API, caching and required attribution. Do not publish a sample of purchased records until authorized.
+2. **Schema audit (read-only):** record actual table name/columns, unique city IDs, name/aliases, country ISO2, region/admin hierarchy, coordinate datum, IANA `tz` vs fixed `tz_offs`, duplicates, covered countries and last update date. Never export raw production user data.
+3. **Controlled benchmark:** with an authorized private test copy, export only needed city columns and compare (i) full purchased collection, (ii) curated GeoNames tier(s), (iii) core + optional full pack. Record SQLite bytes, FTS bytes, compressed distribution bytes, build time, cold-start peak RAM, p50/p95 search latency on Windows, result quality and 10k synthetic prefix searches. Choose numeric limits only after measurement; avoid made-up size claims.
+4. **Coverage test:** common/rare places, accented aliases, namesakes across countries, edge-region coordinates, small historical places and manual location. Compare original catalog vs GeoNames; establish a quality score rather than assuming millions of records means better correct matching.
+5. **Offline acceptance:** first launch in airplane mode, choose uncommon city, calculate validated chart using historically correct TZ rules, save/reopen after restart. No login.
+6. **Online acceptance:** opt-in only, provider unavailable/rate-limited/changed API → offline search and manual entry still work. Internet never required for normal city searches. Prove no birth details beyond requested city text are uploaded.
+7. **Release gate:** signed/verified optional catalog updates, licensing credits and offline format migration. Separate from chart archive SQLCipher schema.
+
+**Provisional direction:** if purchased redistribution permits it and full compressed index size/startup are acceptable, consider **full local SQLite as default**, with optional remote corrections. If rights prohibit bundling, use a **licensed compact GeoNames core plus optional wider GeoNames offline download and optional VirgoStars-hosted lookup** where separately licensed. Do not decide the exact tier/format until the above tests are recorded.
+
+
 ## Candidate data strategy (final distribution requires legal and QA review)
 
 1. Review the existing VirgoStars online **city schema** for geographic IDs, country/admin levels, aliases, GPS coordinate provenance, timezone rules and data licenses. **Do not copy private production database records** or use the online site's city database without rights and provenance review.
