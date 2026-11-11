@@ -54,3 +54,27 @@ The original in-test JavaScript oracle used `Number.isSafeInteger` and a limited
 The manual Windows validation script now includes both golden suites and uses Node's `--experimental-strip-types` flag. **Cargo test/fmt/clippy, Windows PowerShell and native SQLCipher have NOT been run here** because the Rust toolchain is unavailable. Approval requires the same vectors to pass under compiled Rust and TypeScript, plus a reviewed Unicode/decimal-number successor contract before any use with real VirgoStars astrology profiles.
 
 **Known limitation:** textual wire JSON numbers like `1.0` can lose their decimal spelling when parsed by JavaScript, while `serde_json` may preserve them as floating-point values. The format remains **fictional-only** and does not authorize parsing untrusted raw JSON numbers without an agreed versioned wire parser. A SHA-256 fingerprint is not a MAC or receipt authentication.
+
+## Versioned ACK ledger integration — synthetic SQLite reference (2026-11-11)
+
+New: `tests/sqlite-ack-fp001-ledger.test.mjs`. The earlier SQLite v2 ACK reference hashes *unversioned* JSON. This newer executable reference instead uses the **real exported `ackFingerprint001()` Web Crypto implementation**, and explicitly derives the request used for the acknowledgement from the **durable `local_outbox` row** (including the exact nullable base revision, UTC fixture time and omission of delete payloads). It verifies that all three v1/v2 SQLite schema objects and existing tables work together under the proposed domain-separated ACK-FP-001 digest.
+
+The prototype places any asynchronous Web Crypto work **before** starting the synchronous SQLite transaction. After acquiring `BEGIN IMMEDIATE`, it re-reads the pending row, compares it to the pre-hash snapshot, checks FIFO eligibility and server-base revision, then atomically inserts the ACK ledger row, updates the entity revision and removes only the precise acknowledged outbox row. A repeated receipt must match **stored fingerprint, status and revision**. Conflicting repeats and reused mutation IDs do not touch entity data. An injected pre-commit error rolls back all three database changes. The ledger remains durable across closing and reopening a **temporary synthetic-only** SQLite file.
+
+**Actually executed on Node.js 22.16.0:**
+
+```powershell
+node --experimental-strip-types --experimental-sqlite --test tests/sqlite-ack-fp001-ledger.test.mjs
+```
+
+**10/10 passed** in this turn. Exact GitHub blob `2b3409ef6ca0d2ac8780d04d1f0482b70703aad5` matches the locally executed test file. The Windows manual script now includes it in the synthetic reference suite. The SQLite engine used by this test is **plaintext** in a temporary directory, not SQLCipher; no real profile or birth data is involved.
+
+### Important limitations and next safe native step
+
+- **Do not connect this test harness to Tauri or production.** It uses experimental Node `node:sqlite`, a fictional timestamp and synthetic-only identifiers. It does not verify server identity, user ownership, credential revocation, transport authentication or the actual Rust encrypted store.
+- The original `tests/sqlite-ack-ledger.test.mjs` remains a historical unversioned prototype and **must not be treated as an interchangeable protocol**. An approved migration of existing ledger fingerprints will require an explicit compatibility policy rather than silently overwriting hashes.
+- The future Rust v2 writer must reconstruct the typed request **from the persisted outbox row**, call Rust's `ack_fingerprint::fingerprint()`, reject any mismatch, and commit ACK + revision + deletion in one SQLCipher transaction. It must reject dependent stale-base edits, prevent mutation-ID reuse, isolate profiles and keep durable ACK rows through restarts.
+- A SHA-256 fingerprint only identifies request bytes; it does **not authenticate server receipts**. Server-side idempotency and authorization are necessary. Original v1 ACKs that were removed before a ledger existed remain historically unrecoverable by client-only migration.
+- Cross-language Rust test execution, encrypted SQLCipher build, OS-protected key management, backups/rollback and real Unicode/decimal astrological payload support remain **blocking**. This proposed contract rejects accented names and decimal positions, so it is not suitable for real chart data yet.
+
+No GitHub Actions, merge to main, deployment, license change or production database actions were performed.
