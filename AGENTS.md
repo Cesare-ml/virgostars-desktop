@@ -16,13 +16,27 @@
 11. [WebView2 style diagnostic](docs/WEBVIEW2_STYLE_DIAGNOSTIC.md): keep CSS marker checks local, read-only and accessible, with no remote fallback; report actual native status before changing CSP.
 12. [Angular critical CSS and Tauri CSP](docs/ANGULAR_CSP_CSS_FIX.md): keep `optimization.styles.inlineCritical=false` and reject deferred `media=print`/inline event-handler CSS. Do not weaken native CSP or introduce remote CSS to mask an unstyled window.
 
+## Authoritative product priority: guest-first offline (approved 2026-11-11)
+
+Read **[Offline MVP](docs/OFFLINE_FIRST_MVP.md)**, **[Live Angular–Rust Pipeline](docs/LIVE_CALCULATION_PIPELINE.md)**, **[Offline Places and Timezones](docs/OFFLINE_PLACES_AND_TIMEZONES.md)**, **[Optional Sync/Duplicates](docs/OPTIONAL_SYNC_AND_DUPLICATES.md)**, **[Agent Task Order](docs/MVP_AGENT_TASKS.md)** and [Roadmap](docs/ROADMAP.md) before starting new development.
+
+- **Never require a VirgoStars login, activation, server session or Internet connection** to open the app, calculate real offline sky, choose cities, create/edit/save/search/reopen charts, configure settings or export. The login is optional **after** these guest features work. This supersedes old docs that mandated a first online activation.
+- **Priority work sequence:** Windows styled chart-first shell; bounded low-latency IPC/worker and local ephemerides; Adesso clock/live correction/hold; versioned offline cities + historical timezones; local archive/new chart; transits, bodies/aspects/orbs/house systems and Light/Dark; only then optional account sync.
+- **Fast interaction must not become unbounded native requests.** Require coalescing, latest-only results, cancellation/queue capacity, stable WebGL scene and memory benchmarks; separate display frame rate from solver evaluations and never fabricate positions.
+- **Historical private frontend is a behavior reference only.** Do not copy any branding, credentials, unreviewed assets, source code or third-party astronomy runtime into VirgoStars Desktop. Do not mention legacy product branding in VirgoStars documentation, UI or release artifacts.
+- **Duplicate matching is not name matching.** First optional cloud attachment previews remote/local data; user chooses keep local, cloud, both, or explicit merge. Default preserves data; local IDs survive connection.
+- **Offline city lookup is mandatory:** keep a versioned licensed catalog and accurate historical IANA timezone behavior, optional online enrichment only, never implicit precise geolocation.
+- **Privacy:** natal names/dates/places/notes are personal data. Prefer SQLCipher with a device-local key not tied to cloud. For initial experiments, plaintext stores only **synthetic fixtures** without an explicit separate security review.
+- **Feature scope:** honor the complete specialist catalog and complete house-systems roadmap in [PR #6](https://github.com/Cesare-ml/virgostars-desktop/pull/6) when integrated, including standalone Egyptian and explicit exclusion of Egyptian+Placidus. Unsupported systems must be disabled, not silently remapped. No specialist feature displaces core guest/offline work.
+- **Agent work planning:** use [MVP_AGENT_TASKS.md](docs/MVP_AGENT_TASKS.md), choose one atomic validated slice, avoid duplicate stacked PRs and reconcile existing PR #2/#6/#7/#13/#18 and the isolated storage chain before integration.
+
 ## Non-negotiable boundaries
 - The private repository is **not** presently open source. No LICENSE has been selected. Do not infer a license from dependencies or copy a LICENSE from another repository without approval.
 - Never modify VirgoStars production, migrations, user accounts, Astrolabio installations, AWS, DNS, release endpoints or other repositories as a side effect. Cross-repo changes require a separate authorized task.
 - Never copy private user birth records, tokens, passwords, production DB dumps, API secrets, keys or unapproved original assets into this repository, tests, logs or issues. Use synthetic fixtures.
 - Keep astronomical algorithms in VirgoStars-Ephemeris Rust; keep astrological methods in astrological-functions; render only through astrological-charts and approved assets. Do not claim incomplete upstream integrations are working.
-- App authentication is not authorization: each server API enforces ownership; local offline access is limited to data previously downloaded for that profile. Never embed a privileged backend secret.
-- The app must stay usable offline after a successful prior sign-in, subject to documented local-device security and revocation limits. Never require a continuous network connection to view cached charts.
+- Optional online authentication is not server authorization: **each cloud API** must enforce the account owner's rights. Guest local data never require a prior download or server permission. Never embed a privileged backend secret.
+- The app must start and save charts **offline from first launch without sign-in**. After optional linking, cloud records cached with permission and guest/local records continue to work offline; revocation affects future online sync, not magical immediate deletion of an offline copy.
 - All mutations require deterministic IDs, local transactionality and conflict-safe sync. Never silently overwrite an unrelated remote change.
 - Update binaries only after cryptographic signature validation. Never commit update signing private keys.
 - Keep Windows and macOS considerations in every core API. Windows-only release first; no forced Windows dependencies in the shared core.
@@ -41,4 +55,4 @@
 The eventual repository should provide a Windows one-command bootstrap script and `npm run dev` with a synthetic/offline demo that does not need a VirgoStars account, any private upstream repository or a production database. Document required Node LTS, Rust toolchain, C++ Build Tools, WebView2 and commands in `docs/CONTRIBUTING.md` once code exists. This is a design requirement, not an available script yet.
 
 ## Status language
-Use **Proposed**, **Designed**, **Prototype**, **Locally tested**, **Integrated**, **Released** consistently. At present, the project remains **Prototype source / unverified Windows build**. The desktop-owned Angular shell and Tauri demo code are not validated on real Windows WebView2 yet. No released or production-ready application exists.
+Use **Proposed**, **Designed**, **Prototype**, **Locally tested**, **Integrated**, **Released** consistently. At present the project remains **Prototype / native Windows smoke confirmed but visual acceptance pending**. An experimental Tauri .exe launched with synthetic chart and read-only IPC; native styling and real offline computations have not been accepted. No released or production-ready application exists.
