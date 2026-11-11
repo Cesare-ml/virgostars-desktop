@@ -11,6 +11,9 @@ description = "Isolated SQLCipher synthetic persistence experiment; not linked i
 # Feature verified against the rusqlite 0.41.1 upstream documentation.
 rusqlite = { version = "=0.41.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 zeroize = "1.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

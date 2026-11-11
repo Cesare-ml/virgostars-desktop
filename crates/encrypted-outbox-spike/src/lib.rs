@@ -1,3 +1,5 @@
+pub mod ack_fingerprint;
+
 //! VirgoStars Desktop SQLCipher storage spike.
 //!
 //! ISOLATED / SYNTHETIC ONLY: not linked into the Tauri application, not a

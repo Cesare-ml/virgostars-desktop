@@ -1,0 +1,31 @@
+{
+  "schema": "ACK-FP-001",
+  "domainSeparator": "virgostars-ack-fp-001\n",
+  "vectors": [
+    {
+      "name": "basic-upsert",
+      "request": {
+        "profile": "synthetic-owner-a", "mutation": "synthetic-m1", "entityType": "subject", "entity": "synthetic-e1",
+        "operation": "upsert", "baseRevision": null, "createdAt": "2026-11-11T16:00:00Z", "payload": {"label": "Fictional birth chart"}
+      },
+      "sha256": "5a7bde8e3f1c05a55ca244257c420ddd331ad607a9ac34bbdf2d01292d4f8f99"
+    },
+    {
+      "name": "nested-sorted-upsert",
+      "request": {
+        "payload": {"meta":{"z":3,"a":true}, "items":["test",2,false,null], "label":"Fictional chart 2"},
+        "profile":"synthetic-owner-a", "mutation":"synthetic-m2", "entityType":"subject", "entity":"synthetic-e1",
+        "operation":"upsert", "baseRevision":"rev-1", "createdAt":"2026-11-11T16:01:00Z"
+      },
+      "sha256": "b584bdc2ea25c9431193b82e63314bab118559fbd8b93a7849977241fd5c3fb8"
+    },
+    {
+      "name": "delete-without-payload",
+      "request": {
+        "profile":"synthetic-owner-b", "mutation":"synthetic-del-1", "entityType":"subject", "entity":"synthetic-e9",
+        "operation":"delete", "baseRevision":"rev-4", "createdAt":"2026-11-11T16:02:00Z"
+      },
+      "sha256": "3b413705826459aa66483927ecd9ab2a00fabdbb25538d739f05dabee4e5f76a"
+    }
+  ]
+}
