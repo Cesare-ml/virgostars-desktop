@@ -29,7 +29,7 @@ fn safe_server_revision(revision: &str) -> bool {
 }
 
 impl SyntheticEncryptedStore {
-    fn require_v2_for_ack(&self) -> Result<()> {
+    pub(crate) fn require_v2_for_ack(&self) -> Result<()> {
         let version: i64 = self.conn.pragma_query_value(
             None, "user_version", |row| row.get(0),
         ).map_err(storage_error)?;
