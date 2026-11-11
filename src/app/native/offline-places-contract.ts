@@ -30,7 +30,7 @@ function optionalString(x: unknown): x is string | null {
   return x === null || (typeof x === 'string' && x.length <= 255);
 }
 function int(x: unknown): x is number {
-  return Number.isSafeInteger(x);
+  return typeof x === 'number' && Number.isSafeInteger(x);
 }
 function optionalInt(x: unknown): x is number | null {
   return x === null || int(x);
