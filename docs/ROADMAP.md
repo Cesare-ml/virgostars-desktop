@@ -24,7 +24,7 @@
 
 ## Phase 2 — Offline places, charts and archives (parallel with Phase 1)
 
-- [ ] Ship licensed **offline city/place search** with region/country disambiguation and manual coordinates; preserve source/version and user-selected default place.
+- [ ] **Choose the offline city source after an evidence-based audit:** existing purchased PostgreSQL collection (1,951,599 cities) versus GeoNames public extracts; verify redistribution/hosted-service rights, measure full/compact SQLite size and search latency, preserve source/version, and ship offline city search with manual coordinates. Optional online enrichment must never require login.
 - [ ] Ship versioned IANA timezone rules and historical DST validation; handle ambiguous/nonexistent civil time explicitly, never rely on present-day offsets for natal dates.
 - [ ] Guest/local profile **without registration**; create natal subject, choose date/time/place and unknown birth-time status; save/edit/open/duplicate/delete, note, group, full-text archive search and reliable restore after restart.
 - [ ] Select and document local SQLite profile schema, migration and backup. Prefer SQLCipher + OS key for real personal birth data; reuse separately tested Rust prototypes only after validation. Plain SQLite may be used for **synthetic development fixtures**, never as a hidden fallback after an encryption error.
