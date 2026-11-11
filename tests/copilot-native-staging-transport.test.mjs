@@ -1,0 +1,151 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  createNativeCopilotStagingTransport,
+} from '../src/app/native/copilot-staging-transport.ts';
+import {
+  requestCopilotPreview,
+  COPILOT_PREVIEW_MESSAGE_PATH,
+} from '../src/app/copilot-preview-client.ts';
+
+const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+const focus = { layer: 'NATAL', bodyId: 'VENUS' };
+const body = { action: 'describe_focus', focus };
+
+function fixtureEnvelope() {
+  return {
+    contract: 'VirgoStarsCopilotMockPreviewEnvelope',
+    version: '0.1.0',
+    stage: 'STAGING_SYNTHETIC',
+    syntheticFixture: true,
+    astrologyIsReal: false,
+    methodApproved: false,
+    providerInvoked: false,
+    interpretationStatus: 'FACT_ONLY',
+    data: {
+      answer: 'VENUS (NATAL), sample only.',
+      source: 'MOCK_DETERMINISTIC',
+      chartRevision: 1,
+      focus,
+      chartCommands: [{
+        type: 'chart.highlightAspects',
+        aspectIds: ['synthetic:transit:saturn:venus'],
+      }],
+    },
+  };
+}
+
+test('native bridge forwards only fixed focus, not URL, API key, model or user token', async () => {
+  const calls = [];
+  const native = {
+    isNative: () => true,
+    async invoke(command, args) {
+      calls.push({ command, args });
+      return fixtureEnvelope();
+    },
+  };
+  const transport = createNativeCopilotStagingTransport(native);
+  const result = await requestCopilotPreview(transport, focus, new AbortController().signal);
+  assert.equal(result.synthetic, true);
+  assert.equal(result.illustrativeAspectCount, 1);
+  assert.deepEqual(calls, [{
+    command: 'copilot_staging_preview',
+    args: { focus },
+  }]);
+  const serialized = JSON.stringify(calls);
+  for (const secret of ['Authorization', 'Bearer', 'apiKey', 'birthDate', 'model', 'provider']) {
+    assert.doesNotMatch(serialized, new RegExp(secret));
+  }
+});
+
+test('browser and remote request injection fail before native invocation', async () => {
+  let called = 0;
+  const native = {
+    isNative: () => false,
+    async invoke() { called++; return fixtureEnvelope(); },
+  };
+  const transport = createNativeCopilotStagingTransport(native);
+  await assert.rejects(
+    transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+    /native_unavailable/,
+  );
+  assert.equal(called, 0);
+});
+
+test('untrusted payload cannot override action, focus, backend URL, provider or token', async () => {
+  let called = 0;
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { called++; return fixtureEnvelope(); },
+  });
+  const ctrl = new AbortController();
+  for (const attack of [
+    { ...body, url: 'https://third-party.invalid' },
+    { ...body, apiKey: 'SECRET' },
+    { ...body, provider: 'anthropic' },
+    { action: 'setTransitInstant', focus },
+    { action: 'describe_focus', focus: { layer: 'TRANSIT', bodyId: 'VENUS' } },
+  ]) {
+    await assert.rejects(
+      transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, attack, ctrl.signal),
+      /invalid_native_request/,
+    );
+  }
+  await assert.rejects(
+    transport.postJson('https://api.openai.com/v1/responses', body, ctrl.signal),
+    /invalid_native_request/,
+  );
+  assert.equal(called, 0);
+});
+
+test('abort before network prevents calling native bridge', async () => {
+  let called = false;
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { called = true; },
+  });
+  const ctrl = new AbortController();
+  ctrl.abort();
+  await assert.rejects(transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, ctrl.signal), /cancelled/);
+  assert.equal(called, false);
+});
+
+test('abort during native HTTP ignores stale response; no native cancel guarantee', async () => {
+  const ctrl = new AbortController();
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { ctrl.abort(); return fixtureEnvelope(); },
+  });
+  await assert.rejects(transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, ctrl.signal), /cancelled/);
+});
+
+test('native failure is sanitized; no environment, token or service details reach UI', async () => {
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { throw new Error('JWT SECRET and https://internal.example.test'); },
+  });
+  await assert.rejects(
+    transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+    error => error.message === 'copilot_preview_native_unavailable',
+  );
+});
+
+test('release builds omit the staging command; Angular development-only wiring', () => {
+  const lib = read('src-tauri/src/lib.rs');
+  const command = read('src-tauri/src/copilot_staging_bridge.rs');
+  const cargo = read('src-tauri/Cargo.toml');
+  const main = read('src/main.ts');
+  const config = JSON.parse(read('src-tauri/tauri.conf.json'));
+  assert.match(lib, /cfg\(all\(debug_assertions, feature = "copilot-staging"\)\)/);
+  assert.match(lib, /cfg\(not\(all\(debug_assertions, feature = "copilot-staging"\)\)\)/);
+  assert.match(lib, /copilot_staging_bridge::copilot_staging_preview/);
+  assert.match(cargo, /copilot-staging\s*=\s*\["dep:reqwest"\]/);
+  assert.match(command, /host_str\(\) != Some\("127\.0\.0\.1"\)/);
+  assert.match(command, /Policy::none\(\)/);
+  assert.match(command, /MAX_RESPONSE_BYTES/);
+  assert.match(main, /isDevMode\(\) && isTauri\(\)/);
+  assert.match(main, /VIRGOSTARS_COPILOT_PREVIEW_TRANSPORT/);
+  assert.match(config.app.security.csp, /connect-src 'self'/);
+  assert.doesNotMatch(config.app.security.csp, /api\.openai\.com|api\.anthropic\.com/);
+});
