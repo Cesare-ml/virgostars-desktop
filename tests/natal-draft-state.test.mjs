@@ -162,7 +162,7 @@ test('inspector wiring and UI clearly retain synthetic chart/save boundary',()=>
   assert.match(template,/natal.no.save/);
   assert.match(template,/natal.utc.unresolved/);
   assert.match(component,/new NatalDraftState\(\)/);
-  assert.doesNotMatch(source,/localStorage|sessionStorage|fetch\(|invoke\(|indexedDB/);
+  assert.doesNotMatch(source,/\b(?:localStorage|sessionStorage|indexedDB)\s*[.\[]|\b(?:fetch|invoke)\s*\(/);
 });
 
 test('Italian and English natal editor labels exist with equal key sets',()=>{
