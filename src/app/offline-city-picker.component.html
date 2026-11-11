@@ -28,7 +28,11 @@
       [class.active]="state.activeIndex === i"
       (click)="choose(i)">
       <span class="city-primary">{{city.name}}</span>
-      <span class="city-secondary">{{city.region || t('city.region.unknown')}} · {{city.timeZone || t('city.zone.unknown')}}</span>
+      <span class="city-secondary">
+        {{city.region || t('city.region.unknown')}}
+        <ng-container *ngIf="city.countryName"> · {{city.countryName}}</ng-container>
+        · {{city.timeZone || t('city.zone.unknown')}}
+      </span>
     </button>
   </div>
   <p class="city-selected" *ngIf="state.selected">
