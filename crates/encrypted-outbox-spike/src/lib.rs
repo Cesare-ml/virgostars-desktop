@@ -1,5 +1,3 @@
-pub mod ack_fingerprint;
-
 //! VirgoStars Desktop SQLCipher storage spike.
 //!
 //! ISOLATED / SYNTHETIC ONLY: not linked into the Tauri application, not a
@@ -9,6 +7,10 @@ pub mod ack_fingerprint;
 //!
 //! SQLite is NEVER used as a plaintext alternative. A missing SQLCipher
 //! codec, incorrect key, unknown schema or plaintext file fails closed.
+
+pub mod ack_fingerprint;
+mod ack_v2;
+pub use ack_v2::AckV2Disposition;
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::fmt::Write as _;
@@ -168,7 +170,19 @@ fn validate_synthetic_fixture_rows(conn: &Connection) -> Result<()> {
 }
 
 impl SyntheticEncryptedStore {
+    /// Standard v1 constructor intentionally does not auto-upgrade or read v2.
     pub fn open(path: &Path, key: &StoreKey) -> Result<Self> {
+        Self::open_expected_synthetic_schema(path, key, 1)
+    }
+
+    /// EXPLICIT test-only v2 open. Enforces the SAME SQLCipher/HMAC gate as
+    /// the v1 constructor, then checks the exact v2 schema and synthetic IDs.
+    /// No user account, backup migration, login or real data is supported.
+    pub fn open_synthetic_v2(path: &Path, key: &StoreKey) -> Result<Self> {
+        Self::open_expected_synthetic_schema(path, key, 2)
+    }
+
+    fn open_expected_synthetic_schema(path: &Path, key: &StoreKey, expected: i64) -> Result<Self> {
         // Best-effort symlink guard for a test-only path. Production must use
         // an application-owned directory and race-safe path verification.
         let existed = match std::fs::symlink_metadata(path) {
@@ -255,7 +269,7 @@ impl SyntheticEncryptedStore {
             None, "user_version", |row| row.get(0)
         ).map_err(storage_error)?;
         match version {
-            0 if !existed => {
+            0 if !existed && expected == 1 => {
                 let count: i64 = conn.query_row(
                     "SELECT count(*) FROM sqlite_master WHERE type='table'",
                     [], |row| row.get(0)
@@ -267,12 +281,20 @@ impl SyntheticEncryptedStore {
                 tx.execute_batch(SCHEMA_V1).map_err(storage_error)?;
                 tx.commit().map_err(storage_error)?;
             }
-            1 => {}
+            1 if expected == 1 => {}
+            2 if expected == 2 => {}
             _ => return Err(StoreError::UnsupportedSchema),
         }
-        // Do not trust a user_version=1 DB with same-named but altered tables,
-        // weakened CHECKs, missing indexes, triggers, or broken foreign keys.
-        validate_schema_v1(&conn)?;
+        // Never accept a v2 file via v1 or silently migrate. Both explicit
+        // constructors share the SQLCipher page and HMAC integrity checks.
+        match expected {
+            1 => validate_schema_v1(&conn)?,
+            2 => {
+                validate_schema_v2(&conn)?;
+                validate_synthetic_fixture_rows(&conn)?;
+            }
+            _ => return Err(StoreError::UnsupportedSchema),
+        }
         Ok(Self { conn })
     }
 
