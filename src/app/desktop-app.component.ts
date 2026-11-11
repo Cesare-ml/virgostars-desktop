@@ -71,6 +71,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   copilotFocus: CopilotPreviewFocus = { layer: 'NATAL', bodyId: 'VENUS' };
   copilotBusy = false;
   copilotPreviewReady = false;
+  copilotProbeBusy = false;
   copilotAnswer = '';
   copilotIllustrativeAspects = 0;
   copilotStatus: MessageKey = 'ai.preview.unconfigured';
@@ -97,6 +98,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
   // Means the optional *local staging bridge* is configured, not cloud login.
   get copilotConnected(): boolean { return this.copilotPreviewReady; }
+  get copilotCanProbe(): boolean { return this.copilotTransport !== null; }
   get copilotFocusKey(): string { return this.copilotFocus.layer + ':' + this.copilotFocus.bodyId; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
 
@@ -122,21 +124,32 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  recheckCopilotPreview(): void {
+    if (this.destroyed || this.copilotBusy || this.copilotProbeBusy) return;
+    void this.checkCopilotPreview();
+  }
+
   private async checkCopilotPreview(): Promise<void> {
-    // A Tauri/Angular development build alone does not imply the Cargo
-    // command exists. The native status probe returns only a boolean and
-    // never sends account or test credentials into Angular.
-    if (!this.copilotTransport) return;
-    let configured = false;
-    try {
-      configured = await this.copilotTransport.isAvailable();
-    } catch {
-      configured = false;
-    }
-    if (this.destroyed) return;
-    this.copilotPreviewReady = configured === true;
-    this.copilotStatus = configured ? 'ai.preview.ready' : 'ai.preview.unconfigured';
+    // A development build is not enough: Rust must confirm the authenticated
+    // STAGING_SYNTHETIC /capabilities contract, returning only a boolean.
+    if (!this.copilotTransport || this.copilotProbeBusy) return;
+    this.copilotProbeBusy = true;
+    this.copilotPreviewReady = false;
+    this.copilotStatus = 'ai.preview.checking';
     this.cd.markForCheck();
+    let available = false;
+    try {
+      available = await this.copilotTransport.isAvailable();
+    } catch {
+      available = false;
+    } finally {
+      if (!this.destroyed) {
+        this.copilotProbeBusy = false;
+        this.copilotPreviewReady = available === true;
+        this.copilotStatus = available ? 'ai.preview.ready' : 'ai.preview.unconfigured';
+        this.cd.markForCheck();
+      }
+    }
   }
 
   private async checkRuntime(): Promise<void> {
