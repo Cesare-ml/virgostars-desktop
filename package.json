@@ -17,7 +17,8 @@
     "doctor": "node scripts/desktop-doctor.mjs --stage=setup",
     "doctor:json": "node scripts/desktop-doctor.mjs --stage=setup --json",
     "doctor:build": "node scripts/desktop-doctor.mjs --stage=build --strict",
-    "doctor:verify": "node scripts/desktop-doctor.mjs --stage=verify --strict"
+    "doctor:verify": "node scripts/desktop-doctor.mjs --stage=verify --strict",
+    "verify:css": "node scripts/verify-bundled-css.mjs"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "20.3.5",
