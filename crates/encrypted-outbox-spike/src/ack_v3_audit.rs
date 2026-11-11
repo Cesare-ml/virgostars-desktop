@@ -161,12 +161,15 @@ impl SyntheticEncryptedStore {
                     || !remote_revision.bytes().all(|b| (0x20..=0x7e).contains(&b))
                 { return Err(suspicious()); }
 
-                let retired_in_queue: i64 = tx.query_row(
-                    "SELECT count(*) FROM local_outbox
-                     WHERE profile_id=?1 AND mutation_id=?2",
+                let old_reuse: i64 = tx.query_row(
+                    "SELECT
+                         EXISTS(SELECT 1 FROM local_outbox
+                                WHERE profile_id=?1 AND mutation_id=?2)
+                         OR EXISTS(SELECT 1 FROM local_ack_ledger
+                                   WHERE profile_id=?1 AND mutation_id=?2)",
                     params![profile, original_id], |r| r.get(0),
                 ).map_err(storage_error)?;
-                if retired_in_queue != 0 { return Err(suspicious()); }
+                if old_reuse != 0 { return Err(suspicious()); }
 
                 // A replacement is either still pending, already ACKed,
                 // or itself retired by a later explicit keep-local decision.
@@ -189,15 +192,44 @@ impl SyntheticEncryptedStore {
                         || new_time != decided_at
                     { return Err(suspicious()); }
                 } else {
-                    let terminal: i64 = tx.query_row(
-                        "SELECT
-                            EXISTS(SELECT 1 FROM local_ack_ledger
-                                   WHERE profile_id=?1 AND mutation_id=?2)
-                            OR EXISTS(SELECT 1 FROM local_conflict_decisions
-                                      WHERE profile_id=?1 AND original_mutation_id=?2)",
-                        params![profile, replacement_id], |r| r.get(0),
-                    ).map_err(storage_error)?;
-                    if terminal == 0 { return Err(suspicious()); }
+                    let ack: Option<(String, String)> = tx.query_row(
+                        "SELECT entity_type,entity_id FROM local_ack_ledger
+                         WHERE profile_id=?1 AND mutation_id=?2",
+                        params![profile, replacement_id],
+                        |r| Ok((r.get(0)?,r.get(1)?)),
+                    ).optional().map_err(storage_error)?;
+                    if let Some((acked_type, acked_entity)) = ack {
+                        if acked_type != entity_type || acked_entity != entity {
+                            return Err(suspicious());
+                        }
+                    } else {
+                        // Chained keep-local decisions are legal, but the next
+                        // history row must correspond to the exact replacement
+                        // that this preceding decision created.
+                        type NextOld = (String, String, String, Option<String>,
+                                        Option<String>, String);
+                        let chain: Option<NextOld> = tx.query_row(
+                            "SELECT entity_type,entity_id,original_operation,
+                                    original_payload_json,
+                                    original_base_server_revision,original_created_at_utc
+                             FROM local_conflict_decisions
+                             WHERE profile_id=?1 AND original_mutation_id=?2",
+                            params![profile, replacement_id],
+                            |r| Ok((
+                                r.get(0)?,r.get(1)?,r.get(2)?,
+                                r.get(3)?,r.get(4)?,r.get(5)?,
+                            )),
+                        ).optional().map_err(storage_error)?;
+                        let Some((next_type, next_entity, next_op,
+                                  next_payload, next_base, next_time)) = chain else {
+                            return Err(suspicious());
+                        };
+                        if next_type != entity_type || next_entity != entity
+                            || next_op != operation || next_payload != raw_payload
+                            || next_base.as_deref() != Some(remote_revision.as_str())
+                            || next_time != decided_at
+                        { return Err(suspicious()); }
+                    }
                 }
             }
         }
@@ -311,6 +343,45 @@ mod tests {
              VALUES ('synthetic-a','synthetic-old','subject','synthetic-e1',
                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
                'accepted','rev-x','2026-11-11T21:30:00Z')", [],
+        ).unwrap();
+        assert!(store.audit_synthetic_v3_readonly().is_err());
+    }
+
+    #[test]
+    fn original_retired_id_cannot_also_be_acknowledged() {
+        let (_dir, _path, mut store, _, hash) = setup();
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a","synthetic-old","synthetic-new",&hash,
+            "2026-11-11T21:30:00Z",false,
+        ).unwrap();
+        store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                result,server_revision,acknowledged_at_utc)
+             VALUES('synthetic-a','synthetic-old','subject','synthetic-e1',
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    'accepted','rev-forged','2026-11-11T21:30:00Z')", [],
+        ).unwrap();
+        assert!(store.audit_synthetic_v3_readonly().is_err());
+    }
+
+    #[test]
+    fn acknowledged_replacement_must_reference_the_same_subject() {
+        let (_dir, _path, mut store, _, hash) = setup();
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a","synthetic-old","synthetic-new",&hash,
+            "2026-11-11T21:30:00Z",false,
+        ).unwrap();
+        store.conn.execute(
+            "DELETE FROM local_outbox WHERE mutation_id='synthetic-new'", [],
+        ).unwrap();
+        store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                result,server_revision,acknowledged_at_utc)
+             VALUES('synthetic-a','synthetic-new','subject','synthetic-other',
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    'accepted','rev-forged','2026-11-11T21:30:00Z')", [],
         ).unwrap();
         assert!(store.audit_synthetic_v3_readonly().is_err());
     }
