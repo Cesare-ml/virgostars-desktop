@@ -1,5 +1,7 @@
 # Contributing (design-stage)
 
+**2026-11-11 product priority:** Before development read [Offline MVP](OFFLINE_FIRST_MVP.md), [Low-latency Angular–Rust](LIVE_CALCULATION_PIPELINE.md), [Offline cities/timezones](OFFLINE_PLACES_AND_TIMEZONES.md), [Optional sync and duplicates](OPTIONAL_SYNC_AND_DUPLICATES.md) and [Agent task order](MVP_AGENT_TASKS.md). **A guest can use the entire offline core on first launch without account or Internet.** Older login-first drafts are superseded.
+
 This repository is currently **private** and not yet published under an open-source license. Contributions must be specifically authorized by the maintainer; future public contribution terms are still to be decided.
 
 ## For newcomers and AI-assisted contributors

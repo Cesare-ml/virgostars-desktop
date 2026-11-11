@@ -2,14 +2,20 @@
 
 **Private experimental repository — future free/open-source desktop application for astrologers and astrology researchers.**
 
-VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. Users sign in with their VirgoStars account on first activation, then can work offline with previously authorized local data and synchronize safely when online.
+VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
+
+## Offline-first product decision (2026-11-11)
+
+**First useful goal:** open VirgoStars Desktop without registration, choose a city from a local offline catalog, show a verified current-sky chart with real-time clock, create/save/search/edit local natal charts, correct year/month/day/hour/minute fluidly by rapid click/hold, inspect selected-chart transits, and configure house systems, bodies, aspects, per-body/per-aspect orbs, graphical layers and Light/Dark skins. Online account login is optional and comes later, with no-loss duplicate reconciliation.
+
+**Priority specs:** [Offline MVP](docs/OFFLINE_FIRST_MVP.md) · [Low-latency Angular↔Rust pipeline](docs/LIVE_CALCULATION_PIPELINE.md) · [Offline cities and tzdb](docs/OFFLINE_PLACES_AND_TIMEZONES.md) · [Optional sync and duplicates](docs/OPTIONAL_SYNC_AND_DUPLICATES.md) · [Agent task order](docs/MVP_AGENT_TASKS.md) · [Roadmap](docs/ROADMAP.md). These are requirements, **not features implemented by the current synthetic .exe**.
 
 ## Current state (2026-11-10)
 
 **Windows first launch (maintainer smoke test):** an experimental Tauri `.exe` has been built and opened on Windows 11, Angular renders synthetic chart data, and the local native runtime probe responds. **The visual interface is still substantially unstyled with a tiny chart.** This is NOT yet a usable beta. See [Windows GUI Smoke](docs/WINDOWS_GUI_SMOKE_2026-11-10.md) for CSS triage and the new `npm run verify:css` build-artifact check.
 
 
-- **Experimental desktop-owned Angular shell:** source now contains an Angular 20 application with a real astrological-charts renderer adapter, chart-first layout, collapsible navigation/inspector, light/dark themes, IT/EN labels, responsive sizing and PNG export paths. Synthetic assets are staged for Tauri 2 offline testing. **It has not been compiled or validated on Windows**; account login, sync, SQLite and real astronomy integration do not exist. See [Shell 001](docs/SHELL-001.md), [Spike 001](docs/SPIKE-001.md), [Native Runtime Bridge](docs/NATIVE_RUNTIME_BRIDGE.md) and [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md).
+- **Experimental desktop-owned Angular shell:** source now contains an Angular 20 application with a real astrological-charts renderer adapter, chart-first layout, collapsible navigation/inspector, light/dark themes, IT/EN labels, responsive sizing and PNG export paths. Synthetic assets are staged for Tauri 2 offline testing. **A Windows synthetic .exe has launched, but the native visual CSS remains unverified after the fix**; account login, sync, SQLite and real astronomy integration do not exist. See [Shell 001](docs/SHELL-001.md), [Spike 001](docs/SPIKE-001.md), [Native Runtime Bridge](docs/NATIVE_RUNTIME_BRIDGE.md) and [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md).
 - **Proposed stack:** Tauri 2, Angular/TypeScript, Rust and a local SQLite database, subject to an architecture spike.
 - **Windows first, macOS later:** no Windows-specific application logic in cross-platform modules.
 - **Private for now.** The future open-source license is **not yet decided**. Do **not** add a LICENSE file, claim that code is CPAL/MIT licensed or publish this repository without an explicit decision.
@@ -45,7 +51,7 @@ The Angular demo protects its rendering state against out-of-order async scene c
 
 ## Quick read-only setup check
 
-Run `node scripts/desktop-doctor.mjs` or `npm run doctor` on Windows to diagnose Node, Rust MSVC, WebView2, upstream Charts and Angular/Tauri build prerequisites. `npm run doctor:json` produces a shareable report with no personal paths. For the complete build attempt, use `scripts\\build-windows.cmd` (no PowerShell policy changes). See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md). This **does not prove the native app runs**; actual compilation and offline WebView2 testing remain pending.
+Run `node scripts/desktop-doctor.mjs` or `npm run doctor` on Windows to diagnose Node, Rust MSVC, WebView2, upstream Charts and Angular/Tauri build prerequisites. `npm run doctor:json` produces a shareable report with no personal paths. For the complete build attempt, use `scripts\\build-windows.cmd` (no PowerShell policy changes). See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md). A previous experimental native .exe launched; this does not prove the latest CSS correction, real offline astronomical calculations or end-to-end WebView2 acceptance.
 
 ## Current working prototype (stacked draft PR)
 
