@@ -6,7 +6,9 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 ## Preparing the complete offline city catalog
 
-The purchased **1,951,599-city** reference database is intended to ship with the Windows installer after a private, validated PostgreSQL CSV → SQLite conversion. **The actual licensed city data are never committed to Git.** A batch Python converter, checksum/ZIP generator and Tauri resource-config helper are now in source control. They do **not** yet implement Rust-backed city search or the Angular city selector. See [Local City Packaging](docs/LOCAL_CITY_PACKAGING.md) for safe export, validation, Windows commands and GitHub Release asset distribution.
+The purchased **1,951,599-city** reference database is intended to ship with the Windows installer after a private, validated PostgreSQL CSV → SQLite conversion.
+
+A **new Rust local search command** reads indexed SQLite with at most two concurrent blocking workers and max 30 results; a strict TypeScript adapter validates responses and drops stale searches. See [Native Offline Places](docs/NATIVE_OFFLINE_PLACES.md). This code is authored but not yet verified in the Windows executable. **The actual licensed city data are never committed to Git.** A batch Python converter, checksum/ZIP generator and Tauri resource-config helper are now in source control. They do **not** yet implement Rust-backed city search or the Angular city selector. See [Local City Packaging](docs/LOCAL_CITY_PACKAGING.md) for safe export, validation, Windows commands and GitHub Release asset distribution.
 
 ## Offline-first product decision (2026-11-11)
 
