@@ -4,3 +4,11 @@ src-tauri/target/
 *.log
 .DS_Store
 src-tauri/icons/
+
+# Licensed city data and generated database packs: never commit purchased records.
+# Work locally under .local/places/ (already covered by .local/).
+data/private-places/
+src-tauri/resources/places/*.sqlite
+src-tauri/resources/places/*.sqlite3
+src-tauri/resources/places/*.csv
+src-tauri/resources/places/*.zip
