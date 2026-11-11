@@ -14,7 +14,7 @@ const MAX_CANONICAL_BYTES: usize = 262_144;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", try_from = "WireAckRequest")]
 pub struct AckRequest {
     pub profile: String,
     pub mutation: String,
@@ -25,6 +25,66 @@ pub struct AckRequest {
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
+}
+
+// Deserialize through a strict wire DTO. Serde's default Option<T> decoding
+// treats omitted and explicit null identically; ACK-FP-001 MUST distinguish
+// "baseRevision" (required even when null) and "payload" (absent for delete).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WireAckRequest {
+    profile: String,
+    mutation: String,
+    entity_type: String,
+    entity: String,
+    operation: String,
+    base_revision: Value, // Required: null or a string; NOT silently optional.
+    created_at: String,
+    #[serde(default)]
+    payload: WirePayload,
+}
+
+#[derive(Debug, Default)]
+enum WirePayload {
+    #[default]
+    Missing,
+    Present(Value),
+}
+
+impl<'de> Deserialize<'de> for WirePayload {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Value::deserialize(deserializer).map(Self::Present)
+    }
+}
+
+impl TryFrom<WireAckRequest> for AckRequest {
+    type Error = &'static str;
+
+    fn try_from(raw: WireAckRequest) -> std::result::Result<Self, Self::Error> {
+        let base_revision = match raw.base_revision {
+            Value::Null => None,
+            Value::String(text) => Some(text),
+            _ => return Err("Unsupported ACK baseRevision shape"),
+        };
+        let payload = match (raw.operation.as_str(), raw.payload) {
+            ("upsert", WirePayload::Present(value)) if !value.is_null() => Some(value),
+            ("delete", WirePayload::Missing) => None,
+            _ => return Err("Unsupported ACK payload presence"),
+        };
+        Ok(Self {
+            profile: raw.profile,
+            mutation: raw.mutation,
+            entity_type: raw.entity_type,
+            entity: raw.entity,
+            operation: raw.operation,
+            base_revision,
+            created_at: raw.created_at,
+            payload,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,6 +265,34 @@ mod tests {
         assert_eq!(fingerprint(&request), Err(invalid()));
         request.profile = "real-account".into();
         assert_eq!(fingerprint(&request), Err(invalid()));
+    }
+
+    #[test]
+    fn wire_decoder_requires_base_revision_and_distinguishes_missing_vs_null_payload() {
+        let original = serde_json::to_value(sample()).unwrap();
+        let mut missing_base = original.clone();
+        missing_base.as_object_mut().unwrap().remove("baseRevision");
+        assert!(serde_json::from_value::<AckRequest>(missing_base).is_err());
+
+        let mut null_upsert = original.clone();
+        null_upsert["payload"] = Value::Null;
+        assert!(serde_json::from_value::<AckRequest>(null_upsert).is_err());
+
+        let mut null_delete = original.clone();
+        null_delete["operation"] = json!("delete");
+        null_delete["payload"] = Value::Null;
+        assert!(serde_json::from_value::<AckRequest>(null_delete).is_err());
+
+        let mut valid_delete = original.clone();
+        valid_delete["operation"] = json!("delete");
+        valid_delete.as_object_mut().unwrap().remove("payload");
+        let request: AckRequest = serde_json::from_value(valid_delete).unwrap();
+        assert!(fingerprint(&request).is_ok());
+
+        let duplicate = r#"{"profile":"synthetic-a","profile":"synthetic-b",
+            "mutation":"synthetic-m","entityType":"subject","entity":"synthetic-e",
+            "operation":"delete","baseRevision":null,"createdAt":"2026-11-11T16:00:00Z"}"#;
+        assert!(serde_json::from_str::<AckRequest>(duplicate).is_err());
     }
 
     #[test]
