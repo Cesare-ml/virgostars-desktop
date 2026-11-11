@@ -139,7 +139,8 @@ impl SyntheticEncryptedStore {
         next.mutation = replacement_mutation.to_owned();
         next.base_revision = Some(remote_revision.clone());
         next.created_at = decision_time.to_owned();
-        fingerprint(&next).map_err(|_| StoreError::InvalidSyntheticInput)?;
+        let expected_new_hash = fingerprint(&next)
+            .map_err(|_| StoreError::InvalidSyntheticInput)?;
 
         // Scope ID uniqueness to the synthetic profile, but cover every
         // lifetime state: queued, ACKed, retired original and replacement.
@@ -212,6 +213,42 @@ impl SyntheticEncryptedStore {
                 payload_json, remote_revision, decision_time,
             ],
         ).map_err(storage_error)?;
+        // Re-read the NEW queue row before recording an immutable decision.
+        // The source was already checked, but that alone cannot guarantee
+        // correct replacement serialization. A mismatch rolls back the old
+        // conflict removal and the new outbox insertion together.
+        let saved: (String, String, String, Option<String>, Option<String>, String) =
+            tx.query_row(
+                "SELECT entity_type,entity_id,operation,payload_json,
+                        base_server_revision,created_at_utc
+                 FROM local_outbox WHERE profile_id=?1 AND mutation_id=?2",
+                params![profile, replacement_mutation],
+                |r| Ok((
+                    r.get(0)?, r.get(1)?, r.get(2)?,
+                    r.get(3)?, r.get(4)?, r.get(5)?,
+                )),
+            ).map_err(storage_error)?;
+        let saved_payload = match (saved.2.as_str(), saved.3) {
+            ("upsert", Some(json)) => Some(serde_json::from_str(&json)
+                .map_err(|_| StoreError::InvalidSyntheticInput)?),
+            ("delete", None) => None,
+            _ => return Err(StoreError::InvalidSyntheticInput),
+        };
+        let persisted_next = AckRequest {
+            profile: profile.to_owned(),
+            mutation: replacement_mutation.to_owned(),
+            entity_type: saved.0,
+            entity: saved.1,
+            operation: saved.2,
+            payload: saved_payload,
+            base_revision: saved.4,
+            created_at: saved.5,
+        };
+        if fingerprint(&persisted_next)
+            .map_err(|_| StoreError::InvalidSyntheticInput)? != expected_new_hash
+        {
+            return Err(StoreError::InvalidSyntheticInput);
+        }
         let historical = tx.execute(
             "INSERT INTO local_conflict_decisions(
                  profile_id,original_mutation_id,original_fingerprint,
@@ -299,6 +336,35 @@ mod tests {
             [], |r| Ok((r.get(0)?,r.get(1)?)),
         ).unwrap();
         assert_eq!(staged, (r#"{"label":"Fictional"}"#.into(), "rev-remote".into()));
+    }
+
+    #[test]
+    fn replacement_fingerprint_matches_reloaded_pending_snapshot() {
+        let (_dir, _path, mut store, original_hash) = setup();
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a", "synthetic-old", "synthetic-new",
+            &original_hash, DECISION_TIME, false,
+        ).unwrap();
+        let stored: (String, String, String, String, String) = store.conn.query_row(
+            "SELECT profile_id,mutation_id,entity_id,payload_json,
+                    base_server_revision FROM local_outbox
+             WHERE mutation_id='synthetic-new'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
+        ).unwrap();
+        let expected = AckRequest {
+            profile: stored.0,
+            mutation: stored.1,
+            entity_type: "subject".into(),
+            entity: stored.2,
+            operation: "upsert".into(),
+            payload: Some(serde_json::from_str(&stored.3).unwrap()),
+            base_revision: Some(stored.4),
+            created_at: DECISION_TIME.into(),
+        };
+        let mut independent = request("synthetic-a", "synthetic-new", "synthetic-e1");
+        independent.base_revision = Some("rev-remote".into());
+        independent.created_at = DECISION_TIME.into();
+        assert_eq!(fingerprint(&expected).unwrap(),fingerprint(&independent).unwrap());
     }
 
     #[test]

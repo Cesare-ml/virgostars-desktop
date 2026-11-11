@@ -247,10 +247,20 @@ impl SyntheticEncryptedStore {
             Err(_) => return Err(StoreError::StorageFailure),
         };
 
-        let mut conn = Connection::open_with_flags(
-            path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE,
-        ).map_err(storage_error)?;
+        // Only a brand-new v1 synthetic store may be created here. Explicit
+        // v2/v3 access must fail without leaving an empty file on disk.
+        // SQLITE_OPEN_CREATE would otherwise create a misleading archive
+        // before the unsupported-schema check rejects it.
+        if expected != 1 && !existed {
+            return Err(StoreError::UnsupportedSchema);
+        }
+        let flags = if expected == 1 {
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
+        } else {
+            OpenFlags::SQLITE_OPEN_READ_WRITE
+        };
+        let mut conn = Connection::open_with_flags(path, flags)
+            .map_err(storage_error)?;
 
         // SQLCipher raw 256-bit key syntax. Zeroize the intermediate text;
         // never log this PRAGMA or forward database error details to the UI.
@@ -636,6 +646,31 @@ mod tests {
 
     fn test_key(byte: u8) -> StoreKey {
         StoreKey::from_external_key_material([byte; 32]).expect("test key")
+    }
+
+    #[test]
+    fn explicit_v2_and_v3_open_never_create_missing_database() {
+        let dir = tempdir().unwrap();
+        let absent_v2 = dir.path().join("no-v2-db.sqlcipher");
+        let absent_v3 = dir.path().join("no-v3-db.sqlcipher");
+        let key = test_key(91);
+        assert!(!absent_v2.exists());
+        assert!(!absent_v3.exists());
+        assert!(matches!(
+            SyntheticEncryptedStore::open_synthetic_v2(&absent_v2, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+        assert!(matches!(
+            SyntheticEncryptedStore::open_synthetic_v3(&absent_v3, &key),
+            Err(StoreError::UnsupportedSchema)
+        ));
+        assert!(!absent_v2.exists());
+        assert!(!absent_v3.exists());
+        // Only the explicitly requested initial v1 creation is permitted.
+        let initial = SyntheticEncryptedStore::open(&absent_v2, &key).unwrap();
+        assert!(absent_v2.exists());
+        drop(initial);
+        assert!(SyntheticEncryptedStore::open_synthetic_v3(&absent_v2, &key).is_err());
     }
 
     #[test]
