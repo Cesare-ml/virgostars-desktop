@@ -59,6 +59,7 @@ Run a DEBUG Tauri build **with** the explicit Cargo feature. The existing Tauri 
 ## Security checks in native Rust
 
 - The preview request button stays disabled unless the *backend actually returns* an authenticated, validated staging-only capabilities envelope; a configured URL alone is insufficient.
+- Native `project_preview_envelope` validates the response against the expected selected layer/body, deterministic source, draft-only status, zero provider cost and false personal-data disclosures. It enforces a safe integer revision, bounded nonempty answer, exactly one allowed `chart.highlightAspects` command, unique synthetically namespaced aspect IDs and a maximum of 80 aspects. **It creates a fresh minimal JSON envelope:** arbitrary backend fields such as request identifiers, private notes, tokens, extra commands or private chart data are **not forwarded into Angular**. These IDs remain display-only and never mutate the actual chart.
 - The native Rust reader limits both GET and POST JSON bodies to 8 KiB and rejects invalid content types before deserializing.
 - Strict typed focus allowlist: only natal Venus/Sun or transiting Saturn.
 - Fixed backend endpoint path; URL origin restricted to literal HTTP `127.0.0.1` with explicit port, no hostnames, query/fragment, credentials, additional paths or redirects.
@@ -73,8 +74,8 @@ The backend has its own staging JWT middleware and per-user rate limit. Neither 
 ## Verification
 
 **Added source tests:**
-- Rust `#[cfg(test)]`: focus allowlist, URL/SSRF restrictions, staging JWT shape, *pure* fail-closed readiness predicate (no process-global env mutation), FACT_ONLY envelope gate.
-- Node `tests/copilot-native-staging-transport.test.mjs`: only the expected command, separate boolean-only readiness probe, forged payload rejection, browser denial, stale-result cancellation, error redaction, proxy bypass and source-gate checks.
+- Rust `#[cfg(test)]`: focus allowlist, URL/SSRF restrictions, staging JWT shape, *pure* fail-closed readiness predicate (no process-global env mutation), exact capability contract, FACT_ONLY envelope gate, minimal JSON projection (removes unexpected secrets), and rejection of mismatched focus, provider costs, personal disclosures, unsafe commands and IDs.
+- Node `tests/copilot-native-staging-transport.test.mjs`: only the expected command, separate boolean-only readiness probe, forged payload rejection, browser denial, stale-result cancellation, error redaction, proxy bypass, source-gate checks, and a regression assertion that Rust sends **only the projected** response over Tauri IPC.
 
 **Required commands once checked out on Windows and Node/Rust toolchains available:**
 
