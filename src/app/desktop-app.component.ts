@@ -305,9 +305,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.copilotAnswer = reply.answer;
       this.copilotIllustrativeAspects = reply.illustrativeAspectCount;
       this.copilotStatus = 'ai.preview.synthetic';
-    } catch {
+    } catch (error: unknown) {
       if (!this.destroyed && ticket === this.copilotRequestRevision) {
-        this.copilotStatus = 'ai.preview.error';
+        this.copilotStatus = error instanceof Error && error.message === 'copilot_preview_busy'
+          ? 'ai.preview.busy'
+          : 'ai.preview.error';
       }
     } finally {
       if (!this.destroyed && ticket === this.copilotRequestRevision) {
