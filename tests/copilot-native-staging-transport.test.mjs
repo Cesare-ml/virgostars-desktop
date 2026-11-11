@@ -211,7 +211,12 @@ test('release builds omit the staging command; Angular development-only wiring',
 
   const component = read('src/app/desktop-app.component.ts');
   assert.match(component, /await this\.copilotTransport\.isAvailable\(\)/);
-  assert.match(component, /this\.copilotPreviewReady = configured === true/);
+  assert.match(component, /this\.copilotPreviewReady = available === true/);
+  assert.match(component, /recheckCopilotPreview\(\): void/);
+  assert.match(component, /this\.copilotProbeBusy = true/);
+  const template = read('src/app/desktop-app.component.html');
+  assert.match(template, /\(click\)="recheckCopilotPreview\(\)"/);
+  assert.match(template, /\[disabled\]="copilotProbeBusy \|\| copilotBusy"/);
   assert.match(component, /!this\.copilotConnected\) return/);
   assert.match(config.app.security.csp, /connect-src 'self'/);
   assert.doesNotMatch(config.app.security.csp, /api\.openai\.com|api\.anthropic\.com/);
