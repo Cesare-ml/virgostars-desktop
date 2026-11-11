@@ -143,11 +143,15 @@ class CityPackTests(unittest.TestCase):
                 JOIN country_lookup c ON c.stato_id = p.stato_id WHERE p.id=1
             """).fetchone(), ("Italia", "IT"))
         self.assertEqual(self.out.with_suffix(".manifest.json").exists(), True)
+        matches = search_catalog(self.out, "Firenze", 3)
+        self.assertEqual(matches[0]["country_name"], "Italia")
+        self.assertEqual(matches[0]["country_code"], "IT")
 
     def test_v1_catalog_stays_compatible_without_mapping(self):
         result = build_catalog(self.csvfile, self.out, expected_rows=3)
         self.assertEqual(result["schemaVersion"], 1)
         self.assertEqual(result["countryLookupCount"], 0)
+        self.assertIsNone(search_catalog(self.out, "Firenze", 3)[0]["country_name"])
         with sqlite3.connect(self.out) as db:
             exists = db.execute(
                 "SELECT name FROM sqlite_master WHERE name='country_lookup'"
