@@ -4,6 +4,10 @@
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
 
+## Preparing the complete offline city catalog
+
+The purchased **1,951,599-city** reference database is intended to ship with the Windows installer after a private, validated PostgreSQL CSV → SQLite conversion. **The actual licensed city data are never committed to Git.** A batch Python converter, checksum/ZIP generator and Tauri resource-config helper are now in source control. They do **not** yet implement Rust-backed city search or the Angular city selector. See [Local City Packaging](docs/LOCAL_CITY_PACKAGING.md) for safe export, validation, Windows commands and GitHub Release asset distribution.
+
 ## Offline-first product decision (2026-11-11)
 
 **First useful goal:** open VirgoStars Desktop without registration, choose a city from a local offline catalog, show a verified current-sky chart with real-time clock, create/save/search/edit local natal charts, correct year/month/day/hour/minute fluidly by rapid click/hold, inspect selected-chart transits, and configure house systems, bodies, aspects, per-body/per-aspect orbs, graphical layers and Light/Dark skins. Online account login is optional and comes later, with no-loss duplicate reconciliation.
