@@ -107,6 +107,7 @@
           <p class="inspector-hint" *ngIf="selectedCity">
             {{t('city.selected')}}: <strong>{{selectedCity.name}}</strong>
             · {{selectedCity.region || t('city.region.unknown')}}
+            <ng-container *ngIf="selectedCity.countryName"> · {{selectedCity.countryName}}</ng-container>
             · {{selectedCity.timeZone || t('city.zone.unknown')}}.
             {{t('city.demoNote')}}
           </p>
