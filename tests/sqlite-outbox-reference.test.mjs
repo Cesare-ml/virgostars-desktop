@@ -205,10 +205,16 @@ test('abrupt subprocess termination rolls back uncommitted entity and mutation w
       .run('fictional-profile-a','uncommitted-crash','{"label":"Synthetic crash"}');
     db.prepare("INSERT INTO local_outbox(profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc) VALUES (?, ?, 'subject', ?, 'upsert', ?, ?)")
       .run('fictional-profile-a','crash-mutation','uncommitted-crash','{"label":"Synthetic crash"}','2026-11-10T19:00:00Z');
+    require('node:fs').writeSync(1, 'transaction-open');
     process.kill(process.pid, 'SIGKILL');
   `;
   const child = spawnSync(process.execPath,['--experimental-sqlite','-e',code,file],{encoding:'utf8'});
-  assert.equal(child.signal,'SIGKILL',child.stderr);
+  assert.equal(child.stdout, 'transaction-open', child.stderr);
+  if (process.platform === 'win32') {
+    assert.notEqual(child.status, 0, child.stderr);
+  } else {
+    assert.equal(child.signal, 'SIGKILL', child.stderr);
+  }
   const db = open();
   try {
     assert.equal(db.prepare("SELECT entity_id FROM local_entities WHERE entity_id='uncommitted-crash'").get(),undefined);
