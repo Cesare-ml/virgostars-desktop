@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn keeps_original_payload_history_and_queues_new_revision() {
-        let (_, _, mut store, hash) = setup();
+        let (_dir, _path, mut store, hash) = setup();
         assert_eq!(store.keep_synthetic_v3_local_conflict(
             "synthetic-a","synthetic-old","synthetic-new",&hash,
             DECISION_TIME,false,
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn exact_decision_replay_noops_and_divergent_replay_is_rejected() {
-        let (_, _, mut store, hash) = setup();
+        let (_dir, _path, mut store, hash) = setup();
         store.keep_synthetic_v3_local_conflict(
             "synthetic-a","synthetic-old","synthetic-new",&hash,DECISION_TIME,false,
         ).unwrap();
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn wrong_hash_reused_replacement_and_missing_profile_fail_closed() {
-        let (_, _, mut store, hash) = setup();
+        let (_dir, _path, mut store, hash) = setup();
         assert!(store.keep_synthetic_v3_local_conflict(
             "synthetic-a","synthetic-old","synthetic-new",&"0".repeat(64),
             DECISION_TIME,false,
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn refuses_dependent_offline_edit_without_removing_its_local_payload() {
-        let (_, _, mut store, hash) = setup();
+        let (_dir, _path, mut store, hash) = setup();
         store.conn.execute(
             "INSERT INTO local_outbox(
                  profile_id,mutation_id,entity_type,entity_id,operation,
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn injected_error_rolls_back_all_changes_across_encrypted_reopen() {
-        let (_, path, mut store, hash) = setup();
+        let (_dir, path, mut store, hash) = setup();
         assert!(store.keep_synthetic_v3_local_conflict(
             "synthetic-a","synthetic-old","synthetic-new",&hash,
             DECISION_TIME,true,
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn immutable_history_and_original_id_survive_reopen_and_raw_sql() {
-        let (_, path, mut store, hash) = setup();
+        let (_dir, path, mut store, hash) = setup();
         store.keep_synthetic_v3_local_conflict(
             "synthetic-a","synthetic-old","synthetic-new",&hash,DECISION_TIME,false,
         ).unwrap();
@@ -411,8 +411,69 @@ mod tests {
     }
 
     #[test]
+    fn delete_tombstone_is_requeued_without_inventing_a_payload() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("synthetic-delete-v3.db");
+        let mut store = SyntheticEncryptedStore::open(&path, &key()).unwrap();
+        store.create_synthetic_profile("synthetic-a").unwrap();
+        store.migrate_synthetic_v1_to_v2().unwrap();
+        let mut deletion = request("synthetic-a", "synthetic-old", "synthetic-e1");
+        deletion.operation = "delete".into();
+        deletion.payload = None;
+        let hash = fingerprint(&deletion).unwrap();
+        store.stage_synthetic_v2_mutation(&deletion, false).unwrap();
+        store.record_synthetic_v2_conflict(
+            "synthetic-a", "synthetic-old", &hash, "rev-delete", false,
+        ).unwrap();
+        store.migrate_synthetic_v2_to_v3().unwrap();
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a", "synthetic-old", "synthetic-new", &hash,
+            DECISION_TIME, false,
+        ).unwrap();
+        let archived: (String, Option<String>) = store.conn.query_row(
+            "SELECT original_operation,original_payload_json
+             FROM local_conflict_decisions", [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(archived, ("delete".into(), None));
+        let latest: (String, Option<String>, String) = store.conn.query_row(
+            "SELECT operation,payload_json,base_server_revision
+             FROM local_outbox", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+        ).unwrap();
+        assert_eq!(latest, ("delete".into(), None, "rev-delete".into()));
+        let tombstone: i64 = store.conn.query_row(
+            "SELECT locally_deleted FROM local_entities", [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(tombstone, 1);
+    }
+
+    #[test]
+    fn prior_ack_id_cannot_be_reused_as_replacement() {
+        let (_dir, _path, mut store, hash) = setup();
+        store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                 profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                 result,server_revision,acknowledged_at_utc
+             ) VALUES (?1,?2,'subject','synthetic-e1',?3,'accepted','rev-ack',?4)",
+            rusqlite::params![
+                "synthetic-a", "synthetic-acked", "a".repeat(64), FIXTURE_TIME
+            ],
+        ).unwrap();
+        assert!(store.keep_synthetic_v3_local_conflict(
+            "synthetic-a", "synthetic-old", "synthetic-acked", &hash,
+            DECISION_TIME, false,
+        ).is_err());
+        assert_eq!(history_count(&store), 0);
+        let state: String = store.conn.query_row(
+            "SELECT state FROM local_outbox
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-old'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(state, "conflict");
+    }
+
+    #[test]
     fn newer_local_edits_or_tampering_are_not_overwritten() {
-        let (_, _, mut store, hash) = setup();
+        let (_dir, _path, mut store, hash) = setup();
         store.conn.execute(
             "UPDATE local_entities SET payload_json='{\"label\":\"Newer\"}'
              WHERE profile_id='synthetic-a' AND entity_id='synthetic-e1'",
