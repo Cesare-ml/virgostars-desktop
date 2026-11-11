@@ -207,6 +207,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   setMode(mode:ChartMode): void {
     if(this.busy || mode === this.mode) return;
+    this.invalidateCopilotRequest();
+    this.copilotBusy = false;
+    this.copilotAnswer = '';
+    this.copilotIllustrativeAspects = 0;
+    this.copilotStatus = 'ai.preview.ready';
     this.mode = mode;
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
