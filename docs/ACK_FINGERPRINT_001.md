@@ -8,7 +8,7 @@ Before the Rust SQLCipher v2 outbox can use the ledger introduced in draft PR #1
 
 `contracts/sync/ack-fingerprint-001.json` defines three golden examples: ordinary upsert, nested JSON with key ordering, and delete without payload. The expected SHA-256 value in each entry is a **fixed independent assertion**, not generated at test runtime.
 
-Rust implementation: `crates/encrypted-outbox-spike/src/ack_fingerprint.rs`, exported only as a synthetic library helper; no SQLCipher v2 ACK writer is enabled.
+Rust implementation: `crates/encrypted-outbox-spike/src/ack_fingerprint.rs`, exported only as a synthetic library helper. TypeScript/Web Crypto implementation: `contracts/sync/ack-fingerprint-001.ts`, also synthetic-only and not imported into the production application. No SQLCipher v2 ACK writer is enabled.
 
 Node oracle: `tests/ack-fingerprint-001.test.mjs`, automatically added to the manual Windows synthetic check.
 
@@ -29,7 +29,7 @@ Run from the repo root with Node >= 22.16:
 node --test tests/ack-fingerprint-001.test.mjs
 ```
 
-Executed in this turn: **5/5 Node tests passed** with Node 22.16.0. Tested exact GitHub blobs must be checked against local files. Four Rust tests authored under `ack_fingerprint.rs` cover shared vectors, key ordering, changed/unsupported data and delete/unknown fields; **Rust tests have not been compiled or executed here because the toolchain is unavailable**.
+Executed in this turn: **5/5 Node tests passed** with Node 22.16.0. Tested exact GitHub blobs must be checked against local files. Five Rust tests authored under `ack_fingerprint.rs` cover shared vectors, key ordering, changed/unsupported data, delete/unknown fields, and strict wire decoding of missing/null fields; **Rust tests have not been compiled or executed here because the toolchain is unavailable**.
 
 After installing and reviewing the Rust/MSVC toolchain on Windows 11:
 
@@ -40,3 +40,17 @@ cargo test --manifest-path crates/encrypted-outbox-spike/Cargo.toml --lib ack_fi
 The standalone crate still requires SQLCipher dependencies and reviewed Cargo.lock. Its `validate-windows.ps1` runs the new Node suite as part of the prior synthetic test gate. Do **not** connect this to SQLCipher's v2 ledger or production until both languages pass the same vectors, duplicate JSON inputs and Unicode/number behavior are explicitly decided, and encrypted migration/receipt tests are complete.
 
 No account data, site backend, real cloud endpoint, deployment, GitHub Actions, main merge or release is touched.
+
+## Compatibility hardening — 2026-11-11
+
+The original in-test JavaScript oracle used `Number.isSafeInteger` and a limited envelope check; Rust uses a typed Serde DTO. Audit identified that the old JavaScript reference accepted IDs longer than 128 characters or an empty base revision, while a derived Rust `Option<T>` decoder could accept a missing required `baseRevision` or an explicitly-null delete `payload` as though the field were absent.
+
+**New executable TypeScript implementation:** `contracts/sync/ack-fingerprint-001.ts` exports `canonicalAckRequest001(unknown): string` and asynchronous `ackFingerprint001(unknown): Promise<string>`. It is compatible with browser Web Crypto and therefore does not depend on Node's `crypto` package. It rejects non-plain objects, accessors, symbol keys, unsafe property names, sparse arrays, unsupported decimal/negative-zero values, missing/extra fields, ID lengths >128, missing/empty/Unicode revisions, and non-ASCII values. No getters are intentionally invoked. Only **synthetic records** are accepted; no real names, locations or decimal astrological positions are permitted.
+
+**New strict Rust decoder:** `AckRequest` now deserializes through a private `WireAckRequest` DTO with a required raw `base_revision` and a payload-presence enum. This preserves the distinction between `baseRevision: null` (required and valid) versus an omitted `baseRevision` (invalid), and between absent delete payload (valid) versus an explicitly `null` payload (invalid). Unknown/duplicate wire fields are rejected by Serde. `fingerprint()` still validates manually-constructed DTOs. This is only a library contract; it is **not** wired to the real ACK ledger, account storage or cloud.
+
+**Executed on Node.js 22.16.0:** `node --experimental-strip-types --test tests/ack-fingerprint-typed.test.mjs` passed **6/6**; `tsc --target es2022 --module nodenext --moduleResolution nodenext --lib es2022,dom --strict --noEmit --skipLibCheck contracts/sync/ack-fingerprint-001.ts` passed. This does **not** prove Rust/TS equality until the shared Rust golden tests run. The original independent Node reference suite remains as a separate golden-vector oracle; its legacy boundary validation is superseded by the stricter TS module.
+
+The manual Windows validation script now includes both golden suites and uses Node's `--experimental-strip-types` flag. **Cargo test/fmt/clippy, Windows PowerShell and native SQLCipher have NOT been run here** because the Rust toolchain is unavailable. Approval requires the same vectors to pass under compiled Rust and TypeScript, plus a reviewed Unicode/decimal-number successor contract before any use with real VirgoStars astrology profiles.
+
+**Known limitation:** textual wire JSON numbers like `1.0` can lose their decimal spelling when parsed by JavaScript, while `serde_json` may preserve them as floating-point values. The format remains **fictional-only** and does not authorize parsing untrusted raw JSON numbers without an agreed versioned wire parser. A SHA-256 fingerprint is not a MAC or receipt authentication.
