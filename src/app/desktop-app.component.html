@@ -101,7 +101,7 @@
           <div class="data-line static" *ngFor="let house of houses"><span>{{house.number}}</span><span class="numeric">{{formatDegrees(house.longitude)}}</span></div>
         </div>
         <div *ngIf="inspectorTab==='settings'">
-          <vs-offline-city-picker [locale]="locale"
+          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity"
             (locationSelected)="selectOfflineCity($event)"
             (locationEdited)="clearOfflineCity()"></vs-offline-city-picker>
           <p class="inspector-hint" *ngIf="selectedCity">
