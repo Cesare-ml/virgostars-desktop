@@ -8,6 +8,7 @@
 import {
   COPILOT_PREVIEW_MESSAGE_PATH,
   isCopilotPreviewFocus,
+  type CopilotPreviewFocus,
   type VirgoStarsCopilotPreviewTransport,
 } from '../copilot-preview-client';
 
@@ -29,7 +30,11 @@ export function createNativeCopilotStagingTransport(
   native: NativeCopilotStagingBridge,
 ): VirgoStarsCopilotPreviewTransport {
   return Object.freeze({
-    async postJson(path, body, signal): Promise<unknown> {
+    async postJson(
+      path: typeof COPILOT_PREVIEW_MESSAGE_PATH,
+      body: Readonly<{ action: 'describe_focus'; focus: CopilotPreviewFocus }>,
+      signal: AbortSignal,
+    ): Promise<unknown> {
       if (signal.aborted) throw failure('copilot_preview_cancelled');
       if (!native.isNative()) throw failure('copilot_preview_native_unavailable');
       if (path !== COPILOT_PREVIEW_MESSAGE_PATH
