@@ -41,7 +41,18 @@ The JSON above is **illustrative synthetic data**, not an excerpt from the purch
 - Native errors are **stable codes**, without local absolute paths, SQL internals, sensitive logs or personal data. Missing/invalid catalog is not silently replaced by an online request.
 - A built-in resource/version check reads `catalog_meta.schemaVersion = 1`; full pack SHA-256 is checked before creating the Tauri resource override (not recomputed on every search).
 
-### Angular adapter and integration boundary
+### Angular settings-panel city picker (implemented source, native QA pending)
+
+The existing standalone Angular desktop shell now imports `OfflineCityPickerComponent` and shows a **city search box in the Settings/Parametri inspector**, with full IT/EN status messages and small responsive controls. The UI can render without the purchased catalog (a localized `database not installed` status), uses no network, and does not require VirgoStars login.
+
+- `src/app/offline-city-picker-state.ts`: a **single 180 ms debounce timer**, max 12 results per search, no large in-memory city list, strict latest-request-wins, cleanup on dismissal/close, and arrows/Enter/Escape selection logic. Old native replies/errors cannot replace the current suggestion list.
+- `src/app/offline-city-picker.component.{ts,html,css}`: accessible input/listbox with keyboard controls and a limited suggestions area. Use the selected stable source ID and keep original region/timezone metadata.
+- `src/app/desktop-app.component.ts` tracks `selectedCity` only in the synthetic UI; changing the input clears the temporary selection. The selection is **not yet persisted** and must **never recalculate the demo wheel as though it represented the chosen real location**.
+- **10/10 Node unit tests passed** for the pure controller under Node.js 22.16.0, and its exact committed TypeScript source passed `tsc --noEmit --strict` TypeScript 5.8.3. Browser/real Tauri rendering and full Angular production build have **not** been executed with this change.
+
+The next vertical milestone is a real Windows-native test with the privately generated city pack, matching country names to `stato_id`, historically accurate IANA timezone resolution, and saving the selected place in a local guest chart. The existing chart remains explicitly synthetic until the Rust ephemeris bridge is numerically validated.
+
+## Angular adapter and integration boundary
 
 - `src/app/native/offline-places-contract.ts` validates protocol, bounded item counts, stable positive IDs, coordinate bounds, optional locality fields and duplicate IDs. It suppresses stale native results/errors via monotonically increasing request tickets.
 - `src/app/native/offline-places.ts` is the official Tauri v2 `invoke` adapter. It cannot invoke native IPC from a browser-only demo.
