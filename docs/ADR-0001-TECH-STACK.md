@@ -3,7 +3,7 @@
 Date: 2026-11-10
 Status: **PROPOSED / pending proof-of-concept approval**
 Owner: VirgoStars project
-Scope: Windows first, macOS later; online account + genuine offline use.
+Scope: Windows first, macOS later; **fully functional guest/offline mode without any account** and optional online VirgoStars sync after explicit sign-in. Product decision updated 2026-11-11.
 
 ## Decision
 Build a **Tauri 2** desktop shell, an **Angular + TypeScript** UI with **Three.js** graphics, and a **Rust native desktop core**; use SQLite as the local transactional store (encryption implementation to be proven). Share the **same Rust astronomical implementation** from VirgoStars-Ephemeris without duplicating astronomy in TypeScript.
