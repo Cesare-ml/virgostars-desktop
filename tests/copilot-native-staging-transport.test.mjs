@@ -72,6 +72,20 @@ test('local readiness probe is boolean-only and does not transfer a token', asyn
   assert.deepEqual(calls, [{ command: 'copilot_staging_ready', args: undefined }]);
 });
 
+test('native forwards a sanitized synthetic projection, never a raw backend envelope', () => {
+  const rust = read('src-tauri/src/copilot_staging_bridge.rs');
+  assert.match(rust, /fn project_preview_envelope\(value: &Value, expected: &Focus\)/);
+  assert.match(rust, /project_preview_envelope\(&envelope, &focus\)/);
+  assert.doesNotMatch(rust, /\bOk\(envelope\)/);
+  assert.match(rust, /"methodApproved"\)\.and_then\(Value::as_bool\) != Some\(false\)/);
+  assert.match(rust, /"birthDataIncluded"\)\.and_then\(Value::as_bool\) != Some\(false\)/);
+  assert.match(rust, /"personalChartIncluded"\)\.and_then\(Value::as_bool\) != Some\(false\)/);
+  assert.match(rust, /"providerCostUsd"\)\.and_then\(Value::as_f64\) != Some\(0\.0\)/);
+  assert.match(rust, /let mut unique = std::collections::HashSet::new\(\)/);
+  assert.match(rust, /"chartCommands": \[\{ "type": "chart\.highlightAspects", "aspectIds": aspect_ids \}\]/);
+  assert.match(rust, /"chartRevision": revision/);
+});
+
 test('native capabilities probe rejects non-boolean or misleading success results', async () => {
   for (const spoofed of [null, undefined, 1, 'true', {}, { enabled: true }]) {
     const transport = createNativeCopilotStagingTransport({
