@@ -8,7 +8,7 @@ La combinazione proposta è **TypeScript + Angular** per l'interfaccia, **Rust**
 Questa è una **scelta proposta**, da validare con una prima demo Windows 11 che renderizzi realmente un grafico e faccia una chiamata Rust nativa. Se emergono blocchi fondamentali, valutare Electron con misure e test documentati.
 
 ## Funzionamento
-Al primo utilizzo l'utente si autentica online con il proprio account VirgoStars. I soggetti e i temi consentiti vengono memorizzati localmente in forma protetta. Nei successivi avvii senza Internet può continuare a lavorare con dati e calcoli disponibili; le modifiche restano in coda e si sincronizzano automaticamente al ritorno della connessione. Conflitti e revoche richiedono regole esplicite.
+**VirgoStars Desktop funziona fin dal primo avvio senza account e senza Internet.** L'utente può scegliere una città dal catalogo offline, vedere il cielo attuale e l'orologio, correggere data/ora con pulsanti anche tenuti premuti, creare/salvare/cercare temi in un archivio locale e usare transiti, domificazioni, orbite, aspetti e skin Light/Dark quando i rispettivi motori saranno validati. Il login VirgoStars è facoltativo: quando viene attivato, il programma confronta i temi locali e online, propone le alternative in caso di duplicati e sincronizza senza cancellare automaticamente i dati. Cifratura locale preferita per dati personali, ma separata dal requisito di poter usare il programma come ospite.
 
 ## Confini tra progetti
 VirgoStars-Ephemeris calcola l'astronomia; astrological-functions applica i metodi astrologici; astrological-charts visualizza; astrological-assets ospita risorse approvate; VirgoStars gestisce account e dati online; virgostars-desktop unisce i componenti senza sostituire i sistemi in produzione. VirgoStars-Event-Ephemeris potrà fornire eventi astronomici precomputati quando sarà pronto.
@@ -25,3 +25,13 @@ Windows prima, macOS successivamente. Aggiornamenti dell'app firmati e verificat
 - [Licenza](LICENSING_AND_PUBLICATION.md)
 - [Roadmap](ROADMAP.md)
 - [Istruzioni agenti](../AGENTS.md)
+
+## Priorità approvate 11/11/2026
+
+- [MVP offline senza account](OFFLINE_FIRST_MVP.md)
+- [Performance e comunicazione Angular–Rust](LIVE_CALCULATION_PIPELINE.md)
+- [Città offline, fusi e ora legale](OFFLINE_PLACES_AND_TIMEZONES.md)
+- [Sincronizzazione facoltativa e gestione duplicati](OPTIONAL_SYNC_AND_DUPLICATES.md)
+- [Roadmap e compiti per gli agenti](ROADMAP.md)
+
+La presenza di queste specifiche non significa che le funzioni siano già implementate nel prototipo Windows.
