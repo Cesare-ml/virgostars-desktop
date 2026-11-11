@@ -60,3 +60,17 @@ test('dismissing a suggestion list keeps chosen city but cancels pending request
  const h=harness();h.state.restore(a);h.state.dismiss();assert.equal(h.state.selected.id,1);assert.equal(h.state.status,'selected');
  h.state.input('Roma');h.state.dismiss();h.flush();assert.equal(h.calls.length,0);
 });
+
+
+test('country metadata from an explicit v2 lookup survives selection without guessing',async()=>{
+  const h=harness();
+  const mapped={...a,countryName:'Italia',countryCode:'IT'};
+  h.state.input('Firenze');h.flush();
+  h.requests[0].resolve({kind:'ready',items:[mapped]});
+  await Promise.resolve();
+  const chosen=h.state.choose(0);
+  assert.equal(chosen.countryName,'Italia');
+  assert.equal(chosen.countryCode,'IT');
+  assert.equal(chosen.stateId,1);
+  assert.equal(h.state.selected.countryName,'Italia');
+});
