@@ -48,7 +48,7 @@ async function keepLocal(db,{profile=P,oldId='synthetic-old',newId='synthetic-ne
     const prior=history(db,profile,oldId);
     if(prior){
       if(prior.original_fingerprint===expectedHash && prior.replacement_mutation_id===newId
-        && prior.choice==='keep_local')return 'already-decided';
+        && prior.choice==='keep_local' && prior.decided_at_utc===decisionTime)return 'already-decided';
       throw Error('conflicting decision replay');
     }
     const row=pending(db,profile,oldId);
@@ -115,6 +115,21 @@ test('same manual decision is idempotent, conflicting replay cannot alter it',as
  assert.equal(await keepLocal(db,{expectedHash:digest}),'already-decided');
  await assert.rejects(keepLocal(db,{expectedHash:digest,newId:'synthetic-other'}),/conflicting decision/);
  assert.equal(db.prepare('SELECT count(*) AS n FROM local_outbox').get().n,1);
+ }finally{db.close();}
+});
+test('manual decision replay refuses a different decision timestamp',async()=>{
+ const db=init();try{const q=request();await stageConflict(db,q);const digest=await ackFingerprint001(q);
+ await keepLocal(db,{expectedHash:digest});
+ await assert.rejects(keepLocal(db,{expectedHash:digest,decisionTime:'2026-11-11T21:31:00Z'}),/conflicting decision replay/);
+ assert.equal(history(db,P,q.mutation).decided_at_utc,CLOCK);
+ }finally{db.close();}
+});
+test('replacement ID from a prior ACK cannot be reused for a conflict decision',async()=>{
+ const db=init();try{const q=request();await stageConflict(db,q);
+ db.prepare(`INSERT INTO local_ack_ledger(profile_id,mutation_id,entity_type,entity_id,request_fingerprint,result,server_revision,acknowledged_at_utc)
+ VALUES (?,?,?,?,?,?,?,?)`).run(P,'synthetic-new','subject',q.entity,'a'.repeat(64),'accepted','rev-ack',CLOCK);
+ await assert.rejects(keepLocal(db,{expectedHash:await ackFingerprint001(q)}),/replacement id used/);
+ assert.ok(pending(db,P,q.mutation));assert.equal(history(db,P,q.mutation),undefined);
  }finally{db.close();}
 });
 test('changed fingerprint and invalid replacement id fail without mutation',async()=>{
