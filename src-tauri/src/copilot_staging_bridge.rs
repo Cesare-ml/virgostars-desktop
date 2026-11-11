@@ -64,24 +64,20 @@ fn staging_test_bearer(token: &str) -> Result<&str, &'static str> {
     Ok(token)
 }
 
+fn staging_configured(enabled: Option<&str>, origin: Option<&str>, bearer: Option<&str>) -> bool {
+    enabled == Some("1")
+        && origin.is_some_and(|value| staging_origin(value).is_ok())
+        && bearer.is_some_and(|value| staging_test_bearer(value).is_ok())
+}
+
 /// Local, read-only capability check. It does not contact the backend, validate
 /// a user session, or make the host's token available to the WebView.
 #[tauri::command]
 pub fn copilot_staging_ready() -> bool {
-    if std::env::var(STAGING_ENABLED_ENV).ok().as_deref() != Some("1") {
-        return false;
-    }
-    let origin = match std::env::var(STAGING_ORIGIN_ENV) {
-        Ok(value) => value,
-        Err(_) => return false,
-    };
-    if staging_origin(&origin).is_err() {
-        return false;
-    }
-    match std::env::var(STAGING_TEST_BEARER_ENV) {
-        Ok(token) => staging_test_bearer(&token).is_ok(),
-        Err(_) => false,
-    }
+    let enabled = std::env::var(STAGING_ENABLED_ENV).ok();
+    let origin = std::env::var(STAGING_ORIGIN_ENV).ok();
+    let bearer = std::env::var(STAGING_TEST_BEARER_ENV).ok();
+    staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref())
 }
 
 fn validate_preview_envelope(value: &Value) -> Result<(), &'static str> {
@@ -228,14 +224,16 @@ mod tests {
     }
 
     #[test]
-    fn disabled_staging_never_reports_ready() {
-        // Do not modify env variables from tests (process-wide, racy).
-        // The readiness predicate is a conjunction of the explicit gate,
-        // an allowed local origin and the strictly shaped staging JWT.
-        let declared_gate = STAGING_ENABLED_ENV == "VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED";
-        assert!(declared_gate);
-        assert!(staging_origin("http://127.0.0.1:3000").is_ok());
-        assert!(staging_test_bearer("bad-token").is_err());
+    fn readiness_is_fail_closed_for_missing_flag_origin_or_token() {
+        let token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.SYNTHETIC_TEST_SIGNATURE";
+        let origin = "http://127.0.0.1:3000";
+        assert!(staging_configured(Some("1"), Some(origin), Some(token)));
+        assert!(!staging_configured(None, Some(origin), Some(token)));
+        assert!(!staging_configured(Some("0"), Some(origin), Some(token)));
+        assert!(!staging_configured(Some("1"), None, Some(token)));
+        assert!(!staging_configured(Some("1"), Some("https://example.com"), Some(token)));
+        assert!(!staging_configured(Some("1"), Some(origin), None));
+        assert!(!staging_configured(Some("1"), Some(origin), Some("bad-token")));
     }
 
     #[test]
