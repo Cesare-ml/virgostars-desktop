@@ -10,7 +10,7 @@ import {
   isCopilotPreviewFocus,
   type CopilotPreviewFocus,
   type VirgoStarsCopilotPreviewTransport,
-} from '../copilot-preview-client';
+} from '../copilot-preview-client.ts';
 
 export type NativeCopilotPreviewCommand = 'copilot_staging_preview' | 'copilot_staging_ready';
 export interface NativeCopilotStagingBridge {
