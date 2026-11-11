@@ -64,6 +64,26 @@ fn staging_test_bearer(token: &str) -> Result<&str, &'static str> {
     Ok(token)
 }
 
+/// Local, read-only capability check. It does not contact the backend, validate
+/// a user session, or make the host's token available to the WebView.
+#[tauri::command]
+pub fn copilot_staging_ready() -> bool {
+    if std::env::var(STAGING_ENABLED_ENV).ok().as_deref() != Some("1") {
+        return false;
+    }
+    let origin = match std::env::var(STAGING_ORIGIN_ENV) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    if staging_origin(&origin).is_err() {
+        return false;
+    }
+    match std::env::var(STAGING_TEST_BEARER_ENV) {
+        Ok(token) => staging_test_bearer(&token).is_ok(),
+        Err(_) => false,
+    }
+}
+
 fn validate_preview_envelope(value: &Value) -> Result<(), &'static str> {
     if value.get("contract").and_then(Value::as_str)
         != Some("VirgoStarsCopilotMockPreviewEnvelope")
@@ -99,6 +119,9 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
     let endpoint = origin.join(PATH).map_err(|_| "copilot_staging_invalid_origin")?;
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
+        // Ignore inherited HTTP(S)_PROXY / ALL_PROXY variables. A synthetic
+        // staging-user JWT must never be forwarded to a proxy process.
+        .no_proxy()
         .redirect(redirect::Policy::none())
         .build()
         .map_err(|_| "copilot_staging_client_unavailable")?;
@@ -202,6 +225,17 @@ mod tests {
         ] {
             assert!(staging_test_bearer(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn disabled_staging_never_reports_ready() {
+        // Do not modify env variables from tests (process-wide, racy).
+        // The readiness predicate is a conjunction of the explicit gate,
+        // an allowed local origin and the strictly shaped staging JWT.
+        let declared_gate = STAGING_ENABLED_ENV == "VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED";
+        assert!(declared_gate);
+        assert!(staging_origin("http://127.0.0.1:3000").is_ok());
+        assert!(staging_test_bearer("bad-token").is_err());
     }
 
     #[test]
