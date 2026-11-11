@@ -2,6 +2,15 @@
 
 Status: **DESIGN / required gates**. User birth data can be sensitive personal information.
 
+
+## 2026-11-11 guest-first privacy decision
+
+VirgoStars Desktop must be fully usable offline **without any account or Internet connection**. Login is an optional cloud feature, not an activation or local-access requirement. The application must never upload guest chart records, location or notes without a separate explicit opt-in and reconciliation preview.
+
+Birth name, civil date/time, place and notes can be **personal data**. Prefer SQLCipher with an OS-protected local encryption key provisioned for the *guest device* without cloud credentials. The separate Rust SQLCipher proof of concept is **not** a verified production database. Plain SQLite may support **fictional development fixtures only** unless a distinct, documented user-facing security decision approves storage of real records. No silent plaintext downgrade when encrypted open fails. Security reviews must cover OS user isolation, key loss, backup/restore, schema migration, consent and deletion.
+
+Offline city lookup is bundled/versioned reference data and may be updated separately from personal charts. No silent GPS lookup. Optional cloud sync has owner checks and explicit duplicate/conflict choices (including **Keep both**); matching names never justify automatic merging. See [Offline MVP](OFFLINE_FIRST_MVP.md), [Cities and Timezones](OFFLINE_PLACES_AND_TIMEZONES.md) and [Optional Sync](OPTIONAL_SYNC_AND_DUPLICATES.md).
+
 ## Assets and trust zones
 - Device: application binary, local birth-data DB, queued edits, downloaded assets/kernels, device keys.
 - Webview: Angular/Three.js presentation logic. Treat rendered external/user text as untrusted and restrict IPC capabilities.
