@@ -101,6 +101,15 @@
           <div class="data-line static" *ngFor="let house of houses"><span>{{house.number}}</span><span class="numeric">{{formatDegrees(house.longitude)}}</span></div>
         </div>
         <div *ngIf="inspectorTab==='settings'">
+          <vs-offline-city-picker [locale]="locale"
+            (locationSelected)="selectOfflineCity($event)"
+            (locationEdited)="clearOfflineCity()"></vs-offline-city-picker>
+          <p class="inspector-hint" *ngIf="selectedCity">
+            {{t('city.selected')}}: <strong>{{selectedCity.name}}</strong>
+            · {{selectedCity.region || t('city.region.unknown')}}
+            · {{selectedCity.timeZone || t('city.zone.unknown')}}.
+            {{t('city.demoNote')}}
+          </p>
           <p class="inspector-hint">{{t('settings.help')}}</p>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
