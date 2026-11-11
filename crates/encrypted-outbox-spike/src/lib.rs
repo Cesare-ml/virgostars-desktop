@@ -10,7 +10,9 @@
 
 pub mod ack_fingerprint;
 mod ack_v2;
+mod ack_v2_stage;
 pub use ack_v2::AckV2Disposition;
+pub use ack_v2_stage::V2StageDisposition;
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::fmt::Write as _;
