@@ -28,10 +28,19 @@ function verifiedV2(db) {
   try { expected.exec(v2); return version(db) === 2 && JSON.stringify(catalog(db)) === JSON.stringify(catalog(expected)) && db.prepare('PRAGMA foreign_key_check').all().length===0; }
   finally { expected.close(); }
 }
+function syntheticRowsOnly(db) {
+  const rows=db.prepare(`SELECT profile_id, NULL AS entity_id, NULL AS mutation_id FROM local_profiles
+    UNION ALL SELECT profile_id, entity_id, NULL FROM local_entities
+    UNION ALL SELECT profile_id, entity_id, mutation_id FROM local_outbox
+    UNION ALL SELECT profile_id, NULL, NULL FROM local_sync_cursors`).all();
+  return rows.every(row=>[row.profile_id,row.entity_id,row.mutation_id]
+    .filter(x=>x!==null).every(x=>/^synthetic-[A-Za-z0-9_-]+$/.test(x)));
+}
 function migrate(db, abort = false) {
   if (!verifiedV1(db)) throw Error('Unsupported v1 schema');
   db.exec('BEGIN IMMEDIATE');
   try {
+    if (!syntheticRowsOnly(db)) throw Error('Non-synthetic fixture');
     db.exec(v2);
     if (!verifiedV2(db)) throw Error('Invalid resulting v2 schema');
     if (abort) throw Error('Synthetic failure before commit');
@@ -78,5 +87,14 @@ test('v1 with orphan outbox record is rejected', () => {
     db.prepare(`INSERT INTO local_outbox(profile_id,mutation_id,entity_type,entity_id,operation,payload_json,created_at_utc)
       VALUES ('synthetic-a','synthetic-m1','subject','synthetic-missing','upsert','{}','2026-11-11T00:00:00Z')`).run();
     assert.throws(()=>migrate(db),/Unsupported v1 schema/);
+  }finally {db.close();}
+});
+test('synthetic-only migration policy rejects a non-fictional profile without changes', () => {
+  const db=fixture();try {
+    db.exec("INSERT INTO local_profiles(profile_id) VALUES ('actual-account-id')");
+    assert.equal(syntheticRowsOnly(db),false);
+    assert.throws(()=>migrate(db),/Non-synthetic fixture/);
+    assert.equal(version(db),1);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='local_ack_ledger'").get().n,0);
   }finally {db.close();}
 });
