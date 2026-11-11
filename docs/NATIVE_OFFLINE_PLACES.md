@@ -41,7 +41,15 @@ The JSON above is **illustrative synthetic data**, not an excerpt from the purch
 - Native errors are **stable codes**, without local absolute paths, SQL internals, sensitive logs or personal data. Missing/invalid catalog is not silently replaced by an online request.
 - A built-in resource/version check reads `catalog_meta.schemaVersion = 1`; full pack SHA-256 is checked before creating the Tauri resource override (not recomputed on every search).
 
-### Angular settings-panel city picker (implemented source, native QA pending)
+### Country-name enrichment: additive v2 local catalog
+
+The owner-provided city sample has `stato_id` but not a country label. A new optional **privately verified mapping CSV** can be imported via `--countries-csv`, preserving original city IDs. Python validates full referenced-state coverage and uniqueness before publishing the catalog. The v2 SQLite file contains a `country_lookup` table; v1 catalogs without that table continue to work.
+
+Rust's fixed, version-specific SQL queries return optional `countryName` and `countryCode` fields via `LEFT JOIN country_lookup` for v2; v1 returns null. The TypeScript decoder validates ISO2 and Angular displays the country only if it was actually supplied. **Never convert `stato_id` numerically into an ISO code.** See [Owned Country Lookup](OWNED_COUNTRY_LOOKUP.md).
+
+The additional synthetic Python, Rust and TypeScript v1/v2 tests have been **authored but not yet executed** in the full Windows checkout. The privately purchased country mapping has not been inspected or exported.
+
+## Angular settings-panel city picker (implemented source, native QA pending)
 
 The existing standalone Angular desktop shell now imports `OfflineCityPickerComponent` and shows a **city search box in the Settings/Parametri inspector**, with full IT/EN status messages and small responsive controls. The UI can render without the purchased catalog (a localized `database not installed` status), uses no network, and does not require VirgoStars login.
 
@@ -56,7 +64,7 @@ The next vertical milestone is a real Windows-native test with the privately gen
 
 - `src/app/native/offline-places-contract.ts` validates protocol, bounded item counts, stable positive IDs, coordinate bounds, optional locality fields and duplicate IDs. It suppresses stale native results/errors via monotonically increasing request tickets.
 - `src/app/native/offline-places.ts` is the official Tauri v2 `invoke` adapter. It cannot invoke native IPC from a browser-only demo.
-- **The visible new-chart city autocomplete is not yet wired**. Its future implementation should debounce typed input (~120–200 ms), cancel/ignore the last query on change/close, show error/loading states, and preserve the selected stable ID/country/region/timezone/coordinates. Do not mark the location field as ready until the picker is connected, the country lookup imported and historical IANA timezone rules validated.
+- **The Settings/Parametri city autocomplete is wired**, but the new-chart form and local archive are not. It debounces typed input, ignores stale requests and preserves selected metadata only in temporary UI memory; persistence is a separate acceptance step. Do not mark the location field as ready until the picker is connected, the country lookup imported and historical IANA timezone rules validated.
 - Current `src-tauri/tauri.conf.json` remains unchanged with `bundle.active=false` for the early synthetic lab. The catalog-enabled installer uses the reviewed ignored config overlay and full private catalog from [LOCAL_CITY_PACKAGING.md](LOCAL_CITY_PACKAGING.md). **A bare .exe from an unbundled Tauri build does not contain the city catalog.**
 
 ## Tests authored
