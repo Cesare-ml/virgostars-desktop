@@ -33,6 +33,16 @@ test('settings preserve bodies aspects toward, orbs, houses and light-dark skins
   assert.match(core,/Egyptian\+Placidus|Egyptian \+ Placidus/);
 });
 
+test('purchased worldwide city catalog is evaluated before licensing or package decisions',()=>{
+  assert.match(places,/1,951,599/);
+  assert.match(places,/redistribution/i);
+  assert.match(places,/SQLite/i);
+  assert.match(places,/benchmark/i);
+  assert.match(places,/optional remote supplement/i);
+  assert.match(places,/Nominatim/i);
+  assert.match(places,/historical/i);
+});
+
 test('offline city search is never an online-account prerequisite',()=>{
   assert.match(places,/GeoNames/);
   assert.match(places,/IANA tzdb/);
