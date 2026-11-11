@@ -1,0 +1,103 @@
+# Virgo Stars AI — native debug-only staging transport spike
+
+**Status (2026-11-11):** implementation proposed in a draft branch, NOT merged, NOT validated as a Windows Tauri build, NOT production-ready.  
+**Stack:** Desktop AI inspector PR #23; private Virgo Stars backend staging mock PR #160 (depends on #159).
+
+## What this implements
+
+A **narrow, debug-only** native HTTP bridge connecting the experimental Virgo Stars Desktop inspector to the **Virgo Stars private backend** (never directly to OpenAI, Anthropic or third-party model APIs).
+
+```text
+Angular dev WebView
+  POST body { action: describe_focus, focus: NATAL:VENUS|SUN / TRANSIT:SATURN }
+  -> typed local Tauri invoke("copilot_staging_preview", { focus })
+  -> Rust debug+feature command
+       only 127.0.0.1 with an explicitly configured port
+       only POST /api/v1/ai/copilot-preview/message
+       only synthetic staging-user JWT from process environment
+       no user-selectable URL/provider/API key
+  -> Virgo Stars local staging backend with its own JWT, quota and mock
+  -> strictly bounded synthetic FACT_ONLY response
+  -> Angular validates envelope and never executes synthetic chart commands
+```
+
+**No real chart data, notes, birth time/place, or actual LLM messages leave the Desktop** in this spike. The command is **not** a login, token vault or real AI integration.
+
+## Build protection
+
+Rust module `src-tauri/src/copilot_staging_bridge.rs` and IPC command are registered only when **both** are true:
+
+1. Rust compiled with `debug_assertions` enabled (a debug build).
+2. Cargo feature `copilot-staging` was explicitly selected.
+
+Additionally at runtime the command requires `VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED=1`. By default it does nothing. Normal release builds do not compile/register the command, even if the feature is accidentally supplied.
+
+Angular injects the native transport only when `isDevMode() && isTauri()`; browser and compiled production Angular get `null` and the AI request button remains disabled. In a native dev build *without* the Rust feature or staging configuration, an attempted preview fails gracefully and does not contact a server.
+
+No generic HTTP client is exposed to the webview and native CSP (`connect-src 'self'`) has not been changed.
+
+## Local staging setup — synthetic test accounts ONLY
+
+This is a *manual testing recipe*, not an installed environment or proof of working integration.
+
+- Run the **separate Virgo Stars staging backend** on `127.0.0.1:<explicit-port>` with all its staging guards satisfied, isolated DB, appropriate external JWT keys and `VIRGO_STARS_AI_COPILOT_MOCK_ENABLED=1`. The backend PR #160 must first be tested and integrated.
+- The bearer must be a **short-lived staging user access token**, never a production user token, OpenAI API key or permanent secret. **Do not put any token in repository files, Angular environment, command-line arguments, screenshots, issues or test logs.** Set process environment safely for the temporary native development session; clear it when done.
+- For the native Rust process the following names are required:
+
+```text
+VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED=1
+VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN=http://127.0.0.1:<explicit-port>
+VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER=<short-lived-staging-user-JWT>
+```
+
+Run a DEBUG Tauri build **with** the explicit Cargo feature. The existing Tauri CLI launch scripts may need an additional dedicated dev command that forwards features after verifying tooling versions; **no production launcher is modified here**. Use a synthetic account and a private local staging environment; no real birth records.
+
+**Security caveat:** environment variables are a temporary developer-only alternative to the future native OS credential vault. They may be accessible to local processes. Never use this workflow with real people, production sessions or released builds. This is NOT the final auth architecture; move to system-browser PKCE + OS-protected token storage with per-user revocation controls before production.
+
+## Security checks in native Rust
+
+- Strict typed focus allowlist: only natal Venus/Sun or transiting Saturn.
+- Fixed backend endpoint path; URL origin restricted to literal HTTP `127.0.0.1` with explicit port, no hostnames, query/fragment, credentials, additional paths or redirects.
+- HTTP request with bounded JSON only, native JWT from process environment, no WebView exposure of tokens.
+- Five-second timeout and redirect policy NONE.
+- Reject non-200 responses, unexpected content type, response bodies over 8 KiB (checked incrementally), and non-synthetic/AI-enabled envelopes.
+- All errors converted to generic client-safe codes; no API key, token, host or HTTP body is logged.
+- No cloud/HTTP functionality in normal releases.
+
+The backend has its own staging JWT middleware and per-user rate limit. Neither Rust nor Angular can replace backend authorization.
+
+## Verification
+
+**Added source tests:**
+- Rust `#[cfg(test)]`: focus allowlist, URL/SSRF restrictions, staging JWT shape, FACT_ONLY envelope gate.
+- Node `tests/copilot-native-staging-transport.test.mjs`: only the expected command, forged payload rejection, browser denial, stale-result cancellation, error redaction, and source-gate checks.
+
+**Required commands once checked out on Windows and Node/Rust toolchains available:**
+
+```powershell
+npm.cmd test
+npm.cmd run build:ui
+npm.cmd run verify:css
+cd src-tauri
+cargo test
+cargo test --features copilot-staging
+cargo check --features copilot-staging
+cargo check --release --features copilot-staging
+```
+
+**Dependency note:** `reqwest` is an optional Cargo feature dependency; `Cargo.lock` must be regenerated/reviewed using Cargo and committed by a subsequent checked local build. Do not treat an untested lock as reproducible.
+
+### Unverified gates
+
+1. Real local Windows compilation and WebView2 IPC call; Cargo/Angular/Node tests on pushed branch.
+2. HTTP staging smoke with a short-lived synthetic JWT.
+3. Native feature check: no staging command present in actual release binary.
+4. Host/port/JWT privacy controls and CSP review.
+5. Full offline guest functionality with network disconnected.
+6. Future PKCE + secure OS credential vault, session refresh and logout/disconnect.
+
+## Follow-up
+
+After local build and staging smoke, replace the debug-only environment JWT with a *real optional* reviewed browser-PKCE + OS credential vault native transport, then attach server-authoritative owner-scoped astrology facts. Keep all OpenAI API configuration/provider routing/metering in Virgo Stars private backend and production disabled until quality gates pass.
+
+**No deploy, account migration, GitHub Actions, release, default production endpoint, model selector or merger into main.**
