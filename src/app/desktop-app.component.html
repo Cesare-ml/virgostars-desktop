@@ -34,6 +34,10 @@
         </button>
       </div>
       <div class="nav-separator"></div>
+      <button type="button" class="nav-item" [class.selected]="inspectorTab==='draft' && !inspectorCollapsed"
+        [attr.title]="t('natal.title')" (click)="openNatalDraft()">
+        <span class="nav-mark" aria-hidden="true">⊕</span><span class="nav-label">{{t('natal.title')}}</span>
+      </button>
       <button type="button" class="nav-item" disabled [attr.title]="t('archive')">
         <span class="nav-mark" aria-hidden="true">▤</span><span class="nav-label">{{t('archive')}}</span>
       </button>
@@ -83,6 +87,8 @@
           [attr.aria-selected]="inspectorTab==='houses'" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
         <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content"
           [attr.aria-selected]="inspectorTab==='settings'" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
+        <button type="button" role="tab" id="tab-draft" aria-controls="inspector-content"
+          [attr.aria-selected]="inspectorTab==='draft'" (click)="setInspectorTab('draft')">{{t('tab.draft')}}</button>
       </div>
       <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
         <div *ngIf="inspectorTab==='planets'">
@@ -99,6 +105,10 @@
           <p class="inspector-hint">{{t('houses.help')}}</p>
           <div class="data-head"><span>{{t('tab.houses')}}</span><span>λ</span></div>
           <div class="data-line static" *ngFor="let house of houses"><span>{{house.number}}</span><span class="numeric">{{formatDegrees(house.longitude)}}</span></div>
+        </div>
+        <div *ngIf="inspectorTab==='draft'">
+          <vs-natal-draft [locale]="locale" [draft]="natalDraft"
+            (cityChanged)="updateDraftCity($event)"></vs-natal-draft>
         </div>
         <div *ngIf="inspectorTab==='settings'">
           <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity"
