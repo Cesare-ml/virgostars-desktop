@@ -12,10 +12,10 @@ import {
   type VirgoStarsCopilotPreviewTransport,
 } from '../copilot-preview-client';
 
-export type NativeCopilotPreviewCommand = 'copilot_staging_preview';
+export type NativeCopilotPreviewCommand = 'copilot_staging_preview' | 'copilot_staging_ready';
 export interface NativeCopilotStagingBridge {
   isNative(): boolean;
-  invoke(command: NativeCopilotPreviewCommand, args: Readonly<{
+  invoke(command: NativeCopilotPreviewCommand, args?: Readonly<{
     focus: Readonly<{ layer: string; bodyId: string }>;
   }>): Promise<unknown>;
 }
@@ -30,6 +30,16 @@ export function createNativeCopilotStagingTransport(
   native: NativeCopilotStagingBridge,
 ): VirgoStarsCopilotPreviewTransport {
   return Object.freeze({
+    async isAvailable(): Promise<boolean> {
+      // No network request, no token exchange, no implicit login.
+      // The command is absent in all normal/release native builds.
+      if (!native.isNative()) return false;
+      try {
+        return (await native.invoke('copilot_staging_ready')) === true;
+      } catch {
+        return false;
+      }
+    },
     async postJson(
       path: typeof COPILOT_PREVIEW_MESSAGE_PATH,
       body: Readonly<{ action: 'describe_focus'; focus: CopilotPreviewFocus }>,
