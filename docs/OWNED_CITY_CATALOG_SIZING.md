@@ -43,9 +43,9 @@ Change `public.NOME_TABELLA` to the **actual schema and PostgreSQL table name**.
 
 ```sql
 SELECT
-  pg_size_pretty(pg_relation_size('public.NOME_TABELLA'::regclass)) AS heap_mb,
-  pg_size_pretty(pg_indexes_size('public.NOME_TABELLA'::regclass)) AS indexes_mb,
-  pg_size_pretty(pg_total_relation_size('public.NOME_TABELLA'::regclass)) AS total_mb,
+  pg_size_pretty(pg_relation_size('public.NOME_TABELLA'::regclass)) AS heap_size,
+  pg_size_pretty(pg_indexes_size('public.NOME_TABELLA'::regclass)) AS indexes_size,
+  pg_size_pretty(pg_total_relation_size('public.NOME_TABELLA'::regclass)) AS total_size,
   pg_relation_size('public.NOME_TABELLA'::regclass) AS heap_bytes,
   pg_indexes_size('public.NOME_TABELLA'::regclass) AS index_bytes,
   pg_total_relation_size('public.NOME_TABELLA'::regclass) AS total_bytes;
