@@ -4,6 +4,10 @@
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
 
+## New natal chart input (experimental, unsaved)
+
+A guest-only **New natal chart / Nuovo tema** form now accepts a subject name, Gregorian birth date, optional known time and an offline selected city, including original location ID, coordinates, country and IANA-style timezone. A typed validation preview explicitly warns that **UTC/historical DST, true sky calculation and encrypted saving are NOT implemented**. This form stores nothing and does not alter the synthetic chart. See [Natal Draft v1](docs/NATAL_DRAFT_V1.md).
+
 ## Source country labels for offline city results
 
 The city source has `stato_id` as an internal foreign key; **country labels must be imported from the owner's actual related lookup table**, not inferred. An optional `--countries-csv` now produces an enriched v2 SQLite resource with validated name/ISO2, while v1 remains readable. See [Country Lookup](docs/OWNED_COUNTRY_LOOKUP.md). The purchased country data are **not in GitHub**, and full native search/installer validation is pending.
