@@ -211,7 +211,7 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
         "action": "describe_focus",
         "focus": { "layer": focus.layer, "bodyId": focus.body_id }
     });
-    let mut response = client
+    let response = client
         .post(endpoint)
         .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
         .header(header::ACCEPT, "application/json")
