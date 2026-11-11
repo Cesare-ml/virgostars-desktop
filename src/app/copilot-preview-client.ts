@@ -12,6 +12,11 @@ export type CopilotPreviewFocus =
 export const COPILOT_PREVIEW_MESSAGE_PATH = '/api/v1/ai/copilot-preview/message';
 
 export interface VirgoStarsCopilotPreviewTransport {
+  /**
+   * Read-only capability check. True means local staging bridge configured,
+   * NOT confirmed network reachability or a verified backend account.
+   */
+  isAvailable(): Promise<boolean>;
   /** Must use ONLY the authenticated Virgo Stars backend and protected native token storage. */
   postJson(path: typeof COPILOT_PREVIEW_MESSAGE_PATH, body: Readonly<{
     action: 'describe_focus';
