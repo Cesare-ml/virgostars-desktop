@@ -14,6 +14,8 @@ import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
+import { NatalDraftComponent } from './natal-draft.component';
+import { NatalDraftState } from './natal-draft-state';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { classifyStyleHealth, measureStyleHealth, type StyleHealthCode } from './style-health';
 
@@ -34,7 +36,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule,OfflineCityPickerComponent],
+  imports:[CommonModule,OfflineCityPickerComponent,NatalDraftComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -65,6 +67,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   inspectorTab: InspectorTab = 'planets';
   selectedPlanet: DemoPlanet | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
+  readonly natalDraft = new NatalDraftState();
   navCollapsed = false;
   inspectorCollapsed = false;
   busy = true;
@@ -198,14 +201,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.inspectorTab = tab;
     this.cd.markForCheck();
   }
-  selectOfflineCity(place:OfflinePlaceV1): void {
-    // Local picker selection does not rewrite synthetic chart positions.
-    this.selectedCity = place;
+  openNatalDraft(): void {
+    // Form is intentionally in-memory only; the rendered chart remains fictional.
+    this.inspectorCollapsed = false;
+    this.inspectorTab = 'draft';
     this.cd.markForCheck();
   }
-  clearOfflineCity(): void {
-    this.selectedCity = null;
+  updateDraftCity(place:OfflinePlaceV1 | null): void {
+    this.selectedCity = place;
+    this.natalDraft.setPlace(place);
     this.cd.markForCheck();
+  }
+  selectOfflineCity(place:OfflinePlaceV1): void {
+    this.updateDraftCity(place);
+  }
+  clearOfflineCity(): void {
+    this.updateDraftCity(null);
   }
   selectPlanet(name:DemoPlanet): void {
     // Inspector-only selection; the upstream renderer does not yet expose a stable
