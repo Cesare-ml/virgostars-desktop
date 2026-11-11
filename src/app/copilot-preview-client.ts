@@ -13,8 +13,9 @@ export const COPILOT_PREVIEW_MESSAGE_PATH = '/api/v1/ai/copilot-preview/message'
 
 export interface VirgoStarsCopilotPreviewTransport {
   /**
-   * Read-only capability check. True means local staging bridge configured,
-   * NOT confirmed network reachability or a verified backend account.
+   * Read-only capability check. True means the native bridge received a
+   * valid authenticated SYNTHETIC capabilities response from Virgo Stars staging.
+   * Not a production account session, PKCE login, or a real-chart permission.
    */
   isAvailable(): Promise<boolean>;
   /** Must use ONLY the authenticated Virgo Stars backend and protected native token storage. */
