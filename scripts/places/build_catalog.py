@@ -262,16 +262,34 @@ def search_catalog(database: Path, text: str, limit: int = 20) -> list[dict]:
     connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
-        rows = connection.execute("""
+        version_row = connection.execute(
+            "SELECT value FROM catalog_meta WHERE key='schemaVersion'"
+        ).fetchone()
+        version = version_row[0] if version_row else None
+        if version not in ("1", "2"):
+            raise ValueError("Unsupported offline city catalog version")
+        # Fixed query branches only; search string is passed as a bound parameter.
+        select = """
             WITH candidate AS (
               SELECT rowid FROM places_fts WHERE places_fts MATCH ? LIMIT 500
             )
             SELECT p.id, p.nome, p.nome_it, p.lat_micro, p.lng_micro,
-                   p.pop, p.stato_id, p.regione, p.tz
-            FROM candidate AS c JOIN places AS p ON p.id = c.rowid
+                   p.pop, p.stato_id, p.regione, p.tz,
+        """
+        if version == "2":
+            select += """ co.country_name, co.iso2 AS country_code
+                FROM candidate AS c JOIN places AS p ON p.id = c.rowid
+                LEFT JOIN country_lookup co ON co.stato_id=p.stato_id
+            """
+        else:
+            select += """ NULL AS country_name, NULL AS country_code
+                FROM candidate AS c JOIN places AS p ON p.id = c.rowid
+            """
+        select += """
             ORDER BY COALESCE(p.pop,0) DESC, p.nome COLLATE NOCASE, p.id
             LIMIT ?
-        """, (query, limit)).fetchall()
+        """
+        rows = connection.execute(select, (query, limit)).fetchall()
         return [dict(row) for row in rows]
     finally:
         connection.close()
