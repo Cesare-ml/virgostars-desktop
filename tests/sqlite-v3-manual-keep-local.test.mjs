@@ -152,6 +152,13 @@ test('database rejects retired original id even by direct raw SQL after resoluti
  VALUES (?,?,?,?,?,?,?)`).run(P,original.original_mutation_id,'subject',q.entity,'upsert','{}',CLOCK),/used mutation id/);
  }finally{db.close();}
 });
+test('resolved conflict decision history cannot be changed or deleted with raw SQL',async()=>{
+ const db=init();try{const q=request();await stageConflict(db,q);await keepLocal(db,{expectedHash:await ackFingerprint001(q)});
+ assert.throws(()=>db.prepare('UPDATE local_conflict_decisions SET remote_revision=? WHERE profile_id=?').run('rev-forged',P),/immutable/);
+ assert.throws(()=>db.prepare('DELETE FROM local_conflict_decisions WHERE profile_id=?').run(P),/immutable/);
+ assert.equal(history(db,P,q.mutation).remote_revision,'rev-remote');
+ }finally{db.close();}
+});
 test('decision survives close/reopen and enforces permanent original ID reservation',async()=>{
  const path=join(dir,'fictional-conflict.db');let db=open(path);upgrade(db);const q=request();await stageConflict(db,q);const h=await ackFingerprint001(q);
  await keepLocal(db,{expectedHash:h});db.close();db=open(path);
