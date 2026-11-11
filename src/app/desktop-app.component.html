@@ -73,7 +73,7 @@
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
       <div class="inspector-head">
-        <h2>{{t('inspector')}}</h2>
+        <h2>{{inspectorTab === 'ai' ? t('ai.preview.title') : t('inspector')}}</h2>
         <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
       </div>
       <div class="inspector-tabs" role="tablist">
@@ -83,6 +83,8 @@
           [attr.aria-selected]="inspectorTab==='houses'" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
         <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content"
           [attr.aria-selected]="inspectorTab==='settings'" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
+        <button type="button" role="tab" id="tab-ai" aria-controls="inspector-content"
+          [attr.aria-selected]="inspectorTab==='ai'" (click)="setInspectorTab('ai')">{{t('tab.ai')}}</button>
       </div>
       <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
         <div *ngIf="inspectorTab==='planets'">
@@ -106,6 +108,28 @@
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
         </div>
+        <section *ngIf="inspectorTab==='ai'" class="copilot-panel" aria-labelledby="tab-ai">
+          <p class="inspector-hint">{{t('ai.preview.notice')}}</p>
+          <fieldset class="copilot-focus-picker">
+            <legend>{{t('ai.preview.focus')}}</legend>
+            <button type="button" *ngFor="let item of copilotFocusOptions"
+              [class.selected]="copilotFocusKey===item.key"
+              [attr.aria-pressed]="copilotFocusKey===item.key"
+              (click)="selectCopilotFocus(item.key)">{{t(item.label)}}</button>
+          </fieldset>
+          <p class="copilot-selection" role="status">{{t('ai.preview.ready')}} <strong>{{copilotFocusKey}}</strong></p>
+          <button class="copilot-send" type="button" [disabled]="!copilotConnected || copilotBusy"
+            (click)="askCopilotPreview()">{{t('ai.preview.ask')}}</button>
+          <p class="inspector-hint" *ngIf="!copilotConnected">{{t('ai.preview.guest')}}</p>
+          <div class="copilot-status" role="status" aria-live="polite">{{t(copilotStatus)}}</div>
+          <div class="copilot-reply" *ngIf="copilotAnswer">
+            <h3>{{t('ai.preview.reply')}}</h3>
+            <p>{{copilotAnswer}}</p>
+            <p class="copilot-disclosure">{{t('ai.preview.synthetic')}}</p>
+            <p class="copilot-disclosure">{{t('ai.preview.highlights')}} {{copilotIllustrativeAspects}}</p>
+            <p class="copilot-disclosure">{{t('ai.preview.none')}}</p>
+          </div>
+        </section>
       </div>
     </aside>
   </div>
