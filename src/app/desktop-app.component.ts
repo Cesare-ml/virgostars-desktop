@@ -11,6 +11,7 @@ import {
 } from './workspace-state';
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
 import { translate, type Locale, type MessageKey } from './translations';
+import { inspectDesktopRuntime } from './native/runtime';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -55,6 +56,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   busy = true;
   ready = false;
   status: MessageKey = 'chart.loading';
+  runtimeStatus: MessageKey = 'runtime.checking';
   error = '';
 
   t(key:MessageKey): string { return translate(this.locale,key); }
@@ -65,6 +67,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
 
   ngAfterViewInit(): void {
+    // Read-only capability check, distinct from account authentication.
+    void this.checkRuntime();
     try {
       // No network fallback. Both Angular and generated test assets are embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');
@@ -77,6 +81,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     } catch (error) {
       this.renderError(error);
     }
+  }
+
+  private async checkRuntime(): Promise<void> {
+    const result = await inspectDesktopRuntime();
+    if (this.destroyed) return;
+    this.runtimeStatus = result.kind === 'desktop_demo'
+      ? 'runtime.native'
+      : result.kind === 'browser_preview' ? 'runtime.browser' : 'runtime.unavailable';
+    this.cd.markForCheck();
   }
 
   ngOnDestroy(): void {
