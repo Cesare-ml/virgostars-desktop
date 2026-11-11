@@ -70,7 +70,7 @@ fn fts_query(input: &str) -> Option<String> {
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|word| !word.is_empty())
         .take(MAX_TOKENS)
-        .map(|word| format!("\\\"{}\\\"*", word))
+        .map(|word| format!("\"{}\"*", word))
         .collect();
     if words.is_empty() || words.iter().map(String::len).sum::<usize>() < 4 {
         return None;
@@ -169,11 +169,11 @@ mod tests {
 
     #[test]
     fn input_is_bounded_and_fts_syntax_is_never_untrusted() {
-        assert_eq!(fts_query("San José"), Some("\\"San\\"* \\"José\\"*".into()));
-        assert_eq!(fts_query("Firenze"), Some("\\"Firenze\\"*".into()));
+        assert_eq!(fts_query("San José"), Some("\"San\"* \"José\"*".into()));
+        assert_eq!(fts_query("Firenze"), Some("\"Firenze\"*".into()));
         assert!(fts_query(" ").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
-        assert_eq!(fts_query("a\\" OR 1=1"), Some("\\"a\\"* \\"OR\\"* \\"1\\"* \\"1\\"*".into()));
+        assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
     }
 
     #[test]
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn synthetic_fts_catalog_produces_bounded_responses() {
         let mut path = std::env::temp_dir();
-        path.push(format!("vs-place-search-test-{}-{}.sqlite", std::process::id(), 83437));
+        path.push(format!("vs-place-search-test-{}-{}-{}.sqlite", std::process::id(), std::thread::current().name().unwrap_or("test"), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let _ = std::fs::remove_file(&path);
         let db = Connection::open(&path).unwrap();
         db.execute_batch(
