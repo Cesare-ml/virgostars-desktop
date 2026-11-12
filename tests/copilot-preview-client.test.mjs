@@ -58,6 +58,11 @@ test('only the Virgo Stars preview API path is sent and client cannot choose pro
   assert.equal(result.illustrativeAspectCount, 1);
   assert.equal(calls[0].path, COPILOT_PREVIEW_MESSAGE_PATH);
   assert.deepEqual(calls[0].body, { action: 'describe_focus', focus });
+  // Keep natal/transit discriminant correlation; a separately rebuilt object
+  // from focus.layer and focus.bodyId widens the type and fails strict tsc.
+  assert.notStrictEqual(calls[0].body.focus, focus);
+  assert.ok(Object.isFrozen(calls[0].body.focus));
+  assert.deepEqual(Object.keys(calls[0].body.focus).sort(), ['bodyId', 'layer']);
   assert.equal(calls[0].signal, controller.signal);
   assert.equal('provider' in calls[0].body, false);
   assert.equal('model' in calls[0].body, false);
