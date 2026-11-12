@@ -65,8 +65,20 @@ export function readCopilotPreviewReply(raw: unknown, expectedFocus: CopilotPrev
     || raw.interpretationStatus !== 'FACT_ONLY'
     || !isRecord(raw.data)) invalid();
 
+  // Native Rust validates all of these upstream and projects a minimal
+  // allowlisted envelope without these optional server-only fields. When a
+  // test/transport includes them, never ignore a contradictory provider,
+  // cost or privacy disclosure claim.
+  if ((raw.contentOrigin !== undefined && raw.contentOrigin !== 'DETERMINISTIC_FACT')
+    || (raw.providerCostUsd !== undefined && raw.providerCostUsd !== 0)
+    || (raw.disclosures !== undefined
+      && (!isRecord(raw.disclosures)
+        || raw.disclosures.birthDataIncluded !== false
+        || raw.disclosures.personalChartIncluded !== false
+        || raw.disclosures.aiGeneratedTextPresent !== false))) invalid();
+
   const data = raw.data;
-  if (typeof data.answer !== 'string' || data.answer.length === 0 || data.answer.length > 4000
+  if (typeof data.answer !== 'string' || data.answer.trim().length === 0 || data.answer.length > 4000
     || typeof data.chartRevision !== 'number' || !Number.isSafeInteger(data.chartRevision)
     || data.chartRevision < 0 || data.source !== 'MOCK_DETERMINISTIC'
     || !isCopilotPreviewFocus(data.focus)
