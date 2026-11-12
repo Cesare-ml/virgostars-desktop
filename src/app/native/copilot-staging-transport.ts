@@ -106,10 +106,28 @@ export function createNativeCopilotStagingTransport(
     ): Promise<unknown> {
       if (signal.aborted) throw failure('copilot_preview_cancelled');
       if (!nativeAvailable(native)) throw failure('copilot_preview_native_unavailable');
-      if (path !== COPILOT_PREVIEW_MESSAGE_PATH
-        || body === null || typeof body !== 'object' || Array.isArray(body)
-        || Object.keys(body).length !== 2 || body.action !== 'describe_focus'
-        || !isCopilotPreviewFocus(body.focus)) {
+      // Snapshot each field exactly once, then validate that immutable-shape
+      // copy. Accessor-backed or mutable input must not change focus after
+      // validation and before the Tauri IPC; throwing getters stay redacted.
+      let focus: CopilotPreviewFocus;
+      try {
+        if (path !== COPILOT_PREVIEW_MESSAGE_PATH
+          || body === null || typeof body !== 'object' || Array.isArray(body)
+          || Object.keys(body).length !== 2 || body.action !== 'describe_focus') {
+          throw failure('copilot_preview_invalid_native_request');
+        }
+        const suppliedFocus: unknown = body.focus;
+        if (suppliedFocus === null || typeof suppliedFocus !== 'object'
+          || Array.isArray(suppliedFocus) || Object.keys(suppliedFocus).length !== 2) {
+          throw failure('copilot_preview_invalid_native_request');
+        }
+        const properties = suppliedFocus as Record<string, unknown>;
+        const snapshot: unknown = { layer: properties['layer'], bodyId: properties['bodyId'] };
+        if (!isCopilotPreviewFocus(snapshot)) {
+          throw failure('copilot_preview_invalid_native_request');
+        }
+        focus = snapshot;
+      } catch {
         throw failure('copilot_preview_invalid_native_request');
       }
 
@@ -126,7 +144,7 @@ export function createNativeCopilotStagingTransport(
         let pending: Promise<unknown>;
         try {
           pending = Promise.resolve(native.invoke('copilot_staging_preview', {
-            focus: { layer: body.focus.layer, bodyId: body.focus.bodyId },
+            focus,
           }));
         } catch (error) {
           // A synchronous invocation failure must not permanently lock the UI.
