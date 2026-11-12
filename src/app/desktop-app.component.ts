@@ -13,6 +13,7 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import {validatePngDataUrl, syntheticPngFilename} from './png-export-safety';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -215,6 +216,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   async exportPng(): Promise<void> {
     if(!this.ready || this.busy || this.destroyed || this.exporting) return;
+    const exportMode = this.mode;
+    const exportTheme = this.theme;
     this.exporting=true;
     this.busy=true; this.status='exporting'; this.cd.markForCheck();
     try {
@@ -222,9 +225,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       const png=await this.renderer.generaImmagine(natal,transits,synastry,kind,
         this.options(),{x:800,y:800},2);
       if(this.destroyed) return;
+      // A renderer failure must never become an arbitrary link/download target.
+      const safePng = validatePngDataUrl(png);
       const link=document.createElement('a');
-      link.href=png;
-      link.download='virgostars-synthetic-'+this.mode+'-'+this.theme+'.png';
+      link.href=safePng;
+      link.download=syntheticPngFilename(exportMode,exportTheme);
       link.click();
       this.status='exported';
     } catch(error) { if(!this.destroyed) this.renderError(error); }
