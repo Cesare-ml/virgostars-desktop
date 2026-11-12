@@ -50,23 +50,83 @@ function Invoke-Checked {
 }
 function Test-PortAvailable {
     param([int] $Port)
-    $client = New-Object System.Net.Sockets.TcpClient
+    # Probe by binding, not by CONNECTING to an unknown listener on the port.
+    # ExclusiveAddressUse avoids accidentally sharing a port with another server.
+    $listener = [System.Net.Sockets.TcpListener]::new(
+        [System.Net.IPAddress]::Parse('127.0.0.1'), $Port)
     try {
-        $pending = $client.BeginConnect('127.0.0.1', $Port, $null, $null)
-        if (-not $pending.AsyncWaitHandle.WaitOne(250)) { return $true }
-        try { $client.EndConnect($pending); return $false } catch { return $true }
+        $listener.ExclusiveAddressUse = $true
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
     } finally {
-        $client.Close()
+        $listener.Stop()
+    }
+}
+function Read-LoopbackHttp {
+    param([string] $Url, [hashtable] $Headers, [switch] $ExpectJson)
+    # Explicitly bypass all system and inherited HTTP proxies and reject
+    # redirects before attaching even a fictional bearer to a request.
+    $uri = [System.Uri]::new($Url)
+    if ($uri.Scheme -ne 'http' -or $uri.Host -ne '127.0.0.1' -or
+        $uri.UserInfo -ne '' -or $uri.Query -ne '' -or $uri.Fragment -ne '' -or
+        ($uri.AbsolutePath -ne '/' -and
+         $uri.AbsolutePath -ne '/api/v1/ai/copilot-preview/capabilities')) {
+        throw 'Only the fixed local synthetic lab GET endpoints are allowed.'
+    }
+    $request = [System.Net.HttpWebRequest] [System.Net.WebRequest]::Create($uri)
+    $request.Proxy = $null
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = 2000
+    $request.ReadWriteTimeout = 2000
+    $request.Method = 'GET'
+    if ($ExpectJson) { $request.Accept = 'application/json' }
+    if ($null -ne $Headers) {
+        foreach ($item in $Headers.GetEnumerator()) {
+            if ($item.Key -ne 'Authorization') { throw 'Unexpected HTTP lab header.' }
+            $request.Headers['Authorization'] = [string] $item.Value
+        }
+    }
+    $response = $request.GetResponse()
+    try {
+        if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+            throw 'Local fixture returned a non-200 HTTP response.'
+        }
+        if (-not $ExpectJson) { return $true }
+        $type = ([string] $response.ContentType -split ';')[0].Trim().ToLowerInvariant()
+        if ($type -ne 'application/json' -or $response.ContentLength -gt 8192) {
+            throw 'Local synthetic capabilities response rejected.'
+        }
+        $stream = $response.GetResponseStream()
+        $memory = New-Object System.IO.MemoryStream
+        $buffer = New-Object byte[] 1024
+        try {
+            while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                if ($memory.Length + $read -gt 8192) {
+                    throw 'Local synthetic capabilities response exceeds size limit.'
+                }
+                $memory.Write($buffer, 0, $read)
+            }
+            $content = [System.Text.Encoding]::UTF8.GetString($memory.ToArray())
+            return ConvertFrom-Json -InputObject $content -ErrorAction Stop
+        } finally {
+            $memory.Dispose()
+            $stream.Dispose()
+        }
+    } finally {
+        $response.Dispose()
     }
 }
 function Wait-ForHttp {
-    param([string] $Url, [int] $LimitSeconds = 45, [hashtable] $Headers = @{})
+    param([string] $Url, [int] $LimitSeconds = 90,
+        [hashtable] $Headers = @{}, [switch] $ExpectJson)
     $stopAt = (Get-Date).AddSeconds($LimitSeconds)
     do {
         try {
-            $result = Invoke-RestMethod -Uri $Url -Headers $Headers -Method Get -TimeoutSec 2
+            $result = Read-LoopbackHttp -Url $Url -Headers $Headers -ExpectJson:$ExpectJson
             if ($null -ne $result) { return $result }
-        } catch { # Never display exception content (may include a test bearer).
+        } catch { # No exception content is printed, as it may contain headers.
         }
         Start-Sleep -Milliseconds 350
     } while ((Get-Date) -lt $stopAt)
@@ -125,7 +185,7 @@ try {
     $env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER = $testBearer
 
     $fixture = Start-Process -FilePath 'node' -ArgumentList @('scripts/copilot-staging-fixture.mjs', [string]$BackendPort) -WorkingDirectory $root -PassThru -NoNewWindow
-    $capabilities = Wait-ForHttp -Url "$backend/api/v1/ai/copilot-preview/capabilities" -Headers @{
+    $capabilities = Wait-ForHttp -Url "$backend/api/v1/ai/copilot-preview/capabilities" -ExpectJson -Headers @{
         Authorization = "Bearer $testBearer"
     }
     if ($capabilities.contract -ne 'VirgoStarsCopilotPreviewCapabilities' -or
