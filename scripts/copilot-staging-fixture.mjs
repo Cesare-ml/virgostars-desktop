@@ -6,6 +6,7 @@
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 const HOST = '127.0.0.1';
 const PREFIX = '/api/v1/ai/copilot-preview';
@@ -154,7 +155,7 @@ export function createCopilotStagingFixture({ bearer, maxRequests = 8, windowMs 
   };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL('file://' + process.argv[1]))) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   if (process.env.VIRGOSTARS_COPILOT_FIXTURE_ACK !== TEST_ACK) {
     console.error('Synthetic-only lab disabled: missing explicit acknowledgment.');
     process.exitCode = 2;
