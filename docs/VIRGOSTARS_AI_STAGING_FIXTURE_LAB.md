@@ -20,6 +20,7 @@ The tests open a **random ephemeral port on literal `127.0.0.1`** and close it a
 - 2 KiB body cap (including chunked streaming), malformed JSON and non-JSON Content-Type.
 - Per-fixture quota 429, no-store headers and invalid-token refusal.
 - CLI denies startup without the synthetic opt-in and does not print the fictional bearer.
+- A cryptographically random **128-bit per-launch lab challenge** must be supplied to the fixture; the authenticated capabilities response echoes this challenge. The Windows runner compares it exactly before launching Tauri, preventing a stale/replaced test fixture from passing the preflight. This is **not** JWT signature verification or production service authentication.
 
 These are **real loopback HTTP tests in Node**, not isolated source-string checks. They do not execute the Rust native bridge or Express server.
 
@@ -33,7 +34,7 @@ From the Desktop repository root:
 powershell -NoProfile -File .\scripts\run-copilot-staging-lab.ps1 -SyntheticOnly
 ```
 
-The runner checks Windows prerequisites, runs the 8 real loopback tests (including the Desktop TypeScript decoder), checks Rust formatting, runs `cargo test --features copilot-staging` and `cargo check --release --features copilot-staging` **before setting the test token**, and generates the synthetic icon. It starts Angular on `127.0.0.1:4200` **before** creating the fictional bearer, then starts the isolated fixture on `127.0.0.1:18883`, checks the authenticated synthetic capabilities response, and launches `tauri dev --features copilot-staging`. Only its own Angular/fixture child process trees are shut down in `finally`; temporary variables are cleared. The executable runs in a debug lab only, not in a release build. This does not automate visual validation: inspect the AI panel and test the 3 focus options manually.
+The runner checks Windows prerequisites, runs the 9 local loopback tests (including the Desktop TypeScript decoder), runs the complete `npm test` suite, validates the Angular/Charts build prerequisites with `npm run doctor:build`, checks Rust formatting, runs `cargo test --features copilot-staging` and `cargo check --release --features copilot-staging` **before setting the test token**, and generates the synthetic icon. It starts Angular on `127.0.0.1:4200` **before** creating the fictional bearer, then starts the isolated fixture on `127.0.0.1:18883`, checks the authenticated synthetic capabilities response **and its exact one-time session ID**,  and launches `tauri dev --features copilot-staging`. Only its own Angular/fixture child process trees are shut down in `finally`; temporary variables are cleared. The executable runs in a debug lab only, not in a release build. This does not automate visual validation: inspect the AI panel and test the 3 focus options manually.
 
 The script will **stop on the first failed prerequisite** and may generate a local `Cargo.lock` as Cargo resolves dependencies; review it before committing. Actual native Windows execution remains outstanding. The source-only security tests live in `tests/copilot-windows-lab-runner.test.mjs` and run through `npm test`.
 
@@ -47,6 +48,7 @@ Set these variables in a **throwaway PowerShell terminal** in the Desktop checko
 $env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED = "1"
 $env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN = "http://127.0.0.1:18883"
 $env:VIRGOSTARS_COPILOT_FIXTURE_ACK = "SYNTHETIC_LOOPBACK_TEST"
+$env:VIRGOSTARS_COPILOT_FIXTURE_SESSION = node -e "console.log(require('node:crypto').randomBytes(16).toString('hex'))"
 $env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER = node -e "console.log(['eyJhbGciOiJub25lIn0','eyJzdWIiOiJzeW50aGV0aWMifQ',require('node:crypto').randomBytes(24).toString('base64url')].join('.'))"
 $fixture = Start-Process -FilePath "node" -ArgumentList @("scripts/copilot-staging-fixture.mjs", "18883") -NoNewWindow -PassThru
 ```
@@ -67,6 +69,7 @@ Clean up from the same PowerShell session:
 ```powershell
 Stop-Process -Id $fixture.Id -ErrorAction SilentlyContinue
 Remove-Item Env:VIRGOSTARS_COPILOT_FIXTURE_ACK -ErrorAction SilentlyContinue
+Remove-Item Env:VIRGOSTARS_COPILOT_FIXTURE_SESSION -ErrorAction SilentlyContinue
 Remove-Item Env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED -ErrorAction SilentlyContinue
 Remove-Item Env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN -ErrorAction SilentlyContinue
 Remove-Item Env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER -ErrorAction SilentlyContinue
