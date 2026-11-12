@@ -74,3 +74,51 @@ test('native rejection and synchronous invocation failure release the local pend
   assert.deepEqual(await invokePreview(transport), reply());
   assert.equal(calls, 3);
 });
+
+
+test('manual readiness cannot turn a busy native preview into a false disconnected result', async () => {
+  let complete;
+  const commands = [];
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    invoke(command) {
+      commands.push(command);
+      if (command === 'copilot_staging_preview') {
+        return new Promise(resolve => { complete = resolve; });
+      }
+      return Promise.resolve(true);
+    },
+  });
+  assert.equal(transport.isPreviewPending(), false);
+  const pending = invokePreview(transport);
+  assert.equal(transport.isPreviewPending(), true);
+  assert.equal(await transport.isAvailable(), false);
+  assert.deepEqual(commands, ['copilot_staging_preview'], 'no readiness IPC during native POST');
+  complete(reply());
+  await pending;
+  assert.equal(transport.isPreviewPending(), false);
+  assert.equal(await transport.isAvailable(), true);
+  assert.deepEqual(commands, ['copilot_staging_preview', 'copilot_staging_ready']);
+});
+
+test('aborted preview remains observable as pending until native completion', async () => {
+  let complete;
+  const commands = [];
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    invoke(command) {
+      commands.push(command);
+      return new Promise(resolve => { complete = resolve; });
+    },
+  });
+  const ctrl = new AbortController();
+  const pending = invokePreview(transport, ctrl.signal);
+  ctrl.abort();
+  await assert.rejects(pending, /cancelled/);
+  assert.equal(transport.isPreviewPending(), true);
+  assert.equal(await transport.isAvailable(), false);
+  assert.deepEqual(commands, ['copilot_staging_preview']);
+  complete(reply());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(transport.isPreviewPending(), false);
+});
