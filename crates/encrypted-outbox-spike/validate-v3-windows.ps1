@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $crate = $PSScriptRoot
 $repo = (Resolve-Path (Join-Path $crate '..\..')).Path
+$sourceLockGate = Join-Path $repo 'tools\v3-verify-source-lock.mjs'
 $nodeGate = Join-Path $repo 'tools\v3-sqlite-reference-gate.mjs'
 $nativeGate = Join-Path $crate 'validate-windows.ps1'
 
@@ -19,6 +20,14 @@ if (-not (Test-Path -LiteralPath $nodeGate -PathType Leaf)) {
 $node = Get-Command 'node' -ErrorAction SilentlyContinue
 if ($null -eq $node) {
     throw 'Node 22+ is required for the v3 SQLite reference gate.'
+}
+if (-not (Test-Path -LiteralPath $sourceLockGate -PathType Leaf)) {
+    throw 'Missing reviewed v3 source-lock verifier. Use the complete checkout.'
+}
+Write-Host '== VirgoStars Desktop reviewed v3 SQL/test source fingerprints =='
+& $node.Source $sourceLockGate
+if ($LASTEXITCODE -ne 0) {
+    throw 'v3 source-lock verification FAILED; no test result can override this.'
 }
 Write-Host '== VirgoStars Desktop v3 synthetic SQLite reference =='
 & $node.Source $nodeGate
