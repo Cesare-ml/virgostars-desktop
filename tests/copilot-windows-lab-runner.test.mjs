@@ -124,6 +124,10 @@ test('preflight validates Rust dev and release configurations before exposing a 
   assert.match(runner, /'npm\.cmd' @\('run', 'test:ai:fixture'\)/);
   assert.match(runner, /'npm\.cmd' @\('test'\)/);
   assert.match(runner, /'npm\.cmd' @\('run', 'doctor:build'\)/);
+  assert.match(runner, /'npm\.cmd' @\('run', 'test:ai:types'\)/);
+  assert.match(packageJson.scripts['test:ai:types'], /tsc --noEmit --strict/);
+  assert.match(packageJson.scripts['test:ai:types'], /--allowImportingTsExtensions/);
+  assert.ok(runner.indexOf("Strict TypeScript AI IPC contract") < preflight);
   assert.ok(runner.indexOf("Invoke-Checked 'Angular/Charts build prerequisites'") < preflight);
   assert.match(packageJson.scripts['test:ai:fixture'], /--experimental-strip-types/);
 });
