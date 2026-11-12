@@ -22,6 +22,17 @@ export function inspectDesktopStyles(bundleDir) {
   if (!stylesheetLinks.length) fail('Angular index.html has no linked stylesheet');
   const names = [];
   for (const tag of stylesheetLinks) {
+    // Angular's default critical-CSS optimization can emit:
+    // <link rel="stylesheet" media="print" onload="this.media='all'">
+    // Tauri's script-src blocks that inline event handler, leaving CSS inactive.
+    // Reject such output rather than weakening Content Security Policy.
+    if (/\son[a-z]+\s*=/i.test(tag)) {
+      fail('Inline stylesheet event handler is incompatible with Tauri CSP');
+    }
+    const media = htmlAttr(tag, 'media');
+    if (media !== null && !['all','screen'].includes(media.trim().toLowerCase())) {
+      fail('Deferred or print-only stylesheet is incompatible with the desktop CSP');
+    }
     const href = htmlAttr(tag, 'href');
     // Angular application builder normally outputs a root-level hashed styles-*.css.
     // Only local, path-safe relative URLs are accepted for this synthetic offline test.

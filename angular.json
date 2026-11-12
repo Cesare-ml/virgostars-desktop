@@ -23,7 +23,16 @@
                 "input": ".local/frontend/assets",
                 "output": "assets"
               }
-            ]
+            ],
+            "optimization": {
+              "scripts": true,
+              "styles": {
+                "minify": true,
+                "inlineCritical": false
+              },
+              "fonts": false
+            },
+            "subresourceIntegrity": false
           }
         },
         "serve": {

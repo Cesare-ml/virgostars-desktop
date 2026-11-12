@@ -68,3 +68,43 @@ test('rejects remotely hosted CSS without allowing stylesheet network fallback',
   writeFileSync(index,readFileSync(index,'utf8').replace('href="styles-LOCAL123.css"','href="https://example.invalid/desktop.css"'));
   assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/external script or stylesheet/);
 }));
+
+test('rejects Angular critical-CSS print/onload pattern blocked by strict Tauri CSP',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const html=readFileSync(index,'utf8').replace(
+    '<link rel="stylesheet" href="styles-LOCAL123.css">',
+    '<link rel="stylesheet" href="styles-LOCAL123.css" media="print" onload="this.media=\'all\'">'
+  );
+  writeFileSync(index,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Inline stylesheet event handler/);
+}));
+
+test('rejects print-only CSS even without an inline handler',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const html=readFileSync(index,'utf8').replace(
+    '<link rel="stylesheet" href="styles-LOCAL123.css">',
+    '<link rel="stylesheet" href="styles-LOCAL123.css" media="print">'
+  );
+  writeFileSync(index,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Deferred or print-only stylesheet/);
+}));
+
+test('rejects other inline stylesheet event handlers without disabling CSP',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const html=readFileSync(index,'utf8').replace(
+    '<link rel="stylesheet" href="styles-LOCAL123.css">',
+    '<link rel="stylesheet" href="styles-LOCAL123.css" onerror="alert(1)">'
+  );
+  writeFileSync(index,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Inline stylesheet event handler/);
+}));
+
+test('screen stylesheet without inline event handler remains valid',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const html=readFileSync(index,'utf8').replace(
+    '<link rel="stylesheet" href="styles-LOCAL123.css">',
+    '<link rel="stylesheet" href="styles-LOCAL123.css" media="screen">'
+  );
+  writeFileSync(index,html);
+  assert.equal(verifyOfflineBundle(f.bundle,f.staging).stylesheets,1);
+}));
