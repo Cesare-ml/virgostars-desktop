@@ -26,6 +26,7 @@ $frontendProcess = $null
 # The lab manages only fresh, fictional variables it creates itself.
 $labEnvKeys = @(
     'VIRGOSTARS_COPILOT_FIXTURE_ACK',
+    'VIRGOSTARS_COPILOT_FIXTURE_SESSION',
     'VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED',
     'VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN',
     'VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER'
@@ -179,7 +180,14 @@ try {
     if ($LASTEXITCODE -ne 0 -or $testBearer.Length -lt 32) {
         throw 'Failed to generate a fictional test token.'
     }
+    # Independent 128-bit per-launch challenge binds readiness to this fixture.
+    # No value is logged or written to disk; it does not grant user access.
+    $labSession = (& node -e "console.log(require('node:crypto').randomBytes(16).toString('hex'))").Trim()
+    if ($LASTEXITCODE -ne 0 -or $labSession -notmatch '^[a-f0-9]{32}$') {
+        throw 'Failed to generate a synthetic fixture session challenge.'
+    }
     $env:VIRGOSTARS_COPILOT_FIXTURE_ACK = 'SYNTHETIC_LOOPBACK_TEST'
+    $env:VIRGOSTARS_COPILOT_FIXTURE_SESSION = $labSession
     $env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED = '1'
     $env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN = $backend
     $env:VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER = $testBearer
@@ -188,7 +196,8 @@ try {
     $capabilities = Wait-ForHttp -Url "$backend/api/v1/ai/copilot-preview/capabilities" -ExpectJson -Headers @{
         Authorization = "Bearer $testBearer"
     }
-    if ($capabilities.contract -ne 'VirgoStarsCopilotPreviewCapabilities' -or
+    if ($capabilities.labSession -cne $labSession -or
+        $capabilities.contract -ne 'VirgoStarsCopilotPreviewCapabilities' -or
         $capabilities.stage -ne 'STAGING_SYNTHETIC' -or
         $capabilities.providerEnabled -ne $false -or
         $capabilities.modelSelectorAvailable -ne $false) {
@@ -208,6 +217,7 @@ finally {
         Remove-Item -Path ("Env:" + $key) -ErrorAction SilentlyContinue
     }
     Remove-Variable -Name testBearer -ErrorAction SilentlyContinue
+    Remove-Variable -Name labSession -ErrorAction SilentlyContinue
     Pop-Location
     Write-Host 'Local synthetic AI lab stopped. No deploy, no merge, no real JWT.'
 }
