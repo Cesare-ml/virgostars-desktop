@@ -56,7 +56,7 @@ Historical v3 schema Git blob:
 Intermediate v3 identity-only schema Git blob:
 `76ff889a22c72ad7d0ce2bce497b06318f5a6fe1`
 
-Current queued-request snapshot schema Git blob:
+Intermediate request-snapshot schema Git blob (superseded):
 `2b2f4eba6007d16acd5abf78dd0749bb908a197d`
 
 Earlier draft PR documentation and historical test evidence that cites
@@ -214,23 +214,24 @@ fingerprints/revisions, identical replay, authorized new history
 records, profile isolation, retained UPDATE/DELETE protections and
 foreign-key integrity.
 
-The current synthetic v3 source was tested together with the
+The pre-ACK-ledger-guard synthetic v3 source was tested together with the
 13 queued-REPLACE/FIFO tests and the earlier 17 snapshot tests:
 **38/38 PASS** (Node.js 22.16.0, plaintext SQLite reference).
 The exact GitHub blob hashes match the locally tested sources:
 
-- Current v3 DDL: `1f86d878ffb6f36349f9de4dfa009d5d441bff4b`
+- Intermediate v3 DDL (superseded): `1f86d878ffb6f36349f9de4dfa009d5d441bff4b`
 - Decision-history regression: `c03f71336fe6fa53b604dc7eed3816b4e66e570f`
 - Queue-replacement/FIFO regression: `5dd0d8a0a8c37f4c15c8526d114683eb4b915061`
 
 The native Rust history-replacement test is written but **has not
-been compiled or executed**. The current schema hash supersedes all
-earlier v3 hashes in this document. Any older synthetic v3 file
+been compiled or executed**. The ACK-ledger addition below supersedes
+this intermediate schema hash. Any older synthetic v3 file
 must fail strict schema checks until explicitly recreated or migrated.
 
-**Still not production-ready:** the synthetic ACK ledger and receipt
-trust model require separate immutability, per-account authorization,
-key custody, signature/receipt verification and migration review.
+**Still not production-ready:** the synthetic ACK ledger now has
+SQL-level immutability safeguards, but remote receipt authentication,
+per-account authorization, key custody, signature/receipt verification
+and migration review remain required.
 This guard does not authenticate a server.
 
 ## Immutable acknowledged receipts (v3)
