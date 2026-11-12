@@ -249,6 +249,8 @@ test('Rust rejects wrong local fixture challenges without affecting real backend
   const rust = read('src-tauri/src/copilot_staging_bridge.rs');
   assert.match(rust, /STAGING_FIXTURE_SESSION_ENV: &str = "VIRGOSTARS_COPILOT_FIXTURE_SESSION"/);
   assert.match(rust, /fn valid_fixture_session\(value: &str\) -> bool/);
+  assert.match(rust, /Err\(std::env::VarError::NotUnicode\(_\)\) => return false/);
+  assert.match(rust, /fn optional_lab_session_requires_exact_lowercase_128_bit_hex\(\)/);
   assert.match(rust, /fn validate_staging_capabilities\(value: &Value, expected_fixture_session: Option<&str>\)/);
   assert.match(rust, /value\.get\("labSession"\)\.and_then\(Value::as_str\) != Some\(expected\)/);
   assert.match(rust, /validate_staging_capabilities\(&value, fixture_session\.as_deref\(\)\)/);
