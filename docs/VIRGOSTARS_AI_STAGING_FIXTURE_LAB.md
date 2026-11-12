@@ -12,6 +12,8 @@ npm run test:ai:fixture
 
 Equivalently use `node --experimental-strip-types --test tests/copilot-staging-fixture.test.mjs` (required for Node 22 TypeScript imports). Also included in the repository's existing `npm test` script, which uses `--experimental-strip-types` for TypeScript imports in other tests.
 
+The fixture now adds `labSession` to both `GET /capabilities` and each successful `POST /message` response. Rust independently checks it on **each successful POST**, then removes it before forwarding the sanitized preview data into Angular. The two-instance HTTP test asserts the POST responses contain their *respective* fixture IDs. This identity extension is confined to the synthetic lab; the real staging API does not need it and does not perform local fixture token equality checks.
+
 The tests open a **random ephemeral port on literal `127.0.0.1`** and close it afterwards. They cover:
 - GET `/api/v1/ai/copilot-preview/capabilities` with and without the synthetic test bearer.
 - POST `/api/v1/ai/copilot-preview/message` for NATAL:VENUS, NATAL:SUN, TRANSIT:SATURN and the required synthetic FACT_ONLY envelope.
