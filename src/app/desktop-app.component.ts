@@ -17,6 +17,7 @@ import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
+import { DeviceClock, formatDeviceClock } from './device-clock';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -50,6 +51,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private exporting = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
+  private readonly deviceClock = new DeviceClock();
 
   readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
@@ -76,6 +78,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
+  get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
+  get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
+  get clockInstantIso(): string | null {
+    const ms = this.deviceClock.timestamp;
+    return Number.isFinite(ms) && Math.abs(ms) <= 8_640_000_000_000_000 ? new Date(ms).toISOString() : null;
+  }
   private persistUiPreferences(): void {
     // Best effort: storing theme/language never blocks offline interaction.
     saveUiPreferences(this.uiPreferencesStorage, {theme:this.theme, locale:this.locale});
@@ -83,6 +91,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     document.documentElement.lang = this.locale;
+    // Local clock is independent of renderer success, astronomy and account auth.
+    this.deviceClock.start(() => { if (!this.destroyed) this.cd.markForCheck(); });
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     try {
@@ -110,6 +120,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
