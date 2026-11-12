@@ -100,6 +100,14 @@ Run a DEBUG Tauri build **with** the explicit Cargo feature. The existing Tauri 
 
 The backend has its own staging JWT middleware and per-user rate limit. Neither Rust nor Angular can replace backend authorization.
 
+## Prompt cancellation and strict TypeScript compatibility (2026-11-12)
+
+The WebView can change the selected planet or chart mode while Rust still has a pending `copilot_staging_preview` IPC call. `createNativeCopilotStagingTransport` now attaches an **abort listener** to that specific pending Promise, so the Angular caller receives `copilot_preview_cancelled` immediately instead of waiting up to the native HTTP timeout. Native IPC itself is **not cancelled**; the later Rust result or error is consumed and **never forwarded to the new selection**. Both successful completion and cancellation remove the abort listener, preventing accumulation of listeners after repeated previews. The Rust native single-flight permit still bounds outstanding HTTP transactions and may briefly report `busy` if the user starts another request before the cancelled native call completes.
+
+An actual **strict TypeScript build error** was also found and fixed: reconstructing `{ layer: focus.layer, bodyId: focus.bodyId }` widened the discriminated `CopilotPreviewFocus` union, so a safe natal/transit focus no longer satisfied the IPC request type. The client now uses `Object.freeze({ ...focus })`: `isCopilotPreviewFocus` already enforces exactly the two allowlisted properties, and the spread preserves the validated union and detached immutable IPC payload. A new `npm run test:ai:types` script runs an isolated strict compiler gate without needing the sibling Charts build and is included in the synthetic Windows preflight before any fictional credentials are created.
+
+**Checks executed:** using Node.js v22.16.0 and TypeScript v5.8.3, `tsc --noEmit --strict --target ES2022 --module ES2022 --moduleResolution bundler --allowImportingTsExtensions src/app/native/copilot-staging-transport.ts` **passed**. The two local sources were verified byte-for-byte against GitHub blobs: `src/app/native/copilot-staging-transport.ts` = `a0a0ca792fb5c9e451b8815422407793aafeca1e`; `src/app/copilot-preview-client.ts` = `c9215620d39b71ee85763d6341eef6f011a38068`. A Node 22 behavior smoke on the identical native transport source passed **3/3**: immediate abort, suppressing late results, and removing listeners on both success and cancellation. The prior 11-case synthetic HTTP suite was also rerun with **11/11 passing** against the newly compiled client. The 3 new cases were committed to `tests/copilot-native-staging-transport.test.mjs` for the full repository test suite; **the entire suite and Windows/Angular/Tauri/Rust builds have not yet run**.
+
 ## Verification
 
 **Added source tests:**
@@ -110,6 +118,7 @@ The backend has its own staging JWT middleware and per-user rate limit. Neither 
 
 ```powershell
 npm.cmd test
+npm.cmd run test:ai:types
 npm.cmd run build:ui
 npm.cmd run verify:css
 cd src-tauri
