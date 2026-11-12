@@ -73,6 +73,28 @@
     </p>
     <p>{{p.place.name}} · {{p.place.countryName || p.place.region || t('city.region.unknown')}}</p>
     <p>{{t('natal.utc.unresolved')}}</p>
+    <div class="timezone-preview" *ngIf="timeResult as z">
+      <p>{{t('natal.tzdb.version')}}: {{z.tzdbVersion}} · {{p.place.timeZone}}</p>
+      <p *ngIf="z.status==='nonexistent'" class="timezone-warning" role="alert">
+        {{t('natal.utc.gap')}}
+      </p>
+      <p *ngIf="z.status==='zone_missing' || z.status==='invalid_zone_data'" class="timezone-warning" role="alert">
+        {{t('natal.utc.invalidZone')}}
+      </p>
+      <p *ngIf="z.status==='ambiguous'">{{t('natal.utc.fold')}}</p>
+      <div class="timezone-options" *ngIf="z.status==='ambiguous'" role="group" [attr.aria-label]="t('natal.utc.fold')">
+        <button type="button" *ngFor="let candidate of z.candidates; let i=index"
+          [class.timezone-chosen]="chosenIndex===i"
+          [attr.aria-pressed]="chosenIndex===i"
+          (click)="chooseUtc(i)">
+          {{candidate.isoUtc}} · UTC{{candidate.offsetMinutesEast>=0?'+':''}}{{candidate.offsetMinutesEast}} min
+        </button>
+      </div>
+      <p *ngIf="selectedUtc as utc" class="timezone-utc">{{t('natal.utc.provisional')}}: <strong>{{utc.isoUtc}}</strong></p>
+      <p *ngIf="z.caution==='pre_1970'" class="timezone-warning">{{t('natal.utc.historicalCaution')}}</p>
+      <p *ngIf="z.caution==='future_rules'" class="timezone-warning">{{t('natal.utc.futureCaution')}}</p>
+      <p class="draft-hint">{{t('natal.utc.previewOnly')}}</p>
+    </div>
   </div>
   <p class="draft-hint">{{t('natal.no.save')}}</p>
 </section>
