@@ -64,6 +64,14 @@ export class NatalDraftComponent implements OnDestroy {
   onWindowBlur(): void { this.stopAdjustment(); }
   ngOnDestroy(): void { this.hold.dispose(); }
 
+  correctionLabel(field:CorrectionField): string {
+    const labels:Record<CorrectionField,MessageKey>={
+      year:'natal.year',month:'natal.month',day:'natal.day',
+      hour:'natal.hour',minute:'natal.minute'
+    };
+    return this.t(labels[field]);
+  }
+
   t(key: MessageKey): string {return translate(this.locale,key);}
   edit(field: NatalInputKey, event: Event): void {
     const target=event.target as HTMLInputElement;
