@@ -25,16 +25,20 @@ export class NatalDraftComponent implements OnDestroy {
   @Output() readonly cityChanged = new EventEmitter<OfflinePlaceV1 | null>();
   timeResult: CivilTimeResolution | null = null;
   chosenIndex: number | null = null;
+  private previewRevision: number | null = null;
 
   get selectedUtc(): UtcCandidate | null {
+    if (this.previewRevision !== this.draft.inputRevision || !this.draft.preview) return null;
     return this.chosenIndex === null ? null : this.timeResult?.candidates[this.chosenIndex] ?? null;
   }
   private invalidateTimezonePreview(): void {
+    this.previewRevision=null;
     this.timeResult=null;
     this.chosenIndex=null;
   }
   chooseUtc(index:number): void {
-    if(this.timeResult?.status !== 'ambiguous' || !Number.isInteger(index) ||
+    if(this.previewRevision !== this.draft.inputRevision || !this.draft.preview ||
+       this.timeResult?.status !== 'ambiguous' || !Number.isInteger(index) ||
        index < 0 || index >= this.timeResult.candidates.length) return;
     this.chosenIndex=index;
   }
@@ -104,6 +108,7 @@ export class NatalDraftComponent implements OnDestroy {
     const p=this.draft.preview;
     if(!p.civil.birthTimeKnown) return;
     this.timeResult=previewIanaCivilTime(p.civil,p.place.timeZone);
+    this.previewRevision=this.draft.inputRevision;
     // A repeated local hour requires explicit selection by the user.
     if(this.timeResult.status === 'unique') this.chosenIndex=0;
   }

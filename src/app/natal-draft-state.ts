@@ -78,8 +78,14 @@ export class NatalDraftState {
   place: OfflinePlaceV1 | null = null;
   preview: NatalDraftPreview | null = null;
   issues: readonly NatalIssue[] = [];
+  private revision = 0;
+  private disposed = false;
+
+  /** Changes whenever a current UTC selection must be invalidated. */
+  get inputRevision(): number { return this.revision; }
 
   update(field: NatalInputKey, value: string): void {
+    if (this.disposed) return;
     // Strict upper bound avoids large strings lingering in the renderer.
     this[field] = value.slice(0, field === 'name' ? 160 : 8);
     this.invalidate();
@@ -87,22 +93,26 @@ export class NatalDraftState {
 
   /** Atomic editor-only wall-clock correction; no actual ephemeris IPC here. */
   applyCivilCorrection(next: CivilCorrectionOutput): void {
+    if (this.disposed) return;
     this.year=next.year; this.month=next.month; this.day=next.day;
     this.hour=next.hour; this.minute=next.minute;
     this.invalidate();
   }
 
   setBirthTimeKnown(known: boolean): void {
+    if (this.disposed) return;
     this.birthTimeKnown = known;
     this.invalidate();
   }
 
   setPlace(value: OfflinePlaceV1 | null): void {
+    if (this.disposed) return;
     this.place = value;
     this.invalidate();
   }
 
   validate(): NatalPreviewResult {
+    if (this.disposed) return {ok:false,preview:null,issues:[]};
     const issues: NatalIssue[] = [];
     const name=this.name.trim();
     if (!name || name.length > 120) issues.push('name');
@@ -136,6 +146,7 @@ export class NatalDraftState {
   }
 
   showPreview(): boolean {
+    if (this.disposed) return false;
     const result=this.validate();
     this.issues=result.issues;
     this.preview=result.ok ? result.preview : null;
@@ -143,13 +154,22 @@ export class NatalDraftState {
   }
 
   clear(): void {
+    if (this.disposed) return;
     this.name='';this.year='';this.month='';this.day='';this.hour='';this.minute='';
     this.birthTimeKnown=true;
     this.place=null;
     this.invalidate();
   }
 
+  /** Retire this session without keeping a natal draft reachable from the shell. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.clear();
+    this.disposed=true;
+  }
+
   private invalidate(): void {
+    this.revision++;
     this.preview=null;
     this.issues=[];
   }

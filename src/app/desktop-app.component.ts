@@ -105,6 +105,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.natalDraft.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
