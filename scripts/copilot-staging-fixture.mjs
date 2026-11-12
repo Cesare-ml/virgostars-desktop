@@ -83,11 +83,17 @@ async function readJson(req) {
 }
 
 /** Construct an explicit test double. Only loopback binding is supported. */
-export function createCopilotStagingFixture({ bearer, maxRequests = 8, windowMs = 60_000 } = {}) {
+export function createCopilotStagingFixture({ bearer, labSession, maxRequests = 8, windowMs = 60_000 } = {}) {
   if (typeof bearer !== 'string' || bearer.length < 32 || bearer.length > 4096
     || bearer.split('.').length !== 3 || bearer.split('.').some(part => part.length === 0)
     || !/^[a-zA-Z0-9._-]+$/.test(bearer)) {
     throw new TypeError('A JWT-shaped synthetic-only lab token is required');
+  }
+  // A per-launch challenge proves the launcher reached the instance it started,
+  // rather than a stale or unexpected service on the same loopback port.
+  // This is a lab identity guard, NOT a real JWT authentication mechanism.
+  if (typeof labSession !== 'string' || !/^[a-f0-9]{32}$/.test(labSession)) {
+    throw new TypeError('A random 128-bit synthetic lab session ID is required');
   }
   if (!Number.isSafeInteger(maxRequests) || maxRequests < 1
     || !Number.isSafeInteger(windowMs) || windowMs < 1) {
@@ -106,7 +112,7 @@ export function createCopilotStagingFixture({ bearer, maxRequests = 8, windowMs 
       json(res, 200, {
         contract: 'VirgoStarsCopilotPreviewCapabilities', version: '0.1.0',
         stage: 'STAGING_SYNTHETIC', enabled: true, providerEnabled: false,
-        modelSelectorAvailable: false, actions: ['describe_focus'],
+        modelSelectorAvailable: false, labSession, actions: ['describe_focus'],
         focusOptions: [...ALLOWED],
       });
       return;
@@ -164,6 +170,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     try {
       const fixture = createCopilotStagingFixture({
         bearer: process.env.VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER,
+        labSession: process.env.VIRGOSTARS_COPILOT_FIXTURE_SESSION,
       });
       const origin = await fixture.listen(port);
       console.log('Synthetic-only loopback fixture listening: ' + origin);
