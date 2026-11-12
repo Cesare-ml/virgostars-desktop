@@ -96,6 +96,22 @@ WHEN EXISTS(SELECT 1 FROM local_conflict_decisions d
 BEGIN
   SELECT RAISE(ABORT,'conflict decision history is immutable');
 END;
+-- An acknowledged mutation ID is a durable replay/retirement receipt.
+-- V3 has no legitimate ledger rewrite or purge API: tampering here can
+-- resurrect an already accepted ID or falsify a stored ACK fingerprint.
+CREATE TRIGGER local_ack_ledger_v3_no_update
+BEFORE UPDATE ON local_ack_ledger
+BEGIN SELECT RAISE(ABORT,'acknowledgement ledger is immutable'); END;
+CREATE TRIGGER local_ack_ledger_v3_no_delete
+BEFORE DELETE ON local_ack_ledger
+BEGIN SELECT RAISE(ABORT,'acknowledgement ledger is immutable'); END;
+-- SQLite REPLACE may delete the old row without running a DELETE trigger
+-- when recursive_triggers=OFF, so reject the collision before INSERT.
+CREATE TRIGGER local_ack_ledger_v3_no_replace
+BEFORE INSERT ON local_ack_ledger
+WHEN EXISTS(SELECT 1 FROM local_ack_ledger a
+            WHERE a.profile_id=NEW.profile_id AND a.mutation_id=NEW.mutation_id)
+BEGIN SELECT RAISE(ABORT,'acknowledgement ledger is immutable'); END;
 -- A user's recorded decision is audit history, not a mutable queue row.
 CREATE TRIGGER local_conflict_decisions_no_update
 BEFORE UPDATE ON local_conflict_decisions
