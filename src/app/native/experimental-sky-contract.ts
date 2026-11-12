@@ -22,7 +22,7 @@ export type ExperimentalApproximation = typeof REQUIRED_APPROXIMATIONS[number];
 
 export interface ExperimentalGeometricPositionV1 {
   readonly bodyId: ExperimentalBodyId;
-  readonly centerKind: 'planet_center' | 'system_barycenter';
+  readonly centerKind: 'body_center' | 'system_barycenter';
   readonly longitudeDeg: number;
   readonly latitudeDeg: number;
   readonly rightAscensionDeg: number;
@@ -122,7 +122,7 @@ export function isExperimentalSkySnapshotV1(
         !(EXPERIMENTAL_BODIES as readonly string[]).includes(id) || seen.has(id)) return false;
     seen.add(id);
     const outer = id.endsWith('_barycenter');
-    if (value.centerKind !== (outer ? 'system_barycenter' : 'planet_center') ||
+    if (value.centerKind !== (outer ? 'system_barycenter' : 'body_center') ||
         !finiteRange(value.longitudeDeg, 0, 360, true) ||
         !finiteRange(value.latitudeDeg, -90, 90) ||
         !finiteRange(value.rightAscensionDeg, 0, 360, true) ||
