@@ -115,6 +115,20 @@ export async function verifyReferenceEvidence(paths) {
   });
 }
 
+/**
+ * Fingerprint the exact experimental snapshot bytes for within-run integrity.
+ * This does not inspect scientific content: the numeric comparator owns that.
+ * The private SHA-256 is never printed by the CLI.
+ */
+export async function fingerprintExperimentalSnapshot(path) {
+  try {
+    const inspected = await inspectFile(path, CAPS.reference);
+    return Object.freeze({status:'SNAPSHOT_FINGERPRINTED', sha256:inspected.digest});
+  } catch {
+    return Object.freeze({status:'SNAPSHOT_REJECTED'});
+  }
+}
+
 export function parseEvidenceArgs(args) {
   if (!Array.isArray(args) || args.length !== KEYS.length * 2) return null;
   const values = Object.create(null);

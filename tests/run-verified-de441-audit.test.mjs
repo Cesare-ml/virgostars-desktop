@@ -13,7 +13,8 @@ const metrics = status => ({status,bodyCount:10,maxDirectionArcsec:0.5,
   maxDistancePpm:2,maxEpochSeconds:0.02,scientificallyValidated:false,secret:'do-not-print'});
 const within = () => metrics('WITHIN_DECLARED_TOLERANCE_EXPERIMENTAL');
 const passed = () => ({status:'EVIDENCE_BYTES_MATCH',referenceSha256:'a'.repeat(64)});
-const ops = (verify = passed, compare = within) => ({verify,compare});
+const fingerprint = () => ({status:'SNAPSHOT_FINGERPRINTED',sha256:'b'.repeat(64)});
+const ops = (verify = passed, compare = within, snap = fingerprint) => ({verify,compare,fingerprint:snap});
 
 test('strict CLI parsing projects exactly the evidence and comparison arguments', () => {
   assert.deepEqual(parsed(), {
@@ -46,8 +47,9 @@ test('successful review enforces evidence -> compare -> evidence and redacts raw
     async () => {calls.push('evidence');return passed();},
     async (files,tolerance) => {calls.push('compare');assert.equal(files.actual,'fictional-actual.json');
       assert.equal(tolerance.maxDistancePpm,10);return within();},
+    async () => {calls.push('snapshot');return fingerprint();},
   ));
-  assert.deepEqual(calls,['evidence','compare','evidence']);
+  assert.deepEqual(calls,['evidence','snapshot','compare','snapshot','evidence']);
   assert.deepEqual(out,{status:'REVIEW_WITHIN_TOLERANCE_EXPERIMENTAL',
     maxDirectionArcsec:0.5,maxDistancePpm:2,maxEpochSeconds:0.02,scientificallyValidated:false});
   assert.doesNotMatch(JSON.stringify(out),/secret|fictional|private/);
@@ -122,4 +124,28 @@ test('invalid inputs cannot trigger verification or comparison',async()=>{
 test('invalid injectable operations block without opening files',async()=>{
   const result=await runVerifiedDe441Audit(parsed(),{verify:7,compare:within});
   assert.equal(result.reason,'INVALID_OPERATIONS');
+});
+
+test('snapshot fingerprint mismatch after comparison blocks even a passing numeric result',async()=>{
+  let fingerprints=0;
+  const out=await runVerifiedDe441Audit(parsed(),ops(passed,within,async()=>({
+    status:'SNAPSHOT_FINGERPRINTED',sha256:(++fingerprints===1?'b':'c').repeat(64),
+  })));
+  assert.equal(out.status,'REVIEW_BLOCKED');
+  assert.equal(out.reason,'SNAPSHOT_CHANGED');
+  assert.equal(fingerprints,2);
+});
+test('unavailable or untrusted snapshot fingerprint stops before numeric comparison',async()=>{
+  let compared=false;
+  for(const value of [null,{}, {status:'SNAPSHOT_REJECTED'},
+    {status:'SNAPSHOT_FINGERPRINTED',sha256:'NOT_A_HASH'}]) {
+    const out=await runVerifiedDe441Audit(parsed(),ops(passed,
+      async()=>{compared=true;return within();},async()=>value));
+    assert.equal(out.reason,'SNAPSHOT_UNAVAILABLE');
+  }
+  assert.equal(compared,false);
+});
+test('invalid injected fingerprint callback blocks before input IO',async()=>{
+  const out=await runVerifiedDe441Audit(parsed(),{...ops(),fingerprint:42});
+  assert.equal(out.reason,'INVALID_OPERATIONS');
 });

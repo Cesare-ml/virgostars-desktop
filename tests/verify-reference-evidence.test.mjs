@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, rm, symlink, mkdir, readFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { verifyReferenceEvidence, parseEvidenceArgs } from '../scripts/ephemeris/verify-reference-evidence.mjs';
+import { verifyReferenceEvidence, parseEvidenceArgs, fingerprintExperimentalSnapshot } from '../scripts/ephemeris/verify-reference-evidence.mjs';
 
 const hash = data => createHash('sha256').update(data).digest('hex');
 const data = Object.freeze({
@@ -130,4 +130,26 @@ test('CLI rejects tampered query without printing local paths or source text',as
   assert.equal(proc.status,1);
   assert.match(proc.stderr,/EVIDENCE_DIGEST_MISMATCH/);
   assert.doesNotMatch(proc.stdout+proc.stderr,/vs-reference-evidence-|private-raw-birth-data|COMMAND=/);
+}));
+
+test('read-only experimental fingerprint hashes exact bytes without printing any path',async()=>fixture(async paths=>{
+  const output=await fingerprintExperimentalSnapshot(paths.reference);
+  assert.deepEqual(output,{status:'SNAPSHOT_FINGERPRINTED',sha256:hash(JSON.stringify(reference()))});
+  assert.equal(JSON.stringify(output).includes(paths.reference),false);
+  assert.equal(JSON.stringify(output).includes('Fictional'),false);
+}));
+test('experimental fingerprint detects modified bytes, even when JSON is still parseable',async()=>fixture(async paths=>{
+  const before=await fingerprintExperimentalSnapshot(paths.reference);
+  await writeFile(paths.reference,JSON.stringify({...reference(),extra:'mutated'}));
+  const after=await fingerprintExperimentalSnapshot(paths.reference);
+  assert.notEqual(before.sha256,after.sha256);
+}));
+test('experimental fingerprint rejects missing, symlink, directory and oversized file',async()=>fixture(async(paths,dir)=>{
+  const link=join(dir,'snapshot-link');await symlink(paths.reference,link);
+  const folder=join(dir,'snapshot-folder');await mkdir(folder);
+  for(const file of [link,folder,join(dir,'absent')]) {
+    assert.deepEqual(await fingerprintExperimentalSnapshot(file),{status:'SNAPSHOT_REJECTED'});
+  }
+  await writeFile(paths.reference,Buffer.alloc(128*1024+1,65));
+  assert.deepEqual(await fingerprintExperimentalSnapshot(paths.reference),{status:'SNAPSHOT_REJECTED'});
 }));

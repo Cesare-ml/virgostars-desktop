@@ -78,3 +78,15 @@ node --test tests/verify-reference-evidence.test.mjs tests/run-verified-de441-au
 `node --check` of all three imported modules passed. New/edited source and test Git blob IDs were checked against local executed files before commit and GitHub readback afterward. The main comparison source was unmodified, matching SHA `4964b534085894b5ed448bf67bedae5b287a32b7`.
 
 **Not executed:** whole application `npm test`, Angular production build, Rust/Cargo/Tauri, real DE441 kernel, authentic JPL Horizons data, Windows WebView2, external scientific error-budget approval. No user records, secrets, GitHub Actions, release, merge or production activation.
+
+## D-08 — Experimental sky input fingerprint before and after the numeric comparison
+
+D-07 bound the normalized reference JSON between both evidence checks. A second integrity gap remained: an experimental **actual** sky JSON could change after the numeric comparator had read it. The combined audit now fingerprints the experimental file using the same read-only, symlink-resistant, bounded file inspection used by D-05. It requires matching 64-character lowercase SHA-256 fingerprints **before and after** the numerical calculation. Missing, unsafe or unreadable actual files return \`SNAPSHOT_UNAVAILABLE\`; changed bytes return \`SNAPSHOT_CHANGED\`. These fingerprints are internal to the review and never printed.
+
+The enforced order is **reference evidence → experimental snapshot fingerprint → numeric comparison → experimental snapshot fingerprint → reference evidence**. Neither actual nor reference may be silently modified during the normal audit window. Two separate opens are **not atomic** and do not eliminate an adversarial replace-and-restore race. Genuine scientific accuracy, kernel provenance and source independence remain unvalidated.
+
+### Executed local regression
+
+**Node.js 22.16.0:** \`node --test tests/verify-reference-evidence.test.mjs tests/run-verified-de441-audit.test.mjs tests/verified-de441-audit-integration.test.mjs\` yielded **52/52 passing** (17 coordinator, 17 evidence, 18 real-module integration) using fictional files, including a deliberately edited actual sky JSON after successful numerical comparison; the combined gate now rejects it. The prior 43 tests also remain covered. Source passed \`node --check\`. Source, test and documentation files were compared with exact Git blob hashes after GitHub push.
+
+The complete project, real JPL Horizons parity, actual DE441 binary, Rust/Cargo integration, Angular build and Windows/WebView2 were **not tested**. No release, main merge, production change or GitHub Actions was performed.

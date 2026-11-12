@@ -5,7 +5,7 @@
  */
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseEvidenceArgs, verifyReferenceEvidence } from './verify-reference-evidence.mjs';
+import { parseEvidenceArgs, verifyReferenceEvidence, fingerprintExperimentalSnapshot } from './verify-reference-evidence.mjs';
 import { parseComparisonArgs, auditLocalReference } from './compare-de441-reference.mjs';
 
 const SWITCHES = Object.freeze([
@@ -43,26 +43,36 @@ function safeMetrics(result) {
 }
 
 /**
- * Enforces evidence -> numeric comparison -> evidence. No stale preflight
- * success can bypass this path. An adversarial file race remains possible
- * between independent opens; a future atomic-handle review must close it.
+ * Enforces evidence -> snapshot fingerprint -> numeric comparison -> snapshot
+ * fingerprint -> evidence. Neither reference nor experimental snapshot may
+ * change between the two review checkpoints. This is not an atomic read:
+ * an adversarial file race remains possible between independent opens.
  * The dependency injection is only for synthetic unit tests.
  */
 export async function runVerifiedDe441Audit(parsed, operations = {}) {
   if (!parsed?.evidence || !parsed?.comparison) return blocked('INVALID_ARGUMENTS');
   const verify = operations.verify ?? verifyReferenceEvidence;
   const compare = operations.compare ?? auditLocalReference;
-  if (typeof verify !== 'function' || typeof compare !== 'function') return blocked('INVALID_OPERATIONS');
+  const fingerprint = operations.fingerprint ?? fingerprintExperimentalSnapshot;
+  if (typeof verify !== 'function' || typeof compare !== 'function' ||
+      typeof fingerprint !== 'function') return blocked('INVALID_OPERATIONS');
   try {
     const before = await verify(parsed.evidence);
     if (before?.status !== 'EVIDENCE_BYTES_MATCH' ||
         typeof before.referenceSha256 !== 'string' ||
         !/^[a-f0-9]{64}$/.test(before.referenceSha256)) return blocked('EVIDENCE_REJECTED');
+    const snapshotBefore = await fingerprint(parsed.comparison.actual);
+    if (snapshotBefore?.status !== 'SNAPSHOT_FINGERPRINTED' ||
+        typeof snapshotBefore.sha256 !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(snapshotBefore.sha256)) return blocked('SNAPSHOT_UNAVAILABLE');
     const comparison = await compare(parsed.comparison, parsed.comparison.tolerance);
     if (!['WITHIN_DECLARED_TOLERANCE_EXPERIMENTAL','OUTSIDE_DECLARED_TOLERANCE'].includes(comparison?.status) ||
         comparison.scientificallyValidated !== false || !safeMetrics(comparison)) {
       return blocked('COMPARISON_INVALID');
     }
+    const snapshotAfter = await fingerprint(parsed.comparison.actual);
+    if (snapshotAfter?.status !== 'SNAPSHOT_FINGERPRINTED' ||
+        snapshotAfter.sha256 !== snapshotBefore.sha256) return blocked('SNAPSHOT_CHANGED');
     const after = await verify(parsed.evidence);
     if (after?.status !== 'EVIDENCE_BYTES_MATCH' ||
         after.referenceSha256 !== before.referenceSha256) return blocked('EVIDENCE_CHANGED');

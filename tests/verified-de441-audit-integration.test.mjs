@@ -245,3 +245,32 @@ test('REAL modules: changing the saved reference itself during audit blocks seco
     assert.equal(report.status,'REVIEW_BLOCKED');
     assert.equal(report.reason,'EVIDENCE_CHANGED');
   }));
+
+test('REAL modules: replacing experimental sky JSON during comparison blocks final snapshot integrity',
+  async()=>fixture(async paths=>{
+    const parsed=parseVerifiedAuditArgs(args(paths));
+    const result=await runVerifiedDe441Audit(parsed,{
+      verify:verifyReferenceEvidence,
+      compare:async (...input)=>{
+        const comparison=await auditLocalReference(...input);
+        const modified=JSON.parse(await readFile(paths.actual,'utf8'));
+        modified.positions[0].longitudeDeg+=0.25;
+        await writeFile(paths.actual,JSON.stringify(modified));
+        return comparison;
+      },
+    });
+    assert.equal(result.status,'REVIEW_BLOCKED');
+    assert.equal(result.reason,'SNAPSHOT_CHANGED');
+  }));
+test('REAL modules: missing or symlinked experimental snapshot fails before numeric comparison',
+  async()=>fixture(async(paths,_docs,folder)=>{
+    const link=join(folder,'sky-linked.json');await symlink(paths.actual,link);
+    assert.equal((await audit({...paths,actual:link})).reason,'SNAPSHOT_UNAVAILABLE');
+    await rm(paths.actual);
+    assert.equal((await audit(paths)).reason,'SNAPSHOT_UNAVAILABLE');
+  }));
+test('REAL modules: corrupted but valid-sized experimental input cannot be promoted to ready',
+  async()=>fixture(async paths=>{
+    await writeFile(paths.actual,'{invalid JSON');
+    assert.equal((await audit(paths)).reason,'REVIEW_UNAVAILABLE');
+  }));
