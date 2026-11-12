@@ -42,14 +42,23 @@ test('synthetic capabilities require the local test token and never enable a pro
 });
 
 
-test('capabilities challenge belongs to the generated synthetic fixture session', async t => {
-  const origin = await lab(t);
-  const res = await fetch(origin + basePath + '/capabilities', withAuth());
-  assert.equal(res.status, 200);
-  const body = await res.json();
-  assert.equal(body.labSession, labSession);
-  assert.match(body.labSession, /^[a-f0-9]{32}$/);
-  assert.equal(body.stage, 'STAGING_SYNTHETIC');
+test('different synthetic fixture instances have different session challenges', async t => {
+  const firstId = randomBytes(16).toString('hex');
+  const secondId = randomBytes(16).toString('hex');
+  assert.notEqual(firstId, secondId);
+  const first = await lab(t, { labSession: firstId });
+  const second = await lab(t, { labSession: secondId });
+  const a = await fetch(first + basePath + '/capabilities', withAuth());
+  const b = await fetch(second + basePath + '/capabilities', withAuth());
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  const firstCapabilities = await a.json();
+  const secondCapabilities = await b.json();
+  assert.equal(firstCapabilities.labSession, firstId);
+  assert.equal(secondCapabilities.labSession, secondId);
+  assert.notEqual(firstCapabilities.labSession, secondCapabilities.labSession);
+  assert.equal(firstCapabilities.stage, 'STAGING_SYNTHETIC');
+  assert.equal(secondCapabilities.stage, 'STAGING_SYNTHETIC');
 });
 
 test('all three synthetic focus requests return the expected bounded native envelope', async t => {
