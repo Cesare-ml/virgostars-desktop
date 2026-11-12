@@ -12,7 +12,7 @@ const parsed = () => parseVerifiedAuditArgs(args);
 const metrics = status => ({status,bodyCount:10,maxDirectionArcsec:0.5,
   maxDistancePpm:2,maxEpochSeconds:0.02,scientificallyValidated:false,secret:'do-not-print'});
 const within = () => metrics('WITHIN_DECLARED_TOLERANCE_EXPERIMENTAL');
-const passed = () => ({status:'EVIDENCE_BYTES_MATCH'});
+const passed = () => ({status:'EVIDENCE_BYTES_MATCH',referenceSha256:'a'.repeat(64)});
 const ops = (verify = passed, compare = within) => ({verify,compare});
 
 test('strict CLI parsing projects exactly the evidence and comparison arguments', () => {

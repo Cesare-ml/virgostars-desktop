@@ -36,7 +36,8 @@ const accepted = {status:'EVIDENCE_BYTES_MATCH',scientificallyValidated:false,
   sourceAuthenticated:false,normalizationReviewed:false};
 
 test('checks all four separate synthetic evidence files and never claims science',async()=>fixture(async paths=>{
-  assert.deepEqual(await verifyReferenceEvidence(paths),accepted);
+  assert.deepEqual(await verifyReferenceEvidence(paths),{...accepted,
+    referenceSha256:hash(JSON.stringify(reference()))});
 }));
 test('rejects edits to saved original Horizons response',async()=>fixture(async paths=>{
   await writeFile(paths.rawSource,data.rawSource+'changed');

@@ -55,14 +55,17 @@ export async function runVerifiedDe441Audit(parsed, operations = {}) {
   if (typeof verify !== 'function' || typeof compare !== 'function') return blocked('INVALID_OPERATIONS');
   try {
     const before = await verify(parsed.evidence);
-    if (before?.status !== 'EVIDENCE_BYTES_MATCH') return blocked('EVIDENCE_REJECTED');
+    if (before?.status !== 'EVIDENCE_BYTES_MATCH' ||
+        typeof before.referenceSha256 !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(before.referenceSha256)) return blocked('EVIDENCE_REJECTED');
     const comparison = await compare(parsed.comparison, parsed.comparison.tolerance);
     if (!['WITHIN_DECLARED_TOLERANCE_EXPERIMENTAL','OUTSIDE_DECLARED_TOLERANCE'].includes(comparison?.status) ||
         comparison.scientificallyValidated !== false || !safeMetrics(comparison)) {
       return blocked('COMPARISON_INVALID');
     }
     const after = await verify(parsed.evidence);
-    if (after?.status !== 'EVIDENCE_BYTES_MATCH') return blocked('EVIDENCE_CHANGED');
+    if (after?.status !== 'EVIDENCE_BYTES_MATCH' ||
+        after.referenceSha256 !== before.referenceSha256) return blocked('EVIDENCE_CHANGED');
     return Object.freeze({
       status: comparison.status === 'WITHIN_DECLARED_TOLERANCE_EXPERIMENTAL'
         ? 'REVIEW_WITHIN_TOLERANCE_EXPERIMENTAL'

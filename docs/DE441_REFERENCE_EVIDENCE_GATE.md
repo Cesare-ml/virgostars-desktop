@@ -47,3 +47,7 @@ On Node.js 22.16.0, `node --test tests/verify-reference-evidence.test.mjs` gave 
 The full desktop test suite, real Horizons calls, authentic DE441 comparisons, Windows WebView2, Angular build and Rust/Cargo tests were **not** run.
 
 **Dependency:** stacked on draft PR #58 → #55 → #48 → #47. Review/validate in dependency order; no main merge in this increment.
+
+## D-07 follow-up: normalized reference fingerprint
+
+The verifier also returns a lowercase SHA-256 of the normalized reference JSON bytes as `referenceSha256` to its in-process caller. This digest **is not printed in normal CLI output** and is not a certificate. The D-06 combined audit compares that value before and after the numeric check to reject edits to the normalized JSON itself. The three separate original-query/response/normalizer digests remain independently required. This still uses separate file opens, so an adversarial concurrent replacement race is not fully eliminated.

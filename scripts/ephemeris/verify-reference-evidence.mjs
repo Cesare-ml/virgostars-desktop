@@ -107,6 +107,8 @@ export async function verifyReferenceEvidence(paths) {
   }
   return Object.freeze({
     status:'EVIDENCE_BYTES_MATCH',
+    // Used only for within-run consistency. Never printed by the CLI.
+    referenceSha256:evidence.reference.digest,
     scientificallyValidated:false,
     sourceAuthenticated:false,
     normalizationReviewed:false,

@@ -59,3 +59,22 @@ Executed local Git blob hashes for new files:
 **Not run:** full `npm test`, Angular build, native Rust/Cargo, authentic DE441/Horizons comparison, WebView2, Windows installer. No automatic GitHub Actions, merge, deployment, release, publication or production changes.
 
 **PR dependency:** #59 stacked on #58 → #55 → #48 → #47; draft remains review-only.
+
+## D-07 — Real module integration and normalized-reference change detection
+
+The combined audit was run end-to-end with **the actual D-04 numerical comparator, D-05 evidence file reader, and D-06 orchestrator**, using exclusively temporary **fictional** files and real Node.js subprocess CLI calls. These tests do not authenticate JPL/Horizons and do not involve real DE441 astronomical data.
+
+A regression discovered in D-06 permitted an edited normalized-reference JSON to pass the final evidence check when its three self-declared raw/query/normalizer digests remained unchanged. D-05 now returns its **local, not printed** `referenceSha256` fingerprint; D-06 requires the first and second fingerprints to match. A changed normalized reference returns `REVIEW_BLOCKED` / `EVIDENCE_CHANGED` even if all other source digests still match. **This narrows an integrity gap; it does not eliminate file-handle races or independently authenticate the reference.**
+
+### Actual execution
+
+Node.js **22.16.0**, isolated mirror of exact GitHub source modules:
+
+```text
+node --test tests/verify-reference-evidence.test.mjs tests/run-verified-de441-audit.test.mjs tests/verified-de441-audit-integration.test.mjs
+# 43 tests, 43 passed, 0 failed (14 evidence, 14 orchestrator, 15 true-module integration)
+```
+
+`node --check` of all three imported modules passed. New/edited source and test Git blob IDs were checked against local executed files before commit and GitHub readback afterward. The main comparison source was unmodified, matching SHA `4964b534085894b5ed448bf67bedae5b287a32b7`.
+
+**Not executed:** whole application `npm test`, Angular production build, Rust/Cargo/Tauri, real DE441 kernel, authentic JPL Horizons data, Windows WebView2, external scientific error-budget approval. No user records, secrets, GitHub Actions, release, merge or production activation.
