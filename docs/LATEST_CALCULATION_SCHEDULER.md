@@ -37,7 +37,7 @@ In the 2026-11-12 authoring environment:
 ## Follow-up execution plan
 
 - [x] P0-IPC-1: generic latest-only scheduler plus mock transport tests.
-- [ ] P0-IPC-2: **bounded** native Rust synthetic deterministic IPC benchmark command, distinguish it clearly from a real ephemeris response, and test protocol parity/flow on Windows.
+- [ ] P0-IPC-2: A [bounded synthetic-only native Rust/Tauri command and typed TS adapter](SYNTHETIC_NATIVE_CALCULATION_PROBE.md) are **authored** (two global worker permits, 200k iteration cap, syntheticOnly marker). Eight isolated adapter tests passed; **Rust cargo/Windows IPC benchmarks and full Node suite are still pending**. This is not an ephemeris.
 - [ ] P0-IPC-3: integrate only numerically validated `VirgoStars-Ephemeris` Rust calculations and time-zone authority; no Swift/Swiss-derived code or unsupported data.
 - [ ] P0-IPC-4: connect exact outputs to incremental `astrological-charts` chart updates and real-time correction; preserve old graph until a verified snapshot arrives.
 - [ ] Converge related stacked draft PRs safely, test with correct WebView2 CSS, obtain main merge authorization and record manual release gate.
