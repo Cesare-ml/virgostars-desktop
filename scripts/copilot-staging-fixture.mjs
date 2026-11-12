@@ -11,6 +11,8 @@ import { resolve } from 'node:path';
 const HOST = '127.0.0.1';
 const PREFIX = '/api/v1/ai/copilot-preview';
 const MAX_BODY_BYTES = 2048;
+// Bound wall-clock body reads even if a client trickles bytes indefinitely.
+const MAX_BODY_READ_MS = 3000;
 const ALLOWED = new Set(['NATAL:VENUS', 'NATAL:SUN', 'TRANSIT:SATURN']);
 const TEST_ACK = 'SYNTHETIC_LOOPBACK_TEST';
 
@@ -67,21 +69,31 @@ function previewEnvelope(focus, labSession) {
 async function readJson(req) {
   const contentType = req.headers['content-type']?.split(';')[0]?.trim().toLowerCase();
   if (contentType !== 'application/json') return { error: 415, reason: 'application_json_required' };
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > MAX_BODY_BYTES) return { error: 413, reason: 'preview_request_too_large' };
-    chunks.push(chunk);
-  }
+  // This is a locally bound, deliberately limited test server. A client
+  // holding a partial body open must not hold its async handler indefinitely.
+  // Closing a timed-out socket is preferable to accepting further bytes or
+  // pretending that an aborted request completed normally.
+  const deadline = setTimeout(() => req.destroy(), MAX_BODY_READ_MS);
+  deadline.unref();
   try {
-    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) return { error: 413, reason: 'preview_request_too_large' };
+      chunks.push(chunk);
+    }
+    try {
+      const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        return { error: 400, reason: 'invalid_preview_request' };
+      }
+      return { value };
+    } catch {
       return { error: 400, reason: 'invalid_preview_request' };
     }
-    return { value };
-  } catch {
-    return { error: 400, reason: 'invalid_preview_request' };
+  } finally {
+    clearTimeout(deadline);
   }
 }
 
@@ -134,9 +146,11 @@ export function createCopilotStagingFixture({ bearer, labSession, maxRequests = 
     try {
       parsed = await readJson(req);
     } catch {
-      json(res, 400, { error: 'invalid_preview_request' });
+      if (!res.destroyed) json(res, 400, { error: 'invalid_preview_request' });
       return;
     }
+    // A timed-out/disconnected client has no valid response channel left.
+    if (res.destroyed) return;
     if (parsed.error) {
       json(res, parsed.error, { error: parsed.reason });
       return;
