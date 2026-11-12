@@ -1,0 +1,128 @@
+<section class="natal-draft" [attr.aria-label]="t('natal.title')">
+  <p class="draft-hint">{{t('natal.unsaved')}}</p>
+  <label for="draft-subject">{{t('natal.name')}}</label>
+  <input id="draft-subject" type="text" autocomplete="off" maxlength="160"
+    [value]="draft.name" [attr.placeholder]="t('natal.name.placeholder')"
+    (input)="edit('name',$event)">
+
+  <fieldset>
+    <legend>{{t('natal.date')}}</legend>
+    <div class="draft-grid three">
+      <div>
+        <label for="draft-year">{{t('natal.year')}}</label>
+        <input id="draft-year" type="number" min="1" max="9999" step="1" inputmode="numeric"
+          [value]="draft.year" (input)="edit('year',$event)">
+      </div>
+      <div>
+        <label for="draft-month">{{t('natal.month')}}</label>
+        <input id="draft-month" type="number" min="1" max="12" step="1" inputmode="numeric"
+          [value]="draft.month" (input)="edit('month',$event)">
+      </div>
+      <div>
+        <label for="draft-day">{{t('natal.day')}}</label>
+        <input id="draft-day" type="number" min="1" max="31" step="1" inputmode="numeric"
+          [value]="draft.day" (input)="edit('day',$event)">
+      </div>
+    </div>
+    <p class="draft-hint">{{t('natal.calendar')}}</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>{{t('natal.time')}}</legend>
+    <label class="known-time">
+      <input type="checkbox" [checked]="draft.birthTimeKnown" (change)="setKnownTime($event)">
+      {{t('natal.time.known')}}
+    </label>
+    <div class="draft-grid two" *ngIf="draft.birthTimeKnown">
+      <div>
+        <label for="draft-hour">{{t('natal.hour')}}</label>
+        <input id="draft-hour" type="number" min="0" max="23" step="1" inputmode="numeric"
+          [value]="draft.hour" (input)="edit('hour',$event)">
+      </div>
+      <div>
+        <label for="draft-minute">{{t('natal.minute')}}</label>
+        <input id="draft-minute" type="number" min="0" max="59" step="1" inputmode="numeric"
+          [value]="draft.minute" (input)="edit('minute',$event)">
+      </div>
+    </div>
+    <p class="draft-hint" *ngIf="!draft.birthTimeKnown">{{t('natal.time.unknown')}}</p>
+  </fieldset>
+
+  <fieldset class="correction-fieldset">
+    <legend>{{t('natal.correction.title')}}</legend>
+    <p class="draft-hint">{{t('natal.correction.help')}}</p>
+    <div class="correction-list">
+      <div class="correction-row" *ngFor="let field of correctionFields">
+        <span class="correction-name">{{correctionLabel(field)}}</span>
+        <button type="button" class="correction-button"
+          [attr.aria-label]="t('natal.correction.decrement')+' '+correctionLabel(field)"
+          [disabled]="!draft.birthTimeKnown && (field==='hour' || field==='minute')"
+          (pointerdown)="startAdjustment($event,field,-1)"
+          (pointerup)="stopAdjustment()"
+          (pointercancel)="stopAdjustment()"
+          (lostpointercapture)="stopAdjustment()"
+          (click)="clickAdjustment($event,field,-1)">−</button>
+        <output class="correction-value" aria-live="off">{{draft[field] || '—'}}</output>
+        <button type="button" class="correction-button"
+          [attr.aria-label]="t('natal.correction.increment')+' '+correctionLabel(field)"
+          [disabled]="!draft.birthTimeKnown && (field==='hour' || field==='minute')"
+          (pointerdown)="startAdjustment($event,field,1)"
+          (pointerup)="stopAdjustment()"
+          (pointercancel)="stopAdjustment()"
+          (lostpointercapture)="stopAdjustment()"
+          (click)="clickAdjustment($event,field,1)">+</button>
+      </div>
+    </div>
+    <p class="draft-hint">{{t('natal.correction.preview')}}</p>
+  </fieldset>
+
+  <vs-offline-city-picker [locale]="locale" [selectedPlace]="draft.place"
+    (locationSelected)="chooseCity($event)" (locationEdited)="editCity()"></vs-offline-city-picker>
+  <p class="draft-hint" *ngIf="draft.place">
+    {{t('natal.coordinates')}}:
+    {{draft.place.latMicro / 1000000}}, {{draft.place.lngMicro / 1000000}}
+    · {{draft.place.countryName || draft.place.region || t('city.region.unknown')}}
+    · {{draft.place.timeZone || t('city.zone.unknown')}}
+  </p>
+
+  <div class="draft-errors" role="alert" *ngIf="draft.issues.length">
+    <p *ngFor="let issue of issueKeys">{{t(issue)}}</p>
+  </div>
+  <div class="draft-actions">
+    <button type="button" (click)="preview()">{{t('natal.preview')}}</button>
+    <button type="button" class="draft-secondary" (click)="clear()">{{t('natal.reset')}}</button>
+  </div>
+  <div class="draft-preview" *ngIf="draft.preview as p" role="status">
+    <strong>{{t('natal.preview.title')}}</strong>
+    <p>{{p.name}}</p>
+    <p>{{p.civil.year}}-{{p.civil.month}}-{{p.civil.day}}
+      <ng-container *ngIf="p.civil.birthTimeKnown"> · {{p.civil.hour}}:{{p.civil.minute}}</ng-container>
+      <ng-container *ngIf="!p.civil.birthTimeKnown"> · {{t('natal.time.unknown')}}</ng-container>
+    </p>
+    <p>{{p.place.name}} · {{p.place.countryName || p.place.region || t('city.region.unknown')}}</p>
+    <p>{{t('natal.utc.unresolved')}}</p>
+    <div class="timezone-preview" *ngIf="timeResult as z">
+      <p>{{t('natal.tzdb.version')}}: {{z.tzdbVersion}} · {{p.place.timeZone}}</p>
+      <p *ngIf="z.status==='nonexistent'" class="timezone-warning" role="alert">
+        {{t('natal.utc.gap')}}
+      </p>
+      <p *ngIf="z.status==='zone_missing' || z.status==='invalid_zone_data'" class="timezone-warning" role="alert">
+        {{t('natal.utc.invalidZone')}}
+      </p>
+      <p *ngIf="z.status==='ambiguous'">{{t('natal.utc.fold')}}</p>
+      <div class="timezone-options" *ngIf="z.status==='ambiguous'" role="group" [attr.aria-label]="t('natal.utc.fold')">
+        <button type="button" *ngFor="let candidate of z.candidates; let i=index"
+          [class.timezone-chosen]="chosenIndex===i"
+          [attr.aria-pressed]="chosenIndex===i"
+          (click)="chooseUtc(i)">
+          {{candidate.isoUtc}} · UTC{{candidate.offsetMinutesEast>=0?'+':''}}{{candidate.offsetMinutesEast}} min
+        </button>
+      </div>
+      <p *ngIf="selectedUtc as utc" class="timezone-utc">{{t('natal.utc.provisional')}}: <strong>{{utc.isoUtc}}</strong></p>
+      <p *ngIf="z.caution==='pre_1970'" class="timezone-warning">{{t('natal.utc.historicalCaution')}}</p>
+      <p *ngIf="z.caution==='future_rules'" class="timezone-warning">{{t('natal.utc.futureCaution')}}</p>
+      <p class="draft-hint">{{t('natal.utc.previewOnly')}}</p>
+    </div>
+  </div>
+  <p class="draft-hint">{{t('natal.no.save')}}</p>
+</section>
