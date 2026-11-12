@@ -521,6 +521,40 @@ mod tests {
     }
 
     #[test]
+    fn v3_trigger_rejects_mutation_identity_rewrite_but_allows_conflict_state_transition() {
+        let (_dir, _path, mut store, _, _) = setup();
+        // Without the v3 UPDATE trigger a raw SQL rename could resurrect
+        // an already ACKed or retired ID despite the existing INSERT guard.
+        assert!(store.conn.execute(
+            "UPDATE local_outbox SET mutation_id='synthetic-reused'
+             WHERE mutation_id='synthetic-old'", [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "UPDATE local_outbox SET profile_id='synthetic-other'
+             WHERE mutation_id='synthetic-old'", [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "UPDATE local_outbox SET entity_id='synthetic-other'
+             WHERE mutation_id='synthetic-old'", [],
+        ).is_err());
+        let advanced = store.conn.execute(
+            "UPDATE local_outbox
+             SET state='pending', conflict_server_revision=NULL
+             WHERE mutation_id='synthetic-old'", [],
+        ).unwrap();
+        assert_eq!(advanced, 1);
+        let current: (String, String, String, Option<String>) = store.conn.query_row(
+            "SELECT mutation_id,profile_id,state,conflict_server_revision
+             FROM local_outbox WHERE mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
+        ).unwrap();
+        assert_eq!(current, (
+            "synthetic-old".to_owned(), "synthetic-a".to_owned(),
+            "pending".to_owned(), None,
+        ));
+    }
+
+    #[test]
     fn audit_is_refused_on_pre_v3_schema() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("synthetic-v2-audit-refusal.db");
