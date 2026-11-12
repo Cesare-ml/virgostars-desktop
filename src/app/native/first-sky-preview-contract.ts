@@ -67,7 +67,7 @@ function finiteRange(value:unknown,minimum:number,maximum:number):value is numbe
   return typeof value==='number' && Number.isFinite(value) && value>=minimum && value<=maximum;
 }
 function canonicalUtc(value:unknown):value is string {
-  if(typeof value!=='string'||!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(value))return false;
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value))return false;
   const epoch=Date.parse(value);
   return Number.isFinite(epoch)&&epoch>=start&&epoch<end&&new Date(epoch).toISOString()===value;
 }
@@ -124,7 +124,7 @@ export function decodeFirstSkyPreview(
      r.quality!=='unverified_geometric'||r.chartEligible!==false||
      r.frame!=='topocentric_mean_of_date'||r.kernelFormat!=='classic_DE441'||
      typeof r.kernelSha256!=='string'||!/^[0-9a-f]{64}$/.test(r.kernelSha256)||
-     typeof r.coreVersion!=='string'||!/^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(r.coreVersion)||
+     typeof r.coreVersion!=='string'||!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(r.coreVersion)||
      r.computedUtc!==request.input.utcInstant||
      !Array.isArray(r.approximations)||
      r.approximations.length!==FIRST_SKY_APPROXIMATIONS.length||
