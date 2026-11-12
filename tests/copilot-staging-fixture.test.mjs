@@ -197,6 +197,47 @@ test('body parser limits 2 KiB including chunked requests and rejects invalid JS
   assert.deepEqual(JSON.parse(chunked.body), { error: 'preview_request_too_large' });
 });
 
+test('partial trickle-upload is closed within the fixed body deadline and fixture remains healthy', async t => {
+  const origin = await lab(t);
+  const startedAt = Date.now();
+  await new Promise((resolve, reject) => {
+    const client = request(new URL(origin + basePath + '/message'), {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + bearer,
+        'Content-Type': 'application/json',
+        'Transfer-Encoding': 'chunked',
+      },
+    }, response => { response.resume(); response.once('end', finish); });
+    let settled = false;
+    const trickle = setInterval(() => {
+      if (!client.destroyed) client.write(' ');
+    }, 200);
+    const watchdog = setTimeout(() => {
+      client.destroy();
+      finish(new Error('synthetic HTTP partial body exceeded wall-clock deadline'));
+    }, 6000);
+    function finish(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      clearInterval(trickle);
+      if (error) reject(error);
+      else resolve();
+    }
+    client.on('error', () => { /* ECONNRESET is expected after the fixed deadline. */ });
+    client.on('close', () => finish());
+    client.flushHeaders();
+    client.write('{"action":');
+    // No .end(): a slow client must not retain the handler indefinitely.
+  });
+  assert.ok(Date.now() - startedAt < 6000);
+  const capabilities = await fetch(origin + basePath + '/capabilities', withAuth());
+  assert.equal(capabilities.status, 200);
+  const validPost = await fetch(origin + basePath + '/message', withAuth(json(valid)));
+  assert.equal(validPost.status, 200);
+});
+
 test('quota returns 429 without consulting a provider', async t => {
   const origin = await lab(t, { maxRequests: 2 });
   for (const status of [200, 200, 429]) {
