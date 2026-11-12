@@ -396,6 +396,45 @@ mod tests {
     }
 
     #[test]
+    fn v3_insert_or_replace_cannot_rewrite_active_mutation_or_fifo_sequence() {
+        let (_dir, _path, mut store, _, _) = setup();
+        let before: (i64, String, String) = store.conn.query_row(
+            "SELECT sequence,mutation_id,payload_json FROM local_outbox
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+        ).unwrap();
+
+        // A SQLite REPLACE deletes conflicting rows and re-inserts.
+        // UPDATE-immutability triggers alone never see that deletion.
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_outbox(
+                profile_id,mutation_id,entity_type,entity_id,operation,
+                payload_json,created_at_utc)
+             VALUES ('synthetic-a','synthetic-old','subject','synthetic-e1',
+                     'upsert','{\"label\":\"Forged\"}','2026-11-10T19:00:00Z')",
+            [],
+        ).is_err());
+        // A new mutation ID with an explicit colliding sequence/rowid
+        // must not replace the original FIFO position either.
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_outbox(
+                sequence,profile_id,mutation_id,entity_type,entity_id,
+                operation,payload_json,created_at_utc)
+             VALUES (?1,'synthetic-a','synthetic-other','subject','synthetic-e1',
+                     'upsert','{\"label\":\"Forged\"}','2026-11-10T19:00:00Z')",
+            params![before.0],
+        ).is_err());
+
+        let after: (i64, String, String) = store.conn.query_row(
+            "SELECT sequence,mutation_id,payload_json FROM local_outbox
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+        ).unwrap();
+        assert_eq!(after,before);
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
+    }
+
+    #[test]
     fn an_ack_and_pending_row_with_same_id_are_rejected() {
         let (_dir, _path, mut store, _, _) = setup();
         store.conn.execute(
