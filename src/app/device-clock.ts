@@ -1,4 +1,5 @@
 import type { Locale } from './translations';
+import type { OfflinePlaceV1 } from './native/offline-places-contract';
 
 /** Wall-clock time only. Never treat the device clock as an ephemeris or birth time. */
 export interface ClockDriver {
@@ -63,4 +64,25 @@ export function formatDeviceClock(timestamp: number, locale: Locale, compact = f
     return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'it-IT', options)
       .format(new Date(timestamp));
   } catch { return '—'; }
+}
+
+/** Only a civil-time preview; a selected city never changes synthetic chart data. */
+export type SelectedCityClock =
+  | Readonly<{kind: 'not_selected'}>
+  | Readonly<{kind: 'unavailable'}>
+  | Readonly<{kind: 'ready'; text: string; timeZone: string}>;
+
+/** Fail closed on absent/invalid tzdb IDs; NEVER use the device timezone as fallback. */
+export function selectedCityClockAt(
+  timestamp: number,
+  city: Pick<OfflinePlaceV1, 'timeZone'> | null,
+  locale: Locale,
+): SelectedCityClock {
+  if (city === null) return {kind: 'not_selected'};
+  const zone = city.timeZone;
+  if (typeof zone !== 'string' || zone.length === 0 || zone.length > 80 ||
+      !/^[A-Za-z0-9_+\/-]+$/.test(zone)) return {kind: 'unavailable'};
+  const text = formatDeviceClock(timestamp, locale, false, zone);
+  if (text === '—') return {kind: 'unavailable'};
+  return {kind: 'ready', text, timeZone: zone};
 }
