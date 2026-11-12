@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEvidenceArgs, verifyReferenceEvidence } from './verify-reference-evidence.mjs';
 import { parseComparisonArgs, auditLocalReference } from './compare-de441-reference.mjs';
+import {guardActualSnapshotDuringReview} from './de441-actual-snapshot-integrity.mjs';
 
 const SWITCHES = Object.freeze([
   '--actual', '--reference', '--raw-source', '--raw-query', '--normalizer-source',
@@ -80,7 +81,7 @@ export async function runVerifiedDe441Audit(parsed, operations = {}) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const parsed = parseVerifiedAuditArgs(process.argv.slice(2));
-  const report = await runVerifiedDe441Audit(parsed);
+  const report = await guardActualSnapshotDuringReview(parsed, () => runVerifiedDe441Audit(parsed));
   // Sanitized summary only: no user paths, coordinates, UTC instants or raw JSON.
   console.log('VERIFIED_DE441_AUDIT:' + report.status);
   if (report.status === 'REVIEW_BLOCKED') console.error('VERIFIED_DE441_AUDIT:' + report.reason);
