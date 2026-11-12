@@ -70,4 +70,4 @@ test('malformed fingerprint is rejected',()=>fixture(({root,files,save})=>{
 test('tampered lock format is rejected',()=>fixture(({root})=>{
   writeFileSync(join(root,...V3_SOURCE_LOCK.split('/')),JSON.stringify({format:'unknown',files:{}}));
   assert.throws(()=>verifyV3SourceLock(root),/Invalid reviewed v3 source lock format/);
-});
+}));
