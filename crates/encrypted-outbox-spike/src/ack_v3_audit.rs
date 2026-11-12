@@ -192,14 +192,28 @@ impl SyntheticEncryptedStore {
                         || new_time != decided_at
                     { return Err(suspicious()); }
                 } else {
-                    let ack: Option<(String, String)> = tx.query_row(
-                        "SELECT entity_type,entity_id FROM local_ack_ledger
+                    let ack: Option<(String, String, String)> = tx.query_row(
+                        "SELECT entity_type,entity_id,request_fingerprint
+                         FROM local_ack_ledger
                          WHERE profile_id=?1 AND mutation_id=?2",
                         params![profile, replacement_id],
-                        |r| Ok((r.get(0)?,r.get(1)?)),
+                        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
                     ).optional().map_err(storage_error)?;
-                    if let Some((acked_type, acked_entity)) = ack {
-                        if acked_type != entity_type || acked_entity != entity {
+                    if let Some((acked_type, acked_entity, ack_hash)) = ack {
+                        // This exact replacement was built from the archived
+                        // original: same operation/payload/entity, fresh ID,
+                        // recorded remote base and decision timestamp. Verify
+                        // that its accepted receipt actually acknowledges THAT
+                        // request, not a forged same-subject ACK with other data.
+                        let mut expected_replacement = original.clone();
+                        expected_replacement.mutation = replacement_id.clone();
+                        expected_replacement.base_revision = Some(remote_revision.clone());
+                        expected_replacement.created_at = decided_at.clone();
+                        let expected_hash = fingerprint(&expected_replacement)
+                            .map_err(|_| suspicious())?;
+                        if acked_type != entity_type || acked_entity != entity
+                            || ack_hash != expected_hash
+                        {
                             return Err(suspicious());
                         }
                     } else {
@@ -382,6 +396,45 @@ mod tests {
              VALUES('synthetic-a','synthetic-new','subject','synthetic-other',
                     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
                     'accepted','rev-forged','2026-11-11T21:30:00Z')", [],
+        ).unwrap();
+        assert!(store.audit_synthetic_v3_readonly().is_err());
+    }
+
+    #[test]
+    fn acked_replacement_requires_exact_fingerprint_from_archived_request() {
+        let (_dir, _path, mut store, original, hash) = setup();
+        let decision_time = "2026-11-11T21:30:00Z";
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a","synthetic-old","synthetic-new",&hash,
+            decision_time,false,
+        ).unwrap();
+        let mut replacement = original;
+        replacement.mutation = "synthetic-new".into();
+        replacement.base_revision = Some("rev-remote".into());
+        replacement.created_at = decision_time.into();
+        let replacement_hash = fingerprint(&replacement).unwrap();
+        store.conn.execute(
+            "DELETE FROM local_outbox WHERE mutation_id='synthetic-new'",
+            [],
+        ).unwrap();
+        store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                result,server_revision,acknowledged_at_utc)
+             VALUES('synthetic-a','synthetic-new','subject','synthetic-e1',
+                    ?1,'accepted','rev-final',?2)",
+            params![replacement_hash,"2026-11-11T22:00:00Z"],
+        ).unwrap();
+        assert_eq!(
+            store.audit_synthetic_v3_readonly().unwrap(),
+            SyntheticV3AuditSummary {
+                outbox_rows:0,acknowledgements:1,decision_rows:1
+            }
+        );
+        store.conn.execute(
+            "UPDATE local_ack_ledger SET request_fingerprint=?1
+             WHERE mutation_id='synthetic-new'",
+            params!["a".repeat(64)],
         ).unwrap();
         assert!(store.audit_synthetic_v3_readonly().is_err());
     }
