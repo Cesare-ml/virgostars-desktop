@@ -59,6 +59,18 @@ test('different synthetic fixture instances have different session challenges', 
   assert.notEqual(firstCapabilities.labSession, secondCapabilities.labSession);
   assert.equal(firstCapabilities.stage, 'STAGING_SYNTHETIC');
   assert.equal(secondCapabilities.stage, 'STAGING_SYNTHETIC');
+  const focus = { layer: 'NATAL', bodyId: 'SUN' };
+  const firstPost = await fetch(first + basePath + '/message',
+    withAuth(json({ action: 'describe_focus', focus })));
+  const secondPost = await fetch(second + basePath + '/message',
+    withAuth(json({ action: 'describe_focus', focus })));
+  assert.equal(firstPost.status, 200);
+  assert.equal(secondPost.status, 200);
+  const firstReply = await firstPost.json();
+  const secondReply = await secondPost.json();
+  assert.equal(firstReply.labSession, firstId);
+  assert.equal(secondReply.labSession, secondId);
+  assert.notEqual(firstReply.labSession, secondReply.labSession);
 });
 
 test('all three synthetic focus requests return the expected bounded native envelope', async t => {
@@ -72,6 +84,7 @@ test('all three synthetic focus requests return the expected bounded native enve
     const reply = JSON.parse(text);
     assert.equal(reply.contract, 'VirgoStarsCopilotMockPreviewEnvelope');
     assert.equal(reply.stage, 'STAGING_SYNTHETIC');
+    assert.equal(reply.labSession, labSession);
     assert.equal(reply.contentOrigin, 'DETERMINISTIC_FACT');
     assert.equal(reply.providerCostUsd, 0);
     assert.equal(reply.disclosures.personalChartIncluded, false);
@@ -109,6 +122,7 @@ test('live loopback JSON is accepted by the actual Desktop TypeScript preview de
     assert.deepEqual(answer.focus, focus);
     assert.ok(answer.illustrativeAspectCount >= 1);
     assert.match(answer.answer, /Synthetic fixture only/);
+    assert.equal(Object.hasOwn(answer, 'labSession'), false);
   }
   assert.equal(calls.length, 3);
   assert.ok(calls.every(item => !('model' in item.body) && !('apiKey' in item.body)));
