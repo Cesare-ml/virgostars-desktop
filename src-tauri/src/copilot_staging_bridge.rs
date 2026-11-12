@@ -106,6 +106,22 @@ fn valid_fixture_session(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+fn optional_fixture_session() -> Result<Option<String>, &'static str> {
+    let session = match std::env::var(STAGING_FIXTURE_SESSION_ENV) {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        // Never interpret malformed or non-Unicode lab configuration as a
+        // request to disable the per-launch identity check.
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err("copilot_staging_invalid_fixture_session")
+        }
+    };
+    if session.as_deref().is_some_and(|value| !valid_fixture_session(value)) {
+        return Err("copilot_staging_invalid_fixture_session");
+    }
+    Ok(session)
+}
+
 fn validate_staging_capabilities(value: &Value, expected_fixture_session: Option<&str>) -> bool {
     // If a launcher requested a specific fixture, Rust must not silently
     // accept another local service after the launcher verified its readiness.
@@ -187,20 +203,13 @@ pub async fn copilot_staging_ready() -> bool {
     let enabled = std::env::var(STAGING_ENABLED_ENV).ok();
     let origin = std::env::var(STAGING_ORIGIN_ENV).ok();
     let bearer = std::env::var(STAGING_TEST_BEARER_ENV).ok();
-    let fixture_session = match std::env::var(STAGING_FIXTURE_SESSION_ENV) {
-        Ok(session) => Some(session),
-        Err(std::env::VarError::NotPresent) => None,
-        // An existing but non-Unicode environment value must never silently
-        // disable a requested per-launch identity check.
-        Err(std::env::VarError::NotUnicode(_)) => return false,
-    };
-    if !staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref())
-        || fixture_session
-            .as_deref()
-            .is_some_and(|session| !valid_fixture_session(session))
-    {
+    if !staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref()) {
         return false;
     }
+    let fixture_session = match optional_fixture_session() {
+        Ok(session) => session,
+        Err(_) => return false,
+    };
     let _permit = match StagingHttpPermit::acquire(&STAGING_HTTP_IN_FLIGHT) {
         Some(permit) => permit,
         None => return false,
@@ -252,9 +261,23 @@ fn validate_preview_envelope(value: &Value) -> Result<(), &'static str> {
 /// server-owned synthetic FACT_ONLY preview and build a new allowlisted JSON
 /// envelope. Never relay arbitrary server keys (for example tokens, prompts,
 /// unapproved commands or private chart material) into the Angular WebView.
-fn project_preview_envelope(value: &Value, expected: &Focus) -> Result<Value, &'static str> {
+fn project_preview_envelope(
+    value: &Value,
+    expected: &Focus,
+    expected_fixture_session: Option<&str>,
+) -> Result<Value, &'static str> {
     const INVALID: &str = "copilot_staging_unexpected_response";
     validate_preview_envelope(value)?;
+    // A fixture can disappear or be replaced after the initial capabilities
+    // probe. Check each POST response against the per-launch test instance.
+    // This field is never forwarded over Tauri IPC to the WebView.
+    if let Some(session) = expected_fixture_session {
+        if !valid_fixture_session(session)
+            || value.get("labSession").and_then(Value::as_str) != Some(session)
+        {
+            return Err(INVALID);
+        }
+    }
     if value.get("methodApproved").and_then(Value::as_bool) != Some(false)
         || value.get("contentOrigin").and_then(Value::as_str) != Some("DETERMINISTIC_FACT")
         || value.get("providerCostUsd").and_then(Value::as_f64) != Some(0.0)
@@ -350,6 +373,7 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
     let token = std::env::var(STAGING_TEST_BEARER_ENV)
         .map_err(|_| "copilot_staging_test_auth_missing".to_owned())?;
     let bearer = staging_test_bearer(&token).map_err(str::to_owned)?;
+    let fixture_session = optional_fixture_session().map_err(str::to_owned)?;
     let _permit = StagingHttpPermit::acquire(&STAGING_HTTP_IN_FLIGHT)
         .ok_or_else(|| "copilot_staging_busy".to_owned())?;
 
@@ -378,7 +402,7 @@ pub async fn copilot_staging_preview(focus: Focus) -> Result<Value, String> {
         _ => return Err("copilot_staging_backend_unavailable".into()),
     }
     let envelope = bounded_json(response).await.map_err(str::to_owned)?;
-    project_preview_envelope(&envelope, &focus).map_err(str::to_owned)
+    project_preview_envelope(&envelope, &focus, fixture_session.as_deref()).map_err(str::to_owned)
 }
 
 #[cfg(test)]
@@ -539,7 +563,7 @@ mod tests {
         input["accessToken"] = json!("LEAK_SENTINEL");
         input["data"]["privateChart"] = json!("PRIVATE_CHART_SENTINEL");
         input["data"]["chartCommands"][0]["prompt"] = json!("DO_NOT_FORWARD");
-        let projected = project_preview_envelope(&input, &focus("NATAL", "VENUS"))
+        let projected = project_preview_envelope(&input, &focus("NATAL", "VENUS"), None)
             .expect("synthetic preview should validate");
         assert_eq!(projected["data"]["answer"], input["data"]["answer"]);
         assert_eq!(projected["data"]["focus"], input["data"]["focus"]);
@@ -556,40 +580,64 @@ mod tests {
     }
 
     #[test]
+    fn preview_requires_the_same_lab_session_without_leaking_it_to_webview() {
+        let session = "a5a5a5a5b6b6b6b6c7c7c7c7d8d8d8d8";
+        let expected = focus("NATAL", "VENUS");
+        let mut fixture = synthetic_preview_fixture();
+
+        // The real private backend intentionally omits a fixture session.
+        assert!(project_preview_envelope(&fixture, &expected, None).is_ok());
+        assert!(project_preview_envelope(&fixture, &expected, Some(session)).is_err());
+
+        fixture["labSession"] = json!(session);
+        let projected = project_preview_envelope(&fixture, &expected, Some(session))
+            .expect("the expected synthetic fixture can answer");
+        assert!(projected.get("labSession").is_none());
+        assert!(projected.get("disclosures").is_none());
+
+        assert!(project_preview_envelope(
+            &fixture,
+            &expected,
+            Some("f1f1f1f1e2e2e2e2d3d3d3d3c4c4c4c4")
+        ).is_err());
+        assert!(project_preview_envelope(&fixture, &expected, Some("invalid")).is_err());
+    }
+
+    #[test]
     fn preview_refuses_wrong_focus_commands_and_flags() {
         let baseline = synthetic_preview_fixture();
         let expected = focus("NATAL", "VENUS");
-        assert!(project_preview_envelope(&baseline, &expected).is_ok());
-        assert!(project_preview_envelope(&baseline, &focus("NATAL", "SUN")).is_err());
+        assert!(project_preview_envelope(&baseline, &expected, None).is_ok());
+        assert!(project_preview_envelope(&baseline, &focus("NATAL", "SUN"), None).is_err());
 
         let mut wrong = baseline.clone();
         wrong["methodApproved"] = json!(true);
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["providerCostUsd"] = json!(1);
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["disclosures"]["birthDataIncluded"] = json!(true);
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["data"]["source"] = json!("REAL_MODEL");
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["data"]["chartRevision"] = json!(9_007_199_254_740_992_u64);
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["data"]["answer"] = json!("");
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["data"]["chartCommands"][0]["type"] = json!("chart.setTransitInstant");
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["data"]["chartCommands"][0]["aspectIds"] = json!(["real:aspect"]);
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
         wrong = baseline.clone();
         wrong["data"]["chartCommands"][0]["aspectIds"] =
             json!(["synthetic:transit:saturn:venus", "synthetic:transit:saturn:venus"]);
-        assert!(project_preview_envelope(&wrong, &expected).is_err());
+        assert!(project_preview_envelope(&wrong, &expected, None).is_err());
     }
 
     #[test]
