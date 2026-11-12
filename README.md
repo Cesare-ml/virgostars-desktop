@@ -6,7 +6,7 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 ## Experimental real-sky response contract (not chart-ready)
 
-The desktop now has a typed [first-sky experimental preview contract](docs/FIRST_SKY_EXPERIMENTAL_CONTRACT.md) grounded in the real `VirgoStars-Ephemeris` Rust `first_sky` API: geometric mean-of-date positions, exact **outer-system barycenter identity**, DE441 provenance, IERS time range and explicit approximation warnings. Its decoder rejects fake/synthetic responses or any attempt to mark experimental data **chart-ready**. **No real Rust calculation command or natal chart rendering has been integrated**. A locally equivalent decoder passed 15/15 smoke checks and TypeScript strict; the 18 committed cases await the full checkout test.
+The desktop now has a typed [first-sky experimental preview contract](docs/FIRST_SKY_EXPERIMENTAL_CONTRACT.md) grounded in the real `VirgoStars-Ephemeris` Rust `first_sky` API: geometric mean-of-date positions, exact **outer-system barycenter identity**, DE441 provenance, IERS time range and explicit approximation warnings. Its decoder rejects fake/synthetic responses or any attempt to mark experimental data **chart-ready**. **No real Rust calculation command or natal chart rendering has been integrated**. The **exact committed decoder and test files** now pass all **18/18 Node tests** in an isolated local checkout (Git blob hashes confirmed); TypeScript strict passed using a local stub of the existing generic IPC interfaces. This does **not** replace the full repository/Angular/Tauri Windows build.
 
 ## Synthetic native Rust calculation probe (testing only)
 
