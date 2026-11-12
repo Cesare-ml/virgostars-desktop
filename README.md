@@ -6,7 +6,7 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 ## Synthetic native Rust calculation probe (testing only)
 
-A separate [bounded synthetic Tauri IPC probe](docs/SYNTHETIC_NATIVE_CALCULATION_PROBE.md) now exercises a fixed-size CPU workload with a strict two-worker gate and `syntheticOnly` response marker. The TypeScript transport passed eight isolated behavioral tests. **Rust compilation, actual WebView2 IPC latency and real ephemeris calculations remain unverified and disconnected from the chart.**
+A separate [bounded synthetic Tauri IPC probe](docs/SYNTHETIC_NATIVE_CALCULATION_PROBE.md) now exercises a fixed-size CPU workload with a strict two-worker gate and `syntheticOnly` response marker. The TypeScript transport passed eight isolated behavioral tests. A [development-only Settings benchmark](docs/DEVELOPMENT_IPC_BENCHMARK.md) now runs a bounded 24-call sequence and reports p50/p95/p99 **when actually executed on the Windows dev app**; 8/8 isolated benchmark tests passed. Rust rejects the synthetic endpoint in release builds. **Rust compilation, actual WebView2 IPC latency and real ephemeris calculations remain unverified and disconnected from the chart.**
 
 ## Bounded future Rust calculation requests
 
