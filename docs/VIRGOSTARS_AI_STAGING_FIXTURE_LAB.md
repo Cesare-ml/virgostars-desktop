@@ -10,6 +10,14 @@ From the authorized Desktop checkout with Node.js 22+:
 npm run test:ai:fixture
 ```
 
+For **all AI bridge tests without requiring the Angular/Charts build**, use the unified standalone smoke:
+
+```powershell
+npm run test:ai:smoke
+```
+
+This executes the five dedicated suites: TypeScript preview decoder, native transport, native single-flight behavior, real local HTTP fixture and Windows launcher contract. Run `npm run test:ai:types` separately for strict TypeScript checking. The unified command does not replace `npm test`, Cargo/Tauri or the Windows GUI smoke; it requires the authorized Desktop checkout and Node.js 22+.
+
 Equivalently use `node --experimental-strip-types --test tests/copilot-staging-fixture.test.mjs` (required for Node 22 TypeScript imports). Also included in the repository's existing `npm test` script, which uses `--experimental-strip-types` for TypeScript imports in other tests.
 
 The fixture now adds `labSession` to both `GET /capabilities` and each successful `POST /message` response. Rust independently checks it on **each successful POST**, then removes it before forwarding the sanitized preview data into Angular. The two-instance HTTP test asserts the POST responses contain their *respective* fixture IDs. This identity extension is confined to the synthetic lab; the real staging API does not need it and does not perform local fixture token equality checks.
@@ -38,7 +46,7 @@ From the Desktop repository root:
 powershell -NoProfile -File .\scripts\run-copilot-staging-lab.ps1 -SyntheticOnly
 ```
 
-The runner checks Windows prerequisites, runs the 9 local loopback tests (including the Desktop TypeScript decoder), runs the complete `npm test` suite, separately type-checks the native AI IPC with `npm run test:ai:types` (TypeScript strict, no Charts installation required), validates the Angular/Charts build prerequisites with `npm run doctor:build`, checks Rust formatting and the offline default compilation (`cargo check --no-default-features`), runs `cargo test --features copilot-staging` and `cargo check --release --features copilot-staging` **before setting the test token**, and generates the synthetic icon. It starts Angular on `127.0.0.1:4200` **before** creating the fictional bearer, then starts the isolated fixture on `127.0.0.1:18883`, checks the authenticated synthetic capabilities response, its exact action/focus contract **and one-time session ID**,  and launches `tauri dev --features copilot-staging`. Only its own Angular/fixture child process trees are shut down in `finally`; temporary variables are cleared. The executable runs in a debug lab only, not in a release build. This does not automate visual validation: inspect the AI panel and test the 3 focus options manually.
+The runner checks Windows prerequisites, runs the complete isolated `npm run test:ai:smoke` gate (including all 11 local HTTP fixture cases and the native/decoder/launcher suites), then runs the complete `npm test` suite, separately type-checks the native AI IPC with `npm run test:ai:types` (TypeScript strict, no Charts installation required), validates the Angular/Charts build prerequisites with `npm run doctor:build`, checks Rust formatting and the offline default compilation (`cargo check --no-default-features`), runs `cargo test --features copilot-staging` and `cargo check --release --features copilot-staging` **before setting the test token**, and generates the synthetic icon. It starts Angular on `127.0.0.1:4200` **before** creating the fictional bearer, then starts the isolated fixture on `127.0.0.1:18883`, checks the authenticated synthetic capabilities response, its exact action/focus contract **and one-time session ID**,  and launches `tauri dev --features copilot-staging`. Only its own Angular/fixture child process trees are shut down in `finally`; temporary variables are cleared. The executable runs in a debug lab only, not in a release build. This does not automate visual validation: inspect the AI panel and test the 3 focus options manually.
 
 The script will **stop on the first failed prerequisite** and may generate a local `Cargo.lock` as Cargo resolves dependencies; review it before committing. Actual native Windows execution remains outstanding. The source-only security tests live in `tests/copilot-windows-lab-runner.test.mjs` and run through `npm test`.
 
