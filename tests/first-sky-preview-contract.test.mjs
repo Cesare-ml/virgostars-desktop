@@ -148,5 +148,5 @@ test('no geometry or ephemeris calculation is performed in the type guard',async
  assert.equal(typeof src,'string');
  // The decoder validates already computed numeric quantities; no algorithms or file access.
  const file=(await import('node:fs')).readFileSync(new URL('../src/app/native/first-sky-preview-contract.ts',import.meta.url),'utf8');
- assert.doesNotMatch(file,/\b(?:invoke|fetch|localStorage|sessionStorage|indexedDB|sin|cos|atan2|sqrt)\s*\\(/);
+ assert.doesNotMatch(file,/\b(?:invoke|fetch|localStorage|sessionStorage|indexedDB|sin|cos|atan2|sqrt)\s*\(/);
 });
