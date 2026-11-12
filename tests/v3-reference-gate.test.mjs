@@ -23,3 +23,26 @@ test('rejects directory disguised as a v3 test file',()=>useFixture(root=>{mkdir
 test('missing whole tests directory is not interpreted as no work',()=>useFixture(root=>{rmSync(join(root,'tests'),{recursive:true});assert.throws(()=>discoverV3Suites(root),/Missing tracked tests directory/);}));
 test('full discovered synthetic suite executes successfully as a subprocess',()=>useFixture(root=>{assert.doesNotThrow(()=>runV3ReferenceGate(root));}));
 test('failing future regression propagates a nonzero gate result',()=>useFixture(root=>{writeFileSync(join(root,'tests',REQUIRED_V3_SUITES[0]),"import test from 'node:test';test('intentional fictional failure',()=>{throw new Error('synthetic regression');});\n");assert.throws(()=>runV3ReferenceGate(root),/v3 Node reference suite FAILED/);}));
+
+// Node 22 may report a zero-test file as one passing *file-level* Subtest.
+// Verify that the gate rejects this false green rather than trusting exit 0.
+test('zero-test module cannot pass by being counted as a file-level success',()=>useFixture(root=>{
+  writeFileSync(join(root,'tests','sqlite-v3-000-empty.test.mjs'),'// no tests intentionally\n');
+  assert.throws(()=>runV3ReferenceGate(root),/v3 Node reference suite FAILED: sqlite-v3-000-empty/);
+}));
+test('all-skipped suite cannot count as a successful regression',()=>useFixture(root=>{
+  writeFileSync(join(root,'tests','sqlite-v3-000-skipped.test.mjs'),"import test from 'node:test';test.skip('fictional skipped',()=>{});\n");
+  assert.throws(()=>runV3ReferenceGate(root),/v3 Node reference suite FAILED: sqlite-v3-000-skipped/);
+}));
+test('all-TODO suite cannot count as a successful regression',()=>useFixture(root=>{
+  writeFileSync(join(root,'tests','sqlite-v3-000-todo.test.mjs'),"import test from 'node:test';test.todo('fictional incomplete');\n");
+  assert.throws(()=>runV3ReferenceGate(root),/v3 Node reference suite FAILED: sqlite-v3-000-todo/);
+}));
+test('one passing and one skipped test fails closed',()=>useFixture(root=>{
+  writeFileSync(join(root,'tests','sqlite-v3-000-partial.test.mjs'),"import test from 'node:test';test('passing',()=>{});test.skip('skipped',()=>{});\n");
+  assert.throws(()=>runV3ReferenceGate(root),/v3 Node reference suite FAILED: sqlite-v3-000-partial/);
+}));
+test('each required suite must have tests, not just the aggregate',()=>useFixture(root=>{
+  writeFileSync(join(root,'tests',REQUIRED_V3_SUITES[0]),'// intentionally empty\n');
+  assert.throws(()=>runV3ReferenceGate(root),/v3 Node reference suite FAILED: sqlite-v3-manual-keep-local/);
+}));

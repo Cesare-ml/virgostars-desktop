@@ -71,18 +71,52 @@ export function runV3ReferenceGate(root, { nodePath = process.execPath, nodeVers
   // Force the launched test process to run as a top-level Node test runner.
   const childEnv = { ...process.env };
   delete childEnv.NODE_TEST_CONTEXT;
-  const child = spawnSync(nodePath, [
-    '--experimental-sqlite',
-    '--experimental-strip-types',
-    '--test',
-    ...suites,
-  ], { stdio: 'inherit', cwd: resolve(root), env: childEnv });
-  if (child.error) throw child.error;
-  if (child.signal) throw new Error(`v3 Node reference suite interrupted by ${child.signal}`);
-  if (child.status !== 0) {
-    throw new Error(`v3 Node reference suite FAILED (exit ${child.status ?? 'unknown'})`);
+  let totalPassed = 0;
+  // Run every suite separately, rather than inferring coverage from a single
+  // aggregate exit code: Node can exit zero when a file contains no tests,
+  // skipped tests or only TODOs. Every required suite must run and pass.
+  for (const [index, suite] of suites.entries()) {
+    const name = suite.slice(suite.lastIndexOf('/') + 1).split('\\').at(-1);
+    const child = spawnSync(nodePath, [
+      '--experimental-sqlite',
+      '--experimental-strip-types',
+      '--test',
+      '--test-reporter=tap',
+      suite,
+    ], {
+      encoding: 'utf8', cwd: resolve(root), env: childEnv,
+      timeout: 180_000, maxBuffer: 32 * 1024 * 1024,
+    });
+    const output = child.stdout ?? '';
+    const stderr = child.stderr ?? '';
+    // Node's TAP reporter ends with machine-checkable summary lines.
+    // Requiring them closes the "exit 0 with no assertions" false green.
+    const getCount = (label) => {
+      const matches = [...output.matchAll(new RegExp(`^# ${label} (\\d+)\\s*$`, 'gm'))];
+      return matches.length === 1 ? Number(matches[0][1]) : null;
+    };
+    const counts = Object.fromEntries(['tests','pass','fail','cancelled','skipped','todo']
+      .map((label) => [label, getCount(label)]));
+    // With a zero-test file Node 22 emits a *passing file-level Subtest*
+    // and reports tests=1/pass=1. A TAP summary alone cannot catch that.
+    const fileSubtests = [...output.matchAll(/^# Subtest: (.*)$/gm)]
+      .map((match) => match[1].trim());
+    const emptyFileFallback = fileSubtests.length === 1 && fileSubtests[0] === suite;
+    const validSummary = Object.values(counts).every((count) => Number.isSafeInteger(count))
+      && counts.tests > 0 && counts.pass === counts.tests && !emptyFileFallback
+      && fileSubtests.length > 0
+      && counts.fail === 0 && counts.cancelled === 0
+      && counts.skipped === 0 && counts.todo === 0;
+    if (child.error || child.signal || child.status !== 0 || !validSummary) {
+      if (output) process.stderr.write(output);
+      if (stderr) process.stderr.write(stderr);
+      const reason = child.error?.message ?? child.signal ?? `exit ${child.status ?? 'unknown'}`;
+      throw new Error(`v3 Node reference suite FAILED: ${name} (${reason}; TAP ${JSON.stringify(counts)})`);
+    }
+    totalPassed += counts.pass;
+    console.log(`PASS ${index + 1}/${suites.length}: ${name} (${counts.pass} tests)`);
   }
-  console.log('PASS: synthetic v3 SQLite reference gate only. Rust/SQLCipher still requires separate validation.');
+  console.log(`PASS: ${suites.length} synthetic v3 SQLite suites, ${totalPassed} tests; reference only. Rust/SQLCipher still requires separate validation.`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
