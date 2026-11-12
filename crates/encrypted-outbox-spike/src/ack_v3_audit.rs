@@ -368,13 +368,28 @@ mod tests {
     }
 
     #[test]
-    fn invalid_queued_payload_is_rejected_even_if_json_check_passes() {
+    fn v3_sql_refuses_noncanonical_rewrite_of_queued_request() {
         let (_dir, _path, mut store, _, _) = setup();
-        store.conn.execute(
+        assert!(store.conn.execute(
             "UPDATE local_outbox SET payload_json='{\"position\":12.5}'",
             [],
-        ).unwrap();
-        assert!(store.audit_synthetic_v3_readonly().is_err());
+        ).is_err());
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
+    }
+
+    #[test]
+    fn v3_sql_immutably_preserves_queued_request_fields_and_fifo_position() {
+        let (_dir, _path, mut store, _, _) = setup();
+        for sql in [
+            "UPDATE local_outbox SET operation='delete',payload_json=NULL",
+            "UPDATE local_outbox SET base_server_revision='rev-forged'",
+            "UPDATE local_outbox SET created_at_utc='2026-11-11T21:31:00Z'",
+            "UPDATE local_outbox SET sequence=sequence+100",
+            "UPDATE local_outbox SET payload_json='{\"label\":\"Other\"}'",
+        ] {
+            assert!(store.conn.execute(sql, []).is_err());
+        }
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
     }
 
     #[test]

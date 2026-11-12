@@ -53,8 +53,11 @@ explicit versioned schema migration with rollback and backup testing.
 Historical v3 schema Git blob:
 `960f1894d0c592597451df779d4d3df783b0d140`
 
-New v3 schema Git blob:
+Intermediate v3 identity-only schema Git blob:
 `76ff889a22c72ad7d0ce2bce497b06318f5a6fe1`
+
+Current queued-request snapshot schema Git blob:
+`9efb366c420944ebc53f87f39ada69d04232c262`
 
 Earlier draft PR documentation and historical test evidence that cites
 the old blob describes the pre-hardening contract; it should not be
@@ -96,6 +99,39 @@ The new Rust SQLCipher trigger regression is **authored but NOT
 compiled or executed**. Rust/Cargo/rustfmt/Clippy are unavailable in
 this environment and no Windows SQLCipher build, cipher integrity,
 wrong-key test or crash recovery is claimed.
+
+## Additional v3 request immutability
+
+The reviewed identity trigger is now complemented by
+`local_outbox_v3_request_snapshot_immutable`, which rejects changing
+`operation`, `payload_json`, `base_server_revision`, or
+`created_at_utc` after a queue row is persisted. The identity trigger
+also covers `sequence` so a queued mutation cannot be reordered through
+raw SQL. All comparisons of nullable request fields use SQLite's null-safe
+`IS NOT` operator.
+
+Only the mutable synchronization fields `state` and
+`conflict_server_revision` can be updated in place. The legitimate
+keep-local writer uses DELETE + INSERT of a distinct mutation ID.
+This protects against *even internally consistent* silent request
+rewrites (e.g., changing both a materialized local entity and its last
+outbox payload). The semantic audit cannot independently authenticate
+such a rewritten request if no immutable original is retained.
+
+The new 14-test full-schema Node regression
+`tests/sqlite-v3-request-immutability.test.mjs` passed **14/14** locally
+using exact GitHub-matching DDL, including NULL-base transitions,
+tombstones, payload changes, timestamp changes, FIFO tampering, no-op
+updates and legitimate conflict-state transitions. New schema blob:
+`9efb366c420944ebc53f87f39ada69d04232c262`.
+New reference-test blob:
+`fe5a240ac9c0fafd62871c7fae56f1de302fdd27`.
+
+**This further changes the strict synthetic v3 catalogue.** Previous
+prototype v3 files (including those produced by the earlier version of
+PR #42) intentionally fail exact schema validation; do not silently
+upgrade them or attempt to apply this to real users. Tests authored
+in Rust remain uncompiled until Cargo/SQLCipher are available.
 
 ## Required review gates
 

@@ -95,8 +95,8 @@ test('limit and profile ID restrictions are enforced', () => {
   const db=setup();try { stage(db);for (const [p,l] of [[A,0],[A,101],['user',10]]) assert.throws(()=>previews(db,p,l));
     assert.equal(previews(db,A,1).length,1); } finally { db.close(); }
 });
-test('noncanonical fractional fictional payload fails closed', () => {
-  const db=setup();try { stage(db);db.prepare("UPDATE local_outbox SET payload_json='{\"angle\":1.5}'").run();assert.throws(()=>previews(db,A,10),/canonical number/); } finally { db.close(); }
+test('v3 refuses changing the queued fictional payload after staging', () => {
+  const db=setup();try { stage(db);assert.throws(()=>db.prepare("UPDATE local_outbox SET payload_json='{\"angle\":1.5}'").run(),/queued mutation request is immutable/);assert.equal(previews(db,A,10).length,1); } finally { db.close(); }
 });
 test('resolved conflict is no longer listed', () => {
   const db=setup();try { stage(db);db.prepare("UPDATE local_outbox SET state='pending',conflict_server_revision=NULL").run();assert.deepEqual(previews(db,A,10),[]); } finally { db.close(); }
