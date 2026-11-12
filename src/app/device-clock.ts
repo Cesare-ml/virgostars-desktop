@@ -23,7 +23,7 @@ export class DeviceClock {
   constructor(driver: ClockDriver = SYSTEM_CLOCK) {
     this.driver = driver;
     const initial = driver.now();
-    this.timestamp = Number.isFinite(initial) && Math.abs(initial) <= MAX_DATE_MS ? initial : 0;
+    this.timestamp = Number.isFinite(initial) && Math.abs(initial) <= MAX_DATE_MS ? initial : NaN;
   }
 
   /** Tick from actual wall time, not elapsed intervals, to survive OS sleep. */
