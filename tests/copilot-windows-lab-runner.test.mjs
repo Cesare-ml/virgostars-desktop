@@ -45,11 +45,18 @@ test('local HTTP readiness checks synthetic-only capabilities before Tauri start
   assert.ok(check > 0 && check < startTauri);
   for (const field of [
     "VirgoStarsCopilotPreviewCapabilities", "STAGING_SYNTHETIC",
-    '$capabilities.providerEnabled -ne $false',
-    '$capabilities.modelSelectorAvailable -ne $false',
+    '$capabilities.providerEnabled -cne $false',
+    '$capabilities.modelSelectorAvailable -cne $false',
   ]) assert.ok(runner.includes(field));
   assert.match(fixture, /server\.listen\(port, HOST, resolve\)/);
   assert.match(fixture, /const HOST = '127\.0\.0\.1'/);
+  assert.match(runner, /\$capabilities\.version -cne '0\.1\.0'/);
+  assert.match(runner, /\$capabilities\.enabled -cne \$true/);
+  assert.match(runner, /\$actions\.Count -ne 1/);
+  assert.match(runner, /\$actions\[0\] -cne 'describe_focus'/);
+  assert.match(runner, /\$focusOptions\.Count -ne 3/);
+  assert.match(runner, /\$focusOptions -ccontains \$focusName/);
+  assert.match(runner, /'NATAL:VENUS', 'NATAL:SUN', 'TRANSIT:SATURN'/);
 });
 
 test('cleanup shuts down only children started by this lab and drops temporary environment variables', () => {
