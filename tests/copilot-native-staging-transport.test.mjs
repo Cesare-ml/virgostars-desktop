@@ -301,6 +301,25 @@ test('every native POST checks the optional lab session before projecting safe f
   assert.match(rust, /project_preview_envelope\(&fixture, &expected, None\)\.is_ok\(\)/);
 });
 
+test('generic native transport failures clear stale AI readiness but quota and busy stay retryable', () => {
+  const component = read('src/app/desktop-app.component.ts');
+  const start = component.indexOf('async askCopilotPreview(): Promise<void>');
+  const end = component.indexOf('\n  zoom(direction:', start);
+  assert.ok(start >= 0 && end > start);
+  const request = component.slice(start, end);
+  const auth = request.indexOf("code === 'copilot_preview_authorization_required'");
+  const quota = request.indexOf("code === 'copilot_preview_rate_limited'");
+  const busy = request.indexOf("code === 'copilot_preview_busy'");
+  const generic = request.indexOf("this.copilotStatus = 'ai.preview.error'");
+  assert.ok(auth >= 0 && auth < quota && quota < busy && busy < generic);
+  assert.match(request, /if \(code === 'copilot_preview_authorization_required'\) \{\s*this\.copilotPreviewReady = false/);
+  assert.match(request, /\} else \{\s*\/\/ Unreachable\/replaced fixture[\s\S]*?this\.copilotPreviewReady = false;\s*this\.copilotStatus = 'ai\.preview\.error'/);
+  // A failed probe never hides the error status or forces an offline login.
+  assert.match(component, /get copilotCanProbe\(\): boolean \{ return this\.copilotTransport !== null; \}/);
+  const template = read('src/app/desktop-app.component.html');
+  assert.match(template, /\(click\)="recheckCopilotPreview\(\)"/);
+});
+
 test('release builds omit the staging command; Angular development-only wiring', () => {
   const lib = read('src-tauri/src/lib.rs');
   const command = read('src-tauri/src/copilot_staging_bridge.rs');
