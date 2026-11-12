@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import {
   AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy,
-  ViewChild, inject
+  ViewChild, inject, isDevMode
 } from '@angular/core';
 import {
   defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
@@ -15,6 +15,7 @@ import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import { NatalDraftComponent } from './natal-draft.component';
+import { DevIpcDiagnosticsComponent } from './dev-ipc-diagnostics.component';
 import { NatalDraftState } from './natal-draft-state';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { classifyStyleHealth, measureStyleHealth, type StyleHealthCode } from './style-health';
@@ -36,7 +37,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule,OfflineCityPickerComponent,NatalDraftComponent],
+  imports:[CommonModule,OfflineCityPickerComponent,NatalDraftComponent,DevIpcDiagnosticsComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -68,6 +69,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   selectedPlanet: DemoPlanet | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
   readonly natalDraft = new NatalDraftState();
+  readonly showDevDiagnostics = isDevMode();
   navCollapsed = false;
   inspectorCollapsed = false;
   busy = true;
