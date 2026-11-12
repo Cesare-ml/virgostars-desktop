@@ -18,7 +18,9 @@
     "doctor:json": "node scripts/desktop-doctor.mjs --stage=setup --json",
     "doctor:build": "node scripts/desktop-doctor.mjs --stage=build --strict",
     "doctor:verify": "node scripts/desktop-doctor.mjs --stage=verify --strict",
-    "verify:css": "node scripts/verify-bundled-css.mjs"
+    "verify:css": "node scripts/verify-bundled-css.mjs",
+    "places:fetch:windows": "py -3 scripts/places/fetch_catalog.py",
+    "tauri:build:places:windows": "npm run places:fetch:windows && py -3 scripts/places/prepare_tauri_bundle.py && npm run build:ui && npm run prepare:icon && tauri build --config .local/places/tauri-places.conf.json"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "20.3.5",

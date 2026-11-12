@@ -23,3 +23,7 @@ Do not recode astronomy in Python. Future Python tools may use upstream PyO3/mat
 
 ## Upstream status
 The public/private VirgoStars libraries are developing independently. Their current README/AGENTS remain authoritative for their own functionality. Do not assume code, manifests, rights or published packages already exist.
+
+## Offline city catalog for contributors
+
+The complete catalog is distributed separately as a private, checksum-pinned GitHub release. For repository and Charts collaborators, [Offline city packaging](LOCAL_CITY_PACKAGING.md) documents authentication, dependencies, exact build commands, data provenance and platform limitations. The regular synthetic build still works without the catalog.

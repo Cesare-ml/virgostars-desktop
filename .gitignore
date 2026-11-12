@@ -6,3 +6,5 @@ src-tauri/target/
 src-tauri/icons/
 .angular/
 dist/
+
+__pycache__/
