@@ -19,6 +19,38 @@
 
 **Safety boundaries:** no fake astronomy, no fallback to Swiss, no ephemeris kernel packaging, no user accounts or birth data, no token storage, no cloud/back-end change, no hidden network calls or privileged Tauri commands. `AbortSignal` alone does **not** cancel native CPU work; a future dedicated Rust worker must implement bounded scheduling and cancellation checkpoints separately. A hung port can delay pending work (at most one remains queued); a native timeout/restart policy must be reviewed with the actual adapter rather than introducing unbounded retries here.
 
+## Lifecycle hardening: aborted preflight and stale validation (2026-11-12)
+
+A race in the initial D-01 scheduler allowed its already-scheduled microtask
+to invoke a provider **after** the view was disposed, or to invoke an obsolete
+request when many same-turn corrections superseded it. The request envelope
+was invalidated, but the unnecessary native work could still begin.
+
+This was corrected without adding timers, retries, buffers or external state:
+
+- Before invoking a provider, verify that the instance is alive, the
+  `AbortSignal` is not aborted, and the generation/sequence still match the
+  latest desired request. When a request is superseded before dispatch, skip
+  that provider invocation entirely and let the existing one-slot pending
+  scheduler launch the latest request.
+- After a provider returns, perform the same validity check **before**
+  decoding/validating the reply. Obsolete results must not run a potentially
+  expensive snapshot validator or produce user-visible events.
+- A custom snapshot validator that throws is converted to `invalid_reply`,
+  with no exception details exposed. Later calculations still run.
+- This is frontend scheduling only; it does **not** interrupt an already
+  executing CPU-bound Rust task. Native cooperative cancellation remains
+  a separate acceptance gate.
+
+**Actually executed:** the entire D-01 Node suite passed **11/11**, including
+four new regression tests for dispose-before-dispatch, same-turn replacement,
+no obsolete validator work and validator exception recovery. Combined with
+the D-02 mocked/native-source tests from PR #48: **20/20 passed** on
+Node 22.16.0. Strict standalone TypeScript 5.8.3 compilation also passed.
+
+No full Angular build, real Windows Tauri runtime, native Rust execution or
+scientific ephemeris computation was performed in this validation.
+
 ## Checks actually run (Node 22.16.0 / TypeScript 5.8.3)
 
 ```sh
