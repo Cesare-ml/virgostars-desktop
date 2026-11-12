@@ -82,7 +82,7 @@ These are first **engineering hypotheses** to check on an ordinary supported Win
 
 ## Next coding slices, independent of real ephemeris readiness
 
-P0-IPC-1: Pure TypeScript `LatestRequestScheduler` with mock calculator and cancellation; tests for 10k clicks, release, switching chart and disposal.
+P0-IPC-1: **Implemented in source and isolated tests:** pure TypeScript [LatestCalculationScheduler](LATEST_CALCULATION_SCHEDULER.md) with a synthetic transport, one active + one latest pending request, session invalidation, response echo verification and 10,000-submission overload tests (10/10 passing). **No real Rust invocation or chart animation yet.**
 
 P0-IPC-2: Rust synthetic deterministic calculation command + bounded native worker (no fake "live chart" branding), versioned DTO and Windows IPC measurements.
 
