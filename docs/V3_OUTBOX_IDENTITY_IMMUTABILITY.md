@@ -233,6 +233,63 @@ trust model require separate immutability, per-account authorization,
 key custody, signature/receipt verification and migration review.
 This guard does not authenticate a server.
 
+## Immutable acknowledged receipts (v3)
+
+A final check of the existing v3 schema exposed a separate issue:
+`local_ack_ledger` could still be rewritten with `UPDATE`, deleted,
+or replaced by `INSERT OR REPLACE`. These operations were **actually
+reproduced** against the exact v3 SQL schema before the fix. This
+ledger remembers accepted mutation IDs and original request digests;
+removing or changing a receipt defeats replay/retirement tracking.
+
+Three additional **v3-only** SQL triggers now enforce:
+- `local_ack_ledger_v3_no_update`: no ACK row rewrites, including
+  fingerprint, revision, timestamp, subject and ownership.
+- `local_ack_ledger_v3_no_delete`: no ACK removal from the synthetic
+  archive.
+- `local_ack_ledger_v3_no_replace`: an INSERT that collides with an
+  existing `(profile_id, mutation_id)` is refused *before* SQLite
+  could perform destructive OR REPLACE, even when the new contents
+  happen to match the stored receipt.
+
+Fresh distinct ACKs still insert, and the same fictional mutation
+ID remains valid under a **different** fictional profile. These
+triggers only exist after the v2→v3 schema migration: v2 ledger
+behavior remains unchanged. ACK hashing remains a consistency check
+and **not proof of remote server authenticity**.
+
+`tests/sqlite-v3-ack-immutability.test.mjs` contains 12 independent
+fictional full-schema cases for UPDATE, DELETE, REPLACE, conflict
+UPSERT, fresh ACKs, per-profile isolation, v2-only compatibility,
+outbox reuse refusal and foreign-key integrity.
+
+**Actually executed locally:** all three prior immutable-queue/history
+Node reference suites (38 tests) plus the new ACK tests (12) on
+Node.js 22.16.0, totaling **50/50 PASS**. Every suite uses the actual
+versioned v1→v2→v3 SQLite SQL files, plaintext fictional records
+only. Byte-for-byte GitHub readback hashes:
+
+- **Current final v3 DDL**:
+  `6f6fb6581bcd92e8266bdf803ffedee2102d727b`
+- New 12-test ACK suite:
+  `4ab101a820447a7d7a2a3eafc6eda43855f162b5`
+- Prior full-schema request tests (17):
+  `ba74fcf74bfcb0d153c21e8f73b19577dfbf0176`
+- Prior outbox REPLACE/FIFO tests (13):
+  `5dd0d8a0a8c37f4c15c8526d114683eb4b915061`
+- Prior conflict-history REPLACE tests (8):
+  `c03f71336fe6fa53b604dc7eed3816b4e66e570f`
+
+A native Rust/SQLCipher unit test was **authored, NOT compiled or run**.
+The old native ACK-rewrite test was updated to expect a SQL error
+instead of assuming it could tamper with the ledger. The entire
+native suite still needs Windows Rust/SQLCipher validation.
+
+**Compatibility:** older synthetic v3 files with missing triggers
+are intentionally rejected by exact schema validation; no silent
+migration. An explicit reviewed, versioned migration and rollback
+plan is required before any eventual real-user release.
+
 ## Required review gates
 
 1. Consolidate stacked PRs and rerun **all** Node suites with the new
