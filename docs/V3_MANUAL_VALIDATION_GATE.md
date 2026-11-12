@@ -44,9 +44,18 @@ node tools/v3-sqlite-reference-gate.mjs
 The runner checks for exact repository paths to the three versioned SQL
 schema files and **all 11 mandatory v3 suites** before running anything.
 It also automatically includes future `sqlite-v3-*.test.mjs` suites.
-Missing files, a failed test, a truncated checkout or unsupported Node
-version cause a nonzero exit code. This is **reference-only** and is
-not a cryptographic validation.
+The runner executes every suite **in a separate Node test subprocess**
+and checks its TAP summary. It refuses a suite with no real test
+cases (Node 22 can otherwise report a zero-test file as a passing
+*file-level test*), any skipped/TODO/cancelled case, missing result
+counts, a test failure, a child timeout or a nonzero exit status.
+This ensures each of the 11 mandatory suites actually contributes
+passing tests, rather than trusting an aggregate exit code.
+
+Missing files, a failed or incomplete test, a truncated checkout or
+unsupported Node version cause a nonzero exit code. All child executions
+have a bounded timeout and output buffer. This is **reference-only**
+and is not a cryptographic validation.
 
 On Windows PowerShell, to run the complete native-gate command:
 
@@ -73,18 +82,21 @@ installer, modifies real data, deploys, merges or runs GitHub Actions.
 
 ## Actual validation performed in the authoring environment
 
-- Node.js 22.16.0: the new runner's **9/9 contract tests PASS**.
+- Node.js 22.16.0: the hardened runner's **14/14 contract tests PASS**.
   They cover mandatory discovery, missing SQL, missing suites, future
   suites, nonfile entries, Node version checks, real child test
-  invocation and intentional child failure propagation.
+  invocation, intentional failures, **empty test files, skipped/TODO
+  tests, partially skipped suites, and one empty mandatory suite**.
+  Empty-test files, skipped tests and TODOs were independently
+  reproduced with Node's TAP reporter before fixing the false PASS.
 - Earlier exact v3 SQLite request/queue/history/ACK suites were rerun
   against the matching local DDL and passed **50/50**.
 - The new three tracked files were verified **byte-for-byte** against
   their GitHub blobs:
   - `tools/v3-sqlite-reference-gate.mjs`:
-    `31ed194d2ec875bb600295c4191701614e77521d`
+    `b1bb9c85bdc3091e202ebb1f5b78e620973fdfcd`
   - `tests/v3-reference-gate.test.mjs`:
-    `bf27cf00d09ec5d1687b3d74b63d24a142d0ac2b`
+    `3bcc10d363d8ecd7fdeed663e6b452e7da0f71db`
   - `crates/encrypted-outbox-spike/validate-v3-windows.ps1`:
     `ca3131d4dd116ff2a14f8dd85cee69cf50ea2fa2`
 
