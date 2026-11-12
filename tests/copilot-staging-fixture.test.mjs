@@ -4,6 +4,8 @@ import { request } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createCopilotStagingFixture } from '../scripts/copilot-staging-fixture.mjs';
+import { requestCopilotPreview, COPILOT_PREVIEW_MESSAGE_PATH }
+  from '../src/app/copilot-preview-client.ts';
 
 const bearer = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJzeW50aGV0aWMifQ.LOCAL_UNSIGNED_FIXTURE';
 const basePath = '/api/v1/ai/copilot-preview';
@@ -56,6 +58,37 @@ test('all three synthetic focus requests return the expected bounded native enve
     assert.deepEqual(Object.keys(reply.data.chartCommands[0]), ['type', 'aspectIds']);
     assert.ok(reply.data.chartCommands[0].aspectIds.every(id => id.startsWith('synthetic:')));
   }
+});
+
+test('live loopback JSON is accepted by the actual Desktop TypeScript preview decoder', async t => {
+  const origin = await lab(t);
+  const calls = [];
+  const transport = {
+    async isAvailable() { return true; },
+    async postJson(path, body, signal) {
+      assert.equal(path, COPILOT_PREVIEW_MESSAGE_PATH);
+      calls.push({ path, body });
+      const response = await fetch(origin + path, withAuth({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+      }));
+      assert.equal(response.status, 200);
+      return response.json();
+    },
+  };
+  for (const focus of [{ layer: 'NATAL', bodyId: 'VENUS' },
+    { layer: 'NATAL', bodyId: 'SUN' }, { layer: 'TRANSIT', bodyId: 'SATURN' }]) {
+    const answer = await requestCopilotPreview(transport, focus, new AbortController().signal);
+    assert.equal(answer.synthetic, true);
+    assert.equal(answer.chartRevision, 1);
+    assert.deepEqual(answer.focus, focus);
+    assert.ok(answer.illustrativeAspectCount >= 1);
+    assert.match(answer.answer, /Synthetic fixture only/);
+  }
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(item => !('model' in item.body) && !('apiKey' in item.body)));
 });
 
 test('untrusted prompt fields, invalid focus and unsupported endpoints are rejected', async t => {
