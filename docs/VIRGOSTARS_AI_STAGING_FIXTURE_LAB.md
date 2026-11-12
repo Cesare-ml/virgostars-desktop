@@ -14,6 +14,8 @@ Equivalently use `node --experimental-strip-types --test tests/copilot-staging-f
 
 The fixture now adds `labSession` to both `GET /capabilities` and each successful `POST /message` response. Rust independently checks it on **each successful POST**, then removes it before forwarding the sanitized preview data into Angular. The two-instance HTTP test asserts the POST responses contain their *respective* fixture IDs. This identity extension is confined to the synthetic lab; the real staging API does not need it and does not perform local fixture token equality checks.
 
+**Executed validation, 2026-11-12:** all **9/9 real HTTP tests passed** under Node.js v22.16.0 in an isolated workspace. The exact copied fixture source, actual Desktop TypeScript client, and tests all matched GitHub's blob SHA IDs (`d9d69461722c36110500d636288267c06256cc9e`, `b8fe0fb614f4238f27e4375810cd6a95fafa9b35`, `efd210e3a04cae40377bffd4f6ed2c0903766cf2`). This verifies the current committed HTTP fixture and client, not any Windows native integration, full `npm test` suite, or real JWT backend.
+
 The tests open a **random ephemeral port on literal `127.0.0.1`** and close it afterwards. They cover:
 - GET `/api/v1/ai/copilot-preview/capabilities` with and without the synthetic test bearer.
 - POST `/api/v1/ai/copilot-preview/message` for NATAL:VENUS, NATAL:SUN, TRANSIT:SATURN and the required synthetic FACT_ONLY envelope.
