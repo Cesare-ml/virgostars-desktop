@@ -92,7 +92,7 @@
     <button type="button" (click)="preview()">{{t('natal.preview')}}</button>
     <button type="button" class="draft-secondary" (click)="clear()">{{t('natal.reset')}}</button>
   </div>
-  <div class="draft-preview" *ngIf="draft.preview as p" role="status">
+  <div class="draft-preview" *ngIf="currentPreview as p" role="status">
     <strong>{{t('natal.preview.title')}}</strong>
     <p>{{p.name}}</p>
     <p>{{p.civil.year}}-{{p.civil.month}}-{{p.civil.day}}
@@ -101,7 +101,7 @@
     </p>
     <p>{{p.place.name}} · {{p.place.countryName || p.place.region || t('city.region.unknown')}}</p>
     <p>{{t('natal.utc.unresolved')}}</p>
-    <div class="timezone-preview" *ngIf="timeResult as z">
+    <div class="timezone-preview" *ngIf="currentTimeResult as z">
       <p>{{t('natal.tzdb.version')}}: {{z.tzdbVersion}} · {{p.place.timeZone}}</p>
       <p *ngIf="z.status==='nonexistent'" class="timezone-warning" role="alert">
         {{t('natal.utc.gap')}}
