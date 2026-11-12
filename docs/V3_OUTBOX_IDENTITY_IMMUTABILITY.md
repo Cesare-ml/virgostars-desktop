@@ -191,6 +191,48 @@ v3 encrypted archives must fail closed until a reviewed explicit
 versioned migration or test-fixture recreation exists; never
 silently rewrite or open real customer databases with this prototype.
 
+## Immutable history and SQLite REPLACE semantics
+
+The prior v3 history triggers reject direct `UPDATE` and `DELETE`
+against `local_conflict_decisions`, but SQLite's default
+`recursive_triggers=OFF` means an `INSERT OR REPLACE` can delete a
+conflicting history row **without firing the DELETE trigger**. This
+was reproduced against the actual fictional v3 schema: a replacement
+changed an archived fingerprint and remote revision while preserving
+SQL constraints.
+
+The additional `local_conflict_decisions_no_replace` **BEFORE INSERT**
+trigger rejects collisions on either the
+`(profile_id,original_mutation_id)` key or the
+`(profile_id,replacement_mutation_id)` unique key. Genuine new,
+nonconflicting decisions still insert, including the same fictional
+IDs under different profiles.
+
+Eight further full-schema Node SQLite regressions passed **8/8**,
+covering replacement by original and replacement keys, changed
+fingerprints/revisions, identical replay, authorized new history
+records, profile isolation, retained UPDATE/DELETE protections and
+foreign-key integrity.
+
+The current synthetic v3 source was tested together with the
+13 queued-REPLACE/FIFO tests and the earlier 17 snapshot tests:
+**38/38 PASS** (Node.js 22.16.0, plaintext SQLite reference).
+The exact GitHub blob hashes match the locally tested sources:
+
+- Current v3 DDL: `1f86d878ffb6f36349f9de4dfa009d5d441bff4b`
+- Decision-history regression: `c03f71336fe6fa53b604dc7eed3816b4e66e570f`
+- Queue-replacement/FIFO regression: `5dd0d8a0a8c37f4c15c8526d114683eb4b915061`
+
+The native Rust history-replacement test is written but **has not
+been compiled or executed**. The current schema hash supersedes all
+earlier v3 hashes in this document. Any older synthetic v3 file
+must fail strict schema checks until explicitly recreated or migrated.
+
+**Still not production-ready:** the synthetic ACK ledger and receipt
+trust model require separate immutability, per-account authorization,
+key custody, signature/receipt verification and migration review.
+This guard does not authenticate a server.
+
 ## Required review gates
 
 1. Consolidate stacked PRs and rerun **all** Node suites with the new
