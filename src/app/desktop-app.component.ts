@@ -288,7 +288,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async askCopilotPreview(): Promise<void> {
     // This preview never sends a real chart, birth data, notes or arbitrary prompts.
     // Without the optional native authenticated transport the button stays disabled.
-    if (this.destroyed || this.copilotTransport === null || !this.copilotConnected) return;
+    if (this.destroyed || this.copilotTransport === null || !this.copilotConnected
+      || this.copilotBusy || this.copilotProbeBusy) return;
     this.invalidateCopilotRequest();
     const ticket = this.copilotRequestRevision;
     const controller = new AbortController();
@@ -307,9 +308,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.copilotStatus = 'ai.preview.synthetic';
     } catch (error: unknown) {
       if (!this.destroyed && ticket === this.copilotRequestRevision) {
-        this.copilotStatus = error instanceof Error && error.message === 'copilot_preview_busy'
-          ? 'ai.preview.busy'
-          : 'ai.preview.error';
+        // Only the small set of sanitized native error codes may affect the UI.
+        // A revoked/expired synthetic JWT invalidates the previous readiness
+        // check, so a stale green connection indicator must never persist.
+        const code = error instanceof Error ? error.message : '';
+        if (code === 'copilot_preview_authorization_required') {
+          this.copilotPreviewReady = false;
+          this.copilotStatus = 'ai.preview.auth_required';
+        } else if (code === 'copilot_preview_rate_limited') {
+          this.copilotStatus = 'ai.preview.rate_limited';
+        } else if (code === 'copilot_preview_busy') {
+          this.copilotStatus = 'ai.preview.busy';
+        } else {
+          this.copilotStatus = 'ai.preview.error';
+        }
       }
     } finally {
       if (!this.destroyed && ticket === this.copilotRequestRevision) {
