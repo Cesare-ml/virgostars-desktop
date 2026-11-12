@@ -202,6 +202,24 @@ test('native single-flight busy gets one safe status but arbitrary IPC errors st
   );
 });
 
+test('only exact native authorization and quota codes are classified for the UI', async () => {
+  for (const [nativeCode, expected] of [
+    ['copilot_staging_not_authorized', 'copilot_preview_authorization_required'],
+    ['copilot_staging_rate_limited', 'copilot_preview_rate_limited'],
+    ['copilot_staging_not_authorized SECRET_TOKEN', 'copilot_preview_native_unavailable'],
+    ['copilot_staging_rate_limited with private IP', 'copilot_preview_native_unavailable'],
+  ]) {
+    const transport = createNativeCopilotStagingTransport({
+      isNative: () => true,
+      async invoke() { throw nativeCode; },
+    });
+    await assert.rejects(
+      transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+      error => error instanceof Error && error.message === expected,
+    );
+  }
+});
+
 test('native failure is sanitized; no environment, token or service details reach UI', async () => {
   const transport = createNativeCopilotStagingTransport({
     isNative: () => true,
@@ -260,9 +278,19 @@ test('release builds omit the staging command; Angular development-only wiring',
   assert.match(component, /await this\.copilotTransport\.isAvailable\(\)/);
   assert.match(component, /this\.copilotPreviewReady = available === true/);
   assert.match(component, /recheckCopilotPreview\(\): void/);
+  assert.match(component, /this\.copilotPreviewReady = false;/);
+  assert.match(component, /code === 'copilot_preview_authorization_required'/);
+  assert.match(component, /code === 'copilot_preview_rate_limited'/);
+  assert.match(component, /this\.copilotStatus = 'ai\.preview\.auth_required'/);
+  assert.match(component, /this\.copilotStatus = 'ai\.preview\.rate_limited'/);
+  assert.match(component, /\|\| this\.copilotBusy \|\| this\.copilotProbeBusy\) return;/);
   assert.match(component, /'copilot_preview_busy'/);
   const translations = read('src/app/translations.ts');
   assert.match(translations, /"ai\.preview\.busy":/);
+  assert.equal((translations.match(/"ai\.preview\.auth_required":/g) || []).length, 2);
+  assert.equal((translations.match(/"ai\.preview\.rate_limited":/g) || []).length, 2);
+  assert.equal((translations.match(/"ai\.preview\.selection":/g) || []).length, 2);
+  assert.match(template, /t\('ai\.preview\.selection'\)/);
   assert.match(component, /this\.copilotProbeBusy = true/);
   const template = read('src/app/desktop-app.component.html');
   assert.match(template, /\(click\)="recheckCopilotPreview\(\)"/);
