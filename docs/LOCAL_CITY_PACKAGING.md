@@ -1,6 +1,6 @@
 # Catalogo offline di città e stati
 
-**Stato: prototipo locale.** Il convertitore importa i CSV forniti dal proprietario in SQLite/FTS5, senza contattare PostgreSQL o servizi remoti. La ricerca nativa e il selettore in Parametri sono sperimentali. La scelta è temporanea e non modifica il grafico dimostrativo.
+**Stato: prototipo, catalogo condiviso nella release privata.** Il convertitore importa i CSV forniti dal proprietario in SQLite/FTS5, senza contattare PostgreSQL o servizi remoti. La ricerca nativa e il selettore in Parametri sono sperimentali. La scelta è temporanea e non modifica il grafico dimostrativo.
 
 ## Compilare con il catalogo completo
 
@@ -17,12 +17,11 @@ npm ci
 npm run build:library
 npm run demo:pack
 cd ../virgostars-desktop
-git switch --track origin/codex/offline-places-distribution
 npm ci
 npm run tauri:build:places:windows
 ```
 
-Queste istruzioni usano il branch della pull request finché non viene integrato nel ramo principale. Se il pack sintetico Charts è già stato generato, seguire [Shell 001](SHELL-001.md) per riutilizzarlo senza sovrascriverlo.
+Se il pack sintetico Charts è già stato generato, seguire [Shell 001](SHELL-001.md) per riutilizzarlo senza sovrascriverlo.
 
 Il comando scarica il catalogo autorizzato, genera l'overlay, compila il frontend e crea gli installer. Il database si conserva in `.local/places` e viene incluso come risorsa offline; la normale `npm run tauri:build` resta la build sintetica senza catalogo. Su macOS, con gli stessi prerequisiti della piattaforma, eseguire `python3 scripts/places/fetch_catalog.py`, `python3 scripts/places/prepare_tauri_bundle.py`, `npm run build:ui`, `npm run prepare:icon` e `npx tauri build --config .local/places/tauri-places.conf.json`; il percorso macOS non è stato verificato. L’accesso alla release privata richiede i permessi del repository e non equivale a disponibilità pubblica.
 
@@ -45,4 +44,4 @@ Il normale prototipo senza overlay non contiene il database. `.local/` è esclus
 
 Vedere [ricerca nativa](NATIVE_OFFLINE_PLACES.md) e [associazione stati](OWNED_COUNTRY_LOOKUP.md).
 
-In questa verifica locale il catalogo completo è stato creato in `.local/places/world-cities.sqlite` e copiato con verifica SHA-256 in `src-tauri/target/debug/places/world-cities.sqlite` accanto all’eseguibile di prova. La disponibilità della risorsa in una build di sviluppo non prova il funzionamento dell’installer né il comportamento WebView2.
+I test locali hanno verificato checksum ed estrazione del pacchetto completo, e compilato installer di prova Windows. Download autenticato su un altro computer, installazione e comportamento WebView2 restano da verificare.

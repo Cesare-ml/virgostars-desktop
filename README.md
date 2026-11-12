@@ -6,6 +6,9 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 ## Current state (2026-11-10)
 
+**Windows first launch (maintainer smoke test):** an experimental Tauri `.exe` has been built and opened on Windows 11, Angular renders synthetic chart data, and the local native runtime probe responds. **The visual interface is still substantially unstyled with a tiny chart.** This is NOT yet a usable beta. See [Windows GUI Smoke](docs/WINDOWS_GUI_SMOKE_2026-11-10.md) for CSS triage and the new `npm run verify:css` build-artifact check.
+
+
 - **Experimental desktop-owned Angular shell:** source now contains an Angular 20 application with a real astrological-charts renderer adapter, chart-first layout, collapsible navigation/inspector, light/dark themes, IT/EN labels, responsive sizing and PNG export paths. Synthetic assets are staged for Tauri 2 offline testing. **It has not been compiled or validated on Windows**; account login, sync, SQLite and real astronomy integration do not exist. See [Shell 001](docs/SHELL-001.md), [Spike 001](docs/SPIKE-001.md), [Native Runtime Bridge](docs/NATIVE_RUNTIME_BRIDGE.md) and [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md).
 - **Proposed stack:** Tauri 2, Angular/TypeScript, Rust and a local SQLite database, subject to an architecture spike.
 - **Windows first, macOS later:** no Windows-specific application logic in cross-platform modules.

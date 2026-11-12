@@ -1,6 +1,6 @@
 # Shell 001 — Angular chart-first desktop UI
 
-**Status: Source implementation in a draft PR; Windows build NOT verified (2026-11-10).**
+**Status (2026-11-10): A maintainer has compiled and launched a Windows Tauri .exe with synthetic chart rendering and native IPC. However, global/Angular component styles do not appear to be applied in the observed UI, so the chart-first visual acceptance gate remains FAILED/pending. See [Windows GUI Smoke](WINDOWS_GUI_SMOKE_2026-11-10.md).**
 
 ## Scope
 
