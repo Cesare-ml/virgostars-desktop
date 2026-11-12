@@ -160,7 +160,7 @@ Push-Location $root
 try {
     # No secret exists during the complete dependency/build/test preflight.
     Invoke-Checked 'Windows environment doctor' 'node' @('scripts/desktop-doctor.mjs', '--stage=setup', '--strict')
-    Invoke-Checked 'Real loopback fixture + TypeScript decoder tests' 'npm.cmd' @('run', 'test:ai:fixture')
+    Invoke-Checked 'Complete AI bridge isolated smoke (native adapter, HTTP, decoder, lab)' 'npm.cmd' @('run', 'test:ai:smoke')
     Invoke-Checked 'Complete Node and TypeScript test suite' 'npm.cmd' @('test')
     Invoke-Checked 'Strict TypeScript AI IPC contract' 'npm.cmd' @('run', 'test:ai:types')
     Invoke-Checked 'Angular/Charts build prerequisites' 'npm.cmd' @('run', 'doctor:build')
