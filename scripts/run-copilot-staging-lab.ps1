@@ -198,12 +198,26 @@ try {
     $capabilities = Wait-ForHttp -Url "$backend/api/v1/ai/copilot-preview/capabilities" -ExpectJson -Headers @{
         Authorization = "Bearer $testBearer"
     }
+    # Match the exact Rust staging allowlist; fail closed on a partial/mock
+    # contract, extra action, missing planet or wrong test instance.
+    $actions = @($capabilities.actions)
+    $focusOptions = @($capabilities.focusOptions)
+    $expectedFocus = @('NATAL:VENUS', 'NATAL:SUN', 'TRANSIT:SATURN')
     if ($capabilities.labSession -cne $labSession -or
-        $capabilities.contract -ne 'VirgoStarsCopilotPreviewCapabilities' -or
-        $capabilities.stage -ne 'STAGING_SYNTHETIC' -or
-        $capabilities.providerEnabled -ne $false -or
-        $capabilities.modelSelectorAvailable -ne $false) {
+        $capabilities.contract -cne 'VirgoStarsCopilotPreviewCapabilities' -or
+        $capabilities.version -cne '0.1.0' -or
+        $capabilities.stage -cne 'STAGING_SYNTHETIC' -or
+        $capabilities.enabled -cne $true -or
+        $capabilities.providerEnabled -cne $false -or
+        $capabilities.modelSelectorAvailable -cne $false -or
+        $actions.Count -ne 1 -or $actions[0] -cne 'describe_focus' -or
+        $focusOptions.Count -ne 3) {
         throw 'Unexpected local capabilities response; refusing to start Tauri.'
+    }
+    foreach ($focusName in $expectedFocus) {
+        if (-not ($focusOptions -ccontains $focusName)) {
+            throw 'Unexpected local capabilities focus options; refusing to start Tauri.'
+        }
     }
     Write-Host 'Synthetic local capabilities verified. Opening Tauri DEBUG (copilot-staging).'
     Write-Host 'Close the Tauri window to shut down the test processes.'
