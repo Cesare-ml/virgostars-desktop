@@ -476,6 +476,42 @@ mod tests {
     }
 
     #[test]
+    fn v3_decision_history_rejects_insert_or_replace_rewrite() {
+        let (_dir, _path, mut store, _, original_hash) = setup();
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a","synthetic-old","synthetic-next",&original_hash,
+            "2026-11-11T21:30:00Z",false,
+        ).unwrap();
+        let before: (String, String) = store.conn.query_row(
+            "SELECT original_fingerprint,remote_revision
+             FROM local_conflict_decisions
+             WHERE profile_id='synthetic-a' AND original_mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        // REPLACE can delete the old row without firing its DELETE
+        // trigger under default SQLite recursive_triggers=OFF.
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_conflict_decisions(
+                 profile_id,original_mutation_id,original_fingerprint,
+                 entity_type,entity_id,original_operation,original_payload_json,
+                 original_created_at_utc,replacement_mutation_id,remote_revision,
+                 choice,decided_at_utc)
+             VALUES ('synthetic-a','synthetic-old',?1,'subject','synthetic-e1',
+                     'upsert','{\"label\":\"Fictional\"}',?2,'synthetic-next',
+                     'rev-forged','keep_local','2026-11-11T21:30:00Z')",
+            params!["b".repeat(64), crate::FIXTURE_TIME],
+        ).is_err());
+        let after: (String, String) = store.conn.query_row(
+            "SELECT original_fingerprint,remote_revision
+             FROM local_conflict_decisions
+             WHERE profile_id='synthetic-a' AND original_mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(after,before);
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
+    }
+
+    #[test]
     fn an_ack_and_pending_row_with_same_id_are_rejected() {
         let (_dir, _path, mut store, _, _) = setup();
         store.conn.execute(
