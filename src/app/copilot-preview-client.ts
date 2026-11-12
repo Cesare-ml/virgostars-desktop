@@ -18,6 +18,8 @@ export interface VirgoStarsCopilotPreviewTransport {
    * Not a production account session, PKCE login, or a real-chart permission.
    */
   isAvailable(): Promise<boolean>;
+  /** Optional debug transport state: UI abort does not cancel native HTTP. */
+  isPreviewPending?(): boolean;
   /** Must use ONLY the authenticated Virgo Stars backend and protected native token storage. */
   postJson(path: typeof COPILOT_PREVIEW_MESSAGE_PATH, body: Readonly<{
     action: 'describe_focus';
