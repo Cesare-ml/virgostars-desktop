@@ -1,4 +1,10 @@
-import {gregorianDaysInMonth} from './natal-draft-state';
+/** Gregorian days via UTC calendar; independent of the natal draft and host timezone. */
+function gregorianDaysInMonth(year:number, month:number): number {
+  const d=new Date(0);
+  d.setUTCFullYear(year,month,0);
+  d.setUTCHours(0,0,0,0);
+  return d.getUTCDate();
+}
 
 export type CorrectionField = 'year' | 'month' | 'day' | 'hour' | 'minute';
 export type CorrectionDirection = -1 | 1;
