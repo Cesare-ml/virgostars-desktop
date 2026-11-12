@@ -35,9 +35,83 @@ WHEN EXISTS(SELECT 1 FROM local_ack_ledger a
             WHERE d.profile_id=NEW.profile_id
               AND (d.original_mutation_id=NEW.mutation_id
                    OR d.replacement_mutation_id=NEW.mutation_id))
+  -- BEFORE INSERT fires even for INSERT OR REPLACE; reject a collision
+  -- with a queued ID or an explicit INTEGER PRIMARY KEY / rowid position.
+  -- Otherwise REPLACE deletes the old row and bypasses UPDATE triggers.
+  OR EXISTS(SELECT 1 FROM local_outbox q
+            WHERE (q.profile_id=NEW.profile_id AND q.mutation_id=NEW.mutation_id)
+               OR q.sequence=NEW.sequence)
 BEGIN
   SELECT RAISE(ABORT,'already used mutation id');
 END;
+-- Explicit rowids can recycle an already deleted AUTOINCREMENT sequence,
+-- making keyset pages miss a newly queued intent. At AFTER INSERT time
+-- sqlite_sequence still stores the prior high-water mark; reject nonpositive
+-- or non-increasing numbers. The insertion is atomically rolled back.
+CREATE TRIGGER local_outbox_v3_fifo_must_advance
+AFTER INSERT ON local_outbox
+WHEN NEW.sequence <= 0 OR NEW.sequence <= COALESCE(
+  (SELECT seq FROM sqlite_sequence WHERE name='local_outbox'), 0)
+BEGIN
+  SELECT RAISE(ABORT,'queued FIFO sequence must advance');
+END;
+-- Queued request identity is immutable. The existing INSERT trigger does not
+-- intercept UPDATE mutations, so without this guard a caller could rename an
+-- existing queued ID to an ACKed/retired ID or move it between entities.
+-- State and remote conflict-revision updates remain legal; the v3 writer
+-- retires an old request with DELETE and creates a replacement with INSERT.
+CREATE TRIGGER local_outbox_v3_identity_immutable
+BEFORE UPDATE ON local_outbox
+WHEN NEW.sequence IS NOT OLD.sequence
+  OR NEW.profile_id <> OLD.profile_id
+  OR NEW.mutation_id <> OLD.mutation_id
+  OR NEW.entity_type <> OLD.entity_type
+  OR NEW.entity_id <> OLD.entity_id
+BEGIN
+  SELECT RAISE(ABORT,'queued mutation identity is immutable');
+END;
+-- A queued request is an immutable intent, even if a caller uses raw SQL.
+-- Use SQLite's NULL-safe IS NOT so that initial NULL base revisions and
+-- deletion payloads cannot be silently rewritten after staging.
+-- Only state / conflict_server_revision may transition in place; an edit
+-- must stage a NEW mutation and a keep-local decision must DELETE + INSERT.
+CREATE TRIGGER local_outbox_v3_request_snapshot_immutable
+BEFORE UPDATE OF operation,payload_json,base_server_revision,created_at_utc ON local_outbox
+WHEN NEW.operation IS NOT OLD.operation
+  OR NEW.payload_json IS NOT OLD.payload_json
+  OR NEW.base_server_revision IS NOT OLD.base_server_revision
+  OR NEW.created_at_utc IS NOT OLD.created_at_utc
+BEGIN
+  SELECT RAISE(ABORT,'queued mutation request is immutable');
+END;
+-- REPLACE can DELETE a conflicting row without firing DELETE triggers when
+-- recursive_triggers is disabled (the SQLite default). Prevent overwrite of
+-- either immutable uniqueness key before a replacement can occur.
+CREATE TRIGGER local_conflict_decisions_no_replace
+BEFORE INSERT ON local_conflict_decisions
+WHEN EXISTS(SELECT 1 FROM local_conflict_decisions d
+            WHERE d.profile_id=NEW.profile_id
+              AND (d.original_mutation_id=NEW.original_mutation_id
+                   OR d.replacement_mutation_id=NEW.replacement_mutation_id))
+BEGIN
+  SELECT RAISE(ABORT,'conflict decision history is immutable');
+END;
+-- An acknowledged mutation ID is a durable replay/retirement receipt.
+-- V3 has no legitimate ledger rewrite or purge API: tampering here can
+-- resurrect an already accepted ID or falsify a stored ACK fingerprint.
+CREATE TRIGGER local_ack_ledger_v3_no_update
+BEFORE UPDATE ON local_ack_ledger
+BEGIN SELECT RAISE(ABORT,'acknowledgement ledger is immutable'); END;
+CREATE TRIGGER local_ack_ledger_v3_no_delete
+BEFORE DELETE ON local_ack_ledger
+BEGIN SELECT RAISE(ABORT,'acknowledgement ledger is immutable'); END;
+-- SQLite REPLACE may delete the old row without running a DELETE trigger
+-- when recursive_triggers=OFF, so reject the collision before INSERT.
+CREATE TRIGGER local_ack_ledger_v3_no_replace
+BEFORE INSERT ON local_ack_ledger
+WHEN EXISTS(SELECT 1 FROM local_ack_ledger a
+            WHERE a.profile_id=NEW.profile_id AND a.mutation_id=NEW.mutation_id)
+BEGIN SELECT RAISE(ABORT,'acknowledgement ledger is immutable'); END;
 -- A user's recorded decision is audit history, not a mutable queue row.
 CREATE TRIGGER local_conflict_decisions_no_update
 BEFORE UPDATE ON local_conflict_decisions

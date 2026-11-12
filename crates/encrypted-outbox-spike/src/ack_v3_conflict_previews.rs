@@ -371,13 +371,14 @@ mod tests {
     }
 
     #[test]
-    fn corrupted_fictional_payload_fails_closed() {
+    fn v3_sql_prevents_tampering_with_queued_fictional_payload() {
         let (_dir,_path,mut store,_) = setup();
-        store.conn.execute(
+        assert!(store.conn.execute(
             "UPDATE local_outbox SET payload_json='{\"angle\":1.5}'
              WHERE mutation_id='synthetic-m1'", [],
-        ).unwrap();
-        assert!(store.list_synthetic_v3_conflict_previews("synthetic-a",10).is_err());
+        ).is_err());
+        assert_eq!(store.list_synthetic_v3_conflict_previews("synthetic-a",10)
+            .unwrap().len(),1);
     }
 
     #[test]

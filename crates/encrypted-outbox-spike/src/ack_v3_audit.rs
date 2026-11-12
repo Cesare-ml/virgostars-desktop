@@ -368,13 +368,147 @@ mod tests {
     }
 
     #[test]
-    fn invalid_queued_payload_is_rejected_even_if_json_check_passes() {
+    fn v3_sql_refuses_noncanonical_rewrite_of_queued_request() {
         let (_dir, _path, mut store, _, _) = setup();
-        store.conn.execute(
+        assert!(store.conn.execute(
             "UPDATE local_outbox SET payload_json='{\"position\":12.5}'",
             [],
+        ).is_err());
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
+    }
+
+    #[test]
+    fn v3_sql_immutably_preserves_queued_request_fields_and_fifo_position() {
+        let (_dir, _path, mut store, _, _) = setup();
+        for sql in [
+            "UPDATE local_outbox SET operation='delete',payload_json=NULL",
+            "UPDATE local_outbox SET base_server_revision='rev-forged'",
+            "UPDATE local_outbox SET created_at_utc='2026-11-11T21:31:00Z'",
+            "UPDATE local_outbox SET sequence=sequence+100",
+            "UPDATE local_outbox SET rowid=rowid+100",
+            "UPDATE local_outbox SET _rowid_=_rowid_+100",
+            "UPDATE local_outbox SET oid=oid+100",
+            "UPDATE local_outbox SET payload_json='{\"label\":\"Other\"}'",
+        ] {
+            assert!(store.conn.execute(sql, []).is_err());
+        }
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
+    }
+
+    #[test]
+    fn v3_insert_or_replace_cannot_rewrite_active_mutation_or_fifo_sequence() {
+        let (_dir, _path, mut store, _, _) = setup();
+        let before: (i64, String, String) = store.conn.query_row(
+            "SELECT sequence,mutation_id,payload_json FROM local_outbox
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
         ).unwrap();
-        assert!(store.audit_synthetic_v3_readonly().is_err());
+
+        // A SQLite REPLACE deletes conflicting rows and re-inserts.
+        // UPDATE-immutability triggers alone never see that deletion.
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_outbox(
+                profile_id,mutation_id,entity_type,entity_id,operation,
+                payload_json,created_at_utc)
+             VALUES ('synthetic-a','synthetic-old','subject','synthetic-e1',
+                     'upsert','{\"label\":\"Forged\"}','2026-11-10T19:00:00Z')",
+            [],
+        ).is_err());
+        // A new mutation ID with an explicit colliding sequence/rowid
+        // must not replace the original FIFO position either.
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_outbox(
+                sequence,profile_id,mutation_id,entity_type,entity_id,
+                operation,payload_json,created_at_utc)
+             VALUES (?1,'synthetic-a','synthetic-other','subject','synthetic-e1',
+                     'upsert','{\"label\":\"Forged\"}','2026-11-10T19:00:00Z')",
+            params![before.0],
+        ).is_err());
+
+        let after: (i64, String, String) = store.conn.query_row(
+            "SELECT sequence,mutation_id,payload_json FROM local_outbox
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+        ).unwrap();
+        assert_eq!(after,before);
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
+    }
+
+    #[test]
+    fn v3_fifo_sequence_cannot_be_recycled_after_delete() {
+        let (_dir, _path, mut store, _, _) = setup();
+        let original_sequence: i64 = store.conn.query_row(
+            "SELECT sequence FROM local_outbox
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-old'",
+            [], |r| r.get(0),
+        ).unwrap();
+        store.conn.execute(
+            "DELETE FROM local_outbox WHERE profile_id='synthetic-a'
+             AND mutation_id='synthetic-old'", [],
+        ).unwrap();
+        // An explicit rowid from a deleted mutation would cause a keyset
+        // page cursor to skip the new mutation. The v3 AFTER INSERT guard
+        // compares against sqlite_sequence's retained high-water mark.
+        assert!(store.conn.execute(
+            "INSERT INTO local_outbox(
+                 sequence,profile_id,mutation_id,entity_type,entity_id,
+                 operation,payload_json,created_at_utc)
+             VALUES (?1,'synthetic-a','synthetic-recycled','subject',
+                     'synthetic-e1','upsert','{\"label\":\"Fictional\"}',
+                     '2026-11-11T21:30:00Z')",
+            params![original_sequence],
+        ).is_err());
+        assert!(store.conn.execute(
+            "INSERT INTO local_outbox(
+                 profile_id,mutation_id,entity_type,entity_id,
+                 operation,payload_json,created_at_utc)
+             VALUES ('synthetic-a','synthetic-fresh','subject',
+                     'synthetic-e1','upsert','{\"label\":\"Fictional\"}',
+                     '2026-11-11T21:30:00Z')",
+            [],
+        ).is_ok());
+        let new_sequence: i64 = store.conn.query_row(
+            "SELECT sequence FROM local_outbox
+             WHERE mutation_id='synthetic-fresh'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert!(new_sequence > original_sequence);
+    }
+
+    #[test]
+    fn v3_decision_history_rejects_insert_or_replace_rewrite() {
+        let (_dir, _path, mut store, _, original_hash) = setup();
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a","synthetic-old","synthetic-next",&original_hash,
+            "2026-11-11T21:30:00Z",false,
+        ).unwrap();
+        let before: (String, String) = store.conn.query_row(
+            "SELECT original_fingerprint,remote_revision
+             FROM local_conflict_decisions
+             WHERE profile_id='synthetic-a' AND original_mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        // REPLACE can delete the old row without firing its DELETE
+        // trigger under default SQLite recursive_triggers=OFF.
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_conflict_decisions(
+                 profile_id,original_mutation_id,original_fingerprint,
+                 entity_type,entity_id,original_operation,original_payload_json,
+                 original_created_at_utc,replacement_mutation_id,remote_revision,
+                 choice,decided_at_utc)
+             VALUES ('synthetic-a','synthetic-old',?1,'subject','synthetic-e1',
+                     'upsert','{\"label\":\"Fictional\"}',?2,'synthetic-next',
+                     'rev-forged','keep_local','2026-11-11T21:30:00Z')",
+            params!["b".repeat(64), crate::FIXTURE_TIME],
+        ).is_err());
+        let after: (String, String) = store.conn.query_row(
+            "SELECT original_fingerprint,remote_revision
+             FROM local_conflict_decisions
+             WHERE profile_id='synthetic-a' AND original_mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(after,before);
+        assert!(store.audit_synthetic_v3_readonly().is_ok());
     }
 
     #[test]
@@ -461,12 +595,18 @@ mod tests {
                 outbox_rows:0,acknowledgements:1,decision_rows:1
             }
         );
-        store.conn.execute(
+        assert!(store.conn.execute(
             "UPDATE local_ack_ledger SET request_fingerprint=?1
              WHERE mutation_id='synthetic-new'",
             params!["a".repeat(64)],
-        ).unwrap();
-        assert!(store.audit_synthetic_v3_readonly().is_err());
+        ).is_err());
+        // SQL rejects the rewrite before the semantic audit sees it.
+        assert_eq!(
+            store.audit_synthetic_v3_readonly().unwrap(),
+            SyntheticV3AuditSummary {
+                outbox_rows:0,acknowledgements:1,decision_rows:1
+            }
+        );
     }
 
     #[test]
@@ -518,6 +658,85 @@ mod tests {
             [],
         ).unwrap();
         assert!(store.audit_synthetic_v3_readonly().is_err());
+    }
+
+    #[test]
+    fn v3_trigger_rejects_mutation_identity_rewrite_but_allows_conflict_state_transition() {
+        let (_dir, _path, mut store, _, _) = setup();
+        // Without the v3 UPDATE trigger a raw SQL rename could resurrect
+        // an already ACKed or retired ID despite the existing INSERT guard.
+        assert!(store.conn.execute(
+            "UPDATE local_outbox SET mutation_id='synthetic-reused'
+             WHERE mutation_id='synthetic-old'", [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "UPDATE local_outbox SET profile_id='synthetic-other'
+             WHERE mutation_id='synthetic-old'", [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "UPDATE local_outbox SET entity_id='synthetic-other'
+             WHERE mutation_id='synthetic-old'", [],
+        ).is_err());
+        let advanced = store.conn.execute(
+            "UPDATE local_outbox
+             SET state='pending', conflict_server_revision=NULL
+             WHERE mutation_id='synthetic-old'", [],
+        ).unwrap();
+        assert_eq!(advanced, 1);
+        let current: (String, String, String, Option<String>) = store.conn.query_row(
+            "SELECT mutation_id,profile_id,state,conflict_server_revision
+             FROM local_outbox WHERE mutation_id='synthetic-old'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
+        ).unwrap();
+        assert_eq!(current, (
+            "synthetic-old".to_owned(), "synthetic-a".to_owned(),
+            "pending".to_owned(), None,
+        ));
+    }
+
+    #[test]
+    fn v3_ack_ledger_rejects_update_delete_and_replace() {
+        let (_dir, _path, mut store, _, _) = setup();
+        store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                result,server_revision,acknowledged_at_utc)
+             VALUES ('synthetic-a','synthetic-acked','subject','synthetic-e1',
+                     ?1,'accepted','rev-one','2026-11-11T21:30:00Z')",
+            params!["a".repeat(64)],
+        ).unwrap();
+
+        assert!(store.conn.execute(
+            "UPDATE local_ack_ledger SET server_revision='rev-forged'
+             WHERE mutation_id='synthetic-acked'", [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "DELETE FROM local_ack_ledger WHERE mutation_id='synthetic-acked'",
+            [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_ack_ledger(
+                 profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                 result,server_revision,acknowledged_at_utc)
+             VALUES ('synthetic-a','synthetic-acked','subject','synthetic-e1',
+                     ?1,'accepted','rev-forged','2026-11-11T21:30:00Z')",
+            params!["b".repeat(64)],
+        ).is_err());
+
+        let stored: (String, String) = store.conn.query_row(
+            "SELECT request_fingerprint,server_revision FROM local_ack_ledger
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-acked'",
+            [], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!(stored, ("a".repeat(64), "rev-one".into()));
+        assert!(store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                 profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                 result,server_revision,acknowledged_at_utc)
+             VALUES ('synthetic-a','synthetic-ack-next','subject','synthetic-e1',
+                     ?1,'accepted','rev-two','2026-11-11T21:30:00Z')",
+            params!["c".repeat(64)],
+        ).is_ok());
     }
 
     #[test]

@@ -1,0 +1,19 @@
+{
+  "format": "virgostars-v3-reference-git-blobs-v1",
+  "files": {
+    "contracts/sqlite/0001_local_outbox.sql": "013b80914fb2fc1bbb66ff266e7f7a069b96e794",
+    "contracts/sqlite/0002_ack_ledger.sql": "306e343ff3f8e3e9637ee4111379ea5b8527c699",
+    "contracts/sqlite/0003_conflict_decisions.sql": "6f6fb6581bcd92e8266bdf803ffedee2102d727b",
+    "tests/sqlite-v3-ack-immutability.test.mjs": "4ab101a820447a7d7a2a3eafc6eda43855f162b5",
+    "tests/sqlite-v3-conflict-previews.test.mjs": "0693d5e84877dc9c70beaccd5c9d5f9514843cac",
+    "tests/sqlite-v3-history-no-replace.test.mjs": "c03f71336fe6fa53b604dc7eed3816b4e66e570f",
+    "tests/sqlite-v3-identity-immutability.test.mjs": "c6d44b687d440fc232da6b7d186c49b87b8a503b",
+    "tests/sqlite-v3-keyset-fullschema.test.mjs": "aa7d7dd89aa14d72829969e4aaf25e8284303a3d",
+    "tests/sqlite-v3-keyset-pagination.test.mjs": "8839dc7c417acaa05f9560e2897cfb7e87b94bbe",
+    "tests/sqlite-v3-latest-local-snapshot.test.mjs": "19e87eb814f3321e560d155262dd72319dfb82cd",
+    "tests/sqlite-v3-manual-keep-local.test.mjs": "91039c6ed818ce14ba3c55e7e2e86b9eaa017677",
+    "tests/sqlite-v3-no-replace.test.mjs": "5dd0d8a0a8c37f4c15c8526d114683eb4b915061",
+    "tests/sqlite-v3-readonly-audit.test.mjs": "354ea520493541779d5639a6a78d8c16084fcab7",
+    "tests/sqlite-v3-request-immutability.test.mjs": "ba74fcf74bfcb0d153c21e8f73b19577dfbf0176"
+  }
+}
