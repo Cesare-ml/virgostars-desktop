@@ -245,6 +245,17 @@ test('native HTTP concurrency is bounded across readiness and preview commands',
   assert.match(rust, /fn native_http_guard_limits_overlap_and_recovers_after_drop\(\)/);
 });
 
+test('Rust rejects wrong local fixture challenges without affecting real backend staging', () => {
+  const rust = read('src-tauri/src/copilot_staging_bridge.rs');
+  assert.match(rust, /STAGING_FIXTURE_SESSION_ENV: &str = "VIRGOSTARS_COPILOT_FIXTURE_SESSION"/);
+  assert.match(rust, /fn valid_fixture_session\(value: &str\) -> bool/);
+  assert.match(rust, /fn validate_staging_capabilities\(value: &Value, expected_fixture_session: Option<&str>\)/);
+  assert.match(rust, /value\.get\("labSession"\)\.and_then\(Value::as_str\) != Some\(expected\)/);
+  assert.match(rust, /validate_staging_capabilities\(&value, fixture_session\.as_deref\(\)\)/);
+  assert.match(rust, /assert!\(validate_staging_capabilities\(&valid, None\)\)/);
+  assert.match(rust, /assert!\(!validate_staging_capabilities\(&valid, Some\(session\)\)\)/);
+});
+
 test('release builds omit the staging command; Angular development-only wiring', () => {
   const lib = read('src-tauri/src/lib.rs');
   const command = read('src-tauri/src/copilot_staging_bridge.rs');
@@ -263,7 +274,7 @@ test('release builds omit the staging command; Angular development-only wiring',
   assert.match(command, /CAPABILITIES_PATH: &str = "\/api\/v1\/ai\/copilot-preview\/capabilities"/);
   assert.match(command, /\.get\(endpoint\)/);
   assert.match(command, /\.bearer_auth\(/);
-  assert.match(command, /validate_staging_capabilities\(&value\)/);
+  assert.match(command, /validate_staging_capabilities\(&value, fixture_session\.as_deref\(\)\)/);
   assert.match(command, /bounded_json\(response\)\.await/);
   assert.match(command, /providerEnabled/);
   assert.match(command, /modelSelectorAvailable/);
@@ -290,12 +301,12 @@ test('release builds omit the staging command; Angular development-only wiring',
   assert.equal((translations.match(/"ai\.preview\.auth_required":/g) || []).length, 2);
   assert.equal((translations.match(/"ai\.preview\.rate_limited":/g) || []).length, 2);
   assert.equal((translations.match(/"ai\.preview\.selection":/g) || []).length, 2);
-  assert.match(template, /t\('ai\.preview\.selection'\)/);
   assert.match(component, /this\.copilotProbeBusy = true/);
   const template = read('src/app/desktop-app.component.html');
+  assert.match(template, /t\('ai\.preview\.selection'\)/);
   assert.match(template, /\(click\)="recheckCopilotPreview\(\)"/);
   assert.match(template, /\[disabled\]="copilotProbeBusy \|\| copilotBusy"/);
-  assert.match(component, /!this\.copilotConnected\) return/);
+  assert.match(component, /!this\.copilotConnected\s*\|\| this\.copilotBusy \|\| this\.copilotProbeBusy\) return/);
   assert.match(config.app.security.csp, /connect-src 'self'/);
   assert.doesNotMatch(config.app.security.csp, /api\.openai\.com|api\.anthropic\.com/);
 });
