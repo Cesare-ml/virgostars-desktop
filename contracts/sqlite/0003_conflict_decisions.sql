@@ -44,6 +44,17 @@ WHEN EXISTS(SELECT 1 FROM local_ack_ledger a
 BEGIN
   SELECT RAISE(ABORT,'already used mutation id');
 END;
+-- Explicit rowids can recycle an already deleted AUTOINCREMENT sequence,
+-- making keyset pages miss a newly queued intent. At AFTER INSERT time
+-- sqlite_sequence still stores the prior high-water mark; reject nonpositive
+-- or non-increasing numbers. The insertion is atomically rolled back.
+CREATE TRIGGER local_outbox_v3_fifo_must_advance
+AFTER INSERT ON local_outbox
+WHEN NEW.sequence <= 0 OR NEW.sequence <= COALESCE(
+  (SELECT seq FROM sqlite_sequence WHERE name='local_outbox'), 0)
+BEGIN
+  SELECT RAISE(ABORT,'queued FIFO sequence must advance');
+END;
 -- Queued request identity is immutable. The existing INSERT trigger does not
 -- intercept UPDATE mutations, so without this guard a caller could rename an
 -- existing queued ID to an ACKed/retired ID or move it between entities.
