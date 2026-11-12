@@ -87,6 +87,20 @@ test('native forwards a sanitized synthetic projection, never a raw backend enve
   assert.match(rust, /"chartRevision": revision/);
 });
 
+test('native staging rejects invalid and privileged loopback ports before HTTP', () => {
+  const rust = read('src-tauri/src/copilot_staging_bridge.rs');
+  assert.match(rust, /!matches!\(url\.port\(\), Some\(1024\.\.=65535\)\)/);
+  const allowed = ['http://127.0.0.1:1024', 'http://127.0.0.1:3000', 'http://127.0.0.1:65535'];
+  const denied = ['http://127.0.0.1:0', 'http://127.0.0.1:1',
+    'http://127.0.0.1:80', 'http://127.0.0.1:1023', 'http://127.0.0.1:65536'];
+  for (const origin of allowed) {
+    assert.ok(rust.includes('staging_origin("' + origin + '").is_ok()'));
+  }
+  for (const origin of denied) {
+    assert.ok(rust.includes('"' + origin + '"'));
+  }
+});
+
 test('native capabilities probe rejects non-boolean or misleading success results', async () => {
   for (const spoofed of [null, undefined, 1, 'true', {}, { enabled: true }]) {
     const transport = createNativeCopilotStagingTransport({
