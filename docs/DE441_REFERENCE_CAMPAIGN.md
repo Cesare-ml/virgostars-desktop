@@ -52,9 +52,9 @@ On Node.js 22.16.0 in a local mirror:
     node --check tests/de441-reference-campaign.test.mjs
     # all passed
 
-**Additional matrix-hardening check on the current head:** executed `node --test tests/de441-reference-campaign-matrix.test.mjs` using the **exact GitHub campaign module** and a clearly labeled *test-only numerical comparator stand-in*: **6/6 passed**. These tests verify crossed 2×2 coverage, globally unique filenames, manifest rejection before reading, and sanitized exception handling. They do **not** exercise the real astronomical comparator. The complete pre-existing 31-test suite was not rerun on this updated head.
+**Additional matrix-hardening check on the current head:** executed `node --test tests/de441-reference-campaign-matrix.test.mjs` using the **exact GitHub campaign module** and a clearly labeled *test-only numerical comparator stand-in*: **7/7 passed**. These tests verify crossed 2×2 coverage, globally unique filenames, manifest rejection before reading, and sanitized exception handling. They do **not** exercise the real astronomical comparator. The complete pre-existing 31-test suite was not rerun on this updated head.
 
-Exact tested Git blobs: campaign module `1b762d2adc6f297ce3b0c9f96399021c158f90bf`; matrix tests `b8016fd29403af210d979f52b34b25871c455d4c`.
+Exact tested Git blobs: campaign module `1b762d2adc6f297ce3b0c9f96399021c158f90bf`; matrix tests `e5e1b8d1e2da040c25519a1a6d8901ef50b53362`.
 
 Tests cover different epochs/sites, invalid and duplicated metadata, UTC calendar/IERS bounds, suspicious filenames, more than 24 cases, one mismatching position, missing data, injected reader errors, full CLI process success/failure, symlink refusal, invalid UTF-8 and redacted output.
 
