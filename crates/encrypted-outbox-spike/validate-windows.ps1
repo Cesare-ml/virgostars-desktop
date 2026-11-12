@@ -85,7 +85,8 @@ if (-not $SkipNode) {
             (Join-Path $repo "tests\sqlite-v2-stage-reference.test.mjs"),
             (Join-Path $repo "tests\sqlite-v2-conflict-gate.test.mjs"),
             (Join-Path $repo "tests\sqlite-v3-manual-keep-local.test.mjs"),
-            (Join-Path $repo "tests\sqlite-v3-readonly-audit.test.mjs")
+            (Join-Path $repo "tests\sqlite-v3-readonly-audit.test.mjs"),
+            (Join-Path $repo "tests\synthetic-v3-opaque-backup-fileflow.test.mjs")
         )
     }
 }
