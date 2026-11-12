@@ -25,6 +25,16 @@ function failure(code: string): Error {
   return new Error(code);
 }
 
+/** Host bridge availability is advisory; even an unexpected host exception
+ * must not expose native details or bypass the fail-closed transport gate. */
+function nativeAvailable(native: NativeCopilotStagingBridge): boolean {
+  try {
+    return native.isNative() === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Settle the UI immediately when a newer focus/mode cancels the request.
  * Tauri invoke itself has no AbortSignal API: the native Rust HTTP request
@@ -71,7 +81,7 @@ export function createNativeCopilotStagingTransport(
       // Rust performs a bounded, authenticated GET to the local Virgo Stars
       // staging /capabilities route. No token or backend URL reaches Angular.
       // The command is absent in all normal/release native builds.
-      if (!native.isNative() || nativePreviewInFlight) return false;
+      if (!nativeAvailable(native) || nativePreviewInFlight) return false;
       // A second inspector/caller gets the first authenticated result rather
       // than a spurious offline status from Rust's single-flight busy gate.
       if (nativeReadinessInFlight !== null) return nativeReadinessInFlight;
@@ -95,7 +105,7 @@ export function createNativeCopilotStagingTransport(
       signal: AbortSignal,
     ): Promise<unknown> {
       if (signal.aborted) throw failure('copilot_preview_cancelled');
-      if (!native.isNative()) throw failure('copilot_preview_native_unavailable');
+      if (!nativeAvailable(native)) throw failure('copilot_preview_native_unavailable');
       if (path !== COPILOT_PREVIEW_MESSAGE_PATH
         || body === null || typeof body !== 'object' || Array.isArray(body)
         || Object.keys(body).length !== 2 || body.action !== 'describe_focus'
