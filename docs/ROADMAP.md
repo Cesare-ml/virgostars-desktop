@@ -15,7 +15,7 @@
 
 ## Phase 1 — Offline live sky & low-latency calculation (first priority)
 
-- [ ] Versioned **bounded, latest-only Angular ↔ Rust IPC** with worker-thread astronomy calculations, cancellation/backpressure and compact typed payloads. The synthetic native probe does **not** yet calculate ephemerides.
+- [ ] **Bounded, latest-only Angular ↔ Rust calculation pipeline:** [pure TypeScript scheduler](LATEST_CALCULATION_SCHEDULER.md) is implemented with one active/one latest pending synthetic transport (10/10 tests passed, 10k overload submissions). Still missing real native worker cancellation/deadline, typed astronomical payloads, Rust provider and end-to-end Tauri/WebView2 validation; synthetic probe is not an ephemeris.
 - [ ] Integrate a validated offline `VirgoStars-Ephemeris` Rust provider with available kernels or accuracy-declared fallback; real astronomical fixtures and supported range required. Compose astrological aspects via `astrological-functions` and render through `astrological-charts`; no duplicated astronomy or network dependency.
 - [ ] Incremental chart rendering / layer updates (reusing WebGL resources), separate immutable radix and changing transit ring, reliable zoom/Fit, hover/click/keyboard planet-aspect selection and active aspect focus.
 - [ ] `Adesso` on startup: real local clock (seconds), chosen place, timezone, verified current-sky chart, sensible cadence, explicit refresh/pause/resume and wake-from-sleep handling. Never invent a location.
