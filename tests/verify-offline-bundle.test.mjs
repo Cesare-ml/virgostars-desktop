@@ -26,7 +26,9 @@ function fixture() {
 const run=f=>{const x=fixture();try{f(x);}finally{x.clean();}};
 
 test('verifies a desktop Angular build with exact synthetic assets',()=>run(f=>{
-  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+  const report=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(report.count,1);
+  assert.equal(report.scripts,1);
 }));
 test('detects tampered image in Angular output',()=>run(f=>{
   writeFileSync(f.img,'bad');
@@ -107,4 +109,9 @@ test('screen stylesheet without inline event handler remains valid',()=>run(f=>{
   );
   writeFileSync(index,html);
   assert.equal(verifyOfflineBundle(f.bundle,f.staging).stylesheets,1);
+}));
+
+test('rejects missing Angular executable module even with valid CSS and images',()=>run(f=>{
+  rmSync(join(f.bundle,'main-LCL123.js'));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Local desktop script missing/);
 }));
