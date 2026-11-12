@@ -15,6 +15,12 @@ This is the next strictly bounded step after [D-01 latest-only queue](LATEST_ONL
 
 The frontend adapter uses the official `@tauri-apps/api/core` transport only, with no HTTP. It refuses to call native IPC outside Tauri, checks aborts before/after the call, projects exactly nine allowlisted fields, and delegates the reply correlation and error sanitization to the D-01 queue. AbortSignal is **not** native CPU cancellation: late native replies are discarded by the latest-only queue.
 
+## Experimental sky response safety contract (new)
+
+The new [experimental geometric sky IPC v1 contract](EXPERIMENTAL_SKY_IPC_V1.md) defines a strictly validated, read-only representation of unverified DE441 geometric positions, including source provenance, ten bodies, time scales, model limitations and exact request UTC/location correlation. The opt-in native calculation adapter now wraps the Tauri port in guardExperimentalSkyPort: a malformed ready response becomes sanitized invalid_snapshot, which the latest-only queue exposes as invalid_reply without an unsafe snapshot. The still-unimplemented Rust provider returns unavailable and the demo chart remains synthetic.
+
+**Actually executed in a local source mirror:** 14/14 new Node tests and standalone TypeScript strict compilation; GitHub blob SHA matches both tested files. This does not prove native Rust compilation, scientific accuracy, kernel hash authenticity, nor end-to-end WebView2 execution. A native provider must supply verified DE441 data and independent numerical references before enabling real charts.
+
 ## Native worker backpressure
 
 The Rust command uses a managed `CalculationProbeGate` with an atomic single active permit. Extra concurrent calls return `CALC_WORKER_BUSY` rather than accumulating work. The permit is RAII-owned by a `tauri::async_runtime::spawn_blocking` task and returned on completion or unwinding. The task currently performs only constant-time production of the explicit `unavailable` status, **not scientific computation**. For real ephemerides, add bounded job scheduling, cooperative native cancellation, memory and timeout limits after measuring kernel access.
