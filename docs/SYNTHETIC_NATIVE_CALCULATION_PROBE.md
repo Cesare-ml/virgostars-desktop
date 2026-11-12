@@ -8,7 +8,7 @@
 - `src-tauri/src/lib.rs`: separate native `SyntheticProbeGate` managed state and Tauri command registration. The existing local-city search gate and synthetic runtime capability probe remain independent.
 - `src/app/native/synthetic-calculation-transport.ts`: typed v1 request/response adapter, strict data and echo validation, fail-closed browser mode. No forged planetary data can pass through as this fixture.
 - `src/app/native/synthetic-calculation-tauri.ts`: official Tauri `invoke` / `isTauri` bridge. Not imported by the real natal chart UI.
-- `tests/synthetic-calculation-transport.test.mjs`: 9 authored Node tests (eight behavior tests plus native source/registration contract), plus 5 Rust unit tests authored in the Rust source.
+- `tests/synthetic-calculation-transport.test.mjs`: 10 authored Node tests (eight behavior tests, a native source/registration contract and portable golden-vector verification), plus 6 Rust unit tests authored in the Rust source.
 
 ## Exact protocol
 
@@ -92,8 +92,8 @@ Only use that snippet after importing both modules in a local development WebVie
 ### Validation performed in the authoring environment
 
 - **Eight of eight** behavioral Node tests on the adapter **passed** with Node 22.16.0; TypeScript 5.8.3 `--noEmit --strict` **passed**. Exact GitHub adapter file SHA should be recorded after read-back.
-- The ninth Node test checks Rust registration/source and was authored but not executed in the isolated local test directory.
-- Five Rust unit tests (determinism, malformed protocol, bounded global gate, camelCase Serde and unknown-field refusal) were authored. **Rust toolchain was unavailable here; none of the five Rust tests or a real Windows native round trip was executed.**
+- The remaining two Node tests check Rust source/registration and checksum golden vectors; they were authored but not executed in the isolated local test directory. A standalone Node checksum calculation generated the four expected reference values.
+- Six Rust unit tests (determinism, four portable checksum golden vectors, malformed protocol, bounded global gate, camelCase Serde and unknown-field refusal) were authored. **Rust toolchain was unavailable here; none of the five Rust tests or a real Windows native round trip was executed.**
 - The earlier pure scheduling suite was actually run 10/10 separately. Do not aggregate these into a false full end-to-end pass.
 
 ## Next gates
