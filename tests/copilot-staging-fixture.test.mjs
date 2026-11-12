@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createCopilotStagingFixture } from '../scripts/copilot-staging-fixture.mjs';
-import { requestCopilotPreview, COPILOT_PREVIEW_MESSAGE_PATH }
+import { readCopilotPreviewReply, requestCopilotPreview, COPILOT_PREVIEW_MESSAGE_PATH }
   from '../src/app/copilot-preview-client.ts';
 
 const bearer = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJzeW50aGV0aWMifQ.LOCAL_UNSIGNED_FIXTURE';
@@ -126,6 +126,33 @@ test('live loopback JSON is accepted by the actual Desktop TypeScript preview de
   }
   assert.equal(calls.length, 3);
   assert.ok(calls.every(item => !('model' in item.body) && !('apiKey' in item.body)));
+});
+
+test('TypeScript decoder refuses contradictory disclosure, cost and blank-answer flags from live HTTP', async t => {
+  const origin = await lab(t);
+  const res = await fetch(origin + basePath + '/message', withAuth(json(valid)));
+  assert.equal(res.status, 200);
+  const raw = await res.json();
+  const accepted = readCopilotPreviewReply(raw, valid.focus);
+  assert.equal(accepted.synthetic, true);
+  // Rust intentionally strips these validated server-only fields before IPC.
+  const { disclosures, providerCostUsd, contentOrigin, ...nativeProjection } = raw;
+  assert.equal(readCopilotPreviewReply(nativeProjection, valid.focus).synthetic, true);
+  for (const attack of [
+    { contentOrigin: 'AI_GENERATED' },
+    { contentOrigin: null },
+    { providerCostUsd: 0.01 },
+    { providerCostUsd: -1 },
+    { disclosures: { ...disclosures, birthDataIncluded: true } },
+    { disclosures: { ...disclosures, personalChartIncluded: true } },
+    { disclosures: { ...disclosures, aiGeneratedTextPresent: true } },
+    { disclosures: { birthDataIncluded: false } },
+    { disclosures: null },
+    { data: { ...raw.data, answer: ' \t ' } },
+  ]) {
+    assert.throws(() => readCopilotPreviewReply({ ...raw, ...attack }, valid.focus),
+      /invalid_response/);
+  }
 });
 
 test('untrusted prompt fields, invalid focus and unsupported endpoints are rejected', async t => {
