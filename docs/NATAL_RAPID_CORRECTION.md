@@ -6,7 +6,7 @@
 
 The experimental **Nuovo tema / New natal chart** form now shows five compact pairs of +/- controls for **year, month, day, hour, minute**. A pointer/touch press moves **one step immediately**, followed by a **340 ms initial delay** and then **75 ms steps**, shortening to **45 ms** after sustained use. Quick clicks advance one step. Keyboard and assistive-tech clicks can use buttons via native \`click\`, with clear aria-labels. Press/release, pointer cancellation, lost pointer capture, switching inspector tabs / component destruction, and window blur cancel the repeat timer.
 
-The form is still **guest-only, unsaved, synthetic-chart separate**; changing these values **does not yet trigger astronomical IPC**. The source is an in-memory UI interaction foundation that can later issue latest-only calculations through the already specified bounded Rust bridge. Do not imply live chart animation is implemented.
+The form is still **guest-only, unsaved, synthetic-chart separate**; changing these values **does not yet trigger astronomical IPC**. A separate [latest-only calculation scheduler](LATEST_CALCULATION_SCHEDULER.md) now exists and passed 10/10 mock tests with 10,000 submissions, but it remains intentionally **unconnected to the editor** until real offline Rust ephemerides are numerically validated. The source is an in-memory UI interaction foundation that can later issue latest-only calculations through the already specified bounded Rust bridge. Do not imply live chart animation is implemented.
 
 ## Calendar semantics
 
