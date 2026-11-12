@@ -10,7 +10,7 @@ From the authorized Desktop checkout with Node.js 22+:
 npm run test:ai:fixture
 ```
 
-Equivalently use `node --test tests/copilot-staging-fixture.test.mjs`. Also included in the repository's existing `npm test` script, which uses `--experimental-strip-types` for TypeScript imports in other tests.
+Equivalently use `node --experimental-strip-types --test tests/copilot-staging-fixture.test.mjs` (required for Node 22 TypeScript imports). Also included in the repository's existing `npm test` script, which uses `--experimental-strip-types` for TypeScript imports in other tests.
 
 The tests open a **random ephemeral port on literal `127.0.0.1`** and close it afterwards. They cover:
 - GET `/api/v1/ai/copilot-preview/capabilities` with and without the synthetic test bearer.
@@ -22,6 +22,20 @@ The tests open a **random ephemeral port on literal `127.0.0.1`** and close it a
 - CLI denies startup without the synthetic opt-in and does not print the fictional bearer.
 
 These are **real loopback HTTP tests in Node**, not isolated source-string checks. They do not execute the Rust native bridge or Express server.
+
+## Recommended native Windows lab runner (explicit opt-in)
+
+The new [`scripts/run-copilot-staging-lab.ps1`](../scripts/run-copilot-staging-lab.ps1) performs the isolated synthetic smoke setup and cleanup. It does **not** install dependencies, merge branches, deploy, use real JWTs or call OpenAI. Prerequisites: authorized Desktop/Charts checkouts, existing npm installs and Charts library build, Windows 11 MSVC Rust 1.90+, and WebView2, per [Windows build gate](WINDOWS_BUILD_GATE.md). The runner refuses inherited staging variables and occupied loopback ports; use a fresh PowerShell terminal.
+
+From the Desktop repository root:
+
+```powershell
+powershell -NoProfile -File .\scripts\run-copilot-staging-lab.ps1 -SyntheticOnly
+```
+
+The runner checks Windows prerequisites, runs the 8 real loopback tests (including the Desktop TypeScript decoder), checks Rust formatting, runs `cargo test --features copilot-staging` and `cargo check --release --features copilot-staging` **before setting the test token**, and generates the synthetic icon. It starts Angular on `127.0.0.1:4200` **before** creating the fictional bearer, then starts the isolated fixture on `127.0.0.1:18883`, checks the authenticated synthetic capabilities response, and launches `tauri dev --features copilot-staging`. Only its own Angular/fixture child process trees are shut down in `finally`; temporary variables are cleared. The executable runs in a debug lab only, not in a release build. This does not automate visual validation: inspect the AI panel and test the 3 focus options manually.
+
+The script will **stop on the first failed prerequisite** and may generate a local `Cargo.lock` as Cargo resolves dependencies; review it before committing. Actual native Windows execution remains outstanding. The source-only security tests live in `tests/copilot-windows-lab-runner.test.mjs` and run through `npm test`.
 
 ## Optional manual Rust/Tauri IPC smoke on Windows
 
