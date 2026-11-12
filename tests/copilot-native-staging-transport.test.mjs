@@ -207,6 +207,77 @@ test('abort during native HTTP ignores stale response; no native cancel guarante
   await assert.rejects(transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, ctrl.signal), /cancelled/);
 });
 
+test('abort while native IPC remains pending rejects immediately and consumes late errors', async () => {
+  let rejectNative;
+  const nativePromise = new Promise((_resolve, reject) => { rejectNative = reject; });
+  const ctrl = new AbortController();
+  let invoked = 0;
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    invoke() { invoked++; return nativePromise; },
+  });
+  const pending = transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, ctrl.signal);
+  assert.equal(invoked, 1);
+  ctrl.abort();
+  // There is deliberately no native completion yet; the WebView promise must
+  // already be settled when the selection changes.
+  await assert.rejects(pending, error => error.message === 'copilot_preview_cancelled');
+  rejectNative(new Error('LATE_NATIVE_SECRET_DO_NOT_FORWARD'));
+  // The late rejected invoke is consumed by awaitNativeOrAbort, not exposed to
+  // another request or as an unhandled rejection.
+  await new Promise(resolve => setImmediate(resolve));
+});
+
+test('old cancelled IPC cannot replace a newer completed selection', async () => {
+  let finishFirst;
+  let call = 0;
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    invoke() {
+      call++;
+      if (call === 1) return new Promise(resolve => { finishFirst = resolve; });
+      return Promise.resolve(fixtureEnvelope());
+    },
+  });
+  const cancelled = new AbortController();
+  const first = transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, cancelled.signal);
+  cancelled.abort();
+  await assert.rejects(first, /cancelled/);
+  const second = await transport.postJson(
+    COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal,
+  );
+  assert.equal(second.data.answer, 'VENUS (NATAL), sample only.');
+  finishFirst({ accessToken: 'LATE_SECRET', ...fixtureEnvelope() });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(call, 2);
+});
+
+test('abort listeners are removed after native completion and cancellation', async () => {
+  for (const cancelled of [false, true]) {
+    const ctrl = new AbortController();
+    const signal = ctrl.signal;
+    let added = 0;
+    let removed = 0;
+    const add = signal.addEventListener.bind(signal);
+    const remove = signal.removeEventListener.bind(signal);
+    signal.addEventListener = (...args) => { added++; return add(...args); };
+    signal.removeEventListener = (...args) => { removed++; return remove(...args); };
+    const transport = createNativeCopilotStagingTransport({
+      isNative: () => true,
+      invoke() { return cancelled ? new Promise(() => {}) : Promise.resolve(fixtureEnvelope()); },
+    });
+    const promise = transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, signal);
+    if (cancelled) {
+      ctrl.abort();
+      await assert.rejects(promise, /cancelled/);
+    } else {
+      await promise;
+    }
+    assert.equal(added, 1);
+    assert.equal(removed, 1);
+  }
+});
+
 test('native single-flight busy gets one safe status but arbitrary IPC errors stay redacted', async () => {
   const busy = createNativeCopilotStagingTransport({
     isNative: () => true,
