@@ -4,7 +4,7 @@
 
 The earlier smoke runner passed empty numeric arguments through JavaScript number coercion and could wait indefinitely for Cargo. This follow-up adds strict five-argument parsing, canonical millisecond UTC with Gregorian date round-trip, explicit 1972-01-01 through 2027-06-27 IERS support range, bounded WGS84 coordinates and decimal height, control-free kernel path, and a fail-closed native subprocess.
 
-The native launch is shell-free with a 15-minute timeout, SIGKILL termination request and 1-MiB stdout/stderr buffer bound. Timeout and native failures are sanitized to stable status codes; kernel paths, UTC values, coordinates, Cargo stderr and output JSON are never echoed to the user. An OS may still leave descendants of a terminated Cargo process, so this is not a complete process-tree sandbox.
+The native launch is shell-free with a 5-minute timeout, SIGKILL termination request and 1-MiB stdout/stderr buffer bound. Timeout and native failures are sanitized to stable status codes; kernel paths, UTC values, coordinates, Cargo stderr and output JSON are never echoed to the user. An OS may still leave descendants of a terminated Cargo process, so this is not a complete process-tree sandbox.
 
 The executable wrapper delegates scientific shape checks to the existing TypeScript experimental-sky receiver and requires an exact observer-height match. Successful output is explicitly labelled SHAPE_VALID_EXPERIMENTAL_UNVERIFIED; **shape validation is not independent scientific verification**.
 

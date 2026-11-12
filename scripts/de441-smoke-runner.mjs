@@ -4,8 +4,8 @@
  */
 import { spawnSync } from 'node:child_process';
 
-export const CARGO_TIMEOUT_MS = 15 * 60 * 1000;
-export const CARGO_MAX_BUFFER_BYTES = 1024 * 1024;
+export const CARGO_TIMEOUT_MS = 5 * 60 * 1000;
+export const CARGO_MAX_BUFFER_BYTES = 64 * 1024;
 const UTC_MIN = Date.UTC(1972, 0, 1);
 const UTC_MAX_EXCLUSIVE = Date.UTC(2027, 5, 28);
 const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
