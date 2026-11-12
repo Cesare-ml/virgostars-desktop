@@ -44,6 +44,10 @@ function stringify(year: number, month: number, day: number, hour: number, minut
     hour: String(hour).padStart(2, '0'), minute: String(minute).padStart(2, '0')
   };
 }
+function preserveUnknownTime(input: CivilCorrectionInput, next: CivilCorrectionOutput): CivilCorrectionOutput {
+  // Date-only corrections must not invent a time that was never provided.
+  return input.birthTimeKnown ? next : {...next, hour: input.hour, minute: input.minute};
+}
 
 /**
  * Advance exactly one wall-clock/calendar unit. A day/minute step can roll over
@@ -74,7 +78,7 @@ export function stepCivilCorrection(
   if (field === 'year') {
     const next = year + direction;
     return next >= 1 && next <= 9999
-      ? stringify(next, month, Math.min(day, gregorianDaysInMonth(next, month)), hour, minute)
+      ? preserveUnknownTime(input, stringify(next, month, Math.min(day, gregorianDaysInMonth(next, month)), hour, minute))
       : null;
   }
   if (field === 'month') {
@@ -82,7 +86,7 @@ export function stepCivilCorrection(
     const nextYear = Math.floor(absolute / 12);
     const nextMonth = absolute - nextYear * 12 + 1;
     return nextYear >= 1 && nextYear <= 9999
-      ? stringify(nextYear, nextMonth, Math.min(day, gregorianDaysInMonth(nextYear, nextMonth)), hour, minute)
+      ? preserveUnknownTime(input, stringify(nextYear, nextMonth, Math.min(day, gregorianDaysInMonth(nextYear, nextMonth)), hour, minute))
       : null;
   }
   if (field !== 'day' && field !== 'hour' && field !== 'minute') return null;
@@ -93,7 +97,7 @@ export function stepCivilCorrection(
   if (field === 'minute') date.setUTCMinutes(date.getUTCMinutes() + direction);
   const nextYear = date.getUTCFullYear();
   if (nextYear < 1 || nextYear > 9999 || !Number.isFinite(date.getTime())) return null;
-  return stringify(nextYear, date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes());
+  return preserveUnknownTime(input, stringify(nextYear, date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes()));
 }
 
 /** A single scheduled repeat at a time, with deterministic cancellation. */
