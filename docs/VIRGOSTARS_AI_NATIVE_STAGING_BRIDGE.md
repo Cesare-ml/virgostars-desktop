@@ -156,6 +156,14 @@ The explicit synthetic-only Windows lab previously checked that every `Read()` h
 
 **Validation executed:** 11/11 Windows lab source-contract JavaScript callbacks passed in an isolated V8 harness against the current GitHub source: PowerShell runner blob `d81b3c902daa868dfdb36d12a6f03fe6514af787`, test blob `b5693f03286a30c18afdcd1c8b7a24a163984a80`. This does **not** establish actual PowerShell execution, a Windows HTTP slow-trickle runtime test, Tauri GUI correctness or Rust compilation. Those Windows-native checks remain to be run.
 
+## Fail-closed Tauri environment detection (2026-11-12)
+
+The optional debug native transport previously called `native.isNative()` outside its HTTP/IPC exception handling. Although the built-in host normally returns a boolean, an unexpected exception (including a native message with local private details) could escape directly from `isAvailable()` or `postJson()` to another frontend caller; a truthy non-boolean return could also be treated as native availability.
+
+`src/app/native/copilot-staging-transport.ts` now uses a small `nativeAvailable()` guard which accepts only literal `true` and catches unexpected native availability errors without propagating the exception. The capabilities probe returns `false`; a preview request instead rejects with the existing sanitized `copilot_preview_native_unavailable` code. Neither path calls Tauri IPC in that situation. This does not enable remote backends, change login, expose tokens or affect the offline chart path.
+
+Two new tests in `tests/copilot-native-staging-transport.test.mjs` exercise a throwing environment detector with a fictional sensitive message and non-boolean truthy/falsy return values. **2/2 actual test callbacks passed** in an isolated V8 JavaScript harness using mechanically type-erased current GitHub TypeScript logic. Verified GitHub blobs: transport `04dd56b8ddc8c56b90777da8551d11d0a2b830f0`, tests `ddf7c2d653cd50e32f26c1de4027843f8854c144`. The complete `npm run test:ai:smoke`, Angular build, Windows PowerShell/Tauri/WebView2 and Rust Cargo verification were **not** executed for this new revision.
+
 ## Verification
 
 **Added source tests:**
