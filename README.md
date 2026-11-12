@@ -4,6 +4,10 @@
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
 
+## Bounded future Rust calculation requests
+
+A pure [latest-only calculation scheduler](docs/LATEST_CALCULATION_SCHEDULER.md) now accepts rapid synthetic requests while maintaining **one active and one latest pending**, suppressing obsolete results/errors. 10/10 isolated Node tests passed, including a 10,000-submission overload; **no Rust astronomy or chart animation is connected yet**.
+
 ## Rapid natal time correction (prototype)
 
 Five plus/minus controls for year, month, day, hour and minute now support **press-and-hold**, calendar rollover and invalid-date/unknown-time protection entirely in the unsaved Angular draft. The local time preview is invalidated after every change. **Actual natal chart animation and Rust ephemeris requests are not wired yet.** See [rapid time correction](docs/NATAL_RAPID_CORRECTION.md).
