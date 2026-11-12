@@ -38,7 +38,7 @@ function isFocus(focus) {
     && ALLOWED.has(focus.layer + ':' + focus.bodyId);
 }
 
-function previewEnvelope(focus) {
+function previewEnvelope(focus, labSession) {
   const aspects = focus.layer === 'NATAL' && focus.bodyId === 'VENUS'
     ? ['synthetic:transit:saturn:venus', 'synthetic:natal:sun:venus']
     : focus.layer === 'NATAL'
@@ -46,6 +46,9 @@ function previewEnvelope(focus) {
       : ['synthetic:transit:saturn:venus'];
   return {
     contract: 'VirgoStarsCopilotMockPreviewEnvelope', version: '0.1.0',
+    // Lab-only identity extension; Rust checks it on every successful POST.
+    // The private Virgo Stars staging backend does not require this field.
+    labSession,
     stage: 'STAGING_SYNTHETIC', syntheticFixture: true,
     astrologyIsReal: false, methodApproved: false, providerInvoked: false,
     providerCostUsd: 0, contentOrigin: 'DETERMINISTIC_FACT',
@@ -143,7 +146,7 @@ export function createCopilotStagingFixture({ bearer, labSession, maxRequests = 
       json(res, 400, { error: 'invalid_preview_request' });
       return;
     }
-    json(res, 200, previewEnvelope({ layer: body.focus.layer, bodyId: body.focus.bodyId }));
+    json(res, 200, previewEnvelope({ layer: body.focus.layer, bodyId: body.focus.bodyId }, labSession));
   });
   return {
     async listen(port = 0) {
