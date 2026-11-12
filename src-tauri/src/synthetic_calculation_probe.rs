@@ -126,6 +126,11 @@ pub async fn synthetic_calculation_probe(
     request: SyntheticProbeRequest,
     gate: State<'_, SyntheticProbeGate>,
 ) -> Result<SyntheticProbeResponse, String> {
+    // Never expose synthetic CPU benchmarks to production WebViews.
+    // Run only in an explicitly local Tauri development/debug build.
+    if !cfg!(debug_assertions) {
+        return Err("SYNTHETIC_DISABLED".to_owned());
+    }
     validate(&request).map_err(str::to_owned)?;
     let permit = gate.try_acquire().ok_or("SYNTHETIC_BUSY")?;
     tauri::async_runtime::spawn_blocking(move || {
