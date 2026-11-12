@@ -441,6 +441,22 @@ mod tests {
     }
 
     #[test]
+    fn optional_lab_session_requires_exact_lowercase_128_bit_hex() {
+        assert!(valid_fixture_session("a5a5a5a5b6b6b6b6c7c7c7c7d8d8d8d8"));
+        for invalid in [
+            "",
+            "abc",
+            "A5A5A5A5B6B6B6B6C7C7C7C7D8D8D8D8",
+            "a5a5a5a5b6b6b6b6c7c7c7c7d8d8d8d",
+            "a5a5a5a5b6b6b6b6c7c7c7c7d8d8d8d80",
+            "a5a5a5a5b6b6b6b6c7c7c7c7d8d8d8d!",
+            "a5a5a5a5b6b6b6b6c7c7c7c7d8d8d8d\\n",
+        ] {
+            assert!(!valid_fixture_session(invalid), "{invalid:?}");
+        }
+    }
+
+    #[test]
     fn capabilities_must_be_exactly_the_staging_mock_contract() {
         let valid = json!({
             "contract": "VirgoStarsCopilotPreviewCapabilities",
