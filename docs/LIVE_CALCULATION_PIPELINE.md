@@ -84,7 +84,7 @@ These are first **engineering hypotheses** to check on an ordinary supported Win
 
 P0-IPC-1: **Implemented in source and isolated tests:** pure TypeScript [LatestCalculationScheduler](LATEST_CALCULATION_SCHEDULER.md) with a synthetic transport, one active + one latest pending request, session invalidation, response echo verification and 10,000-submission overload tests (10/10 passing). **No real Rust invocation or chart animation yet.**
 
-P0-IPC-2: Rust synthetic deterministic calculation command + bounded native worker (no fake "live chart" branding), versioned DTO and Windows IPC measurements.
+P0-IPC-2: The [synthetic CPU-only Rust Tauri command](SYNTHETIC_NATIVE_CALCULATION_PROBE.md) and strict TypeScript adapter now exist in source, with at most two global native worker permits and fixed work cap; **Windows native build/round-trip and real latency measurements remain required**. Do not show synthetic results as charts.
 
 P0-IPC-3: Connect the validated `VirgoStars-Ephemeris` Rust provider and `astrological-functions` adapter with real numerical fixtures, then enable `Adesso` only when enough data are validated.
 
