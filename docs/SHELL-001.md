@@ -71,6 +71,15 @@ and no chart, city, account, token or subject data are persisted there. This pro
 needs a full Windows WebView2 close/reopen validation before visual acceptance.
 See [device-only UI preferences](UI_PREFERENCES.md).
 
+## Local Adesso clock
+
+The chart header now shows a 1-second, device-local date and time readout with
+IT/EN formatting, local timezone label and compact layout. It re-samples wall
+time after device sleep, disposes the timer on component teardown and never
+triggers a synthetic chart redraw. **This is not live ephemeris output**: the
+actual chart remains a fictional fixture until the canonical Rust engine and
+validated native IPC integration are available. See [Now clock](DEVICE_CLOCK_NOW.md).
+
 ## Security and publication boundary
 
 No production accounts, authentication secrets, real birth information, AWS deployment, private artwork, GitHub Actions, automatic updates, licensing decision or public release. The app remains a private experimental prototype.
