@@ -20,9 +20,14 @@ if (args.length !== 5) {
   const latMicro = Number(rawLat);
   const lngMicro = Number(rawLng);
   const heightMeters = Number(rawHeight);
+  const epochMs = Date.parse(utcIso);
   const request = { utcIso, latMicro, lngMicro };
   if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(utcIso) ||
-      Number.isNaN(Date.parse(utcIso)) ||
+      !Number.isFinite(epochMs) || new Date(epochMs).toISOString() !== utcIso ||
+      epochMs < Date.UTC(1972, 0, 1) || epochMs >= Date.UTC(2027, 5, 28) ||
+      !/^-?(?:0|[1-9]\d{0,8})$/.test(rawLat) ||
+      !/^-?(?:0|[1-9]\d{0,8})$/.test(rawLng) ||
+      !/^-?(?:0|[1-9]\d{0,5})(?:\.\d{1,6})?$/.test(rawHeight) ||
       !Number.isSafeInteger(latMicro) || !Number.isSafeInteger(lngMicro) ||
       Math.abs(latMicro) > 90_000_000 || Math.abs(lngMicro) > 180_000_000 ||
       !Number.isFinite(heightMeters) || heightMeters < -12000 || heightMeters > 100000) {
@@ -32,7 +37,10 @@ if (args.length !== 5) {
     const result = spawnSync('cargo', [
       'run', '--quiet', '--manifest-path', manifest, '--', kernel, utcIso,
       String(latMicro), String(lngMicro), String(heightMeters),
-    ], {encoding:'utf8',shell:false,windowsHide:true,maxBuffer:1024*1024});
+    ], {
+      encoding:'utf8', shell:false, windowsHide:true,
+      timeout:300_000, maxBuffer:64*1024,
+    });
     if (result.error || result.status !== 0 || !result.stdout) {
       error('NATIVE_UNAVAILABLE');
     } else {
