@@ -43,3 +43,17 @@
 .timezone-options button.timezone-chosen {
   border-color:var(--vs-accent); background:var(--vs-surface-muted); font-weight:650;
 }
+
+/* Compact five-field local-only correction. No animation requests leave Angular. */
+.correction-fieldset { display:grid; gap:8px; }
+.correction-list { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:5px; }
+.correction-row { display:grid; grid-template-columns:minmax(54px,1fr) 34px minmax(40px,auto) 34px;
+  gap:6px; align-items:center; }
+.correction-name { font-size:11px; font-weight:600; min-width:0; }
+.correction-value { font-size:12px; font-variant-numeric:tabular-nums; min-width:0;
+  text-align:center; white-space:nowrap; }
+.correction-button { height:34px; min-width:34px; border:1px solid var(--vs-border); border-radius:7px;
+  background:var(--vs-surface); color:var(--vs-text); font:inherit; font-size:17px; cursor:pointer;
+  touch-action:none; user-select:none; -webkit-user-select:none; }
+.correction-button:hover:not(:disabled) { background:var(--vs-surface-muted); }
+.correction-button:disabled { opacity:.40; cursor:not-allowed; }
