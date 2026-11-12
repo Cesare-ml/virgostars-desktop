@@ -95,7 +95,8 @@ export function readCopilotPreviewReply(raw: unknown, expectedFocus: CopilotPrev
   return Object.freeze({
     answer: data.answer,
     chartRevision: data.chartRevision,
-    focus: expectedFocus,
+    // Never return the caller-owned object: it may be mutated after resolution.
+    focus: Object.freeze({ ...expectedFocus }),
     synthetic: true,
     illustrativeAspectCount: command.aspectIds.length,
   });
@@ -108,10 +109,14 @@ export async function requestCopilotPreview(
 ): Promise<CopilotPreviewReply> {
   if (!isCopilotPreviewFocus(focus)) throw new TypeError('invalid_copilot_preview_focus');
   if (signal.aborted) throw new Error('copilot_preview_cancelled');
+  // Capture and freeze one validated selection BEFORE the async boundary.
+  // A caller changing the original focus during transport cannot reclassify
+  // the reply or bind it to a different body/layer.
+  const selectedFocus: CopilotPreviewFocus = Object.freeze({ ...focus });
   // This is a synthetic preview request, NEVER a real theme, birth record or free-form prompt.
   const raw = await transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, {
-    action: 'describe_focus', focus: Object.freeze({ ...focus }),
+    action: 'describe_focus', focus: selectedFocus,
   }, signal);
   if (signal.aborted) throw new Error('copilot_preview_cancelled');
-  return readCopilotPreviewReply(raw, focus);
+  return readCopilotPreviewReply(raw, selectedFocus);
 }
