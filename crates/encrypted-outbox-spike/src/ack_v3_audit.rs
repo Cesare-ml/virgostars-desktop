@@ -595,12 +595,18 @@ mod tests {
                 outbox_rows:0,acknowledgements:1,decision_rows:1
             }
         );
-        store.conn.execute(
+        assert!(store.conn.execute(
             "UPDATE local_ack_ledger SET request_fingerprint=?1
              WHERE mutation_id='synthetic-new'",
             params!["a".repeat(64)],
-        ).unwrap();
-        assert!(store.audit_synthetic_v3_readonly().is_err());
+        ).is_err());
+        // SQL rejects the rewrite before the semantic audit sees it.
+        assert_eq!(
+            store.audit_synthetic_v3_readonly().unwrap(),
+            SyntheticV3AuditSummary {
+                outbox_rows:0,acknowledgements:1,decision_rows:1
+            }
+        );
     }
 
     #[test]
@@ -686,6 +692,51 @@ mod tests {
             "synthetic-old".to_owned(), "synthetic-a".to_owned(),
             "pending".to_owned(), None,
         ));
+    }
+
+    #[test]
+    fn v3_ack_ledger_rejects_update_delete_and_replace() {
+        let (_dir, _path, mut store, _, _) = setup();
+        store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                result,server_revision,acknowledged_at_utc)
+             VALUES ('synthetic-a','synthetic-acked','subject','synthetic-e1',
+                     ?1,'accepted','rev-one','2026-11-11T21:30:00Z')",
+            params!["a".repeat(64)],
+        ).unwrap();
+
+        assert!(store.conn.execute(
+            "UPDATE local_ack_ledger SET server_revision='rev-forged'
+             WHERE mutation_id='synthetic-acked'", [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "DELETE FROM local_ack_ledger WHERE mutation_id='synthetic-acked'",
+            [],
+        ).is_err());
+        assert!(store.conn.execute(
+            "INSERT OR REPLACE INTO local_ack_ledger(
+                 profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                 result,server_revision,acknowledged_at_utc)
+             VALUES ('synthetic-a','synthetic-acked','subject','synthetic-e1',
+                     ?1,'accepted','rev-forged','2026-11-11T21:30:00Z')",
+            params!["b".repeat(64)],
+        ).is_err());
+
+        let stored: (String, String) = store.conn.query_row(
+            "SELECT request_fingerprint,server_revision FROM local_ack_ledger
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-acked'",
+            [], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!(stored, ("a".repeat(64), "rev-one".into()));
+        assert!(store.conn.execute(
+            "INSERT INTO local_ack_ledger(
+                 profile_id,mutation_id,entity_type,entity_id,request_fingerprint,
+                 result,server_revision,acknowledged_at_utc)
+             VALUES ('synthetic-a','synthetic-ack-next','subject','synthetic-e1',
+                     ?1,'accepted','rev-two','2026-11-11T21:30:00Z')",
+            params!["c".repeat(64)],
+        ).is_ok());
     }
 
     #[test]
