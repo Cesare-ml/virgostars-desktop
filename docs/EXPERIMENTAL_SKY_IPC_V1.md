@@ -14,6 +14,12 @@ Ten distinct bodies must be present: Sun, Moon, Mercury, Venus (body centers) an
 
 **Shape validation is not scientific validation.** It checks that a payload honestly declares an *unverified experimental geometric model*; it cannot determine whether the claimed DE441 SHA-256 actually matches a file, whether time conversions or coordinates are numerically correct, or whether the kernel is licensed for redistribution. A mock fixture with a syntactically valid fake hash is suitable for contract tests only. Real production readiness requires independently verified kernel provenance and JPL/NAIF numerical reference comparisons. Never use a shape-valid experimental payload to render a chart labeled as accurate or apparent.
 
+## New standalone Rust producer (12 Nov 2026)
+
+An **opt-in** native Rust experiment now exists at [DE441 JSON bridge](DE441_JSON_BRIDGE_SPIKE.md). It invokes the original pinned `VirgoStars-Ephemeris::first_sky::calculate` implementation, maps the ten geometric topocentric results into this exact TypeScript v1 schema, and computes a real SHA-256 of the separately supplied classic DE441 file using the same open file handle as the calculation. The experiment is not linked into Tauri, does not ship a kernel and does not change the synthetic desktop chart.
+
+Locally executed: 5/5 Node source-contract tests and the negative paths of the Node smoke script (no arguments, invalid coordinates and missing Cargo); **not executed:** a Rust compile/test or an astronomical computation on an actual DE441 file. The smoke runner is intentionally opt-in and validates its generated JSON using the shared TypeScript receiver, but its end-to-end success must be demonstrated on a machine with Cargo and authorized kernel data before claiming compatibility. See the linked instructions and open numerical-accuracy gates.
+
 ## Integration boundary
 
 guardExperimentalSkyPort(port) is a small wrapper for a future native ready response. It leaves explicit unavailable results untouched; an unexpected ready with any invalid or mismatching snapshot becomes a **sanitized** invalid_snapshot reply with only the original session/sequence/calculation key. The D-01 queue then interprets that as invalid_reply without exposing the raw values. The opt-in nativeCalculationProbePort now installs this guard, but still is **not called by the synthetic Angular chart**.
