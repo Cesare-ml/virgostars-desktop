@@ -44,6 +44,18 @@ An isolated Node.js fixture server is available as `scripts/copilot-staging-fixt
 
 The new standalone lab suite was **actually executed under Node 22** in the authoring container, with **8/8 tests passing**, including the actual Desktop TypeScript preview decoder over a live loopback HTTP transport and HTTP requests (401, 200, 400, 413 with chunked streaming, 415 and 429), synthetic response shapes, per-fixture quota and refusal to launch without explicit opt-in. The executable and tests were subsequently committed to this draft GitHub branch. A native Rust/Windows build, an actual WebView2 loopback test and private backend JWT integration are still unverified.
 
+## Windows debug lab launcher
+
+There is now a separate **explicit synthetic-only Windows runner** in [`scripts/run-copilot-staging-lab.ps1`](../scripts/run-copilot-staging-lab.ps1). From the Desktop checkout, after the prerequisites in [Windows build gate](WINDOWS_BUILD_GATE.md), run:
+
+```powershell
+powershell -NoProfile -File .\scripts\run-copilot-staging-lab.ps1 -SyntheticOnly
+```
+
+It validates the Node fixture tests, `cargo fmt`, Rust staging-feature tests and a release-feature compilation check, starts Angular **before** creating the fictional token, then starts the local fixture and Tauri **DEBUG with `--features copilot-staging`**, cleaning up owned processes and temporary variables afterwards. It refuses to overwrite inherited staging environment variables and does not perform deploys or merges. The script itself has a six-case source contract test in `tests/copilot-windows-lab-runner.test.mjs`. These **source tests passed in an isolated V8 runner**, not in PowerShell or Windows. The real Windows Rust/Angular/WebView2 run remains an outstanding acceptance gate.
+
+See [Synthetic loopback lab](VIRGOSTARS_AI_STAGING_FIXTURE_LAB.md) for a separate manual mode and the test protocol.
+
 ## Local staging setup — synthetic test accounts ONLY
 
 This is a *manual testing recipe*, not an installed environment or proof of working integration.
