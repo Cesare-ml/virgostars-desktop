@@ -14,6 +14,38 @@ This is a **time display only**. The rendered natal/transit/synastry charts rema
 - `<time datetime="…">` exposes the underlying UTC instant, while the visible label always describes the **device** timezone, not that of a selected city. Do not use it as the timezone of an offline catalog entry.
 - No network, authentication, persistence, permissions, new dependencies, privileged commands, backend changes or personal-data writes occur.
 
+## Selected offline city's current civil time (second slice)
+
+When the user selects a locality in the **Settings / Parametri** offline city search,
+the inspector now shows **a second clock** for that city's supplied IANA time zone,
+beside the original device-local clock in the chart header. Both format the
+**same UTC instant**; the city's clock never changes the selected subject,
+birth timestamp, chart positions, chart renderer, or any stored records.
+
+- `selectedCityClockAt` (in `src/app/device-clock.ts`) uses built-in
+  `Intl.DateTimeFormat` for civil time and historical daylight-saving transitions.
+  It runs only for the currently selected city and does **not** make a new timer.
+- The city clock refreshes once per sampled second or after a city/language
+  change; it never triggers a chart redraw or native astronomical IPC.
+- If the city has a null, invalid, or unsupported `timeZone` entry, the
+  inspector shows a translated **time zone unavailable** message. In particular,
+  it must **never silently substitute the device's own time zone**.
+- The city data are temporary and are not saved, uploaded, or used as
+  a user-approved birth place. The app does not implement civil-local date to
+  UTC disambiguation for historical gaps/folds; this feature displays only
+  the *current* instant in a selected city's zone.
+- The local IANA database is supplied by the installed JavaScript/WebView
+  runtime and may differ across OS versions. Historical timezone fidelity
+  must be independently checked before accepting typed birth dates.
+
+**New local checks:** `node --experimental-strip-types --test
+tests/selected-city-clock.test.mjs` — **5/5 passed** on Node 22.16.0;
+standalone TypeScript strict check — passed. Winter/summer, the 2026
+Rome DST spring-forward and fall-back boundaries, New York offset,
+unknown time zones, invalid instants and both languages are covered.
+The Angular UI and packaged Windows/WebView2 display are **not yet built or
+visually verified**.
+
 ## Verification
 
 **Executed locally with Node v22.16.0:**
@@ -32,7 +64,7 @@ Standalone helper TypeScript strict compilation also passed under TypeScript 5.8
 
 ## Next real Adesso milestone
 
-After the Rust VirgoStars-Ephemeris provider is validated and exposed via a **separate, versioned, bounded native bridge**, add a user-selectable offline city/timezone and UTC instant calculation request. Use actual IANA historical timezone rules for place-local time and a monotonic latest-only request ID for new chart calculations. Never silently substitute device timezone for the selected city or imply that synthetic coordinates are calculated.
+After the Rust VirgoStars-Ephemeris provider is validated and exposed via a **separate, versioned, bounded native bridge**, connect the **already selected** offline city/timezone and UTC instant to a real calculation request. Use actual IANA historical timezone rules for place-local time and a monotonic latest-only request ID for new chart calculations. Never silently substitute device timezone for the selected city or imply that synthetic coordinates are calculated.
 
 ## Integration
 
