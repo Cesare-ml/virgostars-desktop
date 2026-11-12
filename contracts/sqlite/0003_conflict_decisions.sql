@@ -44,13 +44,28 @@ END;
 -- State and remote conflict-revision updates remain legal; the v3 writer
 -- retires an old request with DELETE and creates a replacement with INSERT.
 CREATE TRIGGER local_outbox_v3_identity_immutable
-BEFORE UPDATE OF profile_id,mutation_id,entity_type,entity_id ON local_outbox
-WHEN NEW.profile_id <> OLD.profile_id
+BEFORE UPDATE OF sequence,profile_id,mutation_id,entity_type,entity_id ON local_outbox
+WHEN NEW.sequence IS NOT OLD.sequence
+  OR NEW.profile_id <> OLD.profile_id
   OR NEW.mutation_id <> OLD.mutation_id
   OR NEW.entity_type <> OLD.entity_type
   OR NEW.entity_id <> OLD.entity_id
 BEGIN
   SELECT RAISE(ABORT,'queued mutation identity is immutable');
+END;
+-- A queued request is an immutable intent, even if a caller uses raw SQL.
+-- Use SQLite's NULL-safe IS NOT so that initial NULL base revisions and
+-- deletion payloads cannot be silently rewritten after staging.
+-- Only state / conflict_server_revision may transition in place; an edit
+-- must stage a NEW mutation and a keep-local decision must DELETE + INSERT.
+CREATE TRIGGER local_outbox_v3_request_snapshot_immutable
+BEFORE UPDATE OF operation,payload_json,base_server_revision,created_at_utc ON local_outbox
+WHEN NEW.operation IS NOT OLD.operation
+  OR NEW.payload_json IS NOT OLD.payload_json
+  OR NEW.base_server_revision IS NOT OLD.base_server_revision
+  OR NEW.created_at_utc IS NOT OLD.created_at_utc
+BEGIN
+  SELECT RAISE(ABORT,'queued mutation request is immutable');
 END;
 -- A user's recorded decision is audit history, not a mutable queue row.
 CREATE TRIGGER local_conflict_decisions_no_update
