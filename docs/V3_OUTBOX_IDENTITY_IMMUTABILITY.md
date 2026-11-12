@@ -57,7 +57,7 @@ Intermediate v3 identity-only schema Git blob:
 `76ff889a22c72ad7d0ce2bce497b06318f5a6fe1`
 
 Current queued-request snapshot schema Git blob:
-`9efb366c420944ebc53f87f39ada69d04232c262`
+`2b2f4eba6007d16acd5abf78dd0749bb908a197d`
 
 Earlier draft PR documentation and historical test evidence that cites
 the old blob describes the pre-hardening contract; it should not be
@@ -110,6 +110,13 @@ also covers `sequence` so a queued mutation cannot be reordered through
 raw SQL. All comparisons of nullable request fields use SQLite's null-safe
 `IS NOT` operator.
 
+The identity trigger now runs on **every UPDATE**, not merely
+`UPDATE OF sequence`. SQLite's `rowid`, `_rowid_` and `oid`
+aliases are able to change an INTEGER PRIMARY KEY while bypassing
+an `UPDATE OF sequence` trigger. Three independent regressions
+prove these aliases are now rejected, without blocking normal
+state transitions.
+
 Only the mutable synchronization fields `state` and
 `conflict_server_revision` can be updated in place. The legitimate
 keep-local writer uses DELETE + INSERT of a distinct mutation ID.
@@ -118,14 +125,14 @@ rewrites (e.g., changing both a materialized local entity and its last
 outbox payload). The semantic audit cannot independently authenticate
 such a rewritten request if no immutable original is retained.
 
-The new 14-test full-schema Node regression
-`tests/sqlite-v3-request-immutability.test.mjs` passed **14/14** locally
+The new 17-test full-schema Node regression
+`tests/sqlite-v3-request-immutability.test.mjs` passed **17/17** locally
 using exact GitHub-matching DDL, including NULL-base transitions,
-tombstones, payload changes, timestamp changes, FIFO tampering, no-op
-updates and legitimate conflict-state transitions. New schema blob:
+tombstones, payload changes, timestamp changes, direct FIFO and rowid-alias
+tampering, no-op updates and legitimate conflict-state transitions. New schema blob:
 `9efb366c420944ebc53f87f39ada69d04232c262`.
 New reference-test blob:
-`fe5a240ac9c0fafd62871c7fae56f1de302fdd27`.
+`ba74fcf74bfcb0d153c21e8f73b19577dfbf0176`.
 
 **This further changes the strict synthetic v3 catalogue.** Previous
 prototype v3 files (including those produced by the earlier version of

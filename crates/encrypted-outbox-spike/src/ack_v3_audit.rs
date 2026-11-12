@@ -385,6 +385,9 @@ mod tests {
             "UPDATE local_outbox SET base_server_revision='rev-forged'",
             "UPDATE local_outbox SET created_at_utc='2026-11-11T21:31:00Z'",
             "UPDATE local_outbox SET sequence=sequence+100",
+            "UPDATE local_outbox SET rowid=rowid+100",
+            "UPDATE local_outbox SET _rowid_=_rowid_+100",
+            "UPDATE local_outbox SET oid=oid+100",
             "UPDATE local_outbox SET payload_json='{\"label\":\"Other\"}'",
         ] {
             assert!(store.conn.execute(sql, []).is_err());
