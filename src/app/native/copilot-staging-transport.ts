@@ -69,6 +69,12 @@ export function createNativeCopilotStagingTransport(
         // Only this exact local Rust error is safe to classify separately.
         // Never echo arbitrary IPC errors (which may include native details).
         if (error === 'copilot_staging_busy') throw failure('copilot_preview_busy');
+        if (error === 'copilot_staging_not_authorized') {
+          throw failure('copilot_preview_authorization_required');
+        }
+        if (error === 'copilot_staging_rate_limited') {
+          throw failure('copilot_preview_rate_limited');
+        }
         throw failure('copilot_preview_native_unavailable');
       }
     },
