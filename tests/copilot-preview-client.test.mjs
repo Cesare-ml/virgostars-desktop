@@ -69,6 +69,46 @@ test('only the Virgo Stars preview API path is sent and client cannot choose pro
   assert.equal('apiKey' in calls[0].body, false);
 });
 
+test('an in-flight preview keeps its original validated focus even if caller mutates the object', async () => {
+  const callerFocus = { layer: 'NATAL', bodyId: 'VENUS' };
+  const ctrl = new AbortController();
+  let release;
+  let submitted;
+  const transport = {
+    async postJson(path, body) {
+      assert.equal(path, COPILOT_PREVIEW_MESSAGE_PATH);
+      submitted = body.focus;
+      await new Promise(resolve => { release = resolve; });
+      return response();
+    },
+  };
+  const pending = requestCopilotPreview(transport, callerFocus, ctrl.signal);
+  assert.deepEqual(submitted, { layer: 'NATAL', bodyId: 'VENUS' });
+  assert.notStrictEqual(submitted, callerFocus);
+  assert.ok(Object.isFrozen(submitted));
+  // This could otherwise change the expected focus AFTER await and cause an
+  // incorrect rejection or acceptance of a response for another selection.
+  callerFocus.layer = 'TRANSIT';
+  callerFocus.bodyId = 'SATURN';
+  assert.deepEqual(submitted, { layer: 'NATAL', bodyId: 'VENUS' });
+  release();
+  const reply = await pending;
+  assert.deepEqual(reply.focus, { layer: 'NATAL', bodyId: 'VENUS' });
+  assert.notStrictEqual(reply.focus, callerFocus);
+  assert.notStrictEqual(reply.focus, submitted);
+  assert.ok(Object.isFrozen(reply.focus));
+});
+
+test('directly decoded replies never expose a mutable reference to the caller focus', () => {
+  const callerFocus = { layer: 'NATAL', bodyId: 'VENUS' };
+  const reply = readCopilotPreviewReply(response(), callerFocus);
+  assert.notStrictEqual(reply.focus, callerFocus);
+  assert.ok(Object.isFrozen(reply.focus));
+  callerFocus.layer = 'TRANSIT';
+  callerFocus.bodyId = 'SATURN';
+  assert.deepEqual(reply.focus, { layer: 'NATAL', bodyId: 'VENUS' });
+});
+
 test('no remote operation starts on already-cancelled request', async () => {
   const controller = new AbortController();
   controller.abort();
