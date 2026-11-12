@@ -50,6 +50,10 @@ Node.js 22.16.0: **17/17 tests passed**, including the original 14 cases and thr
 
 Still missing: Cargo/rustc compilation, actual DE441 kernel calculation, independent JPL/NAIF numerical fixture generation and scientific accuracy review, Windows Tauri/WebView2 and full Angular build. All test positions are deliberately synthetic; they are not approved reference ephemerides.
 
+## Multi-epoch and multi-observer audit extension
+
+The new [DE441 reference campaign](DE441_REFERENCE_CAMPAIGN.md) runs the original single-case comparator sequentially over **4–24** local cases spanning multiple dates and observer sites. It checks manifest metadata against actual computed sky, refuses unsafe filename forms, and fails the entire campaign if any case fails. The new tests were executed with Node 22.16.0: **14/14 passed**; combined with the prior 17 single-case regressions, **31/31 tests passed** locally. This adds coverage orchestration only: it does not introduce authentic JPL data or scientifically validate positional accuracy. Draft #58/#59 have stronger numerical/provenance review and require explicit consolidation before science adoption.
+
 ## Integration
 
 The feature PR is stacked on draft #48, which depends on #47. Draft #51 (quarantine), #54 (kernel preflight) and #55 (smoke runner) implement complementary safeguards. None of these proves scientific accuracy or enables real charts. The synthetic renderer and the explicit native EPHEMERIS_NOT_INTEGRATED state remain unchanged.
