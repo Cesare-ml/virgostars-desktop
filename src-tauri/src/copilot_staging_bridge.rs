@@ -15,6 +15,9 @@ const MAX_RESPONSE_BYTES: usize = 8192;
 const STAGING_ENABLED_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED";
 const STAGING_ORIGIN_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN";
 const STAGING_TEST_BEARER_ENV: &str = "VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER";
+// Optional ONLY for the locally launched, unsigned test fixture. The private
+// Virgo Stars staging backend does not use or need a fixture session challenge.
+const STAGING_FIXTURE_SESSION_ENV: &str = "VIRGOSTARS_COPILOT_FIXTURE_SESSION";
 
 // Keep HTTP requests bounded across all Tauri IPC callers, not only Angular.
 // The WebView can abandon a request without cancelling native HTTP.
@@ -96,7 +99,24 @@ fn staging_configured(enabled: Option<&str>, origin: Option<&str>, bearer: Optio
         && bearer.is_some_and(|value| staging_test_bearer(value).is_ok())
 }
 
-fn validate_staging_capabilities(value: &Value) -> bool {
+fn valid_fixture_session(value: &str) -> bool {
+    value.len() == 32
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn validate_staging_capabilities(value: &Value, expected_fixture_session: Option<&str>) -> bool {
+    // If a launcher requested a specific fixture, Rust must not silently
+    // accept another local service after the launcher verified its readiness.
+    // In a real private staging backend no fixture ID is configured.
+    if let Some(expected) = expected_fixture_session {
+        if !valid_fixture_session(expected)
+            || value.get("labSession").and_then(Value::as_str) != Some(expected)
+        {
+            return false;
+        }
+    }
     if value.get("contract").and_then(Value::as_str) != Some("VirgoStarsCopilotPreviewCapabilities")
         || value.get("version").and_then(Value::as_str) != Some("0.1.0")
         || value.get("stage").and_then(Value::as_str) != Some("STAGING_SYNTHETIC")
@@ -167,7 +187,12 @@ pub async fn copilot_staging_ready() -> bool {
     let enabled = std::env::var(STAGING_ENABLED_ENV).ok();
     let origin = std::env::var(STAGING_ORIGIN_ENV).ok();
     let bearer = std::env::var(STAGING_TEST_BEARER_ENV).ok();
-    if !staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref()) {
+    let fixture_session = std::env::var(STAGING_FIXTURE_SESSION_ENV).ok();
+    if !staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref())
+        || fixture_session
+            .as_deref()
+            .is_some_and(|session| !valid_fixture_session(session))
+    {
         return false;
     }
     let _permit = match StagingHttpPermit::acquire(&STAGING_HTTP_IN_FLIGHT) {
@@ -197,7 +222,7 @@ pub async fn copilot_staging_ready() -> bool {
         _ => return false,
     };
     match bounded_json(response).await {
-        Ok(value) => validate_staging_capabilities(&value),
+        Ok(value) => validate_staging_capabilities(&value, fixture_session.as_deref()),
         Err(_) => false,
     }
 }
@@ -427,7 +452,19 @@ mod tests {
             "actions": ["describe_focus"],
             "focusOptions": ["NATAL:VENUS", "NATAL:SUN", "TRANSIT:SATURN"]
         });
-        assert!(validate_staging_capabilities(&valid));
+        assert!(validate_staging_capabilities(&valid, None));
+        // The real backend does not need the test-only labSession extension.
+        let session = "a5a5a5a5b6b6b6b6c7c7c7c7d8d8d8d8";
+        assert!(!validate_staging_capabilities(&valid, Some(session)));
+        let mut fixture = valid.clone();
+        fixture["labSession"] = json!(session);
+        assert!(validate_staging_capabilities(&fixture, Some(session)));
+        assert!(!validate_staging_capabilities(
+            &fixture,
+            Some("f1f1f1f1e2e2e2e2d3d3d3d3c4c4c4c4")
+        ));
+        assert!(!validate_staging_capabilities(&fixture, Some("invalid")));
+        assert!(!validate_staging_capabilities(&fixture, Some("A5A5A5A5B6B6B6B6C7C7C7C7D8D8D8D8")));
         for (field, bad_value) in [
             ("stage", json!("PRODUCTION")),
             ("enabled", json!(false)),
@@ -438,7 +475,7 @@ mod tests {
         ] {
             let mut invalid = valid.clone();
             invalid[field] = bad_value;
-            assert!(!validate_staging_capabilities(&invalid), "{field}");
+            assert!(!validate_staging_capabilities(&invalid, None), "{field}");
         }
     }
 
