@@ -142,6 +142,12 @@ The optional debug transport now tracks `nativeReadinessInFlight: Promise<boolea
 
 **Verification for this increment:** the 8 unchanged JavaScript test callbacks from `tests/copilot-native-single-flight.test.mjs` were executed against the **current GitHub transport source** in an isolated V8 runtime, after mechanically removing TypeScript-only annotations and substituting a minimal compatible `AbortController` implementation: **8/8 passed**. This is a genuine behavioral check but **not** a Node `--test` run, TypeScript compile, Windows WebView2 check or Cargo execution for this latest revision. The exact current file blobs are `src/app/native/copilot-staging-transport.ts` = `18f0d90c4837b79f47e7c3df235c74987cc69930` and `tests/copilot-native-single-flight.test.mjs` = `23a64d3c41fea1c03d2ca4d521317e0770ee6aae`. The prior full 16/16 Node fixture/IPC tests and isolated `tsc` pass apply to the **preceding** transport revision, not this latest one. Use `npm.cmd test` and `npm.cmd run test:ai:types` on the authorized Windows checkout to validate it fully.
 
+## Standalone AI bridge smoke command (2026-11-12)
+
+The Desktop now exposes `npm run test:ai:smoke` as one explicit Node.js 22+ gate for the five AI bridge suites: `copilot-preview-client`, `copilot-native-staging-transport`, `copilot-native-single-flight`, `copilot-staging-fixture` (real bounded loopback HTTP), and `copilot-windows-lab-runner`. It does not import or build the sibling Charts renderer and can therefore be run **before** installing the full Angular/Charts prerequisites. The Windows synthetic lab runner invokes this gate before `npm test`, `npm run test:ai:types`, the Angular build doctor, Cargo, or creation of any fictional bearer.
+
+The standalone command is committed and its composition has source-level regression coverage. It has **not yet been executed in a full authorized checkout** in this environment (the private repository cannot be cloned from the local runner). The eight existing source-only native bridge checks and ten launcher tests were evaluated against current GitHub contents in the isolated V8 source harness, but they do not replace the actual `node --test` execution. On Windows, run the smoke first, then the strict TypeScript check and full build gates as documented below.
+
 ## Verification
 
 **Added source tests:**
