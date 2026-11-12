@@ -50,6 +50,15 @@ test('creation timestamp cannot be changed without a new mutation',()=>{
 test('FIFO sequence cannot be reindexed to change keyset ordering',()=>{
  const db=open();try{denied(db,'UPDATE local_outbox SET sequence=sequence+100');}finally{db.close();}
 });
+test('SQLite rowid alias cannot move a persisted FIFO sequence',()=>{
+ const db=open();try{denied(db,'UPDATE local_outbox SET rowid=rowid+100');}finally{db.close();}
+});
+test('SQLite _rowid_ alias cannot bypass the FIFO identity trigger',()=>{
+ const db=open();try{denied(db,'UPDATE local_outbox SET _rowid_=_rowid_+100');}finally{db.close();}
+});
+test('SQLite oid alias cannot bypass the FIFO identity trigger',()=>{
+ const db=open();try{denied(db,'UPDATE local_outbox SET oid=oid+100');}finally{db.close();}
+});
 test('delete tombstone payload cannot become a fabricated upsert',()=>{
  const db=open('delete');try{denied(db,"UPDATE local_outbox SET operation='upsert',payload_json='{}'");}finally{db.close();}
 });

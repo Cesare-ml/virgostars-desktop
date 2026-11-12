@@ -44,7 +44,7 @@ END;
 -- State and remote conflict-revision updates remain legal; the v3 writer
 -- retires an old request with DELETE and creates a replacement with INSERT.
 CREATE TRIGGER local_outbox_v3_identity_immutable
-BEFORE UPDATE OF sequence,profile_id,mutation_id,entity_type,entity_id ON local_outbox
+BEFORE UPDATE ON local_outbox
 WHEN NEW.sequence IS NOT OLD.sequence
   OR NEW.profile_id <> OLD.profile_id
   OR NEW.mutation_id <> OLD.mutation_id
