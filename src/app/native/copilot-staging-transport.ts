@@ -59,6 +59,9 @@ export function createNativeCopilotStagingTransport(
   // Abort settles only the WebView promise. Rust may still hold the single
   // native HTTP permit, so do not enqueue another IPC call for this adapter.
   let nativePreviewInFlight = false;
+  // Coalesce simultaneous capability checks and keep preview IPC from
+  // racing an outstanding readiness GET for the same Rust HTTP permit.
+  let nativeReadinessInFlight: Promise<boolean> | null = null;
   return Object.freeze({
     // The UI may cancel immediately while Tauri/Rust still owns its native
     // HTTP permit. Expose the *local* pending flag (never an origin/token) so
@@ -69,10 +72,21 @@ export function createNativeCopilotStagingTransport(
       // staging /capabilities route. No token or backend URL reaches Angular.
       // The command is absent in all normal/release native builds.
       if (!native.isNative() || nativePreviewInFlight) return false;
+      // A second inspector/caller gets the first authenticated result rather
+      // than a spurious offline status from Rust's single-flight busy gate.
+      if (nativeReadinessInFlight !== null) return nativeReadinessInFlight;
+      const check = (async (): Promise<boolean> => {
+        try {
+          return (await native.invoke('copilot_staging_ready')) === true;
+        } catch {
+          return false;
+        }
+      })();
+      nativeReadinessInFlight = check;
       try {
-        return (await native.invoke('copilot_staging_ready')) === true;
-      } catch {
-        return false;
+        return await check;
+      } finally {
+        if (nativeReadinessInFlight === check) nativeReadinessInFlight = null;
       }
     },
     async postJson(
@@ -91,7 +105,9 @@ export function createNativeCopilotStagingTransport(
 
       // The Rust single-flight permit stays held until the native operation
       // completes, even if the user selects another planet and aborts the UI.
-      if (nativePreviewInFlight) throw failure('copilot_preview_busy');
+      if (nativePreviewInFlight || nativeReadinessInFlight !== null) {
+        throw failure('copilot_preview_busy');
+      }
       nativePreviewInFlight = true;
       try {
         // The IPC receives only a fixed enum-like focus; NEVER a URL or token.
