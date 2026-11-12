@@ -11,7 +11,7 @@
 - [ ] Resolve unstyled/small-chart WebView2 issue; verify Angular CSP-compatible CSS from PR #18 and in-app CSS diagnostic PR #17, with screenshot and no CSP relaxation.
 - [ ] Audit and remove generated `dist/` and `.angular/cache/` output accidentally committed to the diverged PR #13 branch **safely**; check asset rights before any re-distribution. Do not delete user workspace content.
 - [ ] Reconcile UI accessibility/design PR #7 and approved light/dark visual direction PR #2 with the current Angular shell stack; retain chart-first center and compact navigation.
-- [ ] Record Windows native npm/Cargo builds and lockfiles, inspect dependency vulnerabilities and validate packaged local assets; no GitHub Actions or automatic main merge.
+- [ ] Record Windows native npm/Cargo builds and lockfiles, inspect dependency vulnerabilities and validate packaged local assets; no GitHub Actions or automatic main merge. **Phase-0 stabilization (2026-11-12):** the 18 committed experimental-first-sky decoder tests now pass locally on exact GitHub files; fixed two test-file defects and added a dependency-free `npm run test:syntax` preflight to all Node test suites. This is **not** full-repository, Angular or native Rust validation.
 
 ## Phase 1 — Offline live sky & low-latency calculation (first priority)
 
