@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createCopilotStagingFixture } from '../scripts/copilot-staging-fixture.mjs';
 
 const bearer = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJzeW50aGV0aWMifQ.LOCAL_UNSIGNED_FIXTURE';
@@ -109,4 +111,20 @@ test('quota returns 429 without consulting a provider', async t => {
 test('invalid or missing lab tokens fail before opening a listener', () => {
   assert.throws(() => createCopilotStagingFixture(), /synthetic-only lab token/);
   assert.throws(() => createCopilotStagingFixture({ bearer: 'not-a-jwt' }), /synthetic-only lab token/);
+});
+
+test('standalone fixture CLI fails closed without explicit synthetic opt-in', () => {
+  const fixturePath = fileURLToPath(new URL('../scripts/copilot-staging-fixture.mjs', import.meta.url));
+  const child = spawnSync(process.execPath, [fixturePath], {
+    encoding: 'utf8',
+    timeout: 3000,
+    env: {
+      ...process.env,
+      VIRGOSTARS_COPILOT_FIXTURE_ACK: 'DISABLED',
+      VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER: bearer,
+    },
+  });
+  assert.equal(child.status, 2);
+  assert.match(child.stderr, /Synthetic-only lab disabled/);
+  assert.doesNotMatch(child.stdout + child.stderr, /LOCAL_UNSIGNED_FIXTURE/);
 });
