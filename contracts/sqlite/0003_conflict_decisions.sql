@@ -35,6 +35,12 @@ WHEN EXISTS(SELECT 1 FROM local_ack_ledger a
             WHERE d.profile_id=NEW.profile_id
               AND (d.original_mutation_id=NEW.mutation_id
                    OR d.replacement_mutation_id=NEW.mutation_id))
+  -- BEFORE INSERT fires even for INSERT OR REPLACE; reject a collision
+  -- with a queued ID or an explicit INTEGER PRIMARY KEY / rowid position.
+  -- Otherwise REPLACE deletes the old row and bypasses UPDATE triggers.
+  OR EXISTS(SELECT 1 FROM local_outbox q
+            WHERE (q.profile_id=NEW.profile_id AND q.mutation_id=NEW.mutation_id)
+               OR q.sequence=NEW.sequence)
 BEGIN
   SELECT RAISE(ABORT,'already used mutation id');
 END;
