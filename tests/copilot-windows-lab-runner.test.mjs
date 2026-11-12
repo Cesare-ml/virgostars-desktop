@@ -112,10 +112,13 @@ test('loopback fixture returns its required launch session ID only in mock capab
 
 test('preflight validates Rust dev and release configurations before exposing a fictional test token', () => {
   const preflight = runner.indexOf("Invoke-Checked 'Rust formatting'");
+  const offline = runner.indexOf("Invoke-Checked 'Rust offline default compile without AI'");
   const tests = runner.indexOf("Invoke-Checked 'Rust debug staging feature tests'");
   const release = runner.indexOf("Invoke-Checked 'Rust release compilation");
   const bearer = runner.indexOf('$testBearer = (& node -e');
-  assert.ok(preflight > 0 && preflight < tests && tests < release && release < bearer);
+  assert.ok(preflight > 0 && preflight < offline
+    && offline < tests && tests < release && release < bearer);
+  assert.match(runner, /'cargo' @\('check', '--no-default-features'\)/);
   assert.match(runner, /'cargo' @\('test', '--features', 'copilot-staging'\)/);
   assert.match(runner, /'cargo' @\('check', '--release', '--features', 'copilot-staging'\)/);
   assert.match(runner, /'npm\.cmd' @\('run', 'test:ai:fixture'\)/);
