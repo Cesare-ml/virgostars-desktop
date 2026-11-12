@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -137,5 +137,74 @@ test('CLI refuses missing files and excessive JSON without printing source data'
     assert.equal(p.status,2);assert.match(p.stderr,/INVALID_INPUT/);
     assert.equal((p.stdout+p.stderr).includes(dir),false);
     assert.equal((p.stdout+p.stderr).includes('SENSITIVE'),false);
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('reference CLI refuses symlink input even when target contains a valid fixture',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-ref-symlink-'));
+  const real=join(dir,'private-real-snapshot.json');
+  const link=join(dir,'private-symlink.json');
+  const ref=join(dir,'reference.json');
+  const cli=fileURLToPath(new URL('../scripts/ephemeris/verify-de441-reference.mjs',import.meta.url));
+  try {
+    const s=snapshot();
+    writeFileSync(real,JSON.stringify(s));
+    writeFileSync(ref,JSON.stringify(reference(s)));
+    try { symlinkSync(real,link,'file'); }
+    catch (err) {
+      if (err?.code==='EPERM'||err?.code==='EACCES') {t.skip('Symlink creation requires OS permission');return;}
+      throw err;
+    }
+    const p=spawnSync(process.execPath,['--experimental-strip-types',cli,link,ref],
+      {encoding:'utf8',timeout:2500});
+    assert.equal(p.error,undefined);
+    assert.equal(p.status,2);
+    assert.match(p.stderr,/DE441_REFERENCE:INVALID_INPUT/);
+    assert.equal((p.stdout+p.stderr).includes(dir),false);
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('reference CLI rejects named pipes without blocking on open',{
+  skip:process.platform==='win32',
+},t=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-ref-fifo-'));
+  const fifo=join(dir,'private-named-pipe');
+  const ref=join(dir,'reference.json');
+  const cli=fileURLToPath(new URL('../scripts/ephemeris/verify-de441-reference.mjs',import.meta.url));
+  try {
+    const mk=spawnSync('mkfifo',[fifo],{encoding:'utf8',timeout:2500});
+    if (mk.error?.code==='ENOENT') {t.skip('mkfifo unavailable');return;}
+    assert.equal(mk.status,0);
+    writeFileSync(ref,JSON.stringify(reference()));
+    const p=spawnSync(process.execPath,['--experimental-strip-types',cli,fifo,ref],
+      {encoding:'utf8',timeout:2500});
+    assert.equal(p.error,undefined,'FIFO open must not hang');
+    assert.equal(p.status,2);
+    assert.match(p.stderr,/DE441_REFERENCE:INVALID_INPUT/);
+    assert.equal((p.stdout+p.stderr).includes(dir),false);
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('reference CLI refuses a directory and invalid UTF-8 without leaking contents',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-ref-nonfile-'));
+  const malformed=join(dir,'private-invalid-utf8.json');
+  const referenceFile=join(dir,'reference.json');
+  const cli=fileURLToPath(new URL('../scripts/ephemeris/verify-de441-reference.mjs',import.meta.url));
+  try {
+    const s=snapshot(),r=reference(s);
+    writeFileSync(referenceFile,JSON.stringify(r));
+    const validBytes=Buffer.from(JSON.stringify(s));
+    // Add a malformed UTF-8 codepoint in whitespace outside quoted strings.
+    // Fatal decoding rejects the bytes before JSON.parse sees any content.
+    writeFileSync(malformed,Buffer.concat([validBytes,Buffer.from([0xc3,0x28])]));
+    for(const path of [dir,malformed]) {
+      const p=spawnSync(process.execPath,['--experimental-strip-types',cli,path,referenceFile],
+        {encoding:'utf8',timeout:2500});
+      assert.equal(p.error,undefined);
+      assert.equal(p.status,2);
+      assert.match(p.stderr,/DE441_REFERENCE:INVALID_INPUT/);
+      assert.equal((p.stdout+p.stderr).includes(dir),false);
+    }
   } finally {rmSync(dir,{recursive:true,force:true});}
 });
