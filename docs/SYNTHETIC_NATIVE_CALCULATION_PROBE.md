@@ -1,6 +1,6 @@
 # Bounded synthetic native calculation probe — P0-IPC-2
 
-**Implemented in source, 2026-11-12.** This is a CPU + Tauri IPC test fixture, **NOT** a VirgoStars-Ephemeris binding, and it must never be displayed as planets or natal/transit accuracy. It does not request or persist a birth date, location, personal note, account, database row or secret.
+**Implemented in source, 2026-11-12; development-only UI and release-mode Rust disable gate added, native Windows validation pending.** This is a CPU + Tauri IPC test fixture, **NOT** a VirgoStars-Ephemeris binding, and it must never be displayed as planets or natal/transit accuracy. It does not request or persist a birth date, location, personal note, account, database row or secret.
 
 ## Files and responsibilities
 
@@ -71,7 +71,7 @@ cargo test
 cd ..
 ```
 
-The existing Angular synthetic app is not automatically running this benchmark; a developer may import `nativeSyntheticCalculationProbe` and `LatestCalculationScheduler` into a *temporary approved test harness* to measure genuine native invocation:
+The Angular Settings/Parametri inspector now embeds a **development-mode-only benchmark panel** that invokes this synthetic command in debug Tauri, measuring sequential p50/p95/p99 without chart updates. See [Development IPC Benchmark](DEVELOPMENT_IPC_BENCHMARK.md). A developer may also import `nativeSyntheticCalculationProbe` and `LatestCalculationScheduler` into a *temporary approved test harness* to measure genuine native invocation:
 
 ```typescript
 const scheduler = new LatestCalculationScheduler(
