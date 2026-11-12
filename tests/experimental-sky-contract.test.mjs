@@ -13,7 +13,7 @@ function fixture() {
     geometry:'topocentric_geometric',ttJulianDay:2460997.209,tdbJulianDay:2460997.209,
     taiMinusUtcSeconds:37,approximations:[...REQUIRED_APPROXIMATIONS],
     positions:EXPERIMENTAL_BODIES.map((bodyId,i)=>({bodyId,
-      centerKind:bodyId.endsWith('_barycenter')?'system_barycenter':'planet_center',
+      centerKind:bodyId.endsWith('_barycenter')?'system_barycenter':'body_center',
       longitudeDeg:(i*31)%360,latitudeDeg:-12,rightAscensionDeg:(i*32)%360,
       declinationDeg:14,altitudeDeg:-23,azimuthDeg:140,distanceKm:1_000_000+i*1000})),
   };
@@ -45,7 +45,7 @@ test('reject missing, duplicated or unknown bodies instead of a partial invented
   for(const change of [s=>s.positions.pop(),
     s=>s.positions[1]={...s.positions[0]},
     s=>s.positions[0].bodyId='earth',
-    s=>s.positions[4].centerKind='planet_center'])
+    s=>s.positions[4].centerKind='body_center'])
     assert.equal(isExperimentalSkySnapshotV1(corrupt(change),request),false);
 });
 test('reject nonphysical angles, invalid distances and nonfinite numbers',()=>{
@@ -91,9 +91,10 @@ test('malformed IPC payloads fail closed without throwing',()=>{
     assert.equal(isExperimentalSkySnapshotV1(value,request),false);
   }
 });
-test('IERS C72 UTC coverage is enforced without claiming dates outside the validated input range',()=>{
-  assert.equal(isExperimentalSkySnapshotV1(fixture(),{...request,utcIso:'1971-12-31T23:59:59.000Z'}),false);
-  assert.equal(isExperimentalSkySnapshotV1(fixture(),{...request,utcIso:'2027-06-28T00:00:00.000Z'}),false);
+test('IERS C72 UTC coverage is enforced even for internally matching snapshots',()=>{
+  for (const utcIso of ['1971-12-31T23:59:59.000Z', '2027-06-28T00:00:00.000Z']) {
+    assert.equal(isExperimentalSkySnapshotV1({...fixture(),utcIso},{...request,utcIso}),false);
+  }
 });
 
 
