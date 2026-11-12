@@ -15,9 +15,11 @@ Equivalently use `node --test tests/copilot-staging-fixture.test.mjs`. Also incl
 The tests open a **random ephemeral port on literal `127.0.0.1`** and close it afterwards. They cover:
 - GET `/api/v1/ai/copilot-preview/capabilities` with and without the synthetic test bearer.
 - POST `/api/v1/ai/copilot-preview/message` for NATAL:VENUS, NATAL:SUN, TRANSIT:SATURN and the required synthetic FACT_ONLY envelope.
+- A live HTTP response passed through the **actual** Desktop TypeScript `requestCopilotPreview` client and `readCopilotPreviewReply` validator for all three supported focus options. This exercises the real UI-side contract logic, but does not render Angular or run Rust.
 - Unknown API path, invalid focus, arbitrary prompt fields.
 - 2 KiB body cap (including chunked streaming), malformed JSON and non-JSON Content-Type.
 - Per-fixture quota 429, no-store headers and invalid-token refusal.
+- CLI denies startup without the synthetic opt-in and does not print the fictional bearer.
 
 These are **real loopback HTTP tests in Node**, not isolated source-string checks. They do not execute the Rust native bridge or Express server.
 
