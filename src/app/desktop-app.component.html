@@ -125,6 +125,8 @@
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
+          <vs-dev-ipc-diagnostics *ngIf="showDevDiagnostics"
+            [locale]="locale"></vs-dev-ipc-diagnostics>
         </div>
       </div>
     </aside>
