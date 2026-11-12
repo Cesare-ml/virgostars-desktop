@@ -99,6 +99,7 @@
         <div *ngIf="inspectorTab==='settings'">
           <p class="inspector-hint">{{t('settings.help')}}</p>
           <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="selectedCity = $event" (locationEdited)="selectedCity = null"></vs-offline-city-picker>
+          <vs-natal-input [locale]="locale" [selectedPlace]="selectedCity"></vs-natal-input>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>

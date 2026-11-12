@@ -1,0 +1,16 @@
+:host{display:block;color:var(--vs-text)}
+.natal-input{padding:16px 0;border-bottom:1px solid var(--vs-border)}
+h3{font-size:14px;line-height:1.35;margin:0 0 8px;font-weight:700}
+.natal-note,.natal-place,.natal-status,.natal-utc{font-size:11px;line-height:1.45;color:var(--vs-text-secondary);overflow-wrap:anywhere}
+.natal-note{margin:0 0 12px}.natal-place{margin:0 0 12px}
+form{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
+label{font-size:12px;font-weight:650;margin-top:4px}
+input{display:block;box-sizing:border-box;width:100%;min-height:38px;border:1px solid var(--vs-border);border-radius:8px;background:var(--vs-surface);color:var(--vs-text);padding:7px 10px;font:inherit;font-size:13px;color-scheme:light}
+:host-context(.desktop-app[data-theme="dark"]) input{color-scheme:dark}
+button{cursor:pointer;min-height:38px;border-radius:8px;font:inherit;font-size:12px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--vs-focus);outline-offset:2px}
+.natal-verify{margin-top:8px;border:0;background:var(--vs-accent);color:var(--vs-accent-contrast);font-weight:700}
+.natal-status{min-height:19px;margin:10px 0 0}
+.natal-choices{display:grid;gap:8px;margin-top:10px}
+.natal-choices button{background:var(--vs-surface-muted);color:var(--vs-text);border:1px solid var(--vs-border);text-align:left;padding:8px;display:grid;gap:4px;overflow-wrap:anywhere}
+.natal-choices small{font-size:11px;color:var(--vs-text-secondary)}

@@ -1,0 +1,22 @@
+<section class="natal-input" [attr.aria-label]="t('title')">
+  <h3>{{t('title')}}</h3>
+  <p class="natal-note">{{t('info')}}</p>
+  <p class="natal-place" *ngIf="state.place">{{t('location')}}: <strong>{{state.place.name}}</strong> · {{state.place.timeZone || t('missingZone')}}</p>
+  <form (submit)="onVerify($event)" novalidate>
+    <label for="natal-date">{{t('date')}}</label>
+    <input id="natal-date" type="date" min="1900-01-01" max="2100-12-31"
+      autocomplete="off" [value]="state.date" (input)="onDate($event)">
+    <label for="natal-time">{{t('time')}}</label>
+    <input id="natal-time" type="time" step="1" autocomplete="off"
+      [value]="state.time" (input)="onTime($event)">
+    <button type="submit" class="natal-verify">{{t('check')}}</button>
+  </form>
+  <p class="natal-status" role="status" aria-live="polite">{{statusText}}</p>
+  <div class="natal-choices" *ngIf="state.status==='choice_required'">
+    <button type="button" *ngFor="let choice of state.choices" (click)="choose(choice.instantUtc)">
+      <span>{{t('choice')}}: {{choice.instantUtc}}</span>
+      <small>{{t('offset')}} {{offset(choice.offsetSeconds)}}</small>
+    </button>
+  </div>
+  <p class="natal-utc" *ngIf="state.instantUtc">{{t('utc')}}: <strong>{{state.instantUtc}}</strong></p>
+</section>

@@ -15,6 +15,7 @@ import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
+import { NatalInputComponent } from './natal-input.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
@@ -29,7 +30,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, OfflineCityPickerComponent],
+  imports:[CommonModule, OfflineCityPickerComponent, NatalInputComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
