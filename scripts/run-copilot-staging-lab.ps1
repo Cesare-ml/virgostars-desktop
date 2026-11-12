@@ -162,6 +162,7 @@ try {
     Invoke-Checked 'Windows environment doctor' 'node' @('scripts/desktop-doctor.mjs', '--stage=setup', '--strict')
     Invoke-Checked 'Real loopback fixture + TypeScript decoder tests' 'npm.cmd' @('run', 'test:ai:fixture')
     Invoke-Checked 'Complete Node and TypeScript test suite' 'npm.cmd' @('test')
+    Invoke-Checked 'Strict TypeScript AI IPC contract' 'npm.cmd' @('run', 'test:ai:types')
     Invoke-Checked 'Angular/Charts build prerequisites' 'npm.cmd' @('run', 'doctor:build')
     Invoke-Checked 'Prepare synthetic development icon' 'npm.cmd' @('run', 'prepare:icon')
 
