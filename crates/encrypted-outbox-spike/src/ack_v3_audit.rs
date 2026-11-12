@@ -435,6 +435,47 @@ mod tests {
     }
 
     #[test]
+    fn v3_fifo_sequence_cannot_be_recycled_after_delete() {
+        let (_dir, _path, mut store, _, _) = setup();
+        let original_sequence: i64 = store.conn.query_row(
+            "SELECT sequence FROM local_outbox
+             WHERE profile_id='synthetic-a' AND mutation_id='synthetic-old'",
+            [], |r| r.get(0),
+        ).unwrap();
+        store.conn.execute(
+            "DELETE FROM local_outbox WHERE profile_id='synthetic-a'
+             AND mutation_id='synthetic-old'", [],
+        ).unwrap();
+        // An explicit rowid from a deleted mutation would cause a keyset
+        // page cursor to skip the new mutation. The v3 AFTER INSERT guard
+        // compares against sqlite_sequence's retained high-water mark.
+        assert!(store.conn.execute(
+            "INSERT INTO local_outbox(
+                 sequence,profile_id,mutation_id,entity_type,entity_id,
+                 operation,payload_json,created_at_utc)
+             VALUES (?1,'synthetic-a','synthetic-recycled','subject',
+                     'synthetic-e1','upsert','{\"label\":\"Fictional\"}',
+                     '2026-11-11T21:30:00Z')",
+            params![original_sequence],
+        ).is_err());
+        assert!(store.conn.execute(
+            "INSERT INTO local_outbox(
+                 profile_id,mutation_id,entity_type,entity_id,
+                 operation,payload_json,created_at_utc)
+             VALUES ('synthetic-a','synthetic-fresh','subject',
+                     'synthetic-e1','upsert','{\"label\":\"Fictional\"}',
+                     '2026-11-11T21:30:00Z')",
+            [],
+        ).is_ok());
+        let new_sequence: i64 = store.conn.query_row(
+            "SELECT sequence FROM local_outbox
+             WHERE mutation_id='synthetic-fresh'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert!(new_sequence > original_sequence);
+    }
+
+    #[test]
     fn an_ack_and_pending_row_with_same_id_are_rejected() {
         let (_dir, _path, mut store, _, _) = setup();
         store.conn.execute(
