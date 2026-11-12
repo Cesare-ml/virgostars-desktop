@@ -14,6 +14,8 @@ mod ack_v2_stage;
 mod ack_v2_conflicts;
 mod ack_v3_keep_local;
 mod ack_v3_audit;
+mod ack_v3_conflict_previews;
+pub use ack_v3_conflict_previews::SyntheticV3ConflictPreview;
 pub use ack_v3_keep_local::KeepLocalDisposition;
 pub use ack_v3_audit::SyntheticV3AuditSummary;
 pub use ack_v2::AckV2Disposition;
