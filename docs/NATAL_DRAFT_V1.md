@@ -41,7 +41,8 @@ The complete snapshot is copied from the current fields so a later text edit doe
 - [ ] Integrate validated Rust VirgoStars-Ephemeris with actual ephemeris kernels and source accuracy; no synthetic chart mislabeled as natal.
 - [ ] Real encrypted SQLite/SQLCipher guest archive with locally provisioned key, migration/backup/restore, stable UUIDs, save/update/reopen/search and no login.
 - [ ] Source-country table export and full 1,951,599-city private pack Windows QA, including licensed redistribution.
-- [ ] Date/time +/− scrub, hold-repeat and native backpressure from [live calculation pipeline](LIVE_CALCULATION_PIPELINE.md) after real astronomy availability.
+- [x] Five in-memory date/time +/- correction controls and bounded press-and-hold **implemented in source**; isolated Node smoke tests and TS strict validation passed; see [rapid correction](NATAL_RAPID_CORRECTION.md). Calendar correction clears this preview and does not recalculate the fictional chart.
+- [ ] Native Windows/Angular hold controls validation, configuration of larger step sizes, bounded Rust astronomy IPC + real continuous chart animation and approved local Save.
 
 ## Cross-repository boundary
 
