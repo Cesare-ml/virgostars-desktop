@@ -82,6 +82,27 @@ test('port preflight binds exclusively instead of contacting an arbitrary existi
   assert.doesNotMatch(runner, /TcpClient|BeginConnect|EndConnect/);
 });
 
+test('runner requires a fresh cryptographic session challenge before Tauri starts', () => {
+  assert.match(runner, /'VIRGOSTARS_COPILOT_FIXTURE_SESSION'/);
+  assert.match(runner, /randomBytes\(16\)\.toString\('hex'\)/);
+  assert.match(runner, /\$labSession -notmatch '\^\[a-f0-9\]\{32\}\$'/);
+  assert.match(runner, /\$env:VIRGOSTARS_COPILOT_FIXTURE_SESSION = \$labSession/);
+  assert.match(runner, /\$capabilities\.labSession -cne \$labSession/);
+  assert.match(runner, /Remove-Variable -Name labSession -ErrorAction SilentlyContinue/);
+  const bind = runner.indexOf('$capabilities.labSession -cne $labSession');
+  const run = runner.indexOf('& $tauri dev --features copilot-staging');
+  assert.ok(bind > 0 && bind < run);
+  assert.doesNotMatch(runner, /Write-Host[^\n]*\$labSession/);
+  assert.doesNotMatch(runner, /-ArgumentList[^\n]*\$labSession/);
+});
+
+test('loopback fixture returns its required launch session ID only in mock capabilities', () => {
+  assert.match(fixture, /typeof labSession !== 'string'/);
+  assert.match(fixture, /labSession, actions: \['describe_focus'\]/);
+  assert.match(fixture, /labSession: process\.env\.VIRGOSTARS_COPILOT_FIXTURE_SESSION/);
+  assert.match(fixture, /JWT authentication mechanism/);
+});
+
 test('preflight validates Rust dev and release configurations before exposing a fictional test token', () => {
   const preflight = runner.indexOf("Invoke-Checked 'Rust formatting'");
   const tests = runner.indexOf("Invoke-Checked 'Rust debug staging feature tests'");
