@@ -1,0 +1,33 @@
+export const NATAL_INPUT_TEXT = {
+  it: {
+    title:'Dati di nascita · anteprima UTC',date:'Data di nascita',time:'Ora locale di nascita',
+    check:'Verifica ora UTC',info:'Verifica locale senza salvataggio. Il grafico resta dimostrativo; il motore astronomico non è ancora disponibile.',
+    location:'Località selezionata',missingPlace:'Seleziona prima una città nella ricerca offline.',
+    missingZone:'La città non ha un fuso orario IANA verificato.',
+    idle:'Inserisci data e ora, poi verifica.',choice_required:'Ora ambigua: scegli una delle due possibilità UTC.',
+    pending:'Verifica della richiesta in corso…',unavailable:'Ora UTC valida, ma il motore astronomico non è ancora integrato.',
+    unsupported:'Questo calcolo non è supportato.',invalid_reply:'Risposta scientifica non verificata: risultato bloccato.',
+    transport_error:'Servizio di calcolo non disponibile.',nonexistent:'Questa ora locale non è mai esistita: correggila.',
+    invalid:'Data, ora o fuso orario non validi.',selection_invalid:'La scelta UTC non è più valida: verifica di nuovo.',
+    location_invalid:'Coordinate della città non valide.',calculation_key_invalid:'Richiesta non valida.',
+    queue_unavailable:'La coda dei calcoli non è disponibile.',city_required:'Seleziona una città.',
+    zone_required:'Fuso orario della città non disponibile.',utc:'UTC selezionato',
+    choice:'Scegli UTC',offset:'Scostamento UTC',
+  },
+  en: {
+    title:'Birth details · UTC preview',date:'Birth date',time:'Local birth time',
+    check:'Verify UTC time',info:'Local preview without saving. The chart remains synthetic; the astronomical engine is not connected yet.',
+    location:'Selected location',missingPlace:'Select a city in the offline search first.',
+    missingZone:'The city has no verified IANA time zone.',
+    idle:'Enter a date and time, then verify.',choice_required:'Ambiguous time: choose one of the two UTC instants.',
+    pending:'Checking request…',unavailable:'Valid UTC time, but the astronomical engine is not integrated yet.',
+    unsupported:'This calculation is not supported.',invalid_reply:'Unverified scientific response: result blocked.',
+    transport_error:'Calculation service unavailable.',nonexistent:'This local time never occurred: correct it.',
+    invalid:'Invalid date, time or time zone.',selection_invalid:'The UTC choice has expired: verify again.',
+    location_invalid:'Invalid city coordinates.',calculation_key_invalid:'Invalid request.',
+    queue_unavailable:'Calculation queue unavailable.',city_required:'Select a city.',
+    zone_required:'City time zone unavailable.',utc:'Selected UTC',
+    choice:'Choose UTC',offset:'UTC offset',
+  },
+} as const;
+export type NatalTextKey=keyof typeof NATAL_INPUT_TEXT['it'];
