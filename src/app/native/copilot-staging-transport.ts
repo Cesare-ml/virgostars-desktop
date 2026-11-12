@@ -60,11 +60,15 @@ export function createNativeCopilotStagingTransport(
   // native HTTP permit, so do not enqueue another IPC call for this adapter.
   let nativePreviewInFlight = false;
   return Object.freeze({
+    // The UI may cancel immediately while Tauri/Rust still owns its native
+    // HTTP permit. Expose the *local* pending flag (never an origin/token) so
+    // a manual recheck can avoid mistaking native BUSY for offline.
+    isPreviewPending(): boolean { return nativePreviewInFlight; },
     async isAvailable(): Promise<boolean> {
       // Rust performs a bounded, authenticated GET to the local Virgo Stars
       // staging /capabilities route. No token or backend URL reaches Angular.
       // The command is absent in all normal/release native builds.
-      if (!native.isNative()) return false;
+      if (!native.isNative() || nativePreviewInFlight) return false;
       try {
         return (await native.invoke('copilot_staging_ready')) === true;
       } catch {
