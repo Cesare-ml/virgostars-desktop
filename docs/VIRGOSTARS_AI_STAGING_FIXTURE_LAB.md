@@ -7,10 +7,10 @@
 From the authorized Desktop checkout with Node.js 22+:
 
 ```powershell
-node --test tests/copilot-staging-fixture.test.mjs
+npm run test:ai:fixture
 ```
 
-Also included in the repository's existing `npm test` script, which uses `--experimental-strip-types` for TypeScript imports in other tests.
+Equivalently use `node --test tests/copilot-staging-fixture.test.mjs`. Also included in the repository's existing `npm test` script, which uses `--experimental-strip-types` for TypeScript imports in other tests.
 
 The tests open a **random ephemeral port on literal `127.0.0.1`** and close it afterwards. They cover:
 - GET `/api/v1/ai/copilot-preview/capabilities` with and without the synthetic test bearer.
