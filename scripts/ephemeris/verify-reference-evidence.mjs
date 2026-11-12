@@ -32,7 +32,7 @@ function exactKeys(value, allowed) {
 
 // Use O_NOFOLLOW where available, but also compare lstat and fstat file identity.
 // Errors are intentionally sanitized: never print birth data or local paths.
-async function inspectFile(path, maximum, keepBytes = false) {
+export async function inspectFile(path, maximum, keepBytes = false) {
   if (typeof path !== 'string' || path.length === 0 || path.length > 4096) throw Error('UNSAFE_FILE');
   let before;
   try { before = await lstat(path, {bigint:true}); }
@@ -91,8 +91,16 @@ export async function verifyReferenceEvidence(paths) {
     files = await Promise.all(Object.entries(CAPS).map(async ([key, cap]) =>
       [key, await inspectFile(paths[key], cap, key === 'reference')]));
   } catch { return reject('UNSAFE_FILE'); }
-  const evidence = Object.fromEntries(files);
-  if (new Set(files.map(([,file]) => file.identity)).size !== files.length) {
+  return validateCapturedEvidence(Object.fromEntries(files));
+}
+
+/**
+ * Reuse the exact D-05 source provenance rules without reopening files.
+ * Internal review-only helper, never for IPC or browser payloads.
+ */
+export function validateCapturedEvidence(evidence) {
+  if (!evidence || !Object.values(evidence).every(file => file?.identity && typeof file.digest === 'string') ||
+      new Set(Object.values(evidence).map(file => file.identity)).size !== 4) {
     return reject('REUSED_FILE');
   }
   let reference;
