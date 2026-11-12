@@ -25,6 +25,33 @@ function failure(code: string): Error {
   return new Error(code);
 }
 
+/**
+ * Settle the UI immediately when a newer focus/mode cancels the request.
+ * Tauri invoke itself has no AbortSignal API: the native Rust HTTP request
+ * may finish later, but its reply/error is consumed and cannot reach Angular.
+ * The abort listener is removed on either outcome to avoid retaining the UI.
+ */
+function awaitNativeOrAbort(nativeRequest: Promise<unknown>, signal: AbortSignal): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    const complete = (finish: () => void): void => {
+      if (completed) return;
+      completed = true;
+      signal.removeEventListener('abort', onAbort);
+      finish();
+    };
+    const onAbort = (): void => complete(() => reject(failure('copilot_preview_cancelled')));
+    signal.addEventListener('abort', onAbort, { once: true });
+    // Attach BOTH continuations, even if already aborted: a late native error
+    // is never an unhandled rejection or forwarded to a different selection.
+    nativeRequest.then(
+      value => complete(() => resolve(value)),
+      error => complete(() => reject(error)),
+    );
+    if (signal.aborted) onAbort();
+  });
+}
+
 /** No free text, user-supplied paths, provider IDs or birth/chart data can cross IPC. */
 export function createNativeCopilotStagingTransport(
   native: NativeCopilotStagingBridge,
@@ -57,11 +84,12 @@ export function createNativeCopilotStagingTransport(
 
       try {
         // The IPC receives only a fixed enum-like focus; NEVER a URL or token.
-        // Rust has a 5-second timeout. Abort here suppresses stale replies but
-        // does not claim to cancel the native HTTP transaction.
-        const response = await native.invoke('copilot_staging_preview', {
+        // Rust has a 5-second timeout. An aborted WebView request now settles
+        // promptly, without claiming to cancel the native HTTP transaction.
+        const nativeRequest = native.invoke('copilot_staging_preview', {
           focus: { layer: body.focus.layer, bodyId: body.focus.bodyId },
         });
+        const response = await awaitNativeOrAbort(nativeRequest, signal);
         if (signal.aborted) throw failure('copilot_preview_cancelled');
         return response;
       } catch (error: unknown) {
