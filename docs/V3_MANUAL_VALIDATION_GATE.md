@@ -22,6 +22,44 @@ files and exit zero**. The new runner clears that variable for the
 subprocess; a regression test verifies an intentionally failing
 fictional suite produces a failing exit status.
 
+## Reviewed-source lock (new)
+
+The manual Windows gate now verifies an explicit file fingerprint lock
+**before** running any SQLite or Rust tests. The manifest
+`contracts/sqlite/v3-reference-source-lock.json` lists the exact Git
+blob SHA-1 of **11 v3 Node test suites and all three SQL schema files**.
+The verifier `tools/v3-verify-source-lock.mjs` checks the content
+of every file, refuses missing/extra suites or altered SQL, and fails
+if a new test has not been added to the reviewed manifest.
+
+If a reviewer intentionally changes a schema or test, update the
+manifest **in the same reviewed PR**, using the actual
+`git hash-object <file>` output. Git blob SHA-1 values are
+**consistency references**, not digital signatures, proof of trusted
+remote receipts or protection against someone who can edit the entire
+repository and manifest.
+
+Run the independent verifier tests and the preflight directly:
+
+```powershell
+node --test tests/v3-source-lock.test.mjs
+node tools/v3-verify-source-lock.mjs
+```
+
+The verifier's **11/11 synthetic unit tests passed locally**, including
+byte drift, missing/extra test files, malformed hashes, lock schema
+errors, and an intentionally reviewed new suite. Seven locally mounted
+tracked files matched their GitHub blob IDs exactly. As the authoring
+environment holds only **four of the eleven suites**, the real preflight
+intentionally reported the seven missing files and did **not**
+claim a full checkout pass.
+
+The Windows `validate-v3-windows.ps1` wrapper now requires this
+reviewed-source preflight before running the 11-suite reference gate,
+and before attempting native Rust/SQLCipher checks. The optional
+`-ReferenceOnly` mode **still requires** matching reviewed source
+hashes and never approves native encryption.
+
 ## Commands — on an authorized full checkout of this branch
 
 Requirements: Windows 11 for the native gate, Node.js **22+**,
@@ -34,8 +72,8 @@ Start with the runner's contract tests on any OS:
 node --test tests/v3-reference-gate.test.mjs
 ```
 
-For all 11 tracked synthetic SQLite v3 reference suites (without
-native encryption), on Windows, macOS or Linux:
+After the source-lock preflight, run all 11 tracked synthetic SQLite v3
+reference suites (without native encryption), on Windows, macOS or Linux:
 
 ```powershell
 node tools/v3-sqlite-reference-gate.mjs
