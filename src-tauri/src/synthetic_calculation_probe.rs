@@ -164,6 +164,21 @@ mod tests {
     }
 
     #[test]
+    fn fixed_checksum_golden_vectors_match_portable_wrapping_arithmetic() {
+        let vectors = [
+            (17_u32, 1_u32, "140c74bc"),
+            (17_u32, 10_u32, "fa5e06d2"),
+            (17_u32, 10_000_u32, "b9cc73d5"),
+            (0_u32, MAX_ITERATIONS, "4b726605"),
+        ];
+        for (seed, iterations, expected) in vectors {
+            let mut fixture = request(iterations);
+            fixture.input.seed = seed;
+            assert_eq!(run_probe(fixture).result.checksum_hex, expected);
+        }
+    }
+
+    #[test]
     fn malformed_protocol_or_overlarge_work_is_rejected() {
         assert_eq!(validate(&request(0)), Err("SYNTHETIC_INVALID_REQUEST"));
         assert_eq!(
