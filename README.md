@@ -4,6 +4,10 @@
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
 
+## Synthetic native Rust calculation probe (testing only)
+
+A separate [bounded synthetic Tauri IPC probe](docs/SYNTHETIC_NATIVE_CALCULATION_PROBE.md) now exercises a fixed-size CPU workload with a strict two-worker gate and `syntheticOnly` response marker. The TypeScript transport passed eight isolated behavioral tests. **Rust compilation, actual WebView2 IPC latency and real ephemeris calculations remain unverified and disconnected from the chart.**
+
 ## Bounded future Rust calculation requests
 
 A pure [latest-only calculation scheduler](docs/LATEST_CALCULATION_SCHEDULER.md) now accepts rapid synthetic requests while maintaining **one active and one latest pending**, suppressing obsolete results/errors. 10/10 isolated Node tests passed, including a 10,000-submission overload; **no Rust astronomy or chart animation is connected yet**.
