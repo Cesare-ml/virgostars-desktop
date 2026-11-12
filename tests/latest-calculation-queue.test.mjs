@@ -119,3 +119,55 @@ test('invalid drafts do not call native port; each queue has an isolated session
   assert.equal(out[0].kind,'ready');
   queue.dispose();
 });
+
+
+test('dispose before the first microtask does not invoke abandoned native work',async()=>{
+  let invoked=0;const notified=[];
+  const queue=new LatestCalculationQueue('session_1',req=>{
+    invoked++;return Promise.resolve(reply(req));
+  },validate,result=>notified.push(result));
+  queue.submit(valid(1));
+  queue.dispose();
+  await settle();
+  assert.equal(invoked,0);
+  assert.deepEqual(notified,[]);
+});
+
+test('same-turn scrub coalesces before the first native port invocation',async()=>{
+  const started=[],out=[];
+  const queue=new LatestCalculationQueue('session_1',req=>{
+    started.push(req);return Promise.resolve(reply(req));
+  },validate,result=>out.push(result));
+  for(let i=0;i<200;i++)queue.submit(valid(i));
+  await settle();
+  assert.equal(started.length,1);
+  assert.equal(started[0].calculationKey,'fixture.199');
+  assert.deepEqual(out.map(x=>x.request.requestSeq),[200]);
+  queue.dispose();
+});
+
+test('stale replies never execute an expensive snapshot validator',async()=>{
+  const first=deferred();let calls=0,started=0;const out=[];
+  const queue=new LatestCalculationQueue('session_1',req=>{
+    started++;return started===1?first.promise:Promise.resolve(reply(req));
+  },v=>{calls++;return validate(v)},x=>out.push(x));
+  queue.submit(valid(1));await settle();
+  queue.submit(valid(2));
+  first.resolve(reply({protocolVersion:1,sessionId:'session_1',requestSeq:1,...valid(1)}));
+  await settle();
+  assert.equal(calls,1);
+  assert.deepEqual(out.map(x=>x.request.requestSeq),[2]);
+  queue.dispose();
+});
+
+test('throwing snapshot validator fails closed without poisoning the next calculation',async()=>{
+  const observed=[];let n=0;
+  const queue=new LatestCalculationQueue('session_1',req=>Promise.resolve(reply(req)),
+    () => { if(++n===1)throw new Error('private validator diagnostic');return true; },
+    x=>observed.push(x));
+  queue.submit(valid(1));await settle();
+  queue.submit(valid(2));await settle();
+  assert.deepEqual(observed.map(x=>x.kind),['invalid_reply','ready']);
+  assert.equal(JSON.stringify(observed).includes('private validator diagnostic'),false);
+  queue.dispose();
+});
