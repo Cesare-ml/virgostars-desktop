@@ -4,13 +4,25 @@
 
 ## Compilare con il catalogo completo
 
-Il repository è privato: serve un account GitHub con accesso al repository, anche per scaricare la release privata del catalogo. Installare [GitHub CLI](https://cli.github.com/), autenticarsi con `gh auth login` e seguire i prerequisiti per Node, Rust, WebView2 e il repository `astrological-charts` in [CONTRIBUTING](CONTRIBUTING.md). Il pacchetto è fissato alla release `places-20261112-v2`; lo script confronta SHA-256 dell'archivio e del database con valori presenti nel codice, rifiuta file inattesi e non sovrascrive un catalogo diverso.
+Il repository è privato: serve un account GitHub con accesso al repository, anche per scaricare la release privata del catalogo. Installare [GitHub CLI](https://cli.github.com/), autenticarsi con `gh auth login` e seguire i prerequisiti per Node, Rust, WebView2 e il repository `astrological-charts` in [Shell 001](SHELL-001.md). Serve anche accesso al repository privato `Cesare-ml/astrological-charts`. Il pacchetto è fissato alla release `places-20261112-v2`; lo script confronta SHA-256 dell'archivio e del database con valori presenti nel codice, rifiuta file inattesi e non sovrascrive un catalogo diverso.
 
-Su Windows, dopo avere configurato e compilato la libreria Charts e installato le dipendenze npm:
+Su Windows, in una cartella che conterrà entrambi i progetti, preparare i due checkout e autenticare GitHub CLI:
 
 ```powershell
+gh auth login
+git clone https://github.com/Cesare-ml/astrological-charts.git
+git clone https://github.com/Cesare-ml/virgostars-desktop.git
+cd astrological-charts
+npm ci
+npm run build:library
+npm run demo:pack
+cd ../virgostars-desktop
+git switch --track origin/codex/offline-places-distribution
+npm ci
 npm run tauri:build:places:windows
 ```
+
+Queste istruzioni usano il branch della pull request finché non viene integrato nel ramo principale. Se il pack sintetico Charts è già stato generato, seguire [Shell 001](SHELL-001.md) per riutilizzarlo senza sovrascriverlo.
 
 Il comando scarica il catalogo autorizzato, genera l'overlay, compila il frontend e crea gli installer. Il database si conserva in `.local/places` e viene incluso come risorsa offline; la normale `npm run tauri:build` resta la build sintetica senza catalogo. Su macOS, con gli stessi prerequisiti della piattaforma, eseguire `python3 scripts/places/fetch_catalog.py`, `python3 scripts/places/prepare_tauri_bundle.py`, `npm run build:ui`, `npm run prepare:icon` e `npx tauri build --config .local/places/tauri-places.conf.json`; il percorso macOS non è stato verificato. L’accesso alla release privata richiede i permessi del repository e non equivale a disponibilità pubblica.
 
