@@ -379,6 +379,29 @@ test('every native POST checks the optional lab session before projecting safe f
   assert.match(rust, /project_preview_envelope\(&fixture, &expected, None\)\.is_ok\(\)/);
 });
 
+test('manual retry while an abandoned native preview is pending never marks the server offline', () => {
+  const component = read('src/app/desktop-app.component.ts');
+  const native = read('src/app/native/copilot-staging-transport.ts');
+  const contract = read('src/app/copilot-preview-client.ts');
+  assert.match(contract, /isPreviewPending\?\(\): boolean/);
+  assert.match(native, /isPreviewPending\(\): boolean \{ return nativePreviewInFlight; \}/);
+  assert.match(native, /if \(!native\.isNative\(\) \|\| nativePreviewInFlight\) return false/);
+  assert.match(component, /get copilotNativePending\(\): boolean/);
+  assert.match(component, /this\.copilotTransport\?\.isPreviewPending\?\.\(\) === true/);
+  const retry = component.slice(component.indexOf('recheckCopilotPreview(): void {'),
+    component.indexOf('private async checkCopilotPreview(): Promise<void> {'));
+  assert.match(retry, /if \(this\.copilotNativePending\) \{/);
+  assert.match(retry, /this\.copilotStatus = 'ai\.preview\.busy'/);
+  assert.doesNotMatch(retry, /this\.copilotPreviewReady = false/);
+  const probe = component.slice(component.indexOf('private async checkCopilotPreview(): Promise<void> {'),
+    component.indexOf('private async checkRuntime(): Promise<void> {'));
+  assert.match(probe, /this\.copilotProbeBusy \|\| this\.copilotNativePending\) return/);
+  const ask = component.slice(component.indexOf('async askCopilotPreview(): Promise<void> {'),
+    component.indexOf('zoom(direction:', component.indexOf('async askCopilotPreview(): Promise<void> {')));
+  assert.match(ask, /if \(this\.copilotNativePending\) \{/);
+  assert.match(ask, /this\.copilotStatus = 'ai\.preview\.busy'/);
+});
+
 test('generic native transport failures clear stale AI readiness but quota and busy stay retryable', () => {
   const component = read('src/app/desktop-app.component.ts');
   const start = component.indexOf('async askCopilotPreview(): Promise<void>');
