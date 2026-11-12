@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:ai:fixture": "node --experimental-strip-types --test tests/copilot-staging-fixture.test.mjs",
+    "test:ai:types": "tsc --noEmit --strict --target ES2022 --module ES2022 --moduleResolution bundler --allowImportingTsExtensions src/app/native/copilot-staging-transport.ts",
     "check": "npm run test && npm run build:ui",
     "prepare:frontend": "node scripts/prepare-synthetic-frontend.mjs",
     "prepare:icon": "node scripts/generate-spike-icon.mjs",
