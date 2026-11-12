@@ -13,6 +13,9 @@ use crate::{
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 
 const MAX_PREVIEW_ROWS: usize = 100;
+// Shared JavaScript/Rust cursor contract: JSON numbers cannot represent
+// arbitrary i64 SQLite sequences without losing integer precision.
+const MAX_CURSOR_SEQUENCE: i64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntheticV3ConflictPreview {
@@ -26,6 +29,14 @@ pub struct SyntheticV3ConflictPreview {
     pub can_keep_local: bool,
 }
 
+/// Only the current page is inspected. A cursor is a FIFO position, not a
+/// snapshot authorization or a token that grants access to another profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyntheticV3ConflictPage {
+    pub items: Vec<SyntheticV3ConflictPreview>,
+    pub next_after_sequence: Option<i64>,
+}
+
 impl SyntheticEncryptedStore {
     /// Metadata-only, profile-scoped and bounded fictional v3 conflict list.
     /// Reads no network state and never updates a stored subject or outbox.
@@ -35,7 +46,25 @@ impl SyntheticEncryptedStore {
         profile: &str,
         limit: usize,
     ) -> Result<Vec<SyntheticV3ConflictPreview>> {
-        if !synthetic_id(profile) || !(1..=MAX_PREVIEW_ROWS).contains(&limit) {
+        Ok(self.page_synthetic_v3_conflict_previews(profile, None, limit)?.items)
+    }
+
+    /// Keyset pagination for the same fictional profile. A cursor is the
+    /// durable local_outbox.sequence of the last *returned* row. Do not use
+    /// OFFSET, which can duplicate/skip rows when prior edits are removed.
+    ///
+    /// Between separate calls the queue can change. This is a bounded
+    /// review hint, NOT a stable snapshot or permission to resolve a conflict.
+    pub fn page_synthetic_v3_conflict_previews(
+        &mut self,
+        profile: &str,
+        after_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<SyntheticV3ConflictPage> {
+        let after = after_sequence.unwrap_or(0);
+        if !synthetic_id(profile) || !(1..=MAX_PREVIEW_ROWS).contains(&limit)
+            || !(0..=MAX_CURSOR_SEQUENCE).contains(&after)
+        {
             return Err(StoreError::InvalidSyntheticInput);
         }
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Deferred)
@@ -45,22 +74,35 @@ impl SyntheticEncryptedStore {
 
         let previews = {
             let mut stmt = tx.prepare(
-                "SELECT mutation_id,entity_id,operation,payload_json,
+                "SELECT sequence,mutation_id,entity_id,operation,payload_json,
                         base_server_revision,created_at_utc,conflict_server_revision
                  FROM local_outbox
                  WHERE profile_id=?1 AND entity_type='subject' AND state='conflict'
-                 ORDER BY sequence LIMIT ?2"
+                   AND sequence > ?2
+                 ORDER BY sequence LIMIT ?3"
             ).map_err(storage_error)?;
-            let rows = stmt.query_map(params![profile, limit as i64], |r| Ok((
-                r.get::<_, String>(0)?, r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?,
-                r.get::<_, Option<String>>(4)?, r.get::<_, String>(5)?,
-                r.get::<_, Option<String>>(6)?,
+            // Fetch one extra row to prove another page exists; do not
+            // fabricate a next cursor merely because this page is full.
+            let rows = stmt.query_map(params![profile, after, (limit + 1) as i64], |r| Ok((
+                r.get::<_, i64>(0)?, r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?, r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?, r.get::<_, Option<String>>(5)?,
+                r.get::<_, String>(6)?, r.get::<_, Option<String>>(7)?,
             ))).map_err(storage_error)?;
             let mut items = Vec::new();
+            let mut last_sequence = None;
+            let mut has_more = false;
             for row in rows {
-                let (mutation, entity, operation, payload_json,
+                let (sequence, mutation, entity, operation, payload_json,
                      base, created, remote) = row.map_err(storage_error)?;
+                if sequence <= after || sequence > MAX_CURSOR_SEQUENCE {
+                    return Err(StoreError::InvalidSyntheticInput);
+                }
+                if items.len() == limit {
+                    has_more = true;
+                    break;
+                }
+                last_sequence = Some(sequence);
                 if !synthetic_id(&mutation) || !synthetic_id(&entity) {
                     return Err(StoreError::InvalidSyntheticInput);
                 }
@@ -113,7 +155,10 @@ impl SyntheticEncryptedStore {
                     can_keep_local: eligible,
                 });
             }
-            items
+            SyntheticV3ConflictPage {
+                items,
+                next_after_sequence: if has_more { last_sequence } else { None },
+            }
         };
         // The snapshot transaction only read data; no writes or repairs.
         tx.commit().map_err(storage_error)?;
@@ -224,6 +269,64 @@ mod tests {
         let mut v2=SyntheticEncryptedStore::open(&path,&key()).unwrap();
         v2.migrate_synthetic_v1_to_v2().unwrap();
         assert!(v2.list_synthetic_v3_conflict_previews("synthetic-a",10).is_err());
+    }
+
+    #[test]
+    fn keyset_pages_keep_fifo_order_without_skipping_and_end_cleanly() {
+        let (_dir, _path, mut store, _) = setup();
+        for suffix in ["two", "three"] {
+            let entity = format!("synthetic-e-{suffix}");
+            let mutation = format!("synthetic-m-{suffix}");
+            let payload = serde_json::json!({"label":suffix}).to_string();
+            store.conn.execute(
+                "INSERT INTO local_entities(
+                     profile_id,entity_type,entity_id,payload_json,local_revision)
+                 VALUES (?1,'subject',?2,?3,1)",
+                rusqlite::params!["synthetic-a",entity,payload],
+            ).unwrap();
+            store.conn.execute(
+                "INSERT INTO local_outbox(
+                     profile_id,mutation_id,entity_type,entity_id,operation,
+                     payload_json,created_at_utc,state,conflict_server_revision)
+                 VALUES (?1,?2,'subject',?3,'upsert',?4,?5,'conflict',?6)",
+                rusqlite::params![
+                    "synthetic-a",mutation,entity,payload,FIXTURE_TIME,"rev-remote",
+                ],
+            ).unwrap();
+        }
+        let first = store.page_synthetic_v3_conflict_previews("synthetic-a",None,2).unwrap();
+        assert_eq!(first.items.len(),2);
+        assert!(first.next_after_sequence.is_some());
+        assert_eq!(first.items[0].mutation_id,"synthetic-m1");
+        assert_eq!(first.items[1].mutation_id,"synthetic-m-two");
+        let second = store.page_synthetic_v3_conflict_previews(
+            "synthetic-a",first.next_after_sequence,2,
+        ).unwrap();
+        assert_eq!(second.items.len(),1);
+        assert_eq!(second.items[0].mutation_id,"synthetic-m-three");
+        assert_eq!(second.next_after_sequence,None);
+        assert!(store.page_synthetic_v3_conflict_previews(
+            "synthetic-a",Some(MAX_CURSOR_SEQUENCE),2,
+        ).unwrap().items.is_empty());
+    }
+
+    #[test]
+    fn keyset_rejects_invalid_cursors_and_preserves_profile_isolation() {
+        let (_dir,_path,mut store,_) = setup();
+        for invalid in [-1,MAX_CURSOR_SEQUENCE+1] {
+            assert!(store.page_synthetic_v3_conflict_previews(
+                "synthetic-a",Some(invalid),10,
+            ).is_err());
+        }
+        assert!(store.page_synthetic_v3_conflict_previews(
+            "synthetic-a",Some(0),0,
+        ).is_err());
+        assert!(store.page_synthetic_v3_conflict_previews(
+            "synthetic-b",Some(0),10,
+        ).unwrap().items.is_empty());
+        assert!(store.page_synthetic_v3_conflict_previews(
+            "not-a-profile",Some(0),10,
+        ).is_err());
     }
 
     #[test]
