@@ -56,6 +56,9 @@ function awaitNativeOrAbort(nativeRequest: Promise<unknown>, signal: AbortSignal
 export function createNativeCopilotStagingTransport(
   native: NativeCopilotStagingBridge,
 ): VirgoStarsCopilotPreviewTransport {
+  // Abort settles only the WebView promise. Rust may still hold the single
+  // native HTTP permit, so do not enqueue another IPC call for this adapter.
+  let nativePreviewInFlight = false;
   return Object.freeze({
     async isAvailable(): Promise<boolean> {
       // Rust performs a bounded, authenticated GET to the local Virgo Stars
@@ -82,13 +85,25 @@ export function createNativeCopilotStagingTransport(
         throw failure('copilot_preview_invalid_native_request');
       }
 
+      // The Rust single-flight permit stays held until the native operation
+      // completes, even if the user selects another planet and aborts the UI.
+      if (nativePreviewInFlight) throw failure('copilot_preview_busy');
+      nativePreviewInFlight = true;
       try {
         // The IPC receives only a fixed enum-like focus; NEVER a URL or token.
-        // Rust has a 5-second timeout. An aborted WebView request now settles
-        // promptly, without claiming to cancel the native HTTP transaction.
-        const nativeRequest = native.invoke('copilot_staging_preview', {
-          focus: { layer: body.focus.layer, bodyId: body.focus.bodyId },
-        });
+        // Rust has a 5-second timeout. Aborting the UI does NOT cancel native
+        // HTTP; release this local guard only after the native Promise settles.
+        let pending: Promise<unknown>;
+        try {
+          pending = Promise.resolve(native.invoke('copilot_staging_preview', {
+            focus: { layer: body.focus.layer, bodyId: body.focus.bodyId },
+          }));
+        } catch (error) {
+          // A synchronous invocation failure must not permanently lock the UI.
+          nativePreviewInFlight = false;
+          throw error;
+        }
+        const nativeRequest = pending.finally(() => { nativePreviewInFlight = false; });
         const response = await awaitNativeOrAbort(nativeRequest, signal);
         if (signal.aborted) throw failure('copilot_preview_cancelled');
         return response;
