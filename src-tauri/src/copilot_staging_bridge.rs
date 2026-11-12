@@ -65,7 +65,9 @@ fn staging_origin(value: &str) -> Result<Url, &'static str> {
     // redirects, paths, credentials or query parameters can be client-selected.
     if url.scheme() != "http"
         || url.host_str() != Some("127.0.0.1")
-        || url.port().is_none()
+        // Reject privileged/invalid ports. A loopback lab backend is always
+        // explicitly bound to a non-system port (1024..=65535).
+        || !matches!(url.port(), Some(1024..=65535))
         || url.path() != "/"
         || url.query().is_some()
         || url.fragment().is_some()
@@ -429,11 +431,18 @@ mod tests {
     #[test]
     fn loopback_origin_cannot_be_broadened() {
         assert!(staging_origin("http://127.0.0.1:3000").is_ok());
+        assert!(staging_origin("http://127.0.0.1:1024").is_ok());
+        assert!(staging_origin("http://127.0.0.1:65535").is_ok());
         for invalid in [
             "https://virgostars.it",
             "https://staging.virgostars.it",
             "http://localhost:3000",
             "http://127.0.0.1",
+            "http://127.0.0.1:0",
+            "http://127.0.0.1:1",
+            "http://127.0.0.1:80",
+            "http://127.0.0.1:1023",
+            "http://127.0.0.1:65536",
             "http://127.0.0.1:3000/other",
             "http://127.0.0.1:3000/?next=http://evil.invalid",
             "http://example.com:3000",
