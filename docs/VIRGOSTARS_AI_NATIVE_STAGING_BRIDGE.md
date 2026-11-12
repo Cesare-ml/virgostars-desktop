@@ -164,6 +164,14 @@ The optional debug native transport previously called `native.isNative()` outsid
 
 Two new tests in `tests/copilot-native-staging-transport.test.mjs` exercise a throwing environment detector with a fictional sensitive message and non-boolean truthy/falsy return values. **2/2 actual test callbacks passed** in an isolated V8 JavaScript harness using mechanically type-erased current GitHub TypeScript logic. Verified GitHub blobs: transport `04dd56b8ddc8c56b90777da8551d11d0a2b830f0`, tests `ddf7c2d653cd50e32f26c1de4027843f8854c144`. The complete `npm run test:ai:smoke`, Angular build, Windows PowerShell/Tauri/WebView2 and Rust Cargo verification were **not** executed for this new revision.
 
+## Native IPC focus snapshot and accessor hardening (2026-11-12)
+
+The staging WebView adapter formerly called `isCopilotPreviewFocus(body.focus)` and then read `body.focus.layer` and `body.focus.bodyId` **again** when building the Tauri `copilot_staging_preview` payload. Mutable, getter-backed or proxy-backed JavaScript objects could return different values between validation and IPC, even though the normal Angular caller uses a frozen, validated focus. A getter could also throw an arbitrary exception containing local implementation details before reaching the native error-redaction handler.
+
+`src/app/native/copilot-staging-transport.ts` now checks the exact two top-level request fields and the two supplied focus fields, then **samples their values into a new inert local object exactly once**. The snapshot must independently pass the three-value `isCopilotPreviewFocus` allowlist before it is sent as the **only** focus payload to Tauri; no free text, backend URLs or provider identifiers are introduced. All validation/accessor exceptions are converted to the fixed `copilot_preview_invalid_native_request` error and never trigger native IPC. This does not affect the Rust-side focus allowlist or release feature gate.
+
+Two new Node-style test cases in `tests/copilot-native-staging-transport.test.mjs` check a changing getter and exceptions thrown from focus and top-level action getters and proxy key enumeration. The **2/2 test callbacks passed** against the current exact GitHub TypeScript logic in an isolated V8 runner with TypeScript-only annotations erased, transport blob `3a45c014d9d8aa0a62728d28605373e967c58e99` and test blob `164c215c6c134acdf6565471e0c90c67e4eb29ff`. A before/after negative control verified the former adapter did send an unallowlisted focus `TRANSIT:VENUS` after a getter changed values and leaked an arbitrary thrown getter error, demonstrating that the regressions address real behavior. **No complete npm test, strict tsc, Windows PowerShell, Angular/WebView2 or Rust/Cargo run was executed for this revision.**
+
 ## Verification
 
 **Added source tests:**
