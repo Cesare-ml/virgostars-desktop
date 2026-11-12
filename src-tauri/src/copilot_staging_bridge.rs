@@ -60,7 +60,25 @@ impl Focus {
 }
 
 fn staging_origin(value: &str) -> Result<Url, &'static str> {
-    let url = Url::parse(value).map_err(|_| "copilot_staging_invalid_origin")?;
+    // URL parsers normalize certain shorthand IPv4 names (e.g. 127.1) and
+    // leading/trailing whitespace. Require an explicitly typed canonical
+    // loopback authority before parsing, not merely a normalized host_str().
+    const INVALID: &str = "copilot_staging_invalid_origin";
+    let authority = value
+        .strip_prefix("http://127.0.0.1:")
+        .ok_or(INVALID)?;
+    let port_text = authority.strip_suffix('/').unwrap_or(authority);
+    if port_text.is_empty()
+        || (port_text.len() > 1 && port_text.starts_with('0'))
+        || !port_text.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(INVALID);
+    }
+    let parsed_port = port_text.parse::<u16>().map_err(|_| INVALID)?;
+    if parsed_port < 1024 {
+        return Err(INVALID);
+    }
+    let url = Url::parse(value).map_err(|_| INVALID)?;
     // Only a local, explicitly staged backend; no public domains, DNS names,
     // redirects, paths, credentials or query parameters can be client-selected.
     if url.scheme() != "http"
@@ -437,6 +455,13 @@ mod tests {
             "https://virgostars.it",
             "https://staging.virgostars.it",
             "http://localhost:3000",
+            "http://127.1:3000",
+            "http://127.000.000.001:3000",
+            "HTTP://127.0.0.1:3000",
+            " http://127.0.0.1:3000",
+            "http://127.0.0.1:3000 ",
+            "http://127.0.0.1:03000",
+            "http://127.0.0.1:3000//",
             "http://127.0.0.1",
             "http://127.0.0.1:0",
             "http://127.0.0.1:1",
