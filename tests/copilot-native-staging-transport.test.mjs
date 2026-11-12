@@ -146,6 +146,37 @@ test('missing debug feature or staging configuration leaves preview unavailable'
   assert.equal(called, false);
 });
 
+test('throwing native environment detector fails closed without exposing host diagnostics', async () => {
+  let invoked = false;
+  const transport = createNativeCopilotStagingTransport({
+    isNative() { throw new Error('SECRET_TOKEN / private host path'); },
+    async invoke() { invoked = true; return fixtureEnvelope(); },
+  });
+  assert.equal(await transport.isAvailable(), false);
+  await assert.rejects(
+    transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+    error => error instanceof Error && error.message === 'copilot_preview_native_unavailable',
+  );
+  assert.equal(invoked, false);
+  assert.equal(transport.isPreviewPending(), false);
+});
+
+test('non-boolean native detector results never enable staging IPC', async () => {
+  for (const spoof of [1, 'true', {}, null, undefined]) {
+    let invoked = false;
+    const transport = createNativeCopilotStagingTransport({
+      isNative: () => spoof,
+      async invoke() { invoked = true; return fixtureEnvelope(); },
+    });
+    assert.equal(await transport.isAvailable(), false);
+    await assert.rejects(
+      transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+      error => error instanceof Error && error.message === 'copilot_preview_native_unavailable',
+    );
+    assert.equal(invoked, false);
+  }
+});
+
 test('browser and remote request injection fail before native invocation', async () => {
   let called = 0;
   const native = {
