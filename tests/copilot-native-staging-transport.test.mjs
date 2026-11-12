@@ -217,6 +217,56 @@ test('untrusted payload cannot override action, focus, backend URL, provider or 
   assert.equal(called, 0);
 });
 
+test('mutable accessor focus is sampled once and cannot change before IPC', async () => {
+  const calls = [];
+  let layerReads = 0;
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke(command, args) {
+      calls.push({ command, args });
+      return fixtureEnvelope();
+    },
+  });
+  const changing = {
+    get layer() { layerReads++; return layerReads === 1 ? 'NATAL' : 'TRANSIT'; },
+    bodyId: 'VENUS',
+  };
+  await transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, {
+    action: 'describe_focus', focus: changing,
+  }, new AbortController().signal);
+  assert.equal(layerReads, 1, 'focus layer is read once before validation and IPC');
+  assert.deepEqual(calls, [{
+    command: 'copilot_staging_preview',
+    args: { focus: { layer: 'NATAL', bodyId: 'VENUS' } },
+  }]);
+});
+
+test('throwing getters and proxies are redacted before any native IPC', async () => {
+  let calls = 0;
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    async invoke() { calls++; return fixtureEnvelope(); },
+  });
+  const unsafe = [
+    { action: 'describe_focus', focus: {
+      get layer() { throw new Error('NATIVE_SECRET_PATH / hidden token'); },
+      bodyId: 'VENUS',
+    } },
+    { action: 'describe_focus', focus: new Proxy({}, {
+      ownKeys() { throw new Error('OTHER_INTERNAL_SECRET'); },
+    }) },
+    { get action() { throw new Error('PRIVATE_JWT'); }, focus },
+  ];
+  for (const payload of unsafe) {
+    await assert.rejects(
+      transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, payload, new AbortController().signal),
+      error => error instanceof Error && error.message === 'copilot_preview_invalid_native_request',
+    );
+  }
+  assert.equal(calls, 0);
+  assert.equal(transport.isPreviewPending(), false);
+});
+
 test('abort before network prevents calling native bridge', async () => {
   let called = false;
   const transport = createNativeCopilotStagingTransport({
