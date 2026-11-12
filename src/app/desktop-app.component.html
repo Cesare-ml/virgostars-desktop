@@ -112,7 +112,7 @@
             <span>{{t('clock.city')}}</span>
             <div class="city-clock-values">
               <strong>{{selectedCity.name}}</strong>
-              <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')">{{cityClock.text}}</time>
+              <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')">{{cityClockText}}</time>
               <span *ngIf="cityClock.kind !== 'ready'" class="city-clock-unavailable">{{t('clock.city.unavailable')}}</span>
             </div>
           </div>
