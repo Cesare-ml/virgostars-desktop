@@ -187,7 +187,13 @@ pub async fn copilot_staging_ready() -> bool {
     let enabled = std::env::var(STAGING_ENABLED_ENV).ok();
     let origin = std::env::var(STAGING_ORIGIN_ENV).ok();
     let bearer = std::env::var(STAGING_TEST_BEARER_ENV).ok();
-    let fixture_session = std::env::var(STAGING_FIXTURE_SESSION_ENV).ok();
+    let fixture_session = match std::env::var(STAGING_FIXTURE_SESSION_ENV) {
+        Ok(session) => Some(session),
+        Err(std::env::VarError::NotPresent) => None,
+        // An existing but non-Unicode environment value must never silently
+        // disable a requested per-launch identity check.
+        Err(std::env::VarError::NotUnicode(_)) => return false,
+    };
     if !staging_configured(enabled.as_deref(), origin.as_deref(), bearer.as_deref())
         || fixture_session
             .as_deref()
