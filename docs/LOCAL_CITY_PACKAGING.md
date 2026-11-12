@@ -45,3 +45,7 @@ Il normale prototipo senza overlay non contiene il database. `.local/` è esclus
 Vedere [ricerca nativa](NATIVE_OFFLINE_PLACES.md) e [associazione stati](OWNED_COUNTRY_LOOKUP.md).
 
 I test locali hanno verificato checksum ed estrazione del pacchetto completo, e compilato installer di prova Windows. Download autenticato su un altro computer, installazione e comportamento WebView2 restano da verificare.
+
+## Build con immagini astrologiche originali
+
+La build standard qui descritta usa immagini sintetiche. Per includere le immagini approvate, clonare anche il repository privato `astrological-assets` accanto a Desktop e Charts, quindi usare `npm run tauri:build:places:private:windows`. Consultare [pipeline degli asset](ASSET_PIPELINE.md) per verifiche e limiti di condivisione.
