@@ -5,11 +5,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const PRIVATE_MANIFEST_SHA256 = 'f17c007c72185b0b617a9429acecde853d28a0fe93430983bf6a1834fe6ea23f';
+// Hash the Git-normalized UTF-8 manifest, so Windows CRLF checkouts match Unix LF.
+export const PRIVATE_MANIFEST_SHA256 = 'a94d7a30f812f5e20e1cec716413b54e0a3c5d1bae8fb7ece1fe0cb40b3b8fbc';
 export const PRIVATE_MANIFEST_FILE = 'approved-assets.json';
 const MAX_FILES = 2000, MAX_FILE_BYTES = 20_000_000, MAX_TOTAL_BYTES = 200_000_000;
 const IMAGE_PATH = /^img\/[a-zA-Z0-9_.@ /-]+\.(png|jpg|jpeg|webp)$/i;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const manifestHash = bytes => hash(Buffer.from(bytes.toString('utf8').replace(/\r\n/g,'\n'),'utf8'));
 function check(ok, message) { if (!ok) throw new Error(message); }
 function regular(path, dir=false) {
   const s=lstatSync(path);
@@ -38,7 +40,7 @@ function filesIn(dir, rel='') {
 
 /** The expected hash is fixed in production; tests can inject synthetic manifests. */
 export function validatePrivateManifest(bytes, expectedHash=PRIVATE_MANIFEST_SHA256) {
-  check(hash(bytes)===expectedHash,'Private asset manifest checksum mismatch');
+  check(manifestHash(bytes)===expectedHash,'Private asset manifest checksum mismatch');
   const manifest=JSON.parse(bytes.toString('utf8'));
   check(manifest.schemaVersion===1 && manifest.source?.repository==='Cesare-ml/virgo-stars' &&
     manifest.source?.assetRoot==='public/assets' && /^[0-9a-f]{40}$/.test(manifest.source?.commit ?? '') &&
@@ -83,7 +85,7 @@ export function preparePrivateAssets(sourcePath, destinationPath, expectedHash=P
   });
   if(existsSync(destination)) {
     regular(destination,true);regular(join(destination,'assets'),true);
-    check(hash(readSafe(destination,[PRIVATE_MANIFEST_FILE]))===expectedHash,'Existing private stage differs');
+    check(manifestHash(readSafe(destination,[PRIVATE_MANIFEST_FILE]))===expectedHash,'Existing private stage differs');
     check(JSON.stringify(readdirSync(destination).sort())===JSON.stringify(['assets',PRIVATE_MANIFEST_FILE].sort()),
       'Unexpected content in private asset stage');
     check(JSON.stringify(filesIn(join(destination,'assets')).sort())===JSON.stringify(files.map(x=>x.path).sort()),

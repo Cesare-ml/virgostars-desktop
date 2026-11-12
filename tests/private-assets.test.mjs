@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {preparePrivateAssets} from '../scripts/prepare-private-assets.mjs';
+import {preparePrivateAssets, validatePrivateManifest} from '../scripts/prepare-private-assets.mjs';
 import {verifyOfflineBundle} from '../scripts/verify-offline-bundle.mjs';
 
 const hash = b=>createHash('sha256').update(b).digest('hex');
@@ -53,4 +53,10 @@ test('rejects altered staged images and extra staged files',()=>run(f=>{
   rmSync(join(f.stage,'assets/img/extra.png'));
   writeFileSync(join(f.stage,'assets/img/example.png'),'changed');
   assert.throws(()=>preparePrivateAssets(f.source,f.stage,f.expected),/stage is modified/);
+}));
+
+test('pins the same manifest across Windows and Unix line endings',()=>run(f=>{
+  const lf=Buffer.from(JSON.stringify(f.manifest,null,2)+'\n');
+  const crlf=Buffer.from(lf.toString('utf8').replace(/\n/g,'\r\n'));
+  assert.deepEqual(validatePrivateManifest(crlf,hash(lf)),f.manifest);
 }));
