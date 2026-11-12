@@ -60,6 +60,28 @@ test('cleanup shuts down only children started by this lab and drops temporary e
   assert.match(runner, /Pop-Location/);
 });
 
+test('lab HTTP probes bypass proxies, reject redirects and bound authenticated JSON', () => {
+  assert.match(runner, /\$request\.Proxy = \$null/);
+  assert.match(runner, /\$request\.AllowAutoRedirect = \$false/);
+  assert.match(runner, /\$request\.Timeout = 2000/);
+  assert.match(runner, /\$request\.ReadWriteTimeout = 2000/);
+  assert.doesNotMatch(runner, /Invoke-RestMethod|Invoke-WebRequest/);
+  assert.match(runner, /\$uri\.Host -ne '127\.0\.0\.1'/);
+  assert.match(runner, /\$uri\.AbsolutePath -ne '\/api\/v1\/ai\/copilot-preview\/capabilities'/);
+  assert.match(runner, /\$response\.ContentLength -gt 8192/);
+  assert.match(runner, /\$memory\.Length \+ \$read -gt 8192/);
+  assert.match(runner, /ConvertFrom-Json -InputObject \$content -ErrorAction Stop/);
+  assert.match(runner, /-ExpectJson -Headers @\{/);
+});
+
+test('port preflight binds exclusively instead of contacting an arbitrary existing listener', () => {
+  assert.match(runner, /\[System\.Net\.Sockets\.TcpListener\]::new\(/);
+  assert.match(runner, /\$listener\.ExclusiveAddressUse = \$true/);
+  assert.match(runner, /\$listener\.Start\(\)/);
+  assert.match(runner, /\$listener\.Stop\(\)/);
+  assert.doesNotMatch(runner, /TcpClient|BeginConnect|EndConnect/);
+});
+
 test('preflight validates Rust dev and release configurations before exposing a fictional test token', () => {
   const preflight = runner.indexOf("Invoke-Checked 'Rust formatting'");
   const tests = runner.indexOf("Invoke-Checked 'Rust debug staging feature tests'");
