@@ -1,4 +1,4 @@
-import type { CalculationRequestV1 } from './calculation-queue';
+import type { CalculationPort, CalculationRequestV1 } from './calculation-queue';
 
 /**
  * Experimental DE441 geometric positions, NEVER validated apparent astrology.
@@ -132,4 +132,26 @@ export function isExperimentalSkySnapshotV1(
         !finiteRange(value.distanceKm, Number.MIN_VALUE, Number.MAX_VALUE)) return false;
   }
   return true;
+}
+
+/**
+ * Fail-closed adapter for the future experimental Rust path. The current native
+ * probe returns only unavailable; this guard will reject any accidental
+ * ready answer that lacks a fully disclosed DE441 geometric model.
+ * Not connected to chart rendering and not a numerical accuracy certification.
+ */
+export function guardExperimentalSkyPort(port: CalculationPort): CalculationPort {
+  return async (request, signal) => {
+    const reply = await port(request, signal);
+    if (!record(reply) || reply.status !== 'ready') return reply;
+    if (isExperimentalSkySnapshotV1(reply.snapshot, request)) return reply;
+    // Deliberately do not expose the original malformed payload.
+    return {
+      protocolVersion: request.protocolVersion,
+      sessionId: request.sessionId,
+      requestSeq: request.requestSeq,
+      calculationKey: request.calculationKey,
+      status: 'invalid_snapshot',
+    };
+  };
 }
