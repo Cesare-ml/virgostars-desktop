@@ -65,3 +65,11 @@ Local Node.js 22.16.0, 2026-11-10:
 ## Security limits
 
 Synthetic provenance fields are build-time safeguards, not cryptographic proof of artistic ownership. A developer with write access to both the manifest and its generator could forge them; public release requires separate signed/provenance-reviewed assets. These tests do not validate accounts, encryption, cloud sync or astronomical correctness. The repo is still private with license undecided, and no GitHub Actions, merges, releases or production changes were made here.
+
+## Immagini originali approvate per build private
+
+La modalità `private-artwork` utilizza il repository privato fratello `astrological-assets`, senza richiedere il repository di produzione. Serve un checkout accessibile ai collaboratori autorizzati. `npm run build:ui:private` verifica il manifest approvato fissato tramite SHA-256, la corrispondenza con `catalog/approvals.json`, tutti gli hash e le dimensioni, e prepara una copia in `.local/frontend-private`. Il bundle è verificato separatamente con `npm run verify:bundle:private`; asset extra, manomissioni, link simbolici e manifest diversi causano un errore. Il renderer continua a caricare `/assets/` in locale.
+
+La modalità sintetica resta il default di `npm run build:ui` e la sua cartella `.local/frontend` non viene sovrascritta. Per generare una build privata con catalogo città, su Windows e dopo l’autenticazione GitHub CLI usare `npm run tauri:build:places:private:windows`. Per il solo prototipo senza il catalogo città usare `npm run tauri:build:private`. Il pacchetto privato contiene esclusivamente le immagini autorizzate; i font non sono inclusi. Il manifest fissato è quello del checkout `astrological-assets` corrente; aggiornamenti deliberati richiedono revisione e aggiornamento del relativo hash.
+
+I file originali, il bundle compilato e i pacchetti restano locali e fuori da Git. L’autorizzazione esistente riguarda la collaborazione privata; non implica diritti di ridistribuzione pubblica. Le carte mostrate dalla demo usano ancora posizioni sintetiche e non costituiscono calcoli astronomici.

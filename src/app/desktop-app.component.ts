@@ -13,6 +13,7 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 
@@ -47,6 +48,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
 
+  readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
   readonly planets = fictionalPlanets();
   readonly houses = fictionalHouses();
@@ -76,7 +78,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     try {
-      // No network fallback. Both Angular and generated test assets are embedded in Tauri.
+      // No network fallback. The selected local image pack is embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
