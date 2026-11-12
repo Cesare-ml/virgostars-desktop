@@ -122,3 +122,71 @@ test('aborted preview remains observable as pending until native completion', as
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(transport.isPreviewPending(), false);
 });
+
+
+test('concurrent native capability probes share one authenticated GET and recover after settlement', async () => {
+  let finish;
+  const calls = [];
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    invoke(command) {
+      calls.push(command);
+      return new Promise(resolve => { finish = resolve; });
+    },
+  });
+  const first = transport.isAvailable();
+  const second = transport.isAvailable();
+  assert.deepEqual(calls, ['copilot_staging_ready'], 'only one native readiness invoke');
+  finish(true);
+  assert.deepEqual(await Promise.all([first, second]), [true, true]);
+  // A later manual Retry is a new probe, never a stale cached result.
+  const third = transport.isAvailable();
+  assert.deepEqual(calls, ['copilot_staging_ready', 'copilot_staging_ready']);
+  finish(false);
+  assert.equal(await third, false);
+});
+
+
+test('preview cannot overtake a native readiness GET and may proceed after its result', async () => {
+  let finishReady;
+  const calls = [];
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    invoke(command) {
+      calls.push(command);
+      if (command === 'copilot_staging_ready') {
+        return new Promise(resolve => { finishReady = resolve; });
+      }
+      return Promise.resolve(reply());
+    },
+  });
+  const probe = transport.isAvailable();
+  await assert.rejects(invokePreview(transport), error => error.message === 'copilot_preview_busy');
+  assert.deepEqual(calls, ['copilot_staging_ready'], 'no preview IPC while a GET holds Rust slot');
+  finishReady(true);
+  assert.equal(await probe, true);
+  assert.deepEqual(await invokePreview(transport), reply());
+  assert.deepEqual(calls, ['copilot_staging_ready', 'copilot_staging_preview']);
+});
+
+test('failed and synchronously thrown readiness probes clear the guard without token disclosure', async () => {
+  const commands = [];
+  const transport = createNativeCopilotStagingTransport({
+    isNative: () => true,
+    invoke(command) {
+      commands.push(command);
+      if (commands.length === 1) throw new Error('local sensitive native error');
+      if (commands.length === 2) return Promise.reject(new Error('private backend path'));
+      if (command === 'copilot_staging_ready') return Promise.resolve(true);
+      return Promise.resolve(reply());
+    },
+  });
+  assert.equal(await transport.isAvailable(), false);
+  assert.equal(await transport.isAvailable(), false);
+  assert.equal(await transport.isAvailable(), true);
+  assert.deepEqual(await invokePreview(transport), reply());
+  assert.deepEqual(commands, [
+    'copilot_staging_ready', 'copilot_staging_ready',
+    'copilot_staging_ready', 'copilot_staging_preview',
+  ]);
+});
