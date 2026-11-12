@@ -99,6 +99,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // Means the optional *local staging bridge* is configured, not cloud login.
   get copilotConnected(): boolean { return this.copilotPreviewReady; }
   get copilotCanProbe(): boolean { return this.copilotTransport !== null; }
+  // UI cancellation settles immediately, but Rust can still hold its HTTP permit.
+  get copilotNativePending(): boolean {
+    return this.copilotTransport?.isPreviewPending?.() === true;
+  }
   get copilotFocusKey(): string { return this.copilotFocus.layer + ':' + this.copilotFocus.bodyId; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
 
@@ -126,13 +130,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   recheckCopilotPreview(): void {
     if (this.destroyed || this.copilotBusy || this.copilotProbeBusy) return;
+    if (this.copilotNativePending) {
+      // The backend has not disconnected: its previous native request is
+      // still pending. Do not reset the last known readiness to false.
+      this.copilotStatus = 'ai.preview.busy';
+      this.cd.markForCheck();
+      return;
+    }
     void this.checkCopilotPreview();
   }
 
   private async checkCopilotPreview(): Promise<void> {
     // A development build is not enough: Rust must confirm the authenticated
     // STAGING_SYNTHETIC /capabilities contract, returning only a boolean.
-    if (!this.copilotTransport || this.copilotProbeBusy) return;
+    if (!this.copilotTransport || this.copilotProbeBusy || this.copilotNativePending) return;
     this.copilotProbeBusy = true;
     this.copilotPreviewReady = false;
     this.copilotStatus = 'ai.preview.checking';
@@ -290,6 +301,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     // Without the optional native authenticated transport the button stays disabled.
     if (this.destroyed || this.copilotTransport === null || !this.copilotConnected
       || this.copilotBusy || this.copilotProbeBusy) return;
+    if (this.copilotNativePending) {
+      // Avoid triggering a second native IPC while the previous one completes.
+      this.copilotStatus = 'ai.preview.busy';
+      this.cd.markForCheck();
+      return;
+    }
     this.invalidateCopilotRequest();
     const ticket = this.copilotRequestRevision;
     const controller = new AbortController();
