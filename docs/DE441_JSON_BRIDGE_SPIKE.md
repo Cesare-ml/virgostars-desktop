@@ -1,6 +1,6 @@
 # DE441 JSON bridge — isolated native Rust experiment
 
-**Status (2026-11-12): Rust implementation written; 5/5 Node source-invariant tests passed locally. Rust compilation, Cargo unit tests and a scientific calculation with a real DE441 file HAVE NOT been executed here (Cargo and the external kernel are unavailable).**
+**Status (2026-11-12): Rust implementation written; 14/14 Node source + mocked-process smoke tests passed locally, using the real shared TypeScript receiver. Rust compilation, Cargo unit tests and a scientific calculation with a real DE441 file HAVE NOT been executed here (Cargo and the external kernel are unavailable).**
 
 ## Scope
 
@@ -17,7 +17,7 @@ Prerequisites: Rust 1.90+ with Cargo, an authorized externally obtained classic 
 From the desktop repository root:
 
     cargo test --manifest-path .\experiments\de441-json-bridge\Cargo.toml
-    node --test tests/de441-json-bridge-source.test.mjs
+    node --experimental-strip-types --test tests/de441-json-bridge-source.test.mjs tests/de441-json-bridge-smoke.test.mjs
     node --experimental-strip-types scripts/verify-de441-json-bridge.mjs 'D:\example\classic-de441.eph' '2026-11-12T17:01:02.000Z' 44123456 11345678 120
 
 The example file path is fictitious. The five CLI arguments are: external file path, UTC instant with exactly millisecond precision and trailing Z, latitude in WGS84 microdegrees, longitude in WGS84 microdegrees east-positive, and height in meters. Source valid range for latitude is ±90 degrees, longitude ±180 degrees and height -12000 to 100000 meters. Unsupported dates are rejected; the current upstream IERS Bulletin C 72 leap-second table is supported only from 1972-01-01 UTC through 2027-06-27 inclusive.
@@ -27,7 +27,7 @@ On success, the wrapper prints only:
     DE441_SMOKE:SHAPE_VALID_EXPERIMENTAL_UNVERIFIED
     Scientific numerical accuracy, provenance rights and Tauri IPC remain unverified.
 
-The wrapper invokes Cargo with no shell, parses the output, and applies the shared TypeScript scientific-snapshot validator. It does not print private source file paths, coordinates, raw payloads or birth dates, even on failure. Running Cargo *directly* on a developer's terminal can still generate its ordinary compilation diagnostics.
+The wrapper invokes Cargo with no shell, parses the output, and applies the shared TypeScript scientific-snapshot validator. Before invoking Cargo it rejects non-canonical latitude/longitude/height numbers, impossible Gregorian UTC dates (including JavaScript-normalized invalid dates), and dates outside 1972-01-01..2027-06-27. Each call is bounded to a five-minute subprocess timeout and 64 KiB captured stdout/stderr buffer; timeout/oversize/failed Cargo results return only a sanitized unavailable code. This can fail closed on slow first-time Rust builds: precompile with `cargo build --manifest-path experiments/de441-json-bridge/Cargo.toml` if needed. It does not print private source file paths, coordinates, raw payloads or birth dates, even on failure. Running Cargo *directly* on a developer's terminal can still generate its ordinary compilation diagnostics.
 
 ## Model and provenance
 
@@ -47,8 +47,10 @@ The JSON schema must be accepted by src/app/native/experimental-sky-contract.ts 
 
 Executed locally on Node.js 22.16.0:
 
-- 5/5 tests in tests/de441-json-bridge-source.test.mjs, verifying the precise pinned dependency, 10 center-kind mappings, all nine approximations, required output metadata and isolation of paths/native Tauri.
-- Wrapper negative paths: missing arguments → ARGUMENTS_REQUIRED; bad coordinates → INVALID_INPUT; missing Cargo → NATIVE_UNAVAILABLE. These were run with a *temporary test-only local validator stand-in* to exercise startup/error handling. They are not evidence that the real Cargo calculation or final shared-schema validation ran.
+- **5/5** source-contract tests in `tests/de441-json-bridge-source.test.mjs`, verifying the precise pinned dependency, ten body-center mappings, all nine approximations, required output metadata and isolation of native paths/Tauri.
+- **9/9** process-level tests in `tests/de441-json-bridge-smoke.test.mjs` use the **actual script and committed TypeScript validator**, with a temporary fake `cargo` executable *only in a disposable test PATH*. They cover clean synthetic schema acceptance, invalid/normalized Gregorian UTC, IERS range, malformed numbers, missing Cargo, missing bodies, location/height mismatch, misleading 'validated' science claims, malformed JSON, private stderr suppression and oversized subprocess output. Mocked subprocess tests run on Unix/Linux/macOS; on Windows, the shell-free fake executable tests are skipped (preflight tests still run), and real Cargo acceptance is required separately. No real ephemeris file is read and no astronomical calculation is performed by this test suite.
+- **Executed locally:** `node --experimental-strip-types --test tests/de441-json-bridge-source.test.mjs tests/de441-json-bridge-smoke.test.mjs` → **14 passed, 0 failed** (Node 22.16.0); `node --check` succeeded for both the smoke script and new test. The Git blob SHAs of the exact tested source files were verified against GitHub.
+- These checks do not substitute for a compiled Rust binary, a real DE441 kernel run, independent JPL/NAIF comparison or a packaged Windows WebView2 test.
 
 Not executed here: Cargo fmt/test/clippy, actual Rust compilation, full Node/npm suite or Angular build, an actual DE441 binary calculation, independent JPL Horizons/NAIF comparisons, WebView2, Tauri IPC and signed desktop distribution.
 
