@@ -53,3 +53,19 @@ test('Rust native synthetic command is registered with a hard limit',()=>{
  assert.match(rust,/synthetic_only: true/);
  assert.doesNotMatch(rust,/https?:\/\/|reqwest|SQLITE|planets.*:/);
 });
+
+test('cross-language synthetic checksum golden values are explicit and stable',()=>{
+ const fnv=(seed,iterations)=>{
+  let checksum=2_166_136_261;
+  for(let i=0;i<iterations;i++){
+    checksum=Math.imul(checksum ^ ((seed+i)>>>0),16_777_619)>>>0;
+  }
+  return checksum.toString(16).padStart(8,'0');
+ };
+ for(const [seed,iterations,expected] of [
+  [17,1,'140c74bc'],[17,10,'fa5e06d2'],
+  [17,10_000,'b9cc73d5'],[0,200_000,'4b726605']
+ ]) assert.equal(fnv(seed,iterations),expected);
+ const rust=readFileSync(new URL('../src-tauri/src/synthetic_calculation_probe.rs',import.meta.url),'utf8');
+ for(const expected of ['140c74bc','fa5e06d2','b9cc73d5','4b726605'])assert.ok(rust.includes(expected));
+});
