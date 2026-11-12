@@ -110,7 +110,7 @@ export async function requestCopilotPreview(
   if (signal.aborted) throw new Error('copilot_preview_cancelled');
   // This is a synthetic preview request, NEVER a real theme, birth record or free-form prompt.
   const raw = await transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, {
-    action: 'describe_focus', focus: Object.freeze({ layer: focus.layer, bodyId: focus.bodyId }),
+    action: 'describe_focus', focus: Object.freeze({ ...focus }),
   }, signal);
   if (signal.aborted) throw new Error('copilot_preview_cancelled');
   return readCopilotPreviewReply(raw, focus);
