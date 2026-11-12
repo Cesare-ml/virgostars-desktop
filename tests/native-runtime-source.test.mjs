@@ -8,7 +8,8 @@ test('Tauri registers the read-only protocol command exactly once', () => {
   const entry = read('src-tauri/src/lib.rs');
   const command = read('src-tauri/src/runtime_probe.rs');
   assert.match(entry, /mod runtime_probe;/);
-  assert.match(entry, /invoke_handler\(tauri::generate_handler!\[runtime_probe::desktop_runtime_info\]\)/);
+  assert.equal((entry.match(/runtime_probe::desktop_runtime_info/g) || []).length, 1);
+  assert.match(entry, /invoke_handler\(tauri::generate_handler!\[/);
   assert.match(command, /#\[tauri::command\]/);
   assert.match(command, /pub fn desktop_runtime_info\(\) -> DesktopRuntimeInfoV1/);
 });
