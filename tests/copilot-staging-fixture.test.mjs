@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createCopilotStagingFixture } from '../scripts/copilot-staging-fixture.mjs';
 import { requestCopilotPreview, COPILOT_PREVIEW_MESSAGE_PATH }
@@ -9,6 +10,7 @@ import { requestCopilotPreview, COPILOT_PREVIEW_MESSAGE_PATH }
 
 const bearer = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJzeW50aGV0aWMifQ.LOCAL_UNSIGNED_FIXTURE';
 const basePath = '/api/v1/ai/copilot-preview';
+const labSession = randomBytes(16).toString('hex');
 const valid = { action: 'describe_focus', focus: { layer: 'NATAL', bodyId: 'VENUS' } };
 const withAuth = (options = {}) => ({ ...options, headers: {
   Authorization: 'Bearer ' + bearer, ...(options.headers || {}),
@@ -16,7 +18,7 @@ const withAuth = (options = {}) => ({ ...options, headers: {
 const json = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 async function lab(t, options = {}) {
-  const server = createCopilotStagingFixture({ bearer, ...options });
+  const server = createCopilotStagingFixture({ bearer, labSession, ...options });
   const origin = await server.listen();
   t.after(() => server.close());
   assert.equal(server.address().address, '127.0.0.1');
@@ -33,9 +35,21 @@ test('synthetic capabilities require the local test token and never enable a pro
   const capabilities = await response.json();
   assert.equal(capabilities.contract, 'VirgoStarsCopilotPreviewCapabilities');
   assert.equal(capabilities.stage, 'STAGING_SYNTHETIC');
+  assert.equal(capabilities.labSession, labSession);
   assert.equal(capabilities.providerEnabled, false);
   assert.equal(capabilities.modelSelectorAvailable, false);
   assert.deepEqual(capabilities.focusOptions, ['NATAL:VENUS', 'NATAL:SUN', 'TRANSIT:SATURN']);
+});
+
+
+test('capabilities challenge belongs to the generated synthetic fixture session', async t => {
+  const origin = await lab(t);
+  const res = await fetch(origin + basePath + '/capabilities', withAuth());
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.labSession, labSession);
+  assert.match(body.labSession, /^[a-f0-9]{32}$/);
+  assert.equal(body.stage, 'STAGING_SYNTHETIC');
 });
 
 test('all three synthetic focus requests return the expected bounded native envelope', async t => {
@@ -144,6 +158,8 @@ test('quota returns 429 without consulting a provider', async t => {
 test('invalid or missing lab tokens fail before opening a listener', () => {
   assert.throws(() => createCopilotStagingFixture(), /synthetic-only lab token/);
   assert.throws(() => createCopilotStagingFixture({ bearer: 'not-a-jwt' }), /synthetic-only lab token/);
+  assert.throws(() => createCopilotStagingFixture({ bearer }), /synthetic lab session ID/);
+  assert.throws(() => createCopilotStagingFixture({ bearer, labSession: 'abc' }), /synthetic lab session ID/);
 });
 
 test('standalone fixture CLI fails closed without explicit synthetic opt-in', () => {
@@ -155,6 +171,7 @@ test('standalone fixture CLI fails closed without explicit synthetic opt-in', ()
       ...process.env,
       VIRGOSTARS_COPILOT_FIXTURE_ACK: 'DISABLED',
       VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER: bearer,
+      VIRGOSTARS_COPILOT_FIXTURE_SESSION: labSession,
     },
   });
   assert.equal(child.status, 2);
