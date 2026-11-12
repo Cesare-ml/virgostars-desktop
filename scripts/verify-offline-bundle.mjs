@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inspectDesktopStyles } from './verify-bundled-css.mjs';
+import { PRIVATE_MANIFEST_FILE, validatePrivateManifest } from './prepare-private-assets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 function check(ok, message) { if (!ok) throw new Error(message); }
@@ -20,24 +22,30 @@ function filesIn(dir, rel='') {
   }
   return files;
 }
-export function verifyOfflineBundle(bundlePath, stagingPath) {
+export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   const bundle=resolve(bundlePath), staging=resolve(stagingPath);
   safeRegular(bundle,true);safeRegular(staging,true);
-  const manifestFile=join(staging,'synthetic-assets-manifest.json');
+  const privateMode=options.privateMode===true;
+  const manifestFile=join(staging,privateMode?PRIVATE_MANIFEST_FILE:'synthetic-assets-manifest.json');
   safeRegular(manifestFile);
-  const manifest=JSON.parse(readFileSync(manifestFile,'utf8'));
-  check(manifest.schemaVersion===1 && manifest.source?.repository==='synthetic-local-fixtures' &&
-    manifest.source?.commit==='none' && Array.isArray(manifest.files) && manifest.files.length>0,
-    'Only an approved synthetic staged manifest can be verified');
+  const raw=readFileSync(manifestFile);
+  const manifest=privateMode?validatePrivateManifest(raw,options.expectedPrivateHash):JSON.parse(raw.toString('utf8'));
+  if(!privateMode) check(manifest.schemaVersion===1 && manifest.source?.repository==='synthetic-local-fixtures' &&
+      manifest.source?.commit==='none' && Array.isArray(manifest.files) && manifest.files.length>0,
+      'Only an approved synthetic staged manifest can be verified');
+  const assetFiles=privateMode?manifest.assets:manifest.files;
   const htmlPath=join(bundle,'index.html');safeRegular(htmlPath);
   const html=readFileSync(htmlPath,'utf8');
   check(/<vs-desktop-app(?:\s|>)/.test(html), 'Angular bundle is not the desktop-owned app');
   check(!/<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["'](?:https?:)?\/\//i.test(html),
     'Angular bundle references an external script or stylesheet');
   check(!html.includes('desktop-assets-bootstrap.js'), 'Legacy demo bootstrap must not be packaged');
+  // The original verifier checked images and Angular root but not CSS: an
+  // unstyled app could pass verification and yield a tiny chart on Windows.
+  const css = inspectDesktopStyles(bundle);
   const assets=join(bundle,'assets');safeRegular(assets,true);
   const expected=[];
-  for(const f of manifest.files) {
+  for(const f of assetFiles) {
     check(typeof f.path==='string' && /^img\/[a-zA-Z0-9_.@ /-]+\.(png|jpg|jpeg|webp)$/.test(f.path) &&
       !f.path.split('/').some(x=>x==='.'||x==='..') &&
       Number.isSafeInteger(f.bytes) && /^[a-f0-9]{64}$/.test(f.sha256), 'Invalid generated manifest entry');
@@ -51,11 +59,15 @@ export function verifyOfflineBundle(bundlePath, stagingPath) {
   }
   const actual=filesIn(assets).sort();expected.sort();
   check(JSON.stringify(actual)===JSON.stringify(expected), 'Offline bundle contains unexpected or missing assets');
-  return {count:expected.length,bundle};
+  return {count:expected.length,bundle,stylesheets:css.stylesheets};
 }
 if(process.argv[1] && resolve(process.argv[1])===resolve(fileURLToPath(import.meta.url))) {
   try {
-    const out=verifyOfflineBundle(resolve(ROOT,'dist/desktop/browser'),resolve(ROOT,'.local/frontend'));
-    console.log('Verified '+out.count+' exact synthetic files in desktop-owned Angular output. No demo bootstrap.');
+    check(process.argv.length===2 || (process.argv.length===3 && process.argv[2]==='--private'), 'Invalid verifier option');
+    const privateMode=process.argv[2]==='--private';
+    const out=verifyOfflineBundle(resolve(ROOT,'dist/desktop/browser'),
+      resolve(ROOT,privateMode?'.local/frontend-private':'.local/frontend'),{privateMode});
+    console.log('Verified '+out.count+(privateMode?' approved private':' synthetic')+
+      ' files and '+out.stylesheets+' local CSS link(s). No demo bootstrap.');
   }catch(error){ console.error('OFFLINE BUNDLE VERIFICATION FAILED:',error.message);process.exitCode=1; }
 }

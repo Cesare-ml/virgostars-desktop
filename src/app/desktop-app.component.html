@@ -45,7 +45,7 @@
 
     <main class="chart-panel">
       <div class="chart-header">
-        <div><h1>{{modeLabel(mode)}}</h1><p>{{t('chart.status')}}</p></div>
+        <div><h1>{{modeLabel(mode)}}</h1><p>{{t(artworkStatus)}}</p></div>
         <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
           [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
           (click)="toggleInspector()">☷</button>
@@ -98,6 +98,7 @@
         </div>
         <div *ngIf="inspectorTab==='settings'">
           <p class="inspector-hint">{{t('settings.help')}}</p>
+          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="selectedCity = $event" (locationEdited)="selectedCity = null"></vs-offline-city-picker>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>

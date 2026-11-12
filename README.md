@@ -43,3 +43,9 @@ The first separate prototype branch adds `src-tauri/`, Node-based synthetic asse
 ## Planned documentation
 
 The first design pull request introduces architecture, stack decision, offline authentication/sync, security, release/update strategy, roadmap, contributor guidelines and licensing decision log. These are **proposals**, not implemented features.
+
+## Catalogo località offline
+
+Il prototipo include un selettore locale nel pannello Parametri e un convertitore SQLite per gli export di città e stati. La selezione è temporanea e non modifica il grafico sintetico. Il catalogo privato si prepara separatamente con l’overlay Tauri descritto in [Catalogo offline](docs/LOCAL_CITY_PACKAGING.md); una build standard non lo include.
+
+Per compilare su Windows con il catalogo completo condiviso nella release privata, dopo i prerequisiti di Charts e l’autenticazione GitHub CLI, eseguire `npm run tauri:build:places:windows`. Vedere [Catalogo offline](docs/LOCAL_CITY_PACKAGING.md).

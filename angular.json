@@ -23,7 +23,33 @@
                 "input": ".local/frontend/assets",
                 "output": "assets"
               }
-            ]
+            ],
+            "optimization": {
+              "scripts": true,
+              "styles": {
+                "minify": true,
+                "inlineCritical": false
+              },
+              "fonts": false
+            },
+            "subresourceIntegrity": false
+          },
+          "configurations": {
+            "private-artwork": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": ".local/frontend-private/assets",
+                  "output": "assets"
+                }
+              ],
+              "fileReplacements": [
+                {
+                  "replace": "src/app/asset-mode.ts",
+                  "with": "src/app/asset-mode.private.ts"
+                }
+              ]
+            }
           }
         },
         "serve": {
