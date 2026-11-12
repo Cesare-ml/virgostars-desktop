@@ -74,8 +74,9 @@ test('local readiness probe is boolean-only and does not transfer a token', asyn
 
 test('native forwards a sanitized synthetic projection, never a raw backend envelope', () => {
   const rust = read('src-tauri/src/copilot_staging_bridge.rs');
-  assert.match(rust, /fn project_preview_envelope\(value: &Value, expected: &Focus\)/);
-  assert.match(rust, /project_preview_envelope\(&envelope, &focus\)/);
+  assert.match(rust, /fn project_preview_envelope\(/);
+  assert.match(rust, /expected_fixture_session: Option<&str>/);
+  assert.match(rust, /project_preview_envelope\(&envelope, &focus, fixture_session\.as_deref\(\)\)/);
   assert.doesNotMatch(rust, /\bOk\(envelope\)/);
   assert.match(rust, /"methodApproved"\)\.and_then\(Value::as_bool\) != Some\(false\)/);
   assert.match(rust, /"birthDataIncluded"\)\.and_then\(Value::as_bool\) != Some\(false\)/);
@@ -256,6 +257,23 @@ test('Rust rejects wrong local fixture challenges without affecting real backend
   assert.match(rust, /validate_staging_capabilities\(&value, fixture_session\.as_deref\(\)\)/);
   assert.match(rust, /assert!\(validate_staging_capabilities\(&valid, None\)\)/);
   assert.match(rust, /assert!\(!validate_staging_capabilities\(&valid, Some\(session\)\)\)/);
+});
+
+test('every native POST checks the optional lab session before projecting safe fields', () => {
+  const rust = read('src-tauri/src/copilot_staging_bridge.rs');
+  assert.match(rust, /fn optional_fixture_session\(\) -> Result<Option<String>, &'static str>/);
+  assert.match(rust, /let fixture_session = optional_fixture_session\(\)\.map_err\(str::to_owned\)\?/);
+  assert.match(rust, /value\.get\("labSession"\)\.and_then\(Value::as_str\) != Some\(session\)/);
+  assert.match(rust, /project_preview_envelope\(&envelope, &focus, fixture_session\.as_deref\(\)\)/);
+  assert.match(rust, /fn preview_requires_the_same_lab_session_without_leaking_it_to_webview\(\)/);
+  // The safe projected JSON explicitly omits this native-only field.
+  const start = rust.indexOf('    Ok(json!({', rust.indexOf('fn project_preview_envelope('));
+  const end = rust.indexOf('\n    }))', start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(rust.slice(start, end), /labSession/);
+  // Missing session is allowed for the genuine staging backend, whose JWT
+  // middleware remains mandatory independently of this synthetic fixture.
+  assert.match(rust, /project_preview_envelope\(&fixture, &expected, None\)\.is_ok\(\)/);
 });
 
 test('release builds omit the staging command; Angular development-only wiring', () => {
