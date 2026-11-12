@@ -136,10 +136,27 @@ export class LatestCalculationQueue<T> {
     const generation = this.generation;
     const controller = new AbortController();
     this.activeController = controller;
-    // Async boundary: synchronous port exceptions and rejects use the same path.
-    void Promise.resolve().then(() => this.port(request, controller.signal)).then(
-      raw => this.deliver(request, generation, decodeCalculationReply(raw,request,this.validate)),
-      () => this.deliver(request, generation, {kind:'transport_error',request}),
+    // Superseding a request or closing the view can happen before this microtask
+    // executes. Do not start abandoned native work or decode an obsolete payload.
+    const isCurrent = (): boolean => !this.disposed && !controller.signal.aborted &&
+      generation === this.generation && request.requestSeq === this.nextSeq;
+    void Promise.resolve().then(() => {
+      if (!isCurrent()) return undefined;
+      return this.port(request, controller.signal);
+    }).then(
+      raw => {
+        if (!isCurrent()) return;
+        try {
+          this.deliver(request, generation, decodeCalculationReply(raw, request, this.validate));
+        } catch {
+          // A future provider's custom validator may throw on malformed IPC.
+          // Keep the error private and let the queue recover for later requests.
+          this.deliver(request, generation, {kind:'invalid_reply', request});
+        }
+      },
+      () => {
+        if (isCurrent()) this.deliver(request, generation, {kind:'transport_error',request});
+      },
     ).finally(() => {
       this.active = false;
       this.activeController = null;
