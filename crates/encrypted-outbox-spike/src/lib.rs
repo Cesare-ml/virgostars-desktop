@@ -16,6 +16,10 @@ mod ack_v3_keep_local;
 mod ack_v3_audit;
 pub use ack_v3_keep_local::KeepLocalDisposition;
 pub use ack_v3_audit::SyntheticV3AuditSummary;
+
+// Test-only encrypted copy/restore drill. Never compiled into a release.
+#[cfg(test)]
+mod synthetic_backup_drill;
 pub use ack_v2::AckV2Disposition;
 pub use ack_v2_stage::V2StageDisposition;
 pub use ack_v2_conflicts::{ConflictReceiptDisposition, SyntheticConflictSummary};
