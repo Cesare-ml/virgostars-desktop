@@ -81,6 +81,23 @@ test('lab HTTP probes bypass proxies, reject redirects and bound authenticated J
   assert.match(runner, /-ExpectJson -Headers @\{/);
 });
 
+test('capabilities response has a total read deadline against byte-at-a-time trickling', () => {
+  const begin = runner.indexOf('function Read-LoopbackHttp');
+  const end = runner.indexOf('function Wait-ForHttp', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const http = runner.slice(begin, end);
+  assert.match(http, /\$request\.ReadWriteTimeout = 2000/);
+  assert.match(http, /\$readClock = \[System\.Diagnostics\.Stopwatch\]::StartNew\(\)/);
+  assert.match(http, /\$maxReadMilliseconds = 5000/);
+  const beforeRead = http.indexOf('if ($readClock.ElapsedMilliseconds -ge $maxReadMilliseconds)');
+  const read = http.indexOf('$read = $stream.Read($buffer, 0, $buffer.Length)');
+  const afterRead = http.indexOf('if ($readClock.ElapsedMilliseconds -ge $maxReadMilliseconds)', read);
+  assert.ok(beforeRead >= 0 && beforeRead < read && read < afterRead);
+  assert.match(http, /\$readClock\.Stop\(\)/);
+  assert.match(http, /\$memory\.Length \+ \$read -gt 8192/);
+  assert.match(http, /\$stream\.Dispose\(\)/);
+});
+
 test('port preflight binds exclusively instead of contacting an arbitrary existing listener', () => {
   assert.match(runner, /\[System\.Net\.Sockets\.TcpListener\]::new\(/);
   assert.match(runner, /\$listener\.ExclusiveAddressUse = \$true/);
