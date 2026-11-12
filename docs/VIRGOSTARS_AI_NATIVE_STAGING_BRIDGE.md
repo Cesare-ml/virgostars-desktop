@@ -148,6 +148,14 @@ The Desktop now exposes `npm run test:ai:smoke` as one explicit Node.js 22+ gate
 
 The standalone command is committed and its composition has source-level regression coverage. It has **not yet been executed in a full authorized checkout** in this environment (the private repository cannot be cloned from the local runner). The eight existing source-only native bridge checks and ten launcher tests were evaluated against current GitHub contents in the isolated V8 source harness, but they do not replace the actual `node --test` execution. On Windows, run the smoke first, then the strict TypeScript check and full build gates as documented below.
 
+## Bounded Windows capabilities preflight body-read duration (2026-11-12)
+
+The explicit synthetic-only Windows lab previously checked that every `Read()` had a 2-second socket timeout and capped the overall JSON body at 8 KiB. A local service trickling a byte every second could keep the authenticated response-body loop alive arbitrarily long because a **per-read timeout does not impose an overall response deadline**.
+
+`scripts/run-copilot-staging-lab.ps1` now starts a `[System.Diagnostics.Stopwatch]` when reading the capabilities HTTP body and rejects an incomplete response if elapsed read time reaches **5,000 milliseconds**. The checks run immediately before and after each blocking read. A single read may add up to the existing 2-second socket timeout, so this is a bounded total-read policy rather than a guarantee of returning at exactly five seconds. The 8 KiB limit, no-proxy/no-redirect loopback restriction, and per-read timeout remain unchanged. `tests/copilot-windows-lab-runner.test.mjs` includes a regression that checks the ordering, deadline, resource disposal and size limit.
+
+**Validation executed:** 11/11 Windows lab source-contract JavaScript callbacks passed in an isolated V8 harness against the current GitHub source: PowerShell runner blob `d81b3c902daa868dfdb36d12a6f03fe6514af787`, test blob `b5693f03286a30c18afdcd1c8b7a24a163984a80`. This does **not** establish actual PowerShell execution, a Windows HTTP slow-trickle runtime test, Tauri GUI correctness or Rust compilation. Those Windows-native checks remain to be run.
+
 ## Verification
 
 **Added source tests:**
