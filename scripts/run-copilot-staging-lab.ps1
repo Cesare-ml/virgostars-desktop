@@ -22,6 +22,19 @@ $backend = "http://127.0.0.1:$BackendPort"
 $frontend = 'http://127.0.0.1:4200'
 $fixture = $null
 $frontendProcess = $null
+# Do not inherit or erase existing developer sessions, which could hold real keys.
+# The lab manages only fresh, fictional variables it creates itself.
+$labEnvKeys = @(
+    'VIRGOSTARS_COPILOT_FIXTURE_ACK',
+    'VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED',
+    'VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN',
+    'VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER'
+)
+foreach ($key in $labEnvKeys) {
+    if (Test-Path -Path ("Env:" + $key)) {
+        throw 'Refusing to overwrite pre-existing AI staging environment variables. Open a clean throwaway terminal.'
+    }
+}
 
 function Require-Binary {
     param([string] $Name)
@@ -131,12 +144,7 @@ try {
 finally {
     Stop-ChildTree $fixture
     Stop-ChildTree $frontendProcess
-    foreach ($key in @(
-        'VIRGOSTARS_COPILOT_FIXTURE_ACK',
-        'VIRGOSTARS_COPILOT_PREVIEW_STAGING_ENABLED',
-        'VIRGOSTARS_COPILOT_PREVIEW_STAGING_BACKEND_ORIGIN',
-        'VIRGOSTARS_COPILOT_PREVIEW_STAGING_TEST_BEARER'
-    )) {
+    foreach ($key in $labEnvKeys) {
         Remove-Item -Path ("Env:" + $key) -ErrorAction SilentlyContinue
     }
     Remove-Variable -Name testBearer -ErrorAction SilentlyContinue
