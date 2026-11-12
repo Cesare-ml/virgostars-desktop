@@ -27,3 +27,19 @@
 .draft-preview { padding:10px; border-radius:8px; background:var(--vs-surface-muted); border:1px solid var(--vs-border); }
 .draft-preview strong { font-size:12px; }
 .draft-preview p { font-size:12px; overflow-wrap:anywhere; margin:5px 0; }
+
+/* The timezone preview never scrolls the main Three.js chart or requires Internet. */
+.timezone-preview { display:grid; gap:7px; padding:8px 0; border-top:1px solid var(--vs-border); }
+.timezone-preview p { margin:0; overflow-wrap:anywhere; }
+.timezone-warning { color:#b65f4f; font-size:12px; }
+.timezone-utc { font-size:12px; }
+.timezone-options { display:flex; flex-direction:column; gap:6px; }
+.timezone-options button {
+  width:100%; min-height:36px; padding:8px; text-align:left; font:inherit;
+  font-size:11px; border:1px solid var(--vs-border); border-radius:7px;
+  background:var(--vs-surface); color:var(--vs-text);
+  overflow-wrap:anywhere; cursor:pointer;
+}
+.timezone-options button.timezone-chosen {
+  border-color:var(--vs-accent); background:var(--vs-surface-muted); font-weight:650;
+}
