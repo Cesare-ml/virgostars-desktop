@@ -40,12 +40,13 @@ async function inspectFile(path, maximum, keepBytes = false) {
   if (!before.isFile() || before.isSymbolicLink() || before.size === 0n ||
       before.size > BigInt(maximum)) throw Error('UNSAFE_FILE');
   let handle;
-  try { handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)); }
+  try { handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)); }
   catch { throw Error('UNSAFE_FILE'); }
   try {
     const current = await handle.stat({bigint:true});
     if (!current.isFile() || current.dev !== before.dev || current.ino !== before.ino ||
-        current.size !== before.size) throw Error('UNSAFE_FILE');
+        current.size !== before.size || current.mtimeNs !== before.mtimeNs ||
+        current.ctimeNs !== before.ctimeNs) throw Error('UNSAFE_FILE');
     const hash = createHash('sha256');
     const buffer = Buffer.allocUnsafe(Math.min(CHUNK_BYTES, maximum));
     const collected = keepBytes ? [] : null;
@@ -60,10 +61,17 @@ async function inspectFile(path, maximum, keepBytes = false) {
       if (collected) collected.push(Buffer.from(chunk));
       offset += bytesRead;
     }
+    // Detect a stream that appended data beyond its original declared size.
+    const extra = await handle.read(buffer, 0, 1, total);
+    if (extra.bytesRead !== 0) throw Error('UNSAFE_FILE');
     const after = await handle.stat({bigint:true});
-    if (after.dev !== current.dev || after.ino !== current.ino ||
-        after.size !== current.size || after.mtimeNs !== current.mtimeNs ||
-        after.ctimeNs !== current.ctimeNs) throw Error('UNSAFE_FILE');
+    const pathAfter = await lstat(path, {bigint:true});
+    if (!pathAfter.isFile() || after.dev !== current.dev ||
+        after.ino !== current.ino || after.size !== current.size ||
+        after.mtimeNs !== current.mtimeNs || after.ctimeNs !== current.ctimeNs ||
+        pathAfter.dev !== current.dev || pathAfter.ino !== current.ino ||
+        pathAfter.size !== current.size || pathAfter.mtimeNs !== current.mtimeNs ||
+        pathAfter.ctimeNs !== current.ctimeNs) throw Error('UNSAFE_FILE');
     return {
       digest:hash.digest('hex'),
       identity:String(current.dev) + ':' + String(current.ino),
@@ -88,7 +96,7 @@ export async function verifyReferenceEvidence(paths) {
     return reject('REUSED_FILE');
   }
   let reference;
-  try { reference = JSON.parse(evidence.reference.bytes.toString('utf8')); }
+  try { reference = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(evidence.reference.bytes)); }
   catch { return reject('INVALID_REFERENCE'); }
   const provenance = reference?.provenance;
   if (!exactKeys(provenance, META_KEYS) || provenance.source !== 'JPL_HORIZONS' ||
