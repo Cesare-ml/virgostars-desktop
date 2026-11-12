@@ -86,3 +86,27 @@ test('a hostile getter in a returned file becomes one sanitized failed case',asy
   assert.ok(result.failed>=1);
   assert.equal(JSON.stringify(result).includes('PRIVATE FILE'),false);
 });
+
+
+test('an exception inside numerical validation does not abort remaining cases',async()=>{
+  const m=crossed();
+  let readCount=0;
+  const result=await runReferenceCampaign(m,async name=>{
+    readCount++;
+    const item=m.cases.find(c=>c.actualFile===name || c.referenceFile===name);
+    const metadata={
+      utcIso:item.utcIso,latMicro:item.latMicro,
+      lngMicro:item.lngMicro,heightMeters:item.heightMeters,
+    };
+    if(name===m.cases[0].actualFile) {
+      return new Proxy(metadata,{
+        ownKeys(){throw Error('PRIVATE COMPARATOR ERROR');},
+      });
+    }
+    return metadata;
+  });
+  assert.equal(result.kind,'campaign_failed');
+  assert.equal(result.checked,4);
+  assert.equal(readCount,8,'remaining cases must still be processed');
+  assert.equal(JSON.stringify(result).includes('PRIVATE COMPARATOR'),false);
+});
