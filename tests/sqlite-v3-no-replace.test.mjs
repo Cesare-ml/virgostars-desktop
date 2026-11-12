@@ -34,3 +34,24 @@ test('mutation ID uniqueness stays per profile, not global',()=>{const db=open()
 test('old retired mutation ID remains rejected after keep-local history',()=>{const db=open();try{db.prepare('DELETE FROM local_outbox WHERE profile_id=? AND mutation_id=?').run(A,M);db.prepare("INSERT INTO local_conflict_decisions(profile_id,original_mutation_id,original_fingerprint,entity_type,entity_id,original_operation,original_payload_json,original_created_at_utc,replacement_mutation_id,remote_revision,choice,decided_at_utc) VALUES (?,?,?,'subject',?,'upsert',?,?,?,'rev-remote','keep_local',?)").run(A,M,'a'.repeat(64),E,OLD,TIME,'synthetic-new',TIME);assert.throws(()=>enqueue(db,A,M,FORGED),/already used mutation id/);}finally{db.close();}});
 test('ordinary conflict-state UPDATE and DELETE plus distinct replacement remain legal',()=>{const db=open();try{db.prepare("UPDATE local_outbox SET state='conflict',conflict_server_revision='rev-remote' WHERE mutation_id=?").run(M);assert.equal(db.prepare(select).get().state,'conflict');db.prepare('DELETE FROM local_outbox WHERE mutation_id=?').run(M);enqueue(db,A,'synthetic-new',OLD);assert.equal(db.prepare(select).get().mutation_id,'synthetic-new');}finally{db.close();}});
 test('foreign keys and schema version remain valid after failed replacements',()=>{const db=open();try{protectedRewrite(db,replaceSql,[A,M,E,FORGED,TIME]);assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);assert.equal(db.prepare('PRAGMA user_version').get().user_version,3);}finally{db.close();}});
+
+test('explicitly recycling a deleted FIFO sequence is rejected',()=>{const db=open();try{
+ const seq=db.prepare(select).get().sequence;
+ db.prepare('DELETE FROM local_outbox WHERE mutation_id=?').run(M);
+ assert.throws(()=>db.prepare(replaceSeqSql).run(seq,A,'synthetic-recycled',E,OLD,TIME),/queued FIFO sequence must advance/);
+ assert.equal(db.prepare(select).all().length,0);
+}finally{db.close();}});
+test('explicit nonpositive FIFO sequence is rejected',()=>{const db=open();try{
+ for(const seq of [-1,0])assert.throws(()=>db.prepare(replaceSeqSql).run(seq,A,'synthetic-negative',E,OLD,TIME),/queued FIFO sequence must advance/);
+}finally{db.close();}});
+test('automatic FIFO sequence advances past deleted highest row',()=>{const db=open();try{
+ const seq=db.prepare(select).get().sequence;
+ db.prepare('DELETE FROM local_outbox WHERE mutation_id=?').run(M);
+ enqueue(db,A,'synthetic-fresh',OLD);
+ assert.ok(db.prepare(select).get().sequence>seq);
+}finally{db.close();}});
+test('explicit future FIFO sequence is accepted when greater than previous high-water',()=>{const db=open();try{
+ const seq=db.prepare(select).get().sequence;
+ db.prepare(replaceSeqSql).run(seq+10,A,'synthetic-new',E,OLD,TIME);
+ assert.equal(db.prepare('SELECT MAX(sequence) AS n FROM local_outbox').get().n,seq+10);
+}finally{db.close();}});
