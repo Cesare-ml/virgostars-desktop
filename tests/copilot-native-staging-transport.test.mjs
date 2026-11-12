@@ -228,7 +228,7 @@ test('abort while native IPC remains pending rejects immediately and consumes la
   await new Promise(resolve => setImmediate(resolve));
 });
 
-test('old cancelled IPC cannot replace a newer completed selection', async () => {
+test('old cancelled IPC cannot replace a newer selection or bypass native single-flight', async () => {
   let finishFirst;
   let call = 0;
   const transport = createNativeCopilotStagingTransport({
@@ -243,12 +243,19 @@ test('old cancelled IPC cannot replace a newer completed selection', async () =>
   const first = transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, cancelled.signal);
   cancelled.abort();
   await assert.rejects(first, /cancelled/);
+  // The abandoned WebView promise does NOT imply the native Rust request has
+  // released its own single-flight permit. Do not issue a second IPC yet.
+  await assert.rejects(
+    transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal),
+    error => error.message === 'copilot_preview_busy',
+  );
+  assert.equal(call, 1);
+  finishFirst({ accessToken: 'LATE_SECRET', ...fixtureEnvelope() });
+  await new Promise(resolve => setImmediate(resolve));
   const second = await transport.postJson(
     COPILOT_PREVIEW_MESSAGE_PATH, body, new AbortController().signal,
   );
   assert.equal(second.data.answer, 'VENUS (NATAL), sample only.');
-  finishFirst({ accessToken: 'LATE_SECRET', ...fixtureEnvelope() });
-  await new Promise(resolve => setImmediate(resolve));
   assert.equal(call, 2);
 });
 
