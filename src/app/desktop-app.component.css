@@ -153,6 +153,13 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
   border:0; border-radius:8px; font-size:13px; font-weight:700; padding:10px 12px;
 }
 .copilot-send:disabled { opacity:.58; cursor:not-allowed; }
+.copilot-retry {
+  align-self:flex-start; min-height:36px; padding:8px 12px; border-radius:8px;
+  color:var(--vs-text); border:1px solid var(--vs-border);
+  background:var(--vs-surface); font-size:12px; font-weight:650;
+}
+.copilot-retry:disabled { opacity:.58; cursor:not-allowed; }
+.copilot-retry:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
 .copilot-status { font-size:12px; color:var(--vs-text-secondary); min-height:18px; }
 .copilot-reply { border:1px solid var(--vs-border); background:var(--vs-surface-muted); padding:12px; border-radius:10px; overflow-wrap:anywhere; }
 .copilot-reply h3 { font-size:13px; margin:0 0 8px; }

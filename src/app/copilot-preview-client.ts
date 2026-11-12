@@ -12,6 +12,14 @@ export type CopilotPreviewFocus =
 export const COPILOT_PREVIEW_MESSAGE_PATH = '/api/v1/ai/copilot-preview/message';
 
 export interface VirgoStarsCopilotPreviewTransport {
+  /**
+   * Read-only capability check. True means the native bridge received a
+   * valid authenticated SYNTHETIC capabilities response from Virgo Stars staging.
+   * Not a production account session, PKCE login, or a real-chart permission.
+   */
+  isAvailable(): Promise<boolean>;
+  /** Optional debug transport state: UI abort does not cancel native HTTP. */
+  isPreviewPending?(): boolean;
   /** Must use ONLY the authenticated Virgo Stars backend and protected native token storage. */
   postJson(path: typeof COPILOT_PREVIEW_MESSAGE_PATH, body: Readonly<{
     action: 'describe_focus';
@@ -59,8 +67,20 @@ export function readCopilotPreviewReply(raw: unknown, expectedFocus: CopilotPrev
     || raw.interpretationStatus !== 'FACT_ONLY'
     || !isRecord(raw.data)) invalid();
 
+  // Native Rust validates all of these upstream and projects a minimal
+  // allowlisted envelope without these optional server-only fields. When a
+  // test/transport includes them, never ignore a contradictory provider,
+  // cost or privacy disclosure claim.
+  if ((raw.contentOrigin !== undefined && raw.contentOrigin !== 'DETERMINISTIC_FACT')
+    || (raw.providerCostUsd !== undefined && raw.providerCostUsd !== 0)
+    || (raw.disclosures !== undefined
+      && (!isRecord(raw.disclosures)
+        || raw.disclosures.birthDataIncluded !== false
+        || raw.disclosures.personalChartIncluded !== false
+        || raw.disclosures.aiGeneratedTextPresent !== false))) invalid();
+
   const data = raw.data;
-  if (typeof data.answer !== 'string' || data.answer.length === 0 || data.answer.length > 4000
+  if (typeof data.answer !== 'string' || data.answer.trim().length === 0 || data.answer.length > 4000
     || typeof data.chartRevision !== 'number' || !Number.isSafeInteger(data.chartRevision)
     || data.chartRevision < 0 || data.source !== 'MOCK_DETERMINISTIC'
     || !isCopilotPreviewFocus(data.focus)
@@ -77,7 +97,8 @@ export function readCopilotPreviewReply(raw: unknown, expectedFocus: CopilotPrev
   return Object.freeze({
     answer: data.answer,
     chartRevision: data.chartRevision,
-    focus: expectedFocus,
+    // Never return the caller-owned object: it may be mutated after resolution.
+    focus: Object.freeze({ ...expectedFocus }),
     synthetic: true,
     illustrativeAspectCount: command.aspectIds.length,
   });
@@ -90,10 +111,14 @@ export async function requestCopilotPreview(
 ): Promise<CopilotPreviewReply> {
   if (!isCopilotPreviewFocus(focus)) throw new TypeError('invalid_copilot_preview_focus');
   if (signal.aborted) throw new Error('copilot_preview_cancelled');
+  // Capture and freeze one validated selection BEFORE the async boundary.
+  // A caller changing the original focus during transport cannot reclassify
+  // the reply or bind it to a different body/layer.
+  const selectedFocus: CopilotPreviewFocus = Object.freeze({ ...focus });
   // This is a synthetic preview request, NEVER a real theme, birth record or free-form prompt.
   const raw = await transport.postJson(COPILOT_PREVIEW_MESSAGE_PATH, {
-    action: 'describe_focus', focus: Object.freeze({ layer: focus.layer, bodyId: focus.bodyId }),
+    action: 'describe_focus', focus: selectedFocus,
   }, signal);
   if (signal.aborted) throw new Error('copilot_preview_cancelled');
-  return readCopilotPreviewReply(raw, focus);
+  return readCopilotPreviewReply(raw, selectedFocus);
 }

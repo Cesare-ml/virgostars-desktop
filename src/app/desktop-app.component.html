@@ -117,10 +117,13 @@
               [attr.aria-pressed]="copilotFocusKey===item.key"
               (click)="selectCopilotFocus(item.key)">{{t(item.label)}}</button>
           </fieldset>
-          <p class="copilot-selection" role="status">{{t('ai.preview.ready')}} <strong>{{copilotFocusKey}}</strong></p>
+          <p class="copilot-selection" role="status">{{t('ai.preview.selection')}} <strong>{{copilotFocusKey}}</strong></p>
           <button class="copilot-send" type="button" [disabled]="!copilotConnected || copilotBusy"
             (click)="askCopilotPreview()">{{t('ai.preview.ask')}}</button>
           <p class="inspector-hint" *ngIf="!copilotConnected">{{t('ai.preview.guest')}}</p>
+          <button class="copilot-retry" type="button" *ngIf="copilotCanProbe"
+            [disabled]="copilotProbeBusy || copilotBusy"
+            (click)="recheckCopilotPreview()">{{t('ai.preview.retry')}}</button>
           <div class="copilot-status" role="status" aria-live="polite">{{t(copilotStatus)}}</div>
           <div class="copilot-reply" *ngIf="copilotAnswer">
             <h3>{{t('ai.preview.reply')}}</h3>

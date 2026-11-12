@@ -70,9 +70,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ] as const;
   copilotFocus: CopilotPreviewFocus = { layer: 'NATAL', bodyId: 'VENUS' };
   copilotBusy = false;
+  copilotPreviewReady = false;
+  copilotProbeBusy = false;
   copilotAnswer = '';
   copilotIllustrativeAspects = 0;
-  copilotStatus: MessageKey = 'ai.preview.ready';
+  copilotStatus: MessageKey = 'ai.preview.unconfigured';
 
   theme: UiTheme = 'light';
   locale: Locale = 'it';
@@ -94,13 +96,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
-  get copilotConnected(): boolean { return this.copilotTransport !== null; }
+  // Means the optional *local staging bridge* is configured, not cloud login.
+  get copilotConnected(): boolean { return this.copilotPreviewReady; }
+  get copilotCanProbe(): boolean { return this.copilotTransport !== null; }
+  // UI cancellation settles immediately, but Rust can still hold its HTTP permit.
+  get copilotNativePending(): boolean {
+    return this.copilotTransport?.isPreviewPending?.() === true;
+  }
   get copilotFocusKey(): string { return this.copilotFocus.layer + ':' + this.copilotFocus.bodyId; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
 
   ngAfterViewInit(): void {
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
+    void this.checkCopilotPreview();
     try {
       // No network fallback. Both Angular and generated test assets are embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');
@@ -116,6 +125,41 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       void this.draw();
     } catch (error) {
       this.renderError(error);
+    }
+  }
+
+  recheckCopilotPreview(): void {
+    if (this.destroyed || this.copilotBusy || this.copilotProbeBusy) return;
+    if (this.copilotNativePending) {
+      // The backend has not disconnected: its previous native request is
+      // still pending. Do not reset the last known readiness to false.
+      this.copilotStatus = 'ai.preview.busy';
+      this.cd.markForCheck();
+      return;
+    }
+    void this.checkCopilotPreview();
+  }
+
+  private async checkCopilotPreview(): Promise<void> {
+    // A development build is not enough: Rust must confirm the authenticated
+    // STAGING_SYNTHETIC /capabilities contract, returning only a boolean.
+    if (!this.copilotTransport || this.copilotProbeBusy || this.copilotNativePending) return;
+    this.copilotProbeBusy = true;
+    this.copilotPreviewReady = false;
+    this.copilotStatus = 'ai.preview.checking';
+    this.cd.markForCheck();
+    let available = false;
+    try {
+      available = await this.copilotTransport.isAvailable();
+    } catch {
+      available = false;
+    } finally {
+      if (!this.destroyed) {
+        this.copilotProbeBusy = false;
+        this.copilotPreviewReady = available === true;
+        this.copilotStatus = available ? 'ai.preview.ready' : 'ai.preview.unconfigured';
+        this.cd.markForCheck();
+      }
     }
   }
 
@@ -211,7 +255,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.copilotBusy = false;
     this.copilotAnswer = '';
     this.copilotIllustrativeAspects = 0;
-    this.copilotStatus = 'ai.preview.ready';
+    this.copilotStatus = this.copilotConnected ? 'ai.preview.ready' : 'ai.preview.unconfigured';
     this.mode = mode;
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
@@ -248,14 +292,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.copilotBusy = false;
     this.copilotAnswer = '';
     this.copilotIllustrativeAspects = 0;
-    this.copilotStatus = 'ai.preview.ready';
+    this.copilotStatus = this.copilotConnected ? 'ai.preview.ready' : 'ai.preview.unconfigured';
     this.cd.markForCheck();
   }
 
   async askCopilotPreview(): Promise<void> {
     // This preview never sends a real chart, birth data, notes or arbitrary prompts.
     // Without the optional native authenticated transport the button stays disabled.
-    if (this.destroyed || this.copilotTransport === null) return;
+    if (this.destroyed || this.copilotTransport === null || !this.copilotConnected
+      || this.copilotBusy || this.copilotProbeBusy) return;
+    if (this.copilotNativePending) {
+      // Avoid triggering a second native IPC while the previous one completes.
+      this.copilotStatus = 'ai.preview.busy';
+      this.cd.markForCheck();
+      return;
+    }
     this.invalidateCopilotRequest();
     const ticket = this.copilotRequestRevision;
     const controller = new AbortController();
@@ -272,9 +323,28 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.copilotAnswer = reply.answer;
       this.copilotIllustrativeAspects = reply.illustrativeAspectCount;
       this.copilotStatus = 'ai.preview.synthetic';
-    } catch {
+    } catch (error: unknown) {
       if (!this.destroyed && ticket === this.copilotRequestRevision) {
-        this.copilotStatus = 'ai.preview.error';
+        // Only the small set of sanitized native error codes may affect the UI.
+        // A revoked/expired synthetic JWT invalidates the previous readiness
+        // check, so a stale green connection indicator must never persist.
+        const code = error instanceof Error ? error.message : '';
+        if (code === 'copilot_preview_authorization_required') {
+          this.copilotPreviewReady = false;
+          this.copilotStatus = 'ai.preview.auth_required';
+        } else if (code === 'copilot_preview_rate_limited') {
+          this.copilotStatus = 'ai.preview.rate_limited';
+        } else if (code === 'copilot_preview_busy') {
+          this.copilotStatus = 'ai.preview.busy';
+        } else {
+          // Unreachable/replaced fixture, invalid server envelope or unavailable
+          // native IPC invalidates the previous successful readiness probe.
+          // Keep the diagnostic visible but require an explicit retry before
+          // sending another request. Quota and single-flight errors above
+          // remain transient and do not disconnect an otherwise valid lab.
+          this.copilotPreviewReady = false;
+          this.copilotStatus = 'ai.preview.error';
+        }
       }
     } finally {
       if (!this.destroyed && ticket === this.copilotRequestRevision) {
