@@ -117,6 +117,10 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .numeric { font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; }
 .setting-line { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:12px 0; border-bottom:1px solid var(--vs-border); font-size:13px; }
 .setting-line strong { text-align:right; font-size:12px; }
+.city-clock-values { min-width:0; max-width:65%; display:flex; align-items:flex-end; flex-direction:column; gap:4px; text-align:right; }
+.city-clock-values strong { max-width:100%; overflow-wrap:anywhere; }
+.city-clock-values time { max-width:100%; font-size:12px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.city-clock-unavailable { font-size:12px; color:var(--vs-text-secondary); }
 @media (max-width:1140px) {
   .workspace:not(.inspector-collapsed) { grid-template-columns:var(--nav-width) minmax(0,1fr); }
   .inspector { position:absolute; right:0; top:0; bottom:0; width:min(316px,84vw); z-index:5; box-shadow:-8px 0 20px rgba(0,0,0,.15); }
