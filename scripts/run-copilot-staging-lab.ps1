@@ -102,8 +102,21 @@ function Read-LoopbackHttp {
         $stream = $response.GetResponseStream()
         $memory = New-Object System.IO.MemoryStream
         $buffer = New-Object byte[] 1024
+        # ReadWriteTimeout bounds EACH blocking Read, not an entire trickled
+        # response. A local process sending one byte every second must never
+        # keep the synthetic capabilities preflight alive indefinitely.
+        $readClock = [System.Diagnostics.Stopwatch]::StartNew()
+        $maxReadMilliseconds = 5000
         try {
-            while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            while ($true) {
+                if ($readClock.ElapsedMilliseconds -ge $maxReadMilliseconds) {
+                    throw 'Local synthetic capabilities response exceeded total read time.'
+                }
+                $read = $stream.Read($buffer, 0, $buffer.Length)
+                if ($readClock.ElapsedMilliseconds -ge $maxReadMilliseconds) {
+                    throw 'Local synthetic capabilities response exceeded total read time.'
+                }
+                if ($read -le 0) { break }
                 if ($memory.Length + $read -gt 8192) {
                     throw 'Local synthetic capabilities response exceeds size limit.'
                 }
@@ -112,6 +125,7 @@ function Read-LoopbackHttp {
             $content = [System.Text.Encoding]::UTF8.GetString($memory.ToArray())
             return ConvertFrom-Json -InputObject $content -ErrorAction Stop
         } finally {
+            $readClock.Stop()
             $memory.Dispose()
             $stream.Dispose()
         }
