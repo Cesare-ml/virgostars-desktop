@@ -4,13 +4,13 @@
 
 ## Purpose
 
-The single-case reference comparator in draft #57 checks experimental geometric sky snapshots against externally supplied normalized reference numbers using **provisional** per-field tolerances. This campaign runner requires 4–24 different case records spanning at least two UTC dates and two observer locations; a single failed case makes the entire campaign fail. It uses the existing comparator and performs no new astronomy. Draft #58 implements a different, more comprehensive spherical comparison; #59 separately checks raw Horizons query and normalization evidence. These approaches are complementary review gates, NOT independent scientific validation or additive numerical-confidence scores.
+The single-case reference comparator in draft #57 checks experimental geometric sky snapshots against externally supplied normalized reference numbers using **provisional** per-field tolerances. This campaign runner requires 4–24 different case records covering a **crossed 2×2 grid**: the same two observer locations on at least two distinct UTC calendar dates. A single failed case makes the entire campaign fail. It uses the existing comparator and performs no new astronomy. Draft #58 implements a different, more comprehensive spherical comparison; #59 separately checks raw Horizons query and normalization evidence. These approaches are complementary review gates, NOT independent scientific validation or additive numerical-confidence scores.
 
 ## Manifest contract
 
 Save a local, untracked campaign.json with exactly schemaVersion=1 and cases. Each case has exactly: id, utcIso, latMicro, lngMicro, heightMeters, actualFile, referenceFile.
 
-The id must be 1–64 ASCII letters/digits/underscore/dot/hyphen, starting with a letter or digit. Filenames are distinct relative JSON basenames (not paths), max 101 characters, no traversal or separators. UTC is canonical millisecond ISO with Z within the experimental IERS window 1972-01-01 through 2027-06-27. Coordinates are WGS84 latitude/longitude in integer microdegrees and height in meters; bounds are ±90°, ±180°, and -12000..100000 m. Both the case identifier and UTC + complete observer position must be unique. A declared case's UTC and coordinates are checked against the **actual computed sky**, not merely its JSON reference.
+The id must be 1–64 ASCII letters/digits/underscore/dot/hyphen, starting with a letter or digit. Filenames are distinct relative JSON basenames (not paths), max 101 characters, no traversal or separators. UTC is canonical millisecond ISO with Z within the experimental IERS window 1972-01-01 through 2027-06-27. Coordinates are WGS84 latitude/longitude in integer microdegrees and height in meters; bounds are ±90°, ±180°, and -12000..100000 m. Both the case identifier and UTC + complete observer position must be unique. **Every actual and reference filename must also be unique across the entire campaign**, preventing accidental reuse of a result or reference under a different case. At least two dates must contain the same two sites, to separate time-dependent from location-dependent errors. A declared case's UTC and coordinates are checked against the **actual computed sky**, not merely its JSON reference.
 
 Example fictional manifest, with **no real astronomical positions or JPL data**:
 
@@ -32,7 +32,7 @@ From the Desktop root with Node.js 22+:
 
     node --experimental-strip-types scripts/ephemeris/verify-de441-campaign.mjs path/to/campaign.json
 
-All input files must be colocated with the manifest and must be regular files, each at most 128 KiB. The reader rejects symlinks, directories, FIFOs/devices and invalid UTF-8, with no-follow/nonblocking flags where supported, plus inode, size, mtime and ctime checks before and after reading. These protections are best effort against filesystem races, not proofs of file authenticity, and must be verified on Windows too. Cases execute sequentially, without network requests, retries or file copying.
+All input files must be colocated with the manifest and must be regular files, each at most 128 KiB. The reader rejects symlinks, directories, FIFOs/devices and invalid UTF-8, with no-follow/nonblocking flags where supported, plus inode, size, mtime and ctime checks before and after reading. These protections are best effort against filesystem races, not proofs of file authenticity, and must be verified on Windows too. Cases execute sequentially, without network requests, retries or file copying. Exceptions thrown while checking a returned result are counted as sanitized per-case failures, rather than aborting the entire campaign.
 
 Exit/status:
 - 0: DE441_CAMPAIGN:PROVISIONAL_ALL_WITHIN checked=N — **never scientifically certified**.
@@ -46,11 +46,15 @@ Only aggregate counts and fixed status codes are emitted; no local paths, UTC va
 On Node.js 22.16.0 in a local mirror:
 
     NODE_NO_WARNINGS=1 node --experimental-strip-types --test tests/de441-reference-check.test.mjs tests/de441-reference-campaign.test.mjs
-    # 31 passed, 0 failed: 17 existing single-case tests plus 14 new campaign tests
+    # 31 passed, 0 failed on the previous campaign implementation (17 single-case + 14 campaign tests)
     node --check scripts/ephemeris/de441-reference-campaign.mjs
     node --check scripts/ephemeris/verify-de441-campaign.mjs
     node --check tests/de441-reference-campaign.test.mjs
     # all passed
+
+**Additional matrix-hardening check on the current head:** executed `node --test tests/de441-reference-campaign-matrix.test.mjs` using the **exact GitHub campaign module** and a clearly labeled *test-only numerical comparator stand-in*: **6/6 passed**. These tests verify crossed 2×2 coverage, globally unique filenames, manifest rejection before reading, and sanitized exception handling. They do **not** exercise the real astronomical comparator. The complete pre-existing 31-test suite was not rerun on this updated head.
+
+Exact tested Git blobs: campaign module `1b762d2adc6f297ce3b0c9f96399021c158f90bf`; matrix tests `b8016fd29403af210d979f52b34b25871c455d4c`.
 
 Tests cover different epochs/sites, invalid and duplicated metadata, UTC calendar/IERS bounds, suspicious filenames, more than 24 cases, one mismatching position, missing data, injected reader errors, full CLI process success/failure, symlink refusal, invalid UTF-8 and redacted output.
 
