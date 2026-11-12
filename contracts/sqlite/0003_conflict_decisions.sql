@@ -38,6 +38,20 @@ WHEN EXISTS(SELECT 1 FROM local_ack_ledger a
 BEGIN
   SELECT RAISE(ABORT,'already used mutation id');
 END;
+-- Queued request identity is immutable. The existing INSERT trigger does not
+-- intercept UPDATE mutations, so without this guard a caller could rename an
+-- existing queued ID to an ACKed/retired ID or move it between entities.
+-- State and remote conflict-revision updates remain legal; the v3 writer
+-- retires an old request with DELETE and creates a replacement with INSERT.
+CREATE TRIGGER local_outbox_v3_identity_immutable
+BEFORE UPDATE OF profile_id,mutation_id,entity_type,entity_id ON local_outbox
+WHEN NEW.profile_id <> OLD.profile_id
+  OR NEW.mutation_id <> OLD.mutation_id
+  OR NEW.entity_type <> OLD.entity_type
+  OR NEW.entity_id <> OLD.entity_id
+BEGIN
+  SELECT RAISE(ABORT,'queued mutation identity is immutable');
+END;
 -- A user's recorded decision is audit history, not a mutable queue row.
 CREATE TRIGGER local_conflict_decisions_no_update
 BEFORE UPDATE ON local_conflict_decisions
