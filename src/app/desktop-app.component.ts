@@ -80,6 +80,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
   get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
+  get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
   get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
   private updateCityClock(): void {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
