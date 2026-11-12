@@ -16,11 +16,11 @@
     </div>
   </header>
 
-  <div class="workspace" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed">
-    <nav class="sidebar" [attr.aria-label]="t('navigation')">
+  <div class="workspace" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.mobile-nav-open]="mobileNavOpen">
+    <nav class="sidebar" id="desktop-navigation" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
         <span class="sidebar-label">{{t('navigation')}}</span>
-        <button type="button" class="sidebar-toggle" [attr.title]="t('navigation.toggle')" [attr.aria-label]="t('navigation.toggle')" [attr.aria-expanded]="!navCollapsed" (click)="toggleNavigation()">☷</button>
+        <button type="button" class="sidebar-toggle" #sidebarToggle [attr.title]="t('navigation.toggle')" [attr.aria-label]="t('navigation.toggle')" aria-controls="desktop-navigation" [attr.aria-expanded]="compactViewport ? mobileNavOpen : !navCollapsed" (click)="toggleNavigation()">☷</button>
       </div>
       <div class="nav-list">
         <button type="button" class="nav-item" *ngFor="let item of modes"
@@ -42,12 +42,14 @@
       </button>
       <div class="sidebar-bottom"><span class="sidebar-label">{{t('noaccount')}}</span><span class="nav-mark" aria-hidden="true">○</span></div>
     </nav>
+    <button *ngIf="compactViewport && mobileNavOpen" type="button" class="nav-backdrop"
+      [attr.aria-label]="t('navigation.close')" tabindex="-1" (click)="closeMobileNavigation(true)"></button>
 
     <main class="chart-panel">
       <div class="chart-header">
         <div><h1>{{modeLabel(mode)}}</h1><p>{{t('chart.status')}}</p></div>
-        <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
-          [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
+        <button type="button" class="toolbar-button inspector-toggle" #inspectorToggle [attr.title]="t('inspector.toggle')"
+          [attr.aria-label]="t('inspector.toggle')" aria-controls="desktop-inspector" [attr.aria-expanded]="!inspectorCollapsed"
           (click)="toggleInspector()">☷</button>
       </div>
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')">
@@ -67,18 +69,18 @@
       <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span></footer>
     </main>
 
-    <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
+    <aside class="inspector" id="desktop-inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
       <div class="inspector-head">
         <h2>{{t('inspector')}}</h2>
         <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
       </div>
       <div class="inspector-tabs" role="tablist">
         <button type="button" role="tab" id="tab-planets" aria-controls="inspector-content"
-          [attr.aria-selected]="inspectorTab==='planets'" (click)="setInspectorTab('planets')">{{t('tab.planets')}}</button>
+          [attr.aria-selected]="inspectorTab==='planets'" [attr.tabindex]="inspectorTab==='planets' ? 0 : -1" (keydown)="onInspectorTabKeydown($event)" (click)="setInspectorTab('planets')">{{t('tab.planets')}}</button>
         <button type="button" role="tab" id="tab-houses" aria-controls="inspector-content"
-          [attr.aria-selected]="inspectorTab==='houses'" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
+          [attr.aria-selected]="inspectorTab==='houses'" [attr.tabindex]="inspectorTab==='houses' ? 0 : -1" (keydown)="onInspectorTabKeydown($event)" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
         <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content"
-          [attr.aria-selected]="inspectorTab==='settings'" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
+          [attr.aria-selected]="inspectorTab==='settings'" [attr.tabindex]="inspectorTab==='settings' ? 0 : -1" (keydown)="onInspectorTabKeydown($event)" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
       </div>
       <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
         <div *ngIf="inspectorTab==='planets'">

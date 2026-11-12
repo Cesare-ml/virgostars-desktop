@@ -1,13 +1,14 @@
 import { CommonModule } from '@angular/common';
 import {
-  AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy,
+  AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy,
   ViewChild, inject
 } from '@angular/core';
 import {
   defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
 } from 'grafici-astrologici';
 import {
-  chartSide, CHART_MODES, type ChartMode, type InspectorTab, type UiTheme
+  chartSide, CHART_MODES, isCompactNavigationWidth, isOverlayInspectorWidth,
+  nextInspectorTab, type ChartMode, type InspectorTab, type UiTheme
 } from './workspace-state';
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
 import { translate, type Locale, type MessageKey } from './translations';
@@ -35,6 +36,8 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
+  @ViewChild('sidebarToggle') private readonly sidebarToggleButton?: ElementRef<HTMLButtonElement>;
+  @ViewChild('inspectorToggle') private readonly inspectorToggleButton?: ElementRef<HTMLButtonElement>;
 
   private readonly cd = inject(ChangeDetectorRef);
   private readonly renderer = new GraficoRenderService();
@@ -58,7 +61,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   selectedPlanet: DemoPlanet | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
   navCollapsed = false;
-  inspectorCollapsed = false;
+  // Set initial responsive state before Angular's first render/change detection.
+  // Changing template-bound fields synchronously in ngAfterViewInit would
+  // otherwise risk ExpressionChangedAfterItHasBeenCheckedError in dev mode.
+  inspectorCollapsed = typeof window !== 'undefined' && isOverlayInspectorWidth(window.innerWidth);
+  compactViewport = typeof window !== 'undefined' && isCompactNavigationWidth(window.innerWidth);
+  overlayInspectorViewport = typeof window !== 'undefined' && isOverlayInspectorWidth(window.innerWidth);
+  mobileNavOpen = false;
   busy = true;
   ready = false;
   status: MessageKey = 'chart.loading';
@@ -119,13 +128,74 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if(this.initialized) window.dispatchEvent(new Event('resize'));
   }
 
-  toggleNavigation(): void {
-    this.navCollapsed = !this.navCollapsed;
+  private updateViewport(): void {
+    const compact = isCompactNavigationWidth(window.innerWidth);
+    const overlay = isOverlayInspectorWidth(window.innerWidth);
+    if (compact !== this.compactViewport) this.mobileNavOpen = false;
+    // At narrow sizes, data panels open on demand rather than hiding the wheel.
+    if (overlay && !this.overlayInspectorViewport) this.inspectorCollapsed = true;
+    this.compactViewport = compact;
+    this.overlayInspectorViewport = overlay;
     this.cd.markForCheck();
   }
-  toggleInspector(): void {
-    this.inspectorCollapsed = !this.inspectorCollapsed;
+  @HostListener('window:resize')
+  onWindowResize(): void { this.updateViewport(); }
+
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKeydown(event: KeyboardEvent): void {
+    if (event.defaultPrevented || event.key !== 'Escape') return;
+    if (this.mobileNavOpen) {
+      this.closeMobileNavigation(true);
+      event.preventDefault();
+    } else if (this.overlayInspectorViewport && !this.inspectorCollapsed) {
+      this.closeInspector(true);
+      event.preventDefault();
+    }
+  }
+
+  toggleNavigation(): void {
+    if (this.compactViewport) {
+      if (this.mobileNavOpen) {
+        this.closeMobileNavigation(true);
+      } else {
+        this.mobileNavOpen = true;
+        this.inspectorCollapsed = true;
+        this.cd.markForCheck();
+      }
+    } else {
+      this.navCollapsed = !this.navCollapsed;
+      this.cd.markForCheck();
+    }
+  }
+  closeMobileNavigation(restoreFocus = false): void {
+    if (!this.mobileNavOpen) return;
+    this.mobileNavOpen = false;
     this.cd.markForCheck();
+    if (restoreFocus) this.sidebarToggleButton?.nativeElement.focus();
+  }
+  closeInspector(restoreFocus = false): void {
+    if (this.inspectorCollapsed) return;
+    this.inspectorCollapsed = true;
+    this.cd.markForCheck();
+    if (restoreFocus) this.inspectorToggleButton?.nativeElement.focus();
+  }
+  toggleInspector(): void {
+    if (!this.inspectorCollapsed) {
+      this.closeInspector(true);
+    } else {
+      this.mobileNavOpen = false;
+      this.inspectorCollapsed = false;
+      this.cd.markForCheck();
+      requestAnimationFrame(() => document.getElementById('tab-' + this.inspectorTab)?.focus());
+    }
+  }
+  onInspectorTabKeydown(event: KeyboardEvent): void {
+    const next = nextInspectorTab(this.inspectorTab, event.key);
+    if (!next) return;
+    event.preventDefault();
+    this.setInspectorTab(next);
+    (event.currentTarget as HTMLElement | null)?.parentElement
+      ?.querySelector<HTMLButtonElement>('#tab-' + next)?.focus();
   }
   toggleLanguage(): void {
     this.locale = this.locale === 'it' ? 'en' : 'it';
@@ -142,6 +212,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setMode(mode:ChartMode): void {
     if(this.busy || mode === this.mode) return;
     this.mode = mode;
+    if (this.mobileNavOpen) this.closeMobileNavigation(true);
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
   }
