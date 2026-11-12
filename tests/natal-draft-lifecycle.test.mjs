@@ -69,12 +69,17 @@ test('unknown birth time still previews without invented instant before disposal
   assert.equal(s.preview.utcResolution,'unknown_birth_time');
   s.dispose();assert.equal(s.preview,null);
 });
-test('Angular UTC choice getter and fold-choice handler reject an outdated input revision',()=>{
-  const source=readFileSync(new URL('../src/app/natal-draft.component.ts',import.meta.url),'utf8');
-  assert.match(source,/private previewRevision: number \| null = null;/);
-  assert.match(source,/this\.previewRevision !== this\.draft\.inputRevision \|\| !this\.draft\.preview/g);
-  assert.match(source,/this\.previewRevision=this\.draft\.inputRevision/);
-  assert.match(source,/this\.previewRevision=null/);
+test('Angular UTC preview and fold selection use a current content+revision anchor',()=>{
+  const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+  const source=read('src/app/natal-draft.component.ts');
+  const html=read('src/app/natal-draft.component.html');
+  assert.match(source,/private previewAnchor: NatalPreviewAnchor \| null = null;/);
+  assert.match(source,/isNatalPreviewCurrent\(this\.draft, this\.previewAnchor\)/);
+  assert.match(source,/this\.previewAnchor=captureNatalPreviewAnchor\(this\.draft\)/);
+  assert.match(source,/this\.previewAnchor=null/);
+  assert.match(source,/const current=this\.currentTimeResult;/);
+  assert.match(html,/\*ngIf="currentPreview as p"/);
+  assert.match(html,/\*ngIf="currentTimeResult as z"/);
 });
 test('app teardown retires shared natal draft; tab switches do not retire it',()=>{
   const source=readFileSync(new URL('../src/app/desktop-app.component.ts',import.meta.url),'utf8');

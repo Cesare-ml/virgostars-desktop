@@ -2,7 +2,8 @@ import {CommonModule} from '@angular/common';
 import {ChangeDetectorRef, Component, EventEmitter, HostListener, Input, OnDestroy, Output, inject} from '@angular/core';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {OfflineCityPickerComponent} from './offline-city-picker.component';
-import {NatalDraftState, type NatalInputKey, type NatalIssue} from './natal-draft-state';
+import {NatalDraftState, type NatalDraftPreview, type NatalInputKey, type NatalIssue} from './natal-draft-state';
+import {captureNatalPreviewAnchor, isNatalPreviewCurrent, type NatalPreviewAnchor} from './natal-preview-freshness';
 import {previewIanaCivilTime} from './timezone-moment-preview';
 import type {CivilTimeResolution, UtcCandidate} from './timezone-civil';
 import {CorrectionHold, stepCivilCorrection, type CorrectionDirection, type CorrectionField} from './natal-time-step';
@@ -25,21 +26,27 @@ export class NatalDraftComponent implements OnDestroy {
   @Output() readonly cityChanged = new EventEmitter<OfflinePlaceV1 | null>();
   timeResult: CivilTimeResolution | null = null;
   chosenIndex: number | null = null;
-  private previewRevision: number | null = null;
+  private previewAnchor: NatalPreviewAnchor | null = null;
 
+  /** Do not expose a stale preview, including mutations bypassing state setters. */
+  get currentPreview(): NatalDraftPreview | null {
+    return isNatalPreviewCurrent(this.draft, this.previewAnchor) ? this.draft.preview : null;
+  }
+  get currentTimeResult(): CivilTimeResolution | null {
+    return this.currentPreview ? this.timeResult : null;
+  }
   get selectedUtc(): UtcCandidate | null {
-    if (this.previewRevision !== this.draft.inputRevision || !this.draft.preview) return null;
-    return this.chosenIndex === null ? null : this.timeResult?.candidates[this.chosenIndex] ?? null;
+    return this.chosenIndex === null ? null : this.currentTimeResult?.candidates[this.chosenIndex] ?? null;
   }
   private invalidateTimezonePreview(): void {
-    this.previewRevision=null;
+    this.previewAnchor=null;
     this.timeResult=null;
     this.chosenIndex=null;
   }
   chooseUtc(index:number): void {
-    if(this.previewRevision !== this.draft.inputRevision || !this.draft.preview ||
-       this.timeResult?.status !== 'ambiguous' || !Number.isInteger(index) ||
-       index < 0 || index >= this.timeResult.candidates.length) return;
+    const current=this.currentTimeResult;
+    if(current?.status !== 'ambiguous' || !Number.isInteger(index) ||
+       index < 0 || index >= current.candidates.length) return;
     this.chosenIndex=index;
   }
 
@@ -106,9 +113,10 @@ export class NatalDraftComponent implements OnDestroy {
     this.invalidateTimezonePreview();
     if(!this.draft.showPreview() || !this.draft.preview) return;
     const p=this.draft.preview;
+    // The unknown-time preview remains visible without inventing an instant.
+    this.previewAnchor=captureNatalPreviewAnchor(this.draft);
     if(!p.civil.birthTimeKnown) return;
     this.timeResult=previewIanaCivilTime(p.civil,p.place.timeZone);
-    this.previewRevision=this.draft.inputRevision;
     // A repeated local hour requires explicit selection by the user.
     if(this.timeResult.status === 'unique') this.chosenIndex=0;
   }
