@@ -1,5 +1,13 @@
 # D-06 — Combined DE441 evidence and numerical comparison gate
 
+## D-08 follow-up — hardened local-file race checks (12 November 2026)
+
+The evidence reader and the D-06 experimental-snapshot fingerprint now share stronger filesystem checks. In addition to rejecting links and non-regular files, the reader requests **nonblocking** open (where supported) to reduce the risk of a path being swapped for a FIFO between inspection and opening. It verifies device/inode, size, mtime and ctime **both at open and after reading**, also checking the path itself again after reading; it reads one byte beyond the originally declared size to detect appended data. The normalized reference JSON must decode as valid UTF-8 using fatal decoding, rather than silently replacing bad byte sequences.
+
+These checks are **best-effort protection against accidental file changes and some path-swap races**, not complete adversarial TOCTOU protection. Windows availability/semantics of O_NOFOLLOW and O_NONBLOCK need a native Windows test. Replacing a file with a byte-identical copy between reads may still evade the combined command's double fingerprint; this pipeline is not an atomic snapshot.
+
+**Actually executed on Node.js 22.16.0** against the **exact GitHub source file**: `node --test tests/de441-evidence-file-races.test.mjs` → **11/11 pass**, 0 skipped/failed (real filesystem and direct CLI tests with fictional input). `node --check` of the modified source and test passed. Git object hashes match the tested local files: source `f523595cd39a0c0a1a8df6f0a016a16c7110c8f3`; tests `2a3aa7fa173bd663ec86e2697faab03e275afb7e`. The pre-existing verifier/combined-audit suites were not rerun on this updated head; no real DE441 or JPL data were used.
+
 **Status:** local orchestration unit tests passed with deliberately isolated dependency stubs. This is **not** independent astronomical validation, an active Rust provider, or a Windows-tested build.
 
 ## Purpose
