@@ -121,7 +121,18 @@ test('preflight validates Rust dev and release configurations before exposing a 
   assert.match(runner, /'cargo' @\('check', '--no-default-features'\)/);
   assert.match(runner, /'cargo' @\('test', '--features', 'copilot-staging'\)/);
   assert.match(runner, /'cargo' @\('check', '--release', '--features', 'copilot-staging'\)/);
-  assert.match(runner, /'npm\.cmd' @\('run', 'test:ai:fixture'\)/);
+  assert.match(runner, /'npm\.cmd' @\('run', 'test:ai:smoke'\)/);
+  const smoke = packageJson.scripts['test:ai:smoke'];
+  assert.match(smoke, /^node --experimental-strip-types --test /);
+  for (const file of [
+    'tests/copilot-preview-client.test.mjs',
+    'tests/copilot-native-staging-transport.test.mjs',
+    'tests/copilot-native-single-flight.test.mjs',
+    'tests/copilot-staging-fixture.test.mjs',
+    'tests/copilot-windows-lab-runner.test.mjs',
+  ]) assert.ok(smoke.includes(file), 'AI smoke must include ' + file);
+  assert.ok(runner.indexOf("Complete AI bridge isolated smoke") <
+    runner.indexOf("Complete Node and TypeScript test suite"));
   assert.match(runner, /'npm\.cmd' @\('test'\)/);
   assert.match(runner, /'npm\.cmd' @\('run', 'doctor:build'\)/);
   assert.match(runner, /'npm\.cmd' @\('run', 'test:ai:types'\)/);
