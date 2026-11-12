@@ -46,9 +46,18 @@
     <main class="chart-panel">
       <div class="chart-header">
         <div><h1>{{modeLabel(mode)}}</h1><p>{{t(artworkStatus)}}</p></div>
-        <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
-          [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
-          (click)="toggleInspector()">☷</button>
+        <div class="chart-header-controls">
+          <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
+            <span class="device-clock-caption">{{t('clock.now')}}</span>
+            <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
+              <span class="clock-full">{{clockText}}</span>
+              <span class="clock-compact">{{clockCompactText}}</span>
+            </time>
+          </div>
+          <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
+            [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
+            (click)="toggleInspector()">☷</button>
+        </div>
       </div>
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')">
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
