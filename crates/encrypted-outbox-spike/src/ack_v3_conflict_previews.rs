@@ -330,6 +330,47 @@ mod tests {
     }
 
     #[test]
+    fn keyset_survives_prior_conflict_resolution_without_duplicate() {
+        let (_dir, _path, mut store, digest) = setup();
+        store.conn.execute(
+            "INSERT INTO local_entities(
+                 profile_id,entity_type,entity_id,payload_json,local_revision)
+             VALUES ('synthetic-a','subject','synthetic-e2',
+                     '{\"label\":\"Other fictional\"}',1)",
+            [],
+        ).unwrap();
+        store.conn.execute(
+            "INSERT INTO local_outbox(
+                 profile_id,mutation_id,entity_type,entity_id,operation,
+                 payload_json,created_at_utc,state,conflict_server_revision)
+             VALUES ('synthetic-a','synthetic-m2','subject','synthetic-e2',
+                     'upsert','{\"label\":\"Other fictional\"}',
+                     '2026-11-10T19:00:00Z','conflict','rev-remote')",
+            [],
+        ).unwrap();
+        let first = store.page_synthetic_v3_conflict_previews(
+            "synthetic-a",None,1,
+        ).unwrap();
+        assert_eq!(first.items[0].mutation_id,"synthetic-m1");
+        let cursor = first.next_after_sequence;
+        assert!(cursor.is_some());
+
+        // Resolve the earlier conflict between page requests. The next
+        // page must still show the later conflict exactly once, never the
+        // newly pending replacement and never the retired original.
+        store.keep_synthetic_v3_local_conflict(
+            "synthetic-a","synthetic-m1","synthetic-next",&digest,
+            "2026-11-11T21:30:00Z",false,
+        ).unwrap();
+        let after = store.page_synthetic_v3_conflict_previews(
+            "synthetic-a",cursor,1,
+        ).unwrap();
+        assert_eq!(after.items.len(),1);
+        assert_eq!(after.items[0].mutation_id,"synthetic-m2");
+        assert_eq!(after.next_after_sequence,None);
+    }
+
+    #[test]
     fn corrupted_fictional_payload_fails_closed() {
         let (_dir,_path,mut store,_) = setup();
         store.conn.execute(
