@@ -72,6 +72,12 @@ impl SyntheticEncryptedStore {
                 if outbox_rows > MAX_AUDIT_ROWS { return Err(suspicious()); }
                 let (profile, mutation, entity_type, entity, operation,
                      payload, base, created, state, conflict) = row.map_err(storage_error)?;
+                // Compare the *latest* queued edit against the materialized
+                // local subject. Older queued edits may deliberately differ,
+                // including when multiple edits share an unchanged server
+                // base. Do not report those normal histories as corruption.
+                let queued_payload = payload.clone();
+                let expected_deleted = i64::from(operation == "delete");
                 let request = stored_request(
                     profile.clone(), mutation.clone(), entity_type, entity,
                     operation, payload, base.clone(), created,
@@ -95,6 +101,30 @@ impl SyntheticEncryptedStore {
                     |r| r.get(0),
                 ).map_err(storage_error)?;
                 if overlaps != 0 { return Err(suspicious()); }
+
+                // A changed local subject without a corresponding new queued
+                // mutation would otherwise pass every ACK/history check.
+                // Only compare the last mutation for this profile+entity:
+                // prior FIFO snapshots are immutable history, not the
+                // expected currently materialized local value.
+                let newest: String = tx.query_row(
+                    "SELECT mutation_id FROM local_outbox
+                     WHERE profile_id=?1 AND entity_type=?2 AND entity_id=?3
+                     ORDER BY sequence DESC LIMIT 1",
+                    params![profile, request.entity_type.as_str(), request.entity.as_str()],
+                    |r| r.get(0),
+                ).map_err(storage_error)?;
+                if newest == mutation {
+                    let current: (Option<String>, i64) = tx.query_row(
+                        "SELECT payload_json,locally_deleted FROM local_entities
+                         WHERE profile_id=?1 AND entity_type=?2 AND entity_id=?3",
+                        params![profile, request.entity_type.as_str(), request.entity.as_str()],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    ).map_err(storage_error)?;
+                    if current.0 != queued_payload || current.1 != expected_deleted {
+                        return Err(suspicious());
+                    }
+                }
             }
         }
 
@@ -435,6 +465,57 @@ mod tests {
             "UPDATE local_ack_ledger SET request_fingerprint=?1
              WHERE mutation_id='synthetic-new'",
             params!["a".repeat(64)],
+        ).unwrap();
+        assert!(store.audit_synthetic_v3_readonly().is_err());
+    }
+
+    #[test]
+    fn changed_materialized_subject_without_new_mutation_is_refused() {
+        let (_dir, _path, mut store, _, _) = setup();
+        store.conn.execute(
+            "UPDATE local_entities SET payload_json='{\"label\":\"Unsynced hidden edit\"}'
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-e1'",
+            [],
+        ).unwrap();
+        assert!(store.audit_synthetic_v3_readonly().is_err());
+    }
+
+    #[test]
+    fn materialized_tombstone_mismatch_is_refused() {
+        let (_dir, _path, mut store, _, _) = setup();
+        store.conn.execute(
+            "UPDATE local_entities SET locally_deleted=1
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-e1'",
+            [],
+        ).unwrap();
+        assert!(store.audit_synthetic_v3_readonly().is_err());
+    }
+
+    #[test]
+    fn earlier_queued_edit_may_differ_from_latest_local_snapshot() {
+        let (_dir, _path, mut store, _, _) = setup();
+        // Keep the original pending conflict and add a later mutation for
+        // the SAME entity. It is normal for the local materialized subject
+        // to match the newest edit rather than the first FIFO snapshot.
+        store.conn.execute(
+            "INSERT INTO local_outbox(
+                 profile_id,mutation_id,entity_type,entity_id,operation,
+                 payload_json,created_at_utc)
+             VALUES ('synthetic-a','synthetic-later','subject','synthetic-e1',
+                     'upsert','{\"label\":\"Later fictional edit\"}',
+                     '2026-11-11T21:35:00Z')",
+            [],
+        ).unwrap();
+        store.conn.execute(
+            "UPDATE local_entities SET payload_json='{\"label\":\"Later fictional edit\"}'
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-e1'",
+            [],
+        ).unwrap();
+        assert_eq!(store.audit_synthetic_v3_readonly().unwrap().outbox_rows, 2);
+        store.conn.execute(
+            "UPDATE local_entities SET payload_json='{\"label\":\"Unexpected\"}'
+             WHERE profile_id='synthetic-a' AND entity_id='synthetic-e1'",
+            [],
         ).unwrap();
         assert!(store.audit_synthetic_v3_readonly().is_err());
     }
