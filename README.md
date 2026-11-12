@@ -4,9 +4,37 @@
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
 
+## Experimental real-sky response contract (not chart-ready)
+
+The desktop now has a typed [first-sky experimental preview contract](docs/FIRST_SKY_EXPERIMENTAL_CONTRACT.md) grounded in the real `VirgoStars-Ephemeris` Rust `first_sky` API: geometric mean-of-date positions, exact **outer-system barycenter identity**, DE441 provenance, IERS time range and explicit approximation warnings. Its decoder rejects fake/synthetic responses or any attempt to mark experimental data **chart-ready**. **No real Rust calculation command or natal chart rendering has been integrated**. The **exact committed decoder and test files** now pass all **18/18 Node tests** in an isolated local checkout (Git blob hashes confirmed); TypeScript strict passed using a local stub of the existing generic IPC interfaces. This does **not** replace the full repository/Angular/Tauri Windows build.
+
+## Synthetic native Rust calculation probe (testing only)
+
+A separate [bounded synthetic Tauri IPC probe](docs/SYNTHETIC_NATIVE_CALCULATION_PROBE.md) now exercises a fixed-size CPU workload with a strict two-worker gate and `syntheticOnly` response marker. The TypeScript transport passed eight isolated behavioral tests. A [development-only Settings benchmark](docs/DEVELOPMENT_IPC_BENCHMARK.md) now runs a bounded 24-call sequence and reports p50/p95/p99 **when actually executed on the Windows dev app**; 8/8 isolated benchmark tests passed. Rust rejects the synthetic endpoint in release builds. **Rust compilation, actual WebView2 IPC latency and real ephemeris calculations remain unverified and disconnected from the chart.**
+
+## Bounded future Rust calculation requests
+
+A pure [latest-only calculation scheduler](docs/LATEST_CALCULATION_SCHEDULER.md) now accepts rapid synthetic requests while maintaining **one active and one latest pending**, suppressing obsolete results/errors. 10/10 isolated Node tests passed, including a 10,000-submission overload; **no Rust astronomy or chart animation is connected yet**.
+
+## Rapid natal time correction (prototype)
+
+Five plus/minus controls for year, month, day, hour and minute now support **press-and-hold**, calendar rollover and invalid-date/unknown-time protection entirely in the unsaved Angular draft. The local time preview is invalidated after every change. **Actual natal chart animation and Rust ephemeris requests are not wired yet.** See [rapid time correction](docs/NATAL_RAPID_CORRECTION.md).
+
+## New natal chart input (experimental, unsaved)
+
+A guest-only **New natal chart / Nuovo tema** form now accepts a subject name, Gregorian birth date, optional known time and an offline selected city, including original location ID, coordinates, country and IANA-style timezone. A typed validation preview explicitly warns that **UTC/historical DST, true sky calculation and encrypted saving are NOT implemented**. This form stores nothing and does not alter the synthetic chart. See [Natal Draft v1](docs/NATAL_DRAFT_V1.md).
+
+A **provisional offline UTC preview** now reports normal IANA conversion, DST gaps (invalid local hour), and folds (explicit choice between two UTC instants), with the bundled timezone-data version and historical warnings. It **does not save records or calculate a real chart**. See [Natal Timezone Resolution](docs/NATAL_TIMEZONE_RESOLUTION.md).
+
+## Source country labels for offline city results
+
+The city source has `stato_id` as an internal foreign key; **country labels must be imported from the owner's actual related lookup table**, not inferred. An optional `--countries-csv` now produces an enriched v2 SQLite resource with validated name/ISO2, while v1 remains readable. See [Country Lookup](docs/OWNED_COUNTRY_LOOKUP.md). The purchased country data are **not in GitHub**, and full native search/installer validation is pending.
+
 ## Preparing the complete offline city catalog
 
-The purchased **1,951,599-city** reference database is intended to ship with the Windows installer after a private, validated PostgreSQL CSV → SQLite conversion. **The actual licensed city data are never committed to Git.** A batch Python converter, checksum/ZIP generator and Tauri resource-config helper are now in source control. They do **not** yet implement Rust-backed city search or the Angular city selector. See [Local City Packaging](docs/LOCAL_CITY_PACKAGING.md) for safe export, validation, Windows commands and GitHub Release asset distribution.
+The purchased **1,951,599-city** reference database is intended to ship with the Windows installer after a private, validated PostgreSQL CSV → SQLite conversion.
+
+A **new Rust local search command** reads indexed SQLite with at most two concurrent blocking workers and max 30 results; a strict TypeScript adapter validates responses and drops stale searches. See [Native Offline Places](docs/NATIVE_OFFLINE_PLACES.md). This code is authored but not yet verified in the Windows executable. The Angular Settings/Parametri panel now contains a debounced offline city autocomplete; its **10 pure state tests passed locally**, but UI/native full-catalog QA remains pending. Selecting a city does not yet alter synthetic sky positions or create a saved chart. **The actual licensed city data are never committed to Git.** A batch Python converter, checksum/ZIP generator and Tauri resource-config helper are now in source control. They do **not** yet implement Rust-backed city search or the Angular city selector. See [Local City Packaging](docs/LOCAL_CITY_PACKAGING.md) for safe export, validation, Windows commands and GitHub Release asset distribution.
 
 ## Offline-first product decision (2026-11-11)
 

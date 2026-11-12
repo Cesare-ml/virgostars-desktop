@@ -82,11 +82,11 @@ These are first **engineering hypotheses** to check on an ordinary supported Win
 
 ## Next coding slices, independent of real ephemeris readiness
 
-P0-IPC-1: Pure TypeScript `LatestRequestScheduler` with mock calculator and cancellation; tests for 10k clicks, release, switching chart and disposal.
+P0-IPC-1: **Implemented in source and isolated tests:** pure TypeScript [LatestCalculationScheduler](LATEST_CALCULATION_SCHEDULER.md) with a synthetic transport, one active + one latest pending request, session invalidation, response echo verification and 10,000-submission overload tests (10/10 passing). **No real Rust invocation or chart animation yet.**
 
-P0-IPC-2: Rust synthetic deterministic calculation command + bounded native worker (no fake "live chart" branding), versioned DTO and Windows IPC measurements.
+P0-IPC-2: The [synthetic CPU-only Rust Tauri command](SYNTHETIC_NATIVE_CALCULATION_PROBE.md), strict TypeScript adapter and [development-mode benchmark inspector](DEVELOPMENT_IPC_BENCHMARK.md) are now authored. The 24-call sequential benchmark reports real p50/p95/p99 and a separate worker-only time when actually run natively (8/8 pure Node tests passed locally); Rust release mode rejects the command. **Windows native build/round-trip and actual latency measurements remain required**. Do not show synthetic results as charts.
 
-P0-IPC-3: Connect the validated `VirgoStars-Ephemeris` Rust provider and `astrological-functions` adapter with real numerical fixtures, then enable `Adesso` only when enough data are validated.
+P0-IPC-3: A [strict experimental `first_sky` Angular DTO/decoder](FIRST_SKY_EXPERIMENTAL_CONTRACT.md) is now written, with source identity, unverified geometric quality, provider/kernel provenance, IERS date window, and all approximation warnings. **It is deliberately `chartEligible:false`** and contains no calculation algorithm. Only after independent NASA/JPL validation and a real bounded native Rust adapter can we connect a separately validated provider plus `astrological-functions` and enable `Adesso`.
 
 P0-IPC-4: Implement renderer partial-update API and a stress test in WebView2, verifying the center chart stays large and resources return to baseline.
 

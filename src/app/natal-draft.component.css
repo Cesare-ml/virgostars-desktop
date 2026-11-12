@@ -1,0 +1,59 @@
+:host { display:block; color:var(--vs-text); }
+.natal-draft { display:flex; flex-direction:column; gap:10px; padding:0 0 18px; }
+.natal-draft label,.natal-draft legend { font-size:12px; font-weight:600; }
+.natal-draft input[type="text"],.natal-draft input[type="number"] {
+  width:100%; min-width:0; height:36px; font:inherit; font-size:13px;
+  background:var(--vs-surface); color:var(--vs-text);
+  border:1px solid var(--vs-border); border-radius:7px; padding:5px 8px;
+}
+.natal-draft input:focus-visible,.natal-draft button:focus-visible {
+  outline:2px solid var(--vs-focus); outline-offset:2px;
+}
+.natal-draft fieldset { border:1px solid var(--vs-border); border-radius:8px; margin:0; padding:10px; min-width:0; }
+.natal-draft legend { padding:0 5px; }
+.draft-grid { display:grid; gap:8px; }
+.draft-grid.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.draft-grid.two { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.draft-grid label { display:block; margin:0 0 5px; }
+.draft-hint { color:var(--vs-text-secondary); font-size:11px; line-height:1.5; margin:0; }
+.known-time { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.known-time input { accent-color:var(--vs-accent); }
+.draft-errors { padding:8px; border:1px solid #b65f4f; border-radius:7px; color:#ae4435; font-size:12px; }
+.draft-errors p { margin:3px 0; }
+.draft-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.draft-actions button { border:0; border-radius:7px; padding:9px 12px; font:inherit; font-size:12px;
+  background:var(--vs-accent); color:var(--vs-accent-contrast); cursor:pointer; }
+.draft-actions .draft-secondary { background:var(--vs-surface-muted); color:var(--vs-text); border:1px solid var(--vs-border); }
+.draft-preview { padding:10px; border-radius:8px; background:var(--vs-surface-muted); border:1px solid var(--vs-border); }
+.draft-preview strong { font-size:12px; }
+.draft-preview p { font-size:12px; overflow-wrap:anywhere; margin:5px 0; }
+
+/* The timezone preview never scrolls the main Three.js chart or requires Internet. */
+.timezone-preview { display:grid; gap:7px; padding:8px 0; border-top:1px solid var(--vs-border); }
+.timezone-preview p { margin:0; overflow-wrap:anywhere; }
+.timezone-warning { color:#b65f4f; font-size:12px; }
+.timezone-utc { font-size:12px; }
+.timezone-options { display:flex; flex-direction:column; gap:6px; }
+.timezone-options button {
+  width:100%; min-height:36px; padding:8px; text-align:left; font:inherit;
+  font-size:11px; border:1px solid var(--vs-border); border-radius:7px;
+  background:var(--vs-surface); color:var(--vs-text);
+  overflow-wrap:anywhere; cursor:pointer;
+}
+.timezone-options button.timezone-chosen {
+  border-color:var(--vs-accent); background:var(--vs-surface-muted); font-weight:650;
+}
+
+/* Compact five-field local-only correction. No animation requests leave Angular. */
+.correction-fieldset { display:grid; gap:8px; }
+.correction-list { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:5px; }
+.correction-row { display:grid; grid-template-columns:minmax(54px,1fr) 34px minmax(40px,auto) 34px;
+  gap:6px; align-items:center; }
+.correction-name { font-size:11px; font-weight:600; min-width:0; }
+.correction-value { font-size:12px; font-variant-numeric:tabular-nums; min-width:0;
+  text-align:center; white-space:nowrap; }
+.correction-button { height:34px; min-width:34px; border:1px solid var(--vs-border); border-radius:7px;
+  background:var(--vs-surface); color:var(--vs-text); font:inherit; font-size:17px; cursor:pointer;
+  touch-action:none; user-select:none; -webkit-user-select:none; }
+.correction-button:hover:not(:disabled) { background:var(--vs-surface-muted); }
+.correction-button:disabled { opacity:.40; cursor:not-allowed; }

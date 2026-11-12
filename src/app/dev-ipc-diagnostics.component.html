@@ -1,0 +1,22 @@
+<section class="ipc-diagnostics" [attr.aria-label]="t('dev.ipc.title')">
+  <h3>{{t('dev.ipc.title')}}</h3>
+  <p class="ipc-note">{{t('dev.ipc.warning')}}</p>
+  <div class="ipc-controls">
+    <button type="button" (click)="start()" [disabled]="running">{{t('dev.ipc.start')}}</button>
+    <button type="button" class="ipc-stop" (click)="stop()" [disabled]="!running">{{t('dev.ipc.stop')}}</button>
+  </div>
+  <p class="ipc-status" role="status" aria-live="polite">{{t(status)}} <span *ngIf="running">{{completed}}/24</span></p>
+  <div class="ipc-metrics" *ngIf="report as r">
+    <p>{{t('dev.ipc.samples')}}: {{r.completed}}/{{r.requested}}</p>
+    <ng-container *ngIf="r.completed">
+      <p>{{t('dev.ipc.roundTrip')}} (ms): p50 {{r.roundTripMs.p50 | number:'1.1-2'}}
+        · p95 {{r.roundTripMs.p95 | number:'1.1-2'}}
+        · p99 {{r.roundTripMs.p99 | number:'1.1-2'}}</p>
+      <p>{{t('dev.ipc.worker')}} (ms): p50 {{r.workerMs.p50 | number:'1.1-2'}}
+        · p95 {{r.workerMs.p95 | number:'1.1-2'}}
+        · p99 {{r.workerMs.p99 | number:'1.1-2'}}</p>
+      <p>{{t('dev.ipc.checksum')}}: <code>{{r.lastChecksum}}</code></p>
+    </ng-container>
+  </div>
+  <p class="ipc-note">{{t('dev.ipc.disclaimer')}}</p>
+</section>

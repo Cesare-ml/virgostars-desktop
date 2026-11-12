@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import {
   AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy,
-  ViewChild, inject
+  ViewChild, inject, isDevMode
 } from '@angular/core';
 import {
   defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
@@ -13,6 +13,11 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { OfflineCityPickerComponent } from './offline-city-picker.component';
+import { NatalDraftComponent } from './natal-draft.component';
+import { DevIpcDiagnosticsComponent } from './dev-ipc-diagnostics.component';
+import { NatalDraftState } from './natal-draft-state';
+import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { classifyStyleHealth, measureStyleHealth, type StyleHealthCode } from './style-health';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
@@ -32,7 +37,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule],
+  imports:[CommonModule,OfflineCityPickerComponent,NatalDraftComponent,DevIpcDiagnosticsComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -62,6 +67,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   mode: ChartMode = 'natal';
   inspectorTab: InspectorTab = 'planets';
   selectedPlanet: DemoPlanet | null = null;
+  selectedCity: OfflinePlaceV1 | null = null;
+  readonly natalDraft = new NatalDraftState();
+  readonly showDevDiagnostics = isDevMode();
   navCollapsed = false;
   inspectorCollapsed = false;
   busy = true;
@@ -194,6 +202,23 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setInspectorTab(tab:InspectorTab): void {
     this.inspectorTab = tab;
     this.cd.markForCheck();
+  }
+  openNatalDraft(): void {
+    // Form is intentionally in-memory only; the rendered chart remains fictional.
+    this.inspectorCollapsed = false;
+    this.inspectorTab = 'draft';
+    this.cd.markForCheck();
+  }
+  updateDraftCity(place:OfflinePlaceV1 | null): void {
+    this.selectedCity = place;
+    this.natalDraft.setPlace(place);
+    this.cd.markForCheck();
+  }
+  selectOfflineCity(place:OfflinePlaceV1): void {
+    this.updateDraftCity(place);
+  }
+  clearOfflineCity(): void {
+    this.updateDraftCity(null);
   }
   selectPlanet(name:DemoPlanet): void {
     // Inspector-only selection; the upstream renderer does not yet expose a stable

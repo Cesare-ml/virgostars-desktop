@@ -1,6 +1,6 @@
 # Offline city catalog — how to prepare and distribute all 1,951,599 places
 
-**Approved direction: 2026-11-11:** bundle the entire purchased worldwide catalog for offline use from first launch, after a local conversion and rights check. **Status: converter and packaging tools are authored; no purchased records or built SQLite binary have been uploaded; Angular search and Rust database-reader IPC are NOT yet connected.**
+**Approved direction: 2026-11-11:** bundle the entire purchased worldwide catalog for offline use from first launch, after a local conversion and rights check. **Status: converter and packaging tools are authored; no purchased records or built SQLite binary have been uploaded; Rust read-only search IPC and a TypeScript adapter have been written in draft code, and an Angular Settings/Parametri picker with bounded autocomplete is implemented in draft code. The picker is NOT yet connected to guest chart saving, and Windows native tests are pending.** See [Native Offline Search](NATIVE_OFFLINE_PLACES.md).
 
 ## Source and measured dimensions
 
@@ -44,6 +44,12 @@ New-Item -ItemType Directory -Force .\.local\places | Out-Null
 ```
 
 The `\copy` runs on the **client**, writing a file on the local Windows machine. If using the pgAdmin graphical export, select CSV, UTF-8, a header row, and exactly these **10 columns** in this order. Keep the CSV private: do not attach it to GitHub issues or PRs. Do not export any unrelated PostgreSQL tables, credentials or birth records.
+
+### Optional: verified countries for `stato_id` (recommended before release)
+
+The source city table stores a numeric `stato_id` but not the country name. If you have its related country/state table, prepare a **separate private CSV** containing `stato_id,country_name,iso2` and pass `--countries-csv .local/places/countries.csv` to the converter. The importer rejects missing/duplicate mappings; it will not guess country identity. The enriched SQLite uses **schema v2**, while the previous v1 database and Rust reader remain supported. See [Owned Country Lookup](OWNED_COUNTRY_LOOKUP.md) for the exact format and how to test it.
+
+The underlying purchased country table's actual name and schema must be inspected on the owner's PostgreSQL database; do not assume field names or export unapproved information. This additional CSV remains ignored by Git.
 
 ### 2. Convert the complete file into a read-only SQLite catalog
 

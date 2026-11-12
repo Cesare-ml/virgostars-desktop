@@ -120,6 +120,82 @@ class CityPackTests(unittest.TestCase):
             prepare(self.root, expected=3)
 
 
+    def write_countries(self, rows):
+        source = self.root / "countries.csv"
+        with source.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(("stato_id", "country_name", "iso2"))
+            writer.writerows(rows)
+        return source
+
+    def test_v2_country_mapping_uses_explicit_private_state_ids(self):
+        mapping = self.write_countries([
+            (100, "Italia", "IT"),
+            (200, "Costa Rica", "CR"),
+        ])
+        result = build_catalog(self.csvfile, self.out, expected_rows=3, countries_csv=mapping)
+        self.assertEqual(result["schemaVersion"], 2)
+        self.assertEqual(result["countryLookupCount"], 2)
+        with sqlite3.connect(self.out) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM country_lookup").fetchone()[0], 2)
+            self.assertEqual(db.execute("""
+                SELECT c.country_name, c.iso2 FROM places p
+                JOIN country_lookup c ON c.stato_id = p.stato_id WHERE p.id=1
+            """).fetchone(), ("Italia", "IT"))
+        self.assertEqual(self.out.with_suffix(".manifest.json").exists(), True)
+        matches = search_catalog(self.out, "Firenze", 3)
+        self.assertEqual(matches[0]["country_name"], "Italia")
+        self.assertEqual(matches[0]["country_code"], "IT")
+
+    def test_v1_catalog_stays_compatible_without_mapping(self):
+        result = build_catalog(self.csvfile, self.out, expected_rows=3)
+        self.assertEqual(result["schemaVersion"], 1)
+        self.assertEqual(result["countryLookupCount"], 0)
+        self.assertIsNone(search_catalog(self.out, "Firenze", 3)[0]["country_name"])
+        with sqlite3.connect(self.out) as db:
+            exists = db.execute(
+                "SELECT name FROM sqlite_master WHERE name='country_lookup'"
+            ).fetchone()
+            self.assertIsNone(exists)
+
+    def test_incomplete_mapping_fails_without_publishing(self):
+        mapping = self.write_countries([(100, "Italia", "IT")])
+        with self.assertRaisesRegex(ValueError, "does not cover"):
+            build_catalog(self.csvfile, self.out, expected_rows=3, countries_csv=mapping)
+        self.assertFalse(self.out.exists())
+        self.assertFalse(self.out.with_suffix(".manifest.json").exists())
+
+    def test_duplicate_or_invalid_country_mapping_is_rejected(self):
+        for rows, error in [
+            ([(100, "Italia", "IT"), (100, "Italia Due", "IT"), (200, "Costa Rica", "CR")], sqlite3.IntegrityError),
+            ([(100, "Italia", "ITA"), (200, "Costa Rica", "CR")], ValueError),
+            ([(100, "", "IT"), (200, "Costa Rica", "CR")], ValueError),
+        ]:
+            mapping = self.write_countries(rows)
+            with self.assertRaises(error):
+                build_catalog(self.csvfile, self.out, expected_rows=3, countries_csv=mapping)
+            self.assertFalse(self.out.exists())
+
+    def test_tauri_bundle_accepts_verified_country_mapping_v2(self):
+        target = self.root / ".local" / "places" / "world-cities.sqlite"
+        mapping = self.write_countries([
+            (100, "Italia", "IT"), (200, "Costa Rica", "CR"),
+        ])
+        build_catalog(self.csvfile, target, expected_rows=3, countries_csv=mapping)
+        self.assertTrue(prepare(self.root, expected=3).is_file())
+
+    def test_packaging_fails_when_v2_mapping_count_is_tampered(self):
+        target = self.root / ".local" / "places" / "world-cities.sqlite"
+        mapping = self.write_countries([(100, "Italia", "IT"), (200, "Costa Rica", "CR")])
+        build_catalog(self.csvfile, target, expected_rows=3, countries_csv=mapping)
+        manifest_file = target.with_suffix(".manifest.json")
+        info = json.loads(manifest_file.read_text())
+        info["countryLookupCount"] = 1
+        manifest_file.write_text(json.dumps(info))
+        with self.assertRaisesRegex(ValueError, "Country lookup"):
+            prepare(self.root, expected=3)
+
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,14 @@
+:host { display:block; }
+.ipc-diagnostics { margin-top:12px; border-top:1px solid var(--vs-border);
+  padding:12px 0; display:grid; gap:8px; color:var(--vs-text); }
+.ipc-diagnostics h3 { font-size:12px; font-weight:700; margin:0; }
+.ipc-note { font-size:11px; line-height:1.5; color:var(--vs-text-secondary); margin:0; }
+.ipc-controls { display:flex; flex-wrap:wrap; gap:8px; }
+.ipc-controls button { background:var(--vs-accent); color:var(--vs-accent-contrast); border:0;
+  border-radius:7px; padding:8px 10px; cursor:pointer; font-size:12px; }
+.ipc-controls .ipc-stop { background:var(--vs-surface-muted); border:1px solid var(--vs-border); color:var(--vs-text); }
+.ipc-controls button:disabled { opacity:.45; cursor:not-allowed; }
+.ipc-controls button:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
+.ipc-status,.ipc-metrics p { font-size:11px; margin:0; line-height:1.5; }
+.ipc-metrics { padding:8px; border:1px solid var(--vs-border); border-radius:7px;
+  background:var(--vs-surface-muted); display:grid; gap:6px; overflow-wrap:anywhere; }

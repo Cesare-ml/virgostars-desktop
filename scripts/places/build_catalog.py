@@ -21,6 +21,8 @@ import zipfile
 
 FIELDS = ("id", "nome", "nome_it", "lat", "lng", "pop", "stato_id", "regione", "tz", "tz_offs")
 SCHEMA_VERSION = 1
+SCHEMA_VERSION_WITH_COUNTRIES = 2
+COUNTRY_FIELDS = ("stato_id", "country_name", "iso2")
 DEFAULT_COUNT = 1_951_599
 
 
@@ -88,6 +90,60 @@ def create_schema(db: sqlite3.Connection) -> None:
     """)
 
 
+
+def add_country_lookup(db: sqlite3.Connection, csv_path: Path) -> int:
+    """Enrich source stato_id with a privately reviewed lookup; never guess IDs."""
+    if not csv_path.is_file():
+        raise FileNotFoundError("Country mapping CSV not found")
+    db.execute("""
+        CREATE TABLE country_lookup (
+          stato_id INTEGER PRIMARY KEY,
+          country_name TEXT NOT NULL,
+          iso2 TEXT
+        )
+    """)
+    count = 0
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as source:
+        reader = csv.DictReader(source)
+        if not reader.fieldnames or any(x not in reader.fieldnames for x in COUNTRY_FIELDS):
+            raise ValueError("Country mapping CSV needs stato_id,country_name,iso2 columns")
+        batch = []
+        for row in reader:
+            try:
+                id_value = optional_int(row["stato_id"])
+                name = nullable(row["country_name"])
+                iso2 = nullable(row["iso2"])
+                if id_value is None or id_value < 1 or not name or len(name) > 255:
+                    raise ValueError("Invalid country mapping")
+                if iso2 is not None:
+                    iso2 = iso2.upper()
+                    if not re.fullmatch(r"[A-Z]{2}", iso2):
+                        raise ValueError("Invalid country ISO2")
+                batch.append((id_value, name, iso2))
+            except (ValueError, TypeError, KeyError) as error:
+                raise ValueError(f"Invalid country mapping on CSV line {reader.line_num}") from error
+            if len(batch) >= 500:
+                db.executemany("INSERT INTO country_lookup VALUES (?,?,?)", batch)
+                count += len(batch)
+                batch.clear()
+        if batch:
+            db.executemany("INSERT INTO country_lookup VALUES (?,?,?)", batch)
+            count += len(batch)
+    if count == 0:
+        raise ValueError("Empty country mapping")
+    # Require complete coverage for the *actual* source state IDs.
+    # Never silently emit incorrect or blank countries for a partly mapped dataset.
+    missing = db.execute("""
+        SELECT p.stato_id FROM places p
+        WHERE p.stato_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM country_lookup c WHERE c.stato_id = p.stato_id
+        ) LIMIT 1
+    """).fetchone()
+    if missing is not None:
+        raise ValueError("Country lookup does not cover all referenced stato_id values")
+    return count
+
+
 def sha256_of(file: Path) -> str:
     digest = hashlib.sha256()
     with file.open("rb") as stream:
@@ -96,8 +152,13 @@ def sha256_of(file: Path) -> str:
     return digest.hexdigest()
 
 
-def build_catalog(csv_path: Path, dest: Path, expected_rows: int = DEFAULT_COUNT, make_zip: bool = False) -> dict:
+def build_catalog(csv_path: Path, dest: Path, expected_rows: int = DEFAULT_COUNT, make_zip: bool = False,
+                  countries_csv: Path | None = None) -> dict:
     csv_path, dest = csv_path.resolve(), dest.resolve()
+    if countries_csv is not None:
+        countries_csv = countries_csv.resolve()
+        if countries_csv == dest or countries_csv == csv_path:
+            raise ValueError("Country CSV must be a separate private input file")
     if expected_rows < 1 or csv_path == dest:
         raise ValueError("Invalid input/output or expected row count")
     if not csv_path.is_file():
@@ -152,16 +213,20 @@ def build_catalog(csv_path: Path, dest: Path, expected_rows: int = DEFAULT_COUNT
           );
           INSERT INTO places_fts(places_fts) VALUES ('rebuild');
         """)
+        country_count = add_country_lookup(db, countries_csv) if countries_csv is not None else 0
+        version = SCHEMA_VERSION_WITH_COUNTRIES if countries_csv is not None else SCHEMA_VERSION
         db.executemany("INSERT INTO catalog_meta(key,value) VALUES (?,?)",
-                       (("schemaVersion", str(SCHEMA_VERSION)), ("rowCount", str(n))))
+                       (("schemaVersion", str(version)), ("rowCount", str(n)),
+                        ("countryLookupCount", str(country_count))))
         db.commit()
         if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ValueError("SQLite integrity check failed")
         db.close()
         db = None
         manifest = {
-            "schemaVersion": SCHEMA_VERSION,
+            "schemaVersion": version,
             "rowCount": n,
+            "countryLookupCount": country_count,
             "file": dest.name,
             "bytes": temp.stat().st_size,
             "sha256": sha256_of(temp),
@@ -197,16 +262,34 @@ def search_catalog(database: Path, text: str, limit: int = 20) -> list[dict]:
     connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
-        rows = connection.execute("""
+        version_row = connection.execute(
+            "SELECT value FROM catalog_meta WHERE key='schemaVersion'"
+        ).fetchone()
+        version = version_row[0] if version_row else None
+        if version not in ("1", "2"):
+            raise ValueError("Unsupported offline city catalog version")
+        # Fixed query branches only; search string is passed as a bound parameter.
+        select = """
             WITH candidate AS (
               SELECT rowid FROM places_fts WHERE places_fts MATCH ? LIMIT 500
             )
             SELECT p.id, p.nome, p.nome_it, p.lat_micro, p.lng_micro,
-                   p.pop, p.stato_id, p.regione, p.tz
-            FROM candidate AS c JOIN places AS p ON p.id = c.rowid
+                   p.pop, p.stato_id, p.regione, p.tz,
+        """
+        if version == "2":
+            select += """ co.country_name, co.iso2 AS country_code
+                FROM candidate AS c JOIN places AS p ON p.id = c.rowid
+                LEFT JOIN country_lookup co ON co.stato_id=p.stato_id
+            """
+        else:
+            select += """ NULL AS country_name, NULL AS country_code
+                FROM candidate AS c JOIN places AS p ON p.id = c.rowid
+            """
+        select += """
             ORDER BY COALESCE(p.pop,0) DESC, p.nome COLLATE NOCASE, p.id
             LIMIT ?
-        """, (query, limit)).fetchall()
+        """
+        rows = connection.execute(select, (query, limit)).fetchall()
         return [dict(row) for row in rows]
     finally:
         connection.close()
@@ -220,13 +303,14 @@ def main() -> None:
     build.add_argument("--out", type=Path, required=True, help="Ignored .local/places/world-cities.sqlite")
     build.add_argument("--expected-rows", type=int, default=DEFAULT_COUNT)
     build.add_argument("--zip", action="store_true", help="Produce ZIP for manually reviewed Release asset")
+    build.add_argument("--countries-csv", type=Path, help="Optional PRIVATE reviewed stato_id,country_name,iso2 CSV")
     search = commands.add_parser("search")
     search.add_argument("--db", type=Path, required=True)
     search.add_argument("--query", required=True)
     search.add_argument("--limit", type=int, default=20)
     args = parser.parse_args()
     if args.operation == "build":
-        result = build_catalog(args.csv, args.out, args.expected_rows, args.zip)
+        result = build_catalog(args.csv, args.out, args.expected_rows, args.zip, args.countries_csv)
         print(json.dumps(result, indent=2))
     else:
         print(json.dumps(search_catalog(args.db, args.query, args.limit), ensure_ascii=False, indent=2))

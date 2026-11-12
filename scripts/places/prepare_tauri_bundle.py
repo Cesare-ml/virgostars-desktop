@@ -28,7 +28,7 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
     if not catalog.is_file() or not manifest_file.is_file():
         raise FileNotFoundError("Missing catalog or manifest: build the local SQLite pack first")
     info = json.loads(manifest_file.read_text(encoding="utf-8"))
-    if (info.get("schemaVersion") != 1 or
+    if (info.get("schemaVersion") not in (1, 2) or
         info.get("rowCount") != expected or
         info.get("file") != catalog.name or
         info.get("bytes") != catalog.stat().st_size or
@@ -38,6 +38,17 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
         count = connection.execute("SELECT value FROM catalog_meta WHERE key='rowCount'").fetchone()
         if count is None or count[0] != str(expected):
             raise ValueError("Database row count metadata does not match manifest")
+        version = connection.execute("SELECT value FROM catalog_meta WHERE key='schemaVersion'").fetchone()
+        if version is None or version[0] != str(info["schemaVersion"]):
+            raise ValueError("Pack schema version does not match database")
+        if info["schemaVersion"] == 2:
+            has_table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='country_lookup'"
+            ).fetchone()
+            mapped_count = connection.execute("SELECT count(*) FROM country_lookup").fetchone()[0] if has_table else -1
+            if mapped_count != info.get("countryLookupCount") or mapped_count < 1:
+                raise ValueError("Country lookup table or count does not match manifest")
+
     # Resource inputs are resolved relative to src-tauri/ by Tauri 2.
     override = {
         "bundle": {
