@@ -140,6 +140,57 @@ PR #42) intentionally fail exact schema validation; do not silently
 upgrade them or attempt to apply this to real users. Tests authored
 in Rust remain uncompiled until Cargo/SQLCipher are available.
 
+## INSERT OR REPLACE and deleted FIFO position safeguards
+
+The UPDATE triggers alone are insufficient: SQLite `INSERT OR REPLACE`
+deletes a conflicting queued row and inserts a new one without invoking
+the ordinary UPDATE triggers. Against the previous v3 DDL, a real
+plaintext SQLite experiment confirmed that this silently changed
+`payload_json` under an active mutation ID; supplying the same
+`sequence` with another mutation ID could also replace that row.
+
+The v3 `local_outbox_v3_reject_used_mutation_id` BEFORE INSERT trigger
+now also checks the **active local_outbox table** for either the same
+`(profile_id,mutation_id)` or an explicit colliding `sequence`.
+This prevents an `INSERT OR REPLACE` or UPSERT from sidestepping
+the immutable queued request, while a genuinely new mutation ID
+still appends normally and IDs remain scoped to their profile.
+
+There was a related problem: after deleting a queued row, a caller
+could explicitly insert a fresh mutation at that **historically used**
+FIFO number, causing subsequent keyset pages to miss it. The new
+`local_outbox_v3_fifo_must_advance` AFTER INSERT trigger rejects
+nonpositive sequences or a sequence at/below the retained
+`sqlite_sequence` high-water mark. At AFTER INSERT time SQLite
+still exposes the previous high-water mark; a normal implicit
+AUTOINCREMENT insertion is higher and succeeds. A failed insertion
+rolls back atomically. Explicit future sequence values above the
+prior high-water remain permitted; this is a monotonicity check,
+not a claim that SQL only accepts implicit rowid allocation.
+
+**Actually executed:** the nine `INSERT OR REPLACE`/UPSERT tests and
+four deleted-row sequence tests in
+`tests/sqlite-v3-no-replace.test.mjs` passed **13/13** using the
+real v1/v2/v3 SQL files. Combined with the prior 17 request-
+immutability tests, the current schema passed **30/30** reference
+tests with Node.js 22.16.0. The files on GitHub are byte-identical
+to those tested locally:
+
+- Current v3 DDL blob: `29d76af2cb1c4f263d494a852e7cb9ce5d5ae5a5`
+- New 13-test blob: `5dd0d8a0a8c37f4c15c8526d114683eb4b915061`
+- Prior 17-test blob: `ba74fcf74bfcb0d153c21e8f73b19577dfbf0176`
+
+Two additional native Rust/SQLCipher test functions were authored
+for active-row replacement and recycled FIFO positions, but remain
+**uncompiled and unexecuted** without Cargo/rustc. The 30-test result
+does not establish native SQLCipher encryption, Windows recovery,
+production safety, or a complete test pass across all stacked PRs.
+
+The strict v3 catalogue changes again. Previously created fictional
+v3 encrypted archives must fail closed until a reviewed explicit
+versioned migration or test-fixture recreation exists; never
+silently rewrite or open real customer databases with this prototype.
+
 ## Required review gates
 
 1. Consolidate stacked PRs and rerun **all** Node suites with the new
