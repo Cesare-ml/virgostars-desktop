@@ -449,6 +449,7 @@ mod tests {
     #[test]
     fn loopback_origin_cannot_be_broadened() {
         assert!(staging_origin("http://127.0.0.1:3000").is_ok());
+        assert!(staging_origin("http://127.0.0.1:3000/").is_ok());
         assert!(staging_origin("http://127.0.0.1:1024").is_ok());
         assert!(staging_origin("http://127.0.0.1:65535").is_ok());
         for invalid in [
