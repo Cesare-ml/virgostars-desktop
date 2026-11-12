@@ -40,6 +40,10 @@ Additionally at runtime the command requires `VIRGOSTARS_COPILOT_PREVIEW_STAGING
 
 Angular injects the native transport only when `isDevMode() && isTauri()`; browser and compiled production Angular get `null`. In a native dev build, the UI calls the separate read-only `copilot_staging_ready` native command and leaves the AI request button **disabled** unless Rust returns `true` for the explicit feature/flag + valid loopback origin + synthetic JWT shape. The readiness probe performs a bounded, authenticated loopback HTTP GET, but exports **only a boolean** and never the JWT, origin or response contents to Angular. It proves only that the test backend accepted the synthetic staging JWT for the capabilities call—not account login or production authorization. If the Rust feature/command is absent or the environment is incomplete, the probe fails closed and the button stays disabled.
 
+**Bounded local origin:** native staging now requires a literal `http://127.0.0.1:<explicit-port>` with a **non-system port 1024–65535**. URL parsing rejects port 0, privileged ports 1–1023 and out-of-range ports, as well as non-loopback hosts, credentials, paths, queries, fragments and redirects. Native unit cases cover both boundaries; TypeScript source regressions assert the guard is present. This applies **only to the optional debug staging bridge** and does not constrain the offline desktop service.
+
+**Offline-first native compilation gate:** the Windows synthetic lab runner now invokes `cargo check --no-default-features` after formatting, **before** `cargo test --features copilot-staging` and `cargo check --release --features copilot-staging`. This is intended to catch regressions in the ordinary offline-first Tauri runtime independently of experimental AI code; those actual Cargo commands have not been run here.
+
 No generic HTTP client is exposed to the webview and native CSP (`connect-src 'self'`) has not been changed.
 
 ## Dependency-free local HTTP fixture (now implemented)
