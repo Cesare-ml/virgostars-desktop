@@ -4,6 +4,10 @@
 
 VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. No VirgoStars account or Internet connection is required to start, calculate, save and manage local natal charts. Users may later sign in voluntarily to synchronize their local archive with their VirgoStars account, with explicit duplicate/conflict review.
 
+## Experimental real-sky response contract (not chart-ready)
+
+The desktop now has a typed [first-sky experimental preview contract](docs/FIRST_SKY_EXPERIMENTAL_CONTRACT.md) grounded in the real `VirgoStars-Ephemeris` Rust `first_sky` API: geometric mean-of-date positions, exact **outer-system barycenter identity**, DE441 provenance, IERS time range and explicit approximation warnings. Its decoder rejects fake/synthetic responses or any attempt to mark experimental data **chart-ready**. **No real Rust calculation command or natal chart rendering has been integrated**. A locally equivalent decoder passed 15/15 smoke checks and TypeScript strict; the 18 committed cases await the full checkout test.
+
 ## Synthetic native Rust calculation probe (testing only)
 
 A separate [bounded synthetic Tauri IPC probe](docs/SYNTHETIC_NATIVE_CALCULATION_PROBE.md) now exercises a fixed-size CPU workload with a strict two-worker gate and `syntheticOnly` response marker. The TypeScript transport passed eight isolated behavioral tests. A [development-only Settings benchmark](docs/DEVELOPMENT_IPC_BENCHMARK.md) now runs a bounded 24-call sequence and reports p50/p95/p99 **when actually executed on the Windows dev app**; 8/8 isolated benchmark tests passed. Rust rejects the synthetic endpoint in release builds. **Rust compilation, actual WebView2 IPC latency and real ephemeris calculations remain unverified and disconnected from the chart.**
