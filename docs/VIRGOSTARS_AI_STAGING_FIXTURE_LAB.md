@@ -25,7 +25,7 @@ These are **real loopback HTTP tests in Node**, not isolated source-string check
 
 ## Recommended native Windows lab runner (explicit opt-in)
 
-The new [`scripts/run-copilot-staging-lab.ps1`](../scripts/run-copilot-staging-lab.ps1) performs the isolated synthetic smoke setup and cleanup. It does **not** install dependencies, merge branches, deploy, use real JWTs or call OpenAI. Prerequisites: authorized Desktop/Charts checkouts, existing npm installs and Charts library build, Windows 11 MSVC Rust 1.90+, and WebView2, per [Windows build gate](WINDOWS_BUILD_GATE.md). The runner refuses inherited staging variables and occupied loopback ports; use a fresh PowerShell terminal.
+The new [`scripts/run-copilot-staging-lab.ps1`](../scripts/run-copilot-staging-lab.ps1) performs the isolated synthetic smoke setup and cleanup. It does **not** install dependencies, merge branches, deploy, use real JWTs or call OpenAI. Prerequisites: authorized Desktop/Charts checkouts, existing npm installs and Charts library build, Windows 11 MSVC Rust 1.90+, and WebView2, per [Windows build gate](WINDOWS_BUILD_GATE.md). The runner refuses inherited staging variables and occupied loopback ports; use a fresh PowerShell terminal. Its port preflight uses an **exclusive local bind**, not an outgoing connection to an unknown listener. The authenticated readiness GET explicitly sets the .NET HTTP request proxy to **null**, disables redirects, restricts endpoints to literal `127.0.0.1`, and reads a maximum of **8 KiB** (including chunked replies). This avoids forwarding the fictional bearer through a system-configured proxy or redirect.
 
 From the Desktop repository root:
 
