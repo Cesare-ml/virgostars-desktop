@@ -48,6 +48,34 @@
     <p class="draft-hint" *ngIf="!draft.birthTimeKnown">{{t('natal.time.unknown')}}</p>
   </fieldset>
 
+  <fieldset class="correction-fieldset">
+    <legend>{{t('natal.correction.title')}}</legend>
+    <p class="draft-hint">{{t('natal.correction.help')}}</p>
+    <div class="correction-list">
+      <div class="correction-row" *ngFor="let field of correctionFields">
+        <span class="correction-name">{{correctionLabel(field)}}</span>
+        <button type="button" class="correction-button"
+          [attr.aria-label]="t('natal.correction.decrement')+' '+correctionLabel(field)"
+          [disabled]="!draft.birthTimeKnown && (field==='hour' || field==='minute')"
+          (pointerdown)="startAdjustment($event,field,-1)"
+          (pointerup)="stopAdjustment()"
+          (pointercancel)="stopAdjustment()"
+          (lostpointercapture)="stopAdjustment()"
+          (click)="clickAdjustment($event,field,-1)">−</button>
+        <output class="correction-value" aria-live="off">{{draft[field] || '—'}}</output>
+        <button type="button" class="correction-button"
+          [attr.aria-label]="t('natal.correction.increment')+' '+correctionLabel(field)"
+          [disabled]="!draft.birthTimeKnown && (field==='hour' || field==='minute')"
+          (pointerdown)="startAdjustment($event,field,1)"
+          (pointerup)="stopAdjustment()"
+          (pointercancel)="stopAdjustment()"
+          (lostpointercapture)="stopAdjustment()"
+          (click)="clickAdjustment($event,field,1)">+</button>
+      </div>
+    </div>
+    <p class="draft-hint">{{t('natal.correction.preview')}}</p>
+  </fieldset>
+
   <vs-offline-city-picker [locale]="locale" [selectedPlace]="draft.place"
     (locationSelected)="chooseCity($event)" (locationEdited)="editCity()"></vs-offline-city-picker>
   <p class="draft-hint" *ngIf="draft.place">
