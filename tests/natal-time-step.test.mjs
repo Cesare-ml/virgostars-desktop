@@ -55,7 +55,9 @@ test('unknown birth time never receives a fabricated hour',()=>{
   assert.equal(next(source,'minute',-1),null);
   const changed=next(source,'day',1);
   assert.equal(changed.day,'11');
-  // Output fields are ignored while birthTimeKnown=false by the natal draft.
+  assert.equal(changed.hour,'');
+  assert.equal(changed.minute,'');
+  // Unknown time must not become 00:00 even after day/month/year corrections.
 });
 test('partial and invalid input never receives hidden default dates',()=>{
   for(const bad of [
