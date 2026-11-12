@@ -107,7 +107,15 @@
         </div>
         <div *ngIf="inspectorTab==='settings'">
           <p class="inspector-hint">{{t('settings.help')}}</p>
-          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="selectedCity = $event" (locationEdited)="selectedCity = null"></vs-offline-city-picker>
+          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
+          <div class="setting-line" *ngIf="selectedCity">
+            <span>{{t('clock.city')}}</span>
+            <div class="city-clock-values">
+              <strong>{{selectedCity.name}}</strong>
+              <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')">{{cityClock.text}}</time>
+              <span *ngIf="cityClock.kind !== 'ready'" class="city-clock-unavailable">{{t('clock.city.unavailable')}}</span>
+            </div>
+          </div>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
