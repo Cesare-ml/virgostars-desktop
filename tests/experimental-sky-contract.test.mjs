@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EXPERIMENTAL_BODIES, REQUIRED_APPROXIMATIONS, isExperimentalSkySnapshotV1 } from '../src/app/native/experimental-sky-contract.ts';
+import { EXPERIMENTAL_BODIES, REQUIRED_APPROXIMATIONS, isExperimentalSkySnapshotV1, guardExperimentalSkyPort } from '../src/app/native/experimental-sky-contract.ts';
 
 const request = Object.freeze({utcIso:'2026-11-12T17:01:02.000Z',latMicro:44_123_456,lngMicro:11_345_678});
 function fixture() {
@@ -94,4 +94,24 @@ test('malformed IPC payloads fail closed without throwing',()=>{
 test('IERS C72 UTC coverage is enforced without claiming dates outside the validated input range',()=>{
   assert.equal(isExperimentalSkySnapshotV1(fixture(),{...request,utcIso:'1971-12-31T23:59:59.000Z'}),false);
   assert.equal(isExperimentalSkySnapshotV1(fixture(),{...request,utcIso:'2027-06-28T00:00:00.000Z'}),false);
+});
+
+
+test('native experimental port blocks malformed ready output without forwarding private data',async()=>{
+  const req={...request,protocolVersion:1,sessionId:'s1',requestSeq:1,calculationKey:'example'};
+  const invalid = guardExperimentalSkyPort(async () => ({status:'ready',snapshot:{...fixture(),filePath:'secret'}}));
+  const response=await invalid(req,new AbortController().signal);
+  assert.equal(response.status,'invalid_snapshot');
+  assert.equal(JSON.stringify(response).includes('secret'),false);
+  assert.equal('snapshot' in response,false);
+});
+
+test('native experimental port retains unavailable and properly shaped experimental-only results',async()=>{
+  const req={...request,protocolVersion:1,sessionId:'s1',requestSeq:1,calculationKey:'example'};
+  const unavailable={protocolVersion:1,status:'unavailable'};
+  const portA=guardExperimentalSkyPort(async()=>unavailable);
+  assert.equal(await portA(req,new AbortController().signal),unavailable);
+  const ready={protocolVersion:1,status:'ready',snapshot:fixture()};
+  const portB=guardExperimentalSkyPort(async()=>ready);
+  assert.equal(await portB(req,new AbortController().signal),ready);
 });
