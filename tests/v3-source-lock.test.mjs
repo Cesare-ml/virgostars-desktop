@@ -46,6 +46,10 @@ test('missing source lock fails closed',()=>fixture(({root})=>{
   rmSync(join(root,...V3_SOURCE_LOCK.split('/')));
   assert.throws(()=>verifyV3SourceLock(root),/Missing reviewed v3 source lock/);
 }));
+test('missing tracked test is detected before hashes',()=>fixture(({root})=>{
+  rmSync(join(root,'tests',REQUIRED_V3_SUITES[0]));
+  assert.throws(()=>verifyV3SourceLock(root),/Mandatory v3 regression files missing/);
+}));
 test('new future v3 suite requires an explicit reviewed hash',()=>fixture(({root})=>{
   writeFileSync(join(root,'tests','sqlite-v3-added.test.mjs'),"import test from 'node:test';test('new',()=>{});\n");
   assert.throws(()=>verifyV3SourceLock(root),/does not cover exactly/);
