@@ -84,6 +84,18 @@ WHEN NEW.operation IS NOT OLD.operation
 BEGIN
   SELECT RAISE(ABORT,'queued mutation request is immutable');
 END;
+-- REPLACE can DELETE a conflicting row without firing DELETE triggers when
+-- recursive_triggers is disabled (the SQLite default). Prevent overwrite of
+-- either immutable uniqueness key before a replacement can occur.
+CREATE TRIGGER local_conflict_decisions_no_replace
+BEFORE INSERT ON local_conflict_decisions
+WHEN EXISTS(SELECT 1 FROM local_conflict_decisions d
+            WHERE d.profile_id=NEW.profile_id
+              AND (d.original_mutation_id=NEW.original_mutation_id
+                   OR d.replacement_mutation_id=NEW.replacement_mutation_id))
+BEGIN
+  SELECT RAISE(ABORT,'conflict decision history is immutable');
+END;
 -- A user's recorded decision is audit history, not a mutable queue row.
 CREATE TRIGGER local_conflict_decisions_no_update
 BEFORE UPDATE ON local_conflict_decisions
