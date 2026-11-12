@@ -168,6 +168,9 @@ try {
     Push-Location (Join-Path $root 'src-tauri')
     try {
         Invoke-Checked 'Rust formatting' 'cargo' @('fmt', '--all', '--', '--check')
+        # Both variants must compile: ordinary offline guest builds never
+        # depend on the synthetic AI network feature, even in DEBUG mode.
+        Invoke-Checked 'Rust offline default compile without AI' 'cargo' @('check', '--no-default-features')
         Invoke-Checked 'Rust debug staging feature tests' 'cargo' @('test', '--features', 'copilot-staging')
         Invoke-Checked 'Rust release compilation (staging IPC absent)' 'cargo' @('check', '--release', '--features', 'copilot-staging')
     } finally { Pop-Location }
