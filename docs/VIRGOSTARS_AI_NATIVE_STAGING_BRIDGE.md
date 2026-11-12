@@ -38,6 +38,12 @@ Angular injects the native transport only when `isDevMode() && isTauri()`; brows
 
 No generic HTTP client is exposed to the webview and native CSP (`connect-src 'self'`) has not been changed.
 
+## Dependency-free local HTTP fixture (now implemented)
+
+An isolated Node.js fixture server is available as `scripts/copilot-staging-fixture.mjs`, with actual HTTP integration tests in `tests/copilot-staging-fixture.test.mjs` and a detailed runbook at [Synthetic loopback lab](VIRGOSTARS_AI_STAGING_FIXTURE_LAB.md). It can imitate the two staging API routes while validating the limited Rust/Angular **protocol shape**, without Express, an externally signed JWT, personal charts, real provider inference or an installed production backend. The fixture requires an explicit opt-in, binds literal `127.0.0.1` only and verifies a **fictional unsigned token by equality**, not JWT signatures. Passing its tests **does not validate the real Virgo Stars server's authorization**.
+
+The new standalone lab suite was **actually executed under Node 22** in the authoring container, with **7/7 tests passing**, including live HTTP requests (401, 200, 400, 413 with chunked streaming, 415 and 429), synthetic response shapes, per-fixture quota and refusal to launch without explicit opt-in. The executable and tests were subsequently committed to this draft GitHub branch. A native Rust/Windows build, an actual WebView2 loopback test and private backend JWT integration are still unverified.
+
 ## Local staging setup — synthetic test accounts ONLY
 
 This is a *manual testing recipe*, not an installed environment or proof of working integration.
