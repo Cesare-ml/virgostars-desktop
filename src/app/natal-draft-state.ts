@@ -1,4 +1,5 @@
 import type {OfflinePlaceV1} from './native/offline-places-contract';
+import type {CivilCorrectionOutput} from './natal-time-step';
 
 /** Civil time is entered locally, NOT silently converted to UTC with today's offset. */
 export type NatalInputKey = 'name' | 'year' | 'month' | 'day' | 'hour' | 'minute';
@@ -81,6 +82,13 @@ export class NatalDraftState {
   update(field: NatalInputKey, value: string): void {
     // Strict upper bound avoids large strings lingering in the renderer.
     this[field] = value.slice(0, field === 'name' ? 160 : 8);
+    this.invalidate();
+  }
+
+  /** Atomic editor-only wall-clock correction; no actual ephemeris IPC here. */
+  applyCivilCorrection(next: CivilCorrectionOutput): void {
+    this.year=next.year; this.month=next.month; this.day=next.day;
+    this.hour=next.hour; this.minute=next.minute;
     this.invalidate();
   }
 
