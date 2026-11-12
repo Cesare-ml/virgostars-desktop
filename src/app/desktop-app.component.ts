@@ -320,6 +320,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
         } else if (code === 'copilot_preview_busy') {
           this.copilotStatus = 'ai.preview.busy';
         } else {
+          // Unreachable/replaced fixture, invalid server envelope or unavailable
+          // native IPC invalidates the previous successful readiness probe.
+          // Keep the diagnostic visible but require an explicit retry before
+          // sending another request. Quota and single-flight errors above
+          // remain transient and do not disconnect an otherwise valid lab.
+          this.copilotPreviewReady = false;
           this.copilotStatus = 'ai.preview.error';
         }
       }
