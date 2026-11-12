@@ -8,6 +8,8 @@ VirgoStars Desktop will provide an offline-first professional workstation for Wi
 
 A guest-only **New natal chart / Nuovo tema** form now accepts a subject name, Gregorian birth date, optional known time and an offline selected city, including original location ID, coordinates, country and IANA-style timezone. A typed validation preview explicitly warns that **UTC/historical DST, true sky calculation and encrypted saving are NOT implemented**. This form stores nothing and does not alter the synthetic chart. See [Natal Draft v1](docs/NATAL_DRAFT_V1.md).
 
+A **provisional offline UTC preview** now reports normal IANA conversion, DST gaps (invalid local hour), and folds (explicit choice between two UTC instants), with the bundled timezone-data version and historical warnings. It **does not save records or calculate a real chart**. See [Natal Timezone Resolution](docs/NATAL_TIMEZONE_RESOLUTION.md).
+
 ## Source country labels for offline city results
 
 The city source has `stato_id` as an internal foreign key; **country labels must be imported from the owner's actual related lookup table**, not inferred. An optional `--countries-csv` now produces an enriched v2 SQLite resource with validated name/ISO2, while v1 remains readable. See [Country Lookup](docs/OWNED_COUNTRY_LOOKUP.md). The purchased country data are **not in GitHub**, and full native search/installer validation is pending.
