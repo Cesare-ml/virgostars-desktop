@@ -275,13 +275,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
         appendAnchor: anchor => { document.body.appendChild(anchor); },
       });
       this.status='exported';
-    } catch(error) { if(!this.destroyed) this.renderError(error); }
+    } catch {
+      if (!this.destroyed) {
+        // A failed PNG request does not invalidate the already-rendered chart.
+        // Keep zoom, fit and retry available; do not expose renderer details.
+        this.status = 'export.failed';
+        this.cd.markForCheck();
+      }
+    }
     finally { this.exporting=false; if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); } }
   }
   private renderError(_error:unknown): void {
     // Do not print private birth records or paths; detailed diagnostics remain
     // available through dev-only tooling during the synthetic renderer spike.
     this.error=this.t('chart.failed');
+    this.status='status.error';
     this.ready=false;
     this.busy=false;
     this.cd.markForCheck();
