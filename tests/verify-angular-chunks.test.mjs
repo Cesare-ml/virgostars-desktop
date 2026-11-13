@@ -99,3 +99,12 @@ test('rejects invalid, duplicate, empty and oversized entrypoint lists',()=>fixt
     assert.throws(()=>inspectAngularChunkGraph(f.dir,entries),/Invalid Angular module entrypoint list/);
   }
 }));
+
+test('filesystem failures do not disclose user paths in error messages',()=>fixture(f=>{
+  const missing=join(f.dir,'PRIVATE_PERSON_DATA_DO_NOT_EXPOSE');
+  assert.throws(()=>inspectAngularChunkGraph(missing,[f.main]),error=>{
+    assert.match(error.message,/DESKTOP JS CHUNKS: Unable to inspect Angular JavaScript directory/);
+    assert.doesNotMatch(error.message,/PRIVATE_PERSON_DATA_DO_NOT_EXPOSE|vs-chunk-gate-/);
+    return true;
+  });
+}));
