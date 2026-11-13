@@ -45,8 +45,9 @@ function validIanaZone(zone: string): boolean {
  * neither behavior may bypass preflight or cancel an existing valid request.
  */
 function snapshotCalculationDraft(draft: CalculationDraftV1): CalculationDraftV1 | null {
-  if (!isObject(draft)) return null;
   try {
+    // Array.isArray throws on revoked proxies; even the object guard is untrusted.
+    if (!isObject(draft)) return null;
     return {
       intent: draft.intent, utcIso: draft.utcIso, latMicro: draft.latMicro,
       lngMicro: draft.lngMicro, timeZone: draft.timeZone,
