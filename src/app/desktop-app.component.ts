@@ -13,7 +13,8 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
-import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
+import { buildSyntheticChartCsv } from './synthetic-csv-export';
+import { requestSyntheticCsvDownload } from './synthetic-csv-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -147,6 +148,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setMode(mode:ChartMode): void {
     if(this.busy || mode === this.mode) return;
     this.mode = mode;
+    this.csvStatus = null; // A prior download notice must not describe another chart view.
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -236,31 +238,30 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   exportSyntheticCsv(): void {
     if (this.destroyed || this.exporting || this.mode !== 'natal') return;
-    let objectUrl: string | null = null;
     try {
-      // The only data source here is the fixed fictional inspector fixture.
+      // Only the fixed fictional inspector values may cross this export boundary.
       const csv = buildSyntheticChartCsv(this.planets, this.houses);
-      objectUrl = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
-      const anchor = document.createElement('a');
-      anchor.href = objectUrl;
-      anchor.download = SYNTHETIC_CSV_FILENAME;
-      document.body.appendChild(anchor);
-      try {
-        anchor.click();
-        // A browser download was requested, not independently verified.
-        this.csvStatus = 'export.csv.started';
-      } finally {
-        anchor.remove();
-      }
+      requestSyntheticCsvDownload(csv, {
+        createUrl: content => URL.createObjectURL(new Blob([content], {type:'text/csv;charset=utf-8'})),
+        click: (url, filename) => {
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          try { anchor.click(); } finally { anchor.remove(); }
+        },
+        scheduleRevoke: (url, delayMs) => {
+          // WebView2 may not start the download until after the click returns.
+          window.setTimeout(() => URL.revokeObjectURL(url), delayMs);
+        },
+        revoke: url => URL.revokeObjectURL(url),
+      });
+      // This is only a browser request; saving the file is not guaranteed.
+      this.csvStatus = 'export.csv.started';
     } catch (_error) {
-      // Never log user records, paths or untrusted input values.
+      // Do not leak URLs, paths, fixture contents or browser exceptions.
       this.csvStatus = 'export.csv.failed';
     } finally {
-      if (objectUrl !== null) {
-        const capturedUrl = objectUrl;
-        // Delay revocation to avoid aborting the WebView's asynchronous download.
-        window.setTimeout(() => URL.revokeObjectURL(capturedUrl), 30_000);
-      }
       this.cd.markForCheck();
     }
   }
