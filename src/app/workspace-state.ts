@@ -5,9 +5,15 @@ export type InspectorTab = 'planets' | 'houses' | 'settings';
 export type Locale = 'it' | 'en';
 
 export const CHART_MODES: ReadonlyArray<ChartMode> = Object.freeze(['natal', 'transits', 'synastry', 'latitude']);
+// Conservative CSS-pixel guard against runaway canvas sizes from unexpected
+// measurements. Physical backing pixels also depend on devicePixelRatio;
+// WebGL/driver limits still require native Windows/macOS acceptance testing.
+export const MAX_CHART_SIDE_CSS_PX = 4096;
+
 export function chartSide(width: number, height: number, padding = 24): number {
   if (![width, height, padding].every(Number.isFinite) || width < 0 || height < 0 || padding < 0) return 0;
-  return Math.max(0, Math.floor(Math.min(width, height) - 2 * padding));
+  const available = Math.floor(Math.min(width, height) - 2 * padding);
+  return Math.max(0, Math.min(available, MAX_CHART_SIDE_CSS_PX));
 }
 export function navigationLabel(mode: ChartMode): string {
   const labels: Record<ChartMode,string> = { natal:'mode.natal', transits:'mode.transits', synastry:'mode.synastry', latitude:'mode.latitude' };
