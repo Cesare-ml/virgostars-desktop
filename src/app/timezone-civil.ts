@@ -60,6 +60,11 @@ function intervalIndex(untils: readonly (number | null)[], instant: number): num
 function plausibleZoneIntervals(zone: TimezoneIntervals): boolean {
   if (!zone.offsets.length || zone.offsets.length !== zone.untils.length ||
       zone.offsets.length > 50_000) return false;
+  // Unpacked moment-timezone ends in Infinity; synthetic interval fixtures
+  // may use null. A finite last boundary means the supplied history is
+  // truncated. Treat it as invalid data, never as a DST gap or no-match.
+  const terminal=zone.untils[zone.untils.length - 1];
+  if (terminal !== null && terminal !== Infinity) return false;
   let previous=-Infinity;
   for(let i=0;i<zone.untils.length;i++) {
     const offset=zone.offsets[i];

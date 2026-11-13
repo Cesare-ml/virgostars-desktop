@@ -39,3 +39,11 @@ The in-memory natal draft now **revalidates every field of an `OfflinePlaceV1` r
 This is a correctness and display-boundary check, **not** validation that a location exists or that a timezone is historically correct. A valid selected place with a missing zone remains previewable when birth time is unknown; a **known** birth time requires a plausible IANA timezone string and continues to report `time_zone` rather than guessing an instant. The trusted v1 offline decoder already normalizes unavailable country metadata to explicit `null`, preserving that compatibility.
 
 New synthetic Node regression cases: `node --experimental-strip-types --test tests/natal-place-boundary.test.mjs`. Full `npm test`, Angular compilation, native Windows/WebView2 and end-to-end timezone verification are separate acceptance gates. No user record, persistence, scientific validation, capability or network surface changed.
+
+## Terminal interval validation for provisional UTC previews
+
+The independent `resolveCivilTime` boundary now rejects a truncated timezone interval table: a final finite `untils` timestamp means the supplied transition history has **no coverage beyond its last cut-off**, even if the requested local hour happens to fall inside an earlier interval. The status is `invalid_zone_data` with zero candidate UTC instants, rather than the misleading `nonexistent` daylight-saving gap status.
+
+The two explicitly supported **unbounded** end markers are `null` (used by synthetic fixtures) and `Infinity` (used by unpacked moment-timezone data). This preserves legitimate gap/fold handling, including explicit UTC choices for repeated hours. New tests in `tests/timezone-terminal-interval.test.mjs` cover valid markers, missing or noncanonical markers, finite cut-offs and a fictional Rome-like DST transition pair.
+
+This is input completeness validation, **not independent proof of IANA data accuracy**, historical offset correctness, native Rust time standards or a scientifically valid natal chart. Preview-only status, unknown-time semantics, local-only data and the no-save policy are unchanged. Run `node --experimental-strip-types --test tests/timezone-terminal-interval.test.mjs` and the existing timezone suites; a full Angular/Windows WebView2 pass is still required prior to merge.
