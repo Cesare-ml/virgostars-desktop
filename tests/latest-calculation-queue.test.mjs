@@ -222,3 +222,71 @@ test('throwing or revoked draft accessors fail closed without superseding valid 
   assert.equal(observed[0].request.requestSeq,1);
   queue.dispose();
 });
+
+
+test('native reply envelope and ready payload getters are consumed exactly once',()=>{
+  const req={...valid(1),protocolVersion:1,sessionId:'session_1',requestSeq:1};
+  const expected=reply(req),reads=Object.create(null),mutable={};
+  for(const [field,value] of Object.entries(expected)) {
+    Object.defineProperty(mutable,field,{enumerable:true,get(){
+      reads[field]=(reads[field]??0)+1;
+      if(reads[field]===1)return value;
+      throw new Error('second IPC field read');
+    }});
+  }
+  const decoded=decodeCalculationReply(mutable,req,validate);
+  assert.equal(decoded.kind,'ready');
+  assert.equal(decoded.providerVersion,'fake-test-port-v1');
+  assert.equal(decoded.value,expected.snapshot);
+  for(const field of Object.keys(expected))assert.equal(reads[field],1,field);
+});
+
+test('unavailable replies do not inspect attached native payload or providerVersion',()=>{
+  const req={...valid(1),protocolVersion:1,sessionId:'session_1',requestSeq:1};
+  for(const status of ['unavailable','unsupported']) {
+    const raw={...reply(req),status};
+    Object.defineProperties(raw,{
+      snapshot:{get(){throw new Error('payload must not be read')}},
+      providerVersion:{get(){throw new Error('version must not be read')}},
+    });
+    let validationCount=0;
+    const result=decodeCalculationReply(raw,req,()=>{validationCount++;return true});
+    assert.deepEqual(result,{kind:status,request:req});
+    assert.equal(validationCount,0);
+  }
+});
+
+test('throwing, revoked or mutable IPC replies fail closed without leaking details',()=>{
+  const req={...valid(1),protocolVersion:1,sessionId:'session_1',requestSeq:1};
+  const broken={...reply(req)};
+  Object.defineProperty(broken,'requestSeq',{get(){throw new Error('private IPC failure')}});
+  const badSnapshot={...reply(req)};
+  Object.defineProperty(badSnapshot,'snapshot',{get(){throw new Error('private snapshot failure')}});
+  const revoked=Proxy.revocable(reply(req),{});
+  revoked.revoke();
+  for(const raw of [broken,badSnapshot,revoked.proxy]) {
+    assert.deepEqual(decodeCalculationReply(raw,req,validate),{kind:'invalid_reply',request:req});
+  }
+  assert.deepEqual(decodeCalculationReply(reply(req),req,()=>{
+    throw new Error('private validator failure');
+  }),{kind:'invalid_reply',request:req});
+});
+
+test('queue recovers when a native reply field throws during decoding',async()=>{
+  let calls=0;
+  const observed=[];
+  const queue=new LatestCalculationQueue('session_1',req=>{
+    calls++;
+    if(calls===1) {
+      const broken=reply(req);
+      Object.defineProperty(broken,'status',{get(){throw new Error('native secret')}});
+      return Promise.resolve(broken);
+    }
+    return Promise.resolve(reply(req));
+  },validate,output=>observed.push(output));
+  queue.submit(valid(1));await settle();
+  queue.submit(valid(2));await settle();
+  assert.deepEqual(observed.map(v=>v.kind),['invalid_reply','ready']);
+  assert.equal(JSON.stringify(observed).includes('native secret'),false);
+  queue.dispose();
+});
