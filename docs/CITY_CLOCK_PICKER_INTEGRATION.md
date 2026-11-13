@@ -41,3 +41,13 @@ A real Windows test must additionally check:
 ## Merge and release guardrails
 
 The feature stack crosses **#45 → #46 → #101**, plus the independent **#78**. **Do not merge #78 separately and also merge this full integration branch**, because both introduce the same city picker changes. Review one final integration path and rerun comparisons, Node/Angular tests and Windows smoke before any merge. No changes to `main`, production, backend authentication, Rust astronomy, assets or licensed city-pack storage. No automatic GitHub Actions, installer publishing or deploy.
+
+## Accessibility hardening: instance-scoped combobox IDs
+
+The original city picker used fixed HTML IDs (`offline-city-query`, `offline-city-options` and option indexes). Independent search requests were already isolated, but **two simultaneous instances could still collide in the DOM**: a visible label could focus another picker's input, and `aria-controls` / `aria-activedescendant` could refer to the wrong listbox or option.
+
+The integration now creates one stable `OfflineCityPickerDomIds` set per Angular component instance. Label `for`, input ID, listbox ID and option IDs share its local prefix. Destroying/remounting a component allocates a fresh prefix. Generated IDs contain only a local sequence number, never a city name, birth record, coordinate or user data.
+
+When no suggestions exist, `aria-controls` is absent rather than pointing to an `*ngIf`-removed listbox; `aria-expanded` remains false and the active-descendant reference is cleared by the existing picker state. A new `tests/offline-city-picker-dom-ids.test.mjs` covers two instances, stable IDs after rerenders, Angular wiring and collapsed listbox behavior. The two imported #78 source-contract tests were also updated to assert this integration's `onCityEdited()` parent handler, which clears both the selected city and its clock; #78's original direct assignment assertion is no longer valid here.
+
+**Windows/WebView2 acceptance:** with two pickers in the same document, inspect unique DOM IDs and exercise both labels, independent arrow/Enter navigation, clearing, retry and Escape using keyboard and a screen reader. No native IPC or Windows release is implied by this source change.
