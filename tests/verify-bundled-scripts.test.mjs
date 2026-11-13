@@ -83,3 +83,40 @@ test('rejects extra unapproved scripts even if local', () => fixture(f => {
   f.setHtml(f.main + '<script src="vendor-ABC123.js" type="module"></script>');
   assert.throws(() => inspectDesktopScripts(f.dir), /nonlocal desktop script/);
 }));
+
+test('ignores a fake Angular main module contained only in an HTML comment', () => fixture(f => {
+  f.setHtml('<!-- ' + f.main + ' -->');
+  assert.throws(() => inspectDesktopScripts(f.dir), /Missing or unclosed/);
+}));
+test('commented-out script does not count as a duplicate of a real one', () => fixture(f => {
+  f.setHtml('<!-- ' + f.main + ' -->' + f.main);
+  assert.equal(inspectDesktopScripts(f.dir).scripts, 1);
+}));
+test('rejects a main script present only in an inert template', () => fixture(f => {
+  f.setHtml('<template>' + f.main + '</template>');
+  assert.throws(() => inspectDesktopScripts(f.dir), /Missing or unclosed/);
+}));
+test('rejects a main script present only in a textarea', () => fixture(f => {
+  f.setHtml('<textarea>' + f.main + '</textarea>');
+  assert.throws(() => inspectDesktopScripts(f.dir), /Missing or unclosed/);
+}));
+test('ignores script-shaped text in another HTML element quoted attribute', () => fixture(f => {
+  f.setHtml('<div title=\'' + f.main + '\'></div>');
+  assert.throws(() => inspectDesktopScripts(f.dir), /Missing or unclosed/);
+}));
+test('harmless quoted metadata containing onload does not count as an event handler', () => fixture(f => {
+  f.setHtml('<script src="main-ABC123.js" type="module" title="docs onload=example"></script>');
+  assert.equal(inspectDesktopScripts(f.dir).scripts, 1);
+}));
+test('actual event handlers still cannot execute under the desktop CSP', () => fixture(f => {
+  f.setHtml('<script src="main-ABC123.js" type="module" onload="alert(1)"></script>');
+  assert.throws(() => inspectDesktopScripts(f.dir), /event handler/);
+}));
+test('fails closed on unfinished HTML comments', () => fixture(f => {
+  f.setHtml('<!-- ' + f.main);
+  assert.throws(() => inspectDesktopScripts(f.dir), /Unterminated HTML comment/);
+}));
+test('quoted greater-than characters in unrelated elements do not hide real scripts', () => fixture(f => {
+  f.setHtml('<div title="1 > 0">test</div>' + f.main);
+  assert.equal(inspectDesktopScripts(f.dir).scripts, 1);
+}));
