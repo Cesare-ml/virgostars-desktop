@@ -23,5 +23,8 @@ export function verifyDesktopAppRoot(html) {
   const body = markup.slice(begin, finish);
   if (!/^\s*<vs-desktop-app\s*>\s*<\/vs-desktop-app\s*>/i.test(body)) invalid();
   if ((markup.match(/<vs-desktop-app(?=[\s/>])/gi) ?? []).length !== 1) invalid();
+  // A second closing tag can follow a valid root and evade the prefix test.
+  // Comments have already been masked, so only live closing tags count.
+  if ((markup.match(/<\/vs-desktop-app\s*>/gi) ?? []).length !== 1) invalid();
   return true;
 }
