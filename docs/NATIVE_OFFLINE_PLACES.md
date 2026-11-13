@@ -34,7 +34,7 @@ Synthetic regression coverage: `tests/offline-place-ipc-boundaries.test.mjs` exe
 
 ## Integration-specific Unicode and concurrency regression
 
-The picker limits input to 80 **Unicode scalar values**, not 80 UTF-16 code units, matching both the Angular IPC boundary and Rust's character-count limit. One picker no longer cancels another picker's pending native result because each component creates an independent `OfflinePlaceSearch`. A cleared selection is not reinstated by a late reply; a current `stale` native status becomes retryable `busy` instead of hanging in `loading`.
+The picker limits input to 80 **Unicode scalar values**, not 80 UTF-16 code units, matching both the Angular IPC boundary and Rust's character-count limit. The HTML field allows up to 160 UTF-16 code units (so 80 supplementary-plane characters fit), and the input handler mirrors the 80-code-point-bounded state back into the visible field; the longer HTML limit never enlarges native search queries. One picker no longer cancels another picker's pending native result because each component creates an independent `OfflinePlaceSearch`. A cleared selection is not reinstated by a late reply; a current `stale` native status becomes retryable `busy` instead of hanging in `loading`.
 
 Run `node --experimental-strip-types --test tests/offline-city-picker-integration.test.mjs` with a complete Node.js 22 checkout. Combined builds must additionally run the existing city-picker, native search and IPC suite, then a manual Windows Tauri/WebView2 test with an authorized installed catalog. The default demo remains entirely synthetic; no birth chart or city coordinate is persisted or used for astronomy.
 
