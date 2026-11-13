@@ -13,11 +13,19 @@ Three previously separate draft PRs independently protected parts of the same of
 | #95 | Exactly one `<base href="/">` inside the document head, before any asset references; no external/relative/misplaced/inert base |
 | #91 | Earlier overlapping CSS work; closed/unmerged, not separately copied |
 
-The integrated `verifyOfflineBundle` validates **base → CSS → JavaScript → SHA-256-pinned assets** for both synthetic and approved private-artwork builds. Existing independent asset inspection remains intact. The returned report includes both stylesheet and JavaScript counts. `npm run build:ui` and `npm run build:ui:private` already call this verifier through their existing commands; there are no new build scripts or dependencies.
+The integrated `verifyOfflineBundle` validates **base → CSS → JavaScript → SHA-256-pinned assets** for both synthetic and approved private-artwork builds. Both `verify:bundle` and `verify:bundle:private` then run the additional **read-only browser-output privacy allowlist** using `npm run verify:privacy`. Packaging fails if either stage fails. Existing independent asset inspection remains intact. The returned report includes both stylesheet and JavaScript counts. `npm run build:ui` and `npm run build:ui:private` already call this verifier through their existing commands; there are no new build scripts or dependencies.
 
 ### Integration bug fixed
 
 The approved-private-artwork fixture from #95 had been updated with a correct `<base>` but lacked the local Angular `main*.js` script required by #49. As a result, naïvely combining the PRs would break the positive private-mode test. The consolidated fixture now includes a synthetic local JS module, and asserts that private mode rejects a missing module and an incorrect base. Synthetic-mode integration tests additionally cover an inactive CSS link, a fake link inside a comment, a missing JS module and a commented-out JS entrypoint that must not be considered executable.
+
+## Output privacy gate (integration with draft #72 / #104)
+
+`scripts/verify-build-privacy.mjs` and its three dedicated test suites were imported from the existing privacy-audit integration draft #104, preserving its Windows-portable path checks, rejection of credentials/source maps/local databases/symlinks, size limits, and safe error messages. The draft's additional end-to-end packaging fixture suite is included too. The existing npm commands for synthetic and approved private artwork now **only** run the privacy scan after the manifest/CSS/JS/base verifier succeeds (shell `&&`).
+
+**Additional hardening:** the upstream privacy audit allowed any root-level `.js` or `.css` file. This could inadvertently package an unrelated `debug.js` or `diagnostics.css`. The integrated candidate now permits root code files only with the expected Angular patterns: `main*.js`, `polyfills*.js`, hashed `chunk-*.js`, and `styles*.css`. Four authored repository tests exercise rejected stray root files plus allowed generated chunk and polyfills entries. This intentionally conservative rule may require documented review when Angular changes its output names.
+
+On Node.js 22.16.0, **19/19 independent synthetic privacy smoke cases passed** against a byte-identical local copy of the newly committed `verify-build-privacy.mjs` (blob `b76a3f57d963013dc2f5f7977ef65e255937be2f`). The cases include original privacy-safety behaviors, Windows path restrictions, root-code rejection and allowed split chunks. These 19 cases were run separately from the repository test suite; the added repository tests and full combined tests still need execution on an authorized checkout.
 
 ## Checks actually executed
 
