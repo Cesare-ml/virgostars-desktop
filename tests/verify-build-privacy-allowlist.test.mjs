@@ -60,3 +60,23 @@ test('never includes a private-looking filename or absolute path in rejection', 
     return true;
   });
 }));
+
+test('rejects unexpected standalone root debug JavaScript', () => withBundle(({bundle, add}) => {
+  add('debug.js', '/* fictional developer diagnostics */');
+  assert.throws(() => auditBuildPrivacy(bundle), /unapproved browser bundle file/);
+}));
+
+test('rejects unexpected root diagnostic stylesheet', () => withBundle(({bundle, add}) => {
+  add('diagnostics.css', 'body{display:block}');
+  assert.throws(() => auditBuildPrivacy(bundle), /unapproved browser bundle file/);
+}));
+
+test('accepts explicitly patterned Angular lazy chunk', () => withBundle(({bundle, add}) => {
+  add('chunk-3DWYYQR2.js', '/* synthetic split chunk */');
+  assert.deepEqual(auditBuildPrivacy(bundle), {files:5,sourceFiles:3});
+}));
+
+test('accepts local Angular polyfills module', () => withBundle(({bundle, add}) => {
+  add('polyfills-Q2.js', '/* synthetic module */');
+  assert.deepEqual(auditBuildPrivacy(bundle), {files:5,sourceFiles:3});
+}));
