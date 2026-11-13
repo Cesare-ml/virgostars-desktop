@@ -87,3 +87,30 @@ The mainline's corresponding `docs/NATIVE_RUNTIME_BRIDGE.md` section has also be
   - Native-gated `package.json`: `8a04016bff0b460694887abdf7c5e7957cf85894`
 
 **Still blocking beta claims:** actual complete-repository `npm test`, clean `npm ci`, public sibling Charts build, `npm run verify:ipc`, `npm run build:ui`, offline asset/private-output validation, Rust/Cargo, WebView2 Windows GUI CSS/keyboard/export/capability test, and full native packaging have **not** been executed on this integrated candidate. No main merge, production rollout, installer or repository visibility change has been performed.
+
+## Windows PE x64 executable gate (2026-11-13)
+
+The candidate now includes the **read-only PE32+ header verifier** already developed and reviewed in the separate Windows build line (#75, later carried by #105):
+
+- Exact imported `scripts/verify-windows-pe.mjs` checks a fixed native build path for a regular, non-symlinked AMD64 PE32+ Windows GUI executable; bounded DOS/PE offset, required executable section, image/section lengths, real byte ranges and best-effort unchanged file metadata. It reads **at most 8 KiB** without changing the file.
+- Exact imported `scripts/build-windows.cmd` and `scripts/build-windows-spike.ps1` run the PE verifier after native build and `doctor:verify`. Both launchers preserve explicit error handling; the PowerShell path packages the previously audited Angular output without rebuilding it through the ordinary `tauri:build` npm script.
+- Exact imported `tests/windows-pe-header.test.mjs` and `docs/WINDOWS_PE_HEADER_GATE.md` record negative cases and actual Windows manual acceptance. All five imported blobs remain byte-identical to #105 at the time of integration.
+
+### Executed verification of the imported files
+
+**Node.js 22.16.0** using the actual GitHub-matching source and test files in an isolated local mirror:
+
+```sh
+node --test tests/windows-pe-header.test.mjs
+node --check scripts/verify-windows-pe.mjs
+node --check tests/windows-pe-header.test.mjs
+```
+
+Result: **8/8 Node tests PASS; 0 failures or skips**. The tests cover valid synthetic AMD64 PE GUI, forged/truncated signatures, invalid sections and entrypoint, disk-read and symlink rejection, path-safe CLI usage, and exact launcher invocation after packaging. The four tested files exactly match the GitHub blob SHA-1 values:
+
+- PE validator: `361b3b370515b548fb791f2e1daedcb4c864acda`
+- PE tests: `6487857e2e20881e9f777a4ae6a5d699413c15f4`
+- Batch launcher: `28f8b60a2baeb403192de8df330f9d756e95d0cd`
+- PowerShell launcher: `8b6bf1acf39329322a59f0258ae2689044d3ab31`
+
+The verifier recognizes **structural consistency only**; it cannot prove that the app runs, that the binary is signed, that the image is safe or that WebView2 loads CSS and saves exported PNG/CSV files. A genuine Windows x64 executable was **not** built or launched in this test environment. Full combined `npm test`, Rust/Cargo, Angular/Charts and native Windows offline smoke remain release blockers.
