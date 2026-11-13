@@ -8,10 +8,10 @@ The public Charts renderer's `GraficoRenderService.generaImmagine()` is expected
 
 - the exact PNG data-URL prefix (no remote, blob, HTML or SVG URLs);
 - a bounded base64 payload (maximum 32 MiB of encoded data), with valid alphabet and padding shape;
-- a PNG signature, IHDR first chunk of length 13 and positive width/height at most 16,384 pixels;
+- a PNG signature, an IHDR first chunk of length 13, positive width/height at most 16,384 pixels, spec-permitted color type/bit-depth/compression/filter/interlace values, and the IHDR CRC32;
 - a filename assembled from allowed demonstration modes/themes, always prefixed `virgostars-synthetic-`.
 
-On failure the existing translated generic chart-error UI is shown. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL and this guard **does not verify** chunk CRCs, full PNG validity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
+On failure the existing translated generic chart-error UI is shown. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **only the IHDR chunk CRC32**, not the CRCs of later chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
 
 ## Attached download-anchor lifecycle
 
@@ -35,3 +35,9 @@ A click returning is *not* proof the OS saved a PNG. Real WebView2 and browser d
 Use `node --experimental-strip-types --test tests/png-export-safety.test.mjs`. Isolated unit tests cover a normal data URL, unsafe schemes/MIME, malformed body, invalid header, dangerous dimensions, oversize and static synthetic filenames.
 
 Before integration into a release, run `npm test`, `npm run build:ui`, a native Windows WebView2 smoke test and actual PNG export for all modes/themes, including error behavior and large screenshots. No GitHub Actions, production data or cloud services are required.
+
+## IHDR integrity follow-up (2026-11-13)
+
+The fixed-header validator now checks the PNG specification's IHDR field combinations and CRC32 before requesting a browser download. CRC calculation touches only the 17-byte IHDR type-and-data span, keeping the existing constant-space, header-only behavior and the 32 MiB encoded-payload upper bound. It returns the accepted data URL unchanged.
+
+Synthetic tests deliberately recompute CRC when mutating dimensions and header fields, so they exercise the intended checks independently; a separate test corrupts the stored IHDR CRC. This is **not** a full PNG decoder or a file-save confirmation. The Windows WebView2 export smoke test and full Angular build remain necessary before release.
