@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import {
-  AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy,
+  AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy,
   ViewChild, inject
 } from '@angular/core';
 import {
@@ -13,6 +13,7 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { parseDesktopShortcut } from './desktop-shortcuts';
 import { formatEclipticLongitude } from './format-longitude';
 import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
 import { requestSyntheticCsvDownload } from './synthetic-csv-download';
@@ -79,6 +80,24 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
   get csvStatusLabel(): string { return this.csvStatus ? this.t(this.csvStatus) : ''; }
   formatDegrees(value:number): string { return formatEclipticLongitude(value, this.locale); }
+
+  @HostListener('window:keydown', ['$event'])
+  onDesktopShortcut(event: KeyboardEvent): void {
+    if (this.destroyed || this.exporting) return;
+    const action = parseDesktopShortcut(event);
+    if (!action) return;
+    if (action.kind === 'mode') {
+      // Respect the same disabled/loading gate as the visible chart-mode buttons.
+      if (!this.initialized || this.busy || action.mode === this.mode) return;
+      event.preventDefault();
+      this.setMode(action.mode);
+      return;
+    }
+    // Fit must be inert until a chart is actually ready to display.
+    if (!this.ready || this.busy) return;
+    event.preventDefault();
+    this.fitChart();
+  }
 
   ngAfterViewInit(): void {
     // Read-only capability check, distinct from account authentication.
