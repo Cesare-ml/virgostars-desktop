@@ -18,3 +18,17 @@
 .city-primary { font-size:13px; font-weight:600; overflow-wrap:anywhere; }
 .city-secondary { font-size:11px; color:var(--vs-text-secondary); overflow-wrap:anywhere; }
 .city-selected { font-size:11px; color:var(--vs-text-secondary); margin:9px 0 0; }
+
+.city-selection { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-top:9px; }
+.city-selection-details { min-width:0; overflow-wrap:anywhere; }
+.city-selection .city-selected { margin:0 0 3px; }
+.city-clear { flex:0 0 auto; min-height:32px; border:1px solid var(--vs-border);
+  background:var(--vs-surface-muted); color:var(--vs-text); border-radius:7px;
+  font:inherit; font-size:11px; cursor:pointer; padding:5px 9px; }
+.city-clear:focus-visible { outline:2px solid var(--vs-focus); outline-offset:1px; }
+
+.city-retry { min-height:32px; margin:2px 0 10px; padding:5px 11px;
+  font:inherit; font-size:12px; font-weight:650; cursor:pointer;
+  background:var(--vs-surface-muted); color:var(--vs-text);
+  border:1px solid var(--vs-border); border-radius:7px; }
+.city-retry:focus-visible { outline:2px solid var(--vs-focus); outline-offset:1px; }
