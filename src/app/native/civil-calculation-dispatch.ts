@@ -85,7 +85,6 @@ export function submitCivilCalculation(
   }
 }
 
-
 /**
  * A view-scoped latest-only queue can invalidate an older calculation when the
  * civil editor changes, even if the replacement input is no longer valid.
