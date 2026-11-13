@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {OfflineCityPickerState} from '../src/app/offline-city-picker-state.ts';
 
 const a = Object.freeze({id:1,name:'Firenze',italianName:'Florence',latMicro:43769560,lngMicro:11255810,population:360000,stateId:1,region:'Toscana',timeZone:'Europe/Rome'});
@@ -73,4 +74,25 @@ test('country metadata from an explicit v2 lookup survives selection without gue
   assert.equal(chosen.countryCode,'IT');
   assert.equal(chosen.stateId,1);
   assert.equal(h.state.selected.countryName,'Italia');
+});
+
+test('current stale response exits loading and a fresh search can recover', async () => {
+  const h = harness();
+  h.state.input('Roma'); h.flush();
+  h.requests[0].resolve({kind:'stale',items:[]});
+  await Promise.resolve();
+  assert.equal(h.state.status,'busy');
+  assert.deepEqual(h.state.results,[]);
+  h.state.input('Firenze'); h.flush();
+  h.requests[1].resolve({kind:'ready',items:[a]});
+  await Promise.resolve();
+  assert.equal(h.state.status,'ready');
+  assert.equal(h.state.results[0].id,a.id);
+});
+
+test('desktop city picker creates a separate request scope per component', () => {
+  const adapter = readFileSync(new URL('../src/app/native/offline-places.ts', import.meta.url),'utf8');
+  const component = readFileSync(new URL('../src/app/offline-city-picker.component.ts', import.meta.url),'utf8');
+  assert.match(adapter,/export function createOfflinePlaceSearch\(\): OfflinePlaceSearch/);
+  assert.match(component,/new OfflineCityPickerState\(createOfflinePlaceSearch\(\),/);
 });
