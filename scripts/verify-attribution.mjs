@@ -44,11 +44,12 @@ export function verifyAttribution({license, notice, template, styles}) {
   requireText(visibleCredit, EXPECTED_PHRASE, 'GUI phrase');
   requireText(visibleCredit, EXPECTED_URL, 'GUI URL');
 
-  // Catch explicitly hidden attribution across breakpoint rules. Computed
+  // Catch explicit hiding, including functional selectors like :is(footer)
+  // or :where(.copyright-attribution), across breakpoint rules. Computed
   // layout and clipped text still need real Windows/WebView2 visual QA.
   const css = styles.replace(/\/\*[\s\S]*?\*\//g, '');
   for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!/(?:^|[\s,>+~])(?:footer\b|\.copyright-attribution\b)/.test(rule[1])) continue;
+    if (!/(?:^|[\s,>+~(])(?:footer\b|\.copyright-attribution\b)/i.test(rule[1])) continue;
     if (/(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?)(?:\s*!important)?\s*(?:;|$)/i.test(rule[2])) {
       throw new Error('Attribution gate: GUI footer/credit hidden by CSS');
     }
