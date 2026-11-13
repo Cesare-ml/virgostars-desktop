@@ -152,3 +152,24 @@ test('rejects unverifiable worker URLs and computed worker constructors',()=>fix
     assert.throws(f.verify,/Unverifiable JavaScript worker source/,js);
   }
 }));
+
+test('rejects Worker new URL without js extension even when remote',()=>fixture(f=>{
+  f.add(f.main,'new Worker(new URL("https://example.invalid/remote-worker",import.meta.url),{type:"module"})');
+  assert.throws(f.verify,/Nonlocal or invalid JavaScript import/);
+}));
+test('rejects an image URL used as an executable Worker script',()=>fixture(f=>{
+  f.add(f.main,'new Worker(new URL("./assets/img/fictional.png",import.meta.url),{type:"module"})');
+  assert.throws(f.verify,/Unexpected JavaScript import filename/);
+}));
+test('rejects SharedWorker data URLs lacking a js suffix',()=>fixture(f=>{
+  f.add(f.main,'new SharedWorker(new URL("data:text/javascript,postMessage(1)",import.meta.url))');
+  assert.throws(f.verify,/Nonlocal or invalid JavaScript import/);
+}));
+test('rejects an invalid non-js local Worker path without extension',()=>fixture(f=>{
+  f.add(f.main,'new Worker(new URL("./chunk-WORKER",import.meta.url),{type:"module"})');
+  assert.throws(f.verify,/Unexpected JavaScript import filename/);
+}));
+test('non-worker asset URLs remain outside this JavaScript-only gate',()=>fixture(f=>{
+  f.add(f.main,'const picture=new URL("./assets/img/fictional.png", import.meta.url);');
+  assert.deepEqual(f.verify(),{modules:1,chunks:0,dependencies:0});
+}));
