@@ -26,6 +26,8 @@ A preflight pass requires:
 - No two sections may overlap in their mapped image extents or in their nonempty
   raw file ranges. Adjacent non-overlapping sections are allowed. This prevents
   a malformed section table from passing merely because each range is in bounds.
+- Sections must not map over the PE headers; the entrypoint must be backed by
+  raw bytes of an executable section, not merely its zero-initialized virtual tail.
 
 The inspection reads at most **8 KiB**, performs no writes and sends no telemetry.
 Expected failures use fixed `WINDOWS_PE_...` status strings; local file paths
