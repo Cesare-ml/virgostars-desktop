@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {decodeOfflinePlaceResults, OfflinePlaceSearch} from '../src/app/native/offline-places-contract.ts';
+import {decodeOfflinePlaceResults, OfflinePlaceSearch, offlinePlaceQueryProblem} from '../src/app/native/offline-places-contract.ts';
 
 const city = {
   id: 1, name: 'San José', italianName: null,
@@ -175,4 +175,22 @@ test('Rust queries v1 and v2 resource schemas using fixed SQL branches',()=>{
   assert.match(rust,/LEFT JOIN country_lookup/);
   assert.match(rust,/country_name: row.get\(9\)/);
   assert.match(rust,/country_code: row.get\(10\)/);
+});
+
+test('query preflight preserves all terms or fails before native IPC',async()=>{
+  assert.equal(offlinePlaceQueryProblem('one two three four five'),null);
+  assert.equal(offlinePlaceQueryProblem('San José'),null);
+  assert.equal(offlinePlaceQueryProblem('one two three four five six'),'query_too_long');
+  assert.equal(offlinePlaceQueryProblem('one/two/three/four/five/six'),'query_too_long');
+  assert.equal(offlinePlaceQueryProblem('🙂🙂'),'query_too_short');
+  assert.equal(offlinePlaceQueryProblem('a'), 'query_too_short');
+  assert.equal(offlinePlaceQueryProblem('x'.repeat(81)), 'query_too_long');
+  let called=0;
+  const search=new OfflinePlaceSearch({
+    isNative:()=>true,
+    invoke:async()=>{called++;return response;},
+  });
+  assert.equal((await search.search('one two three four five six')).kind,'query_too_long');
+  assert.equal((await search.search('🙂🙂')).kind,'query_too_short');
+  assert.equal(called,0);
 });
