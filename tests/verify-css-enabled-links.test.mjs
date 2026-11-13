@@ -77,3 +77,23 @@ test('duplicate active-link attributes fail closed', () => withSyntheticBundle(
   '<link rel="stylesheet" href="styles-LOCAL123.css" href="remote.css">',
   dir => assert.throws(() => inspectDesktopStyles(dir), /Duplicate stylesheet link attribute/)
 ));
+test('unquoted local HTML stylesheet attributes remain accepted', () => withSyntheticBundle(
+  '<link rel=stylesheet href=styles-LOCAL123.css>',
+  dir => assert.equal(inspectDesktopStyles(dir).stylesheets, 1)
+));
+test('uppercase HTML tags and attribute names remain accepted', () => withSyntheticBundle(
+  '<LINK REL="STYLESHEET" HREF="styles-LOCAL123.css">',
+  dir => assert.equal(inspectDesktopStyles(dir).stylesheets, 1)
+));
+test('Angular print/onload critical CSS remains blocked', () => withSyntheticBundle(
+  link('media="print" onload="this.media=\'all\'"'),
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Inline stylesheet event handler/)
+));
+test('a real onerror event handler remains blocked', () => withSyntheticBundle(
+  link('onerror="alert(1)"'),
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Inline stylesheet event handler/)
+));
+test('unterminated quoted stylesheet link is rejected', () => withSyntheticBundle(
+  '<link rel="stylesheet" href="styles-LOCAL123.css broken>',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Unterminated HTML link tag/)
+));
