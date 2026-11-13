@@ -37,7 +37,9 @@ export function verifyDesktopAttribution(template, notice, license) {
   const parent = stack[stack.length - 1];
   requireNotice(parent?.tag === 'main' && parent.attrs === ' class="chart-panel"',
     'footer is not a direct child of the static Desktop chart panel');
-  requireNotice(stack.every(node => !/(?:^|\s)(?:hidden|inert|\*ngIf|\[hidden\]|\[attr\.hidden\]|style|\[style(?:\.|\]))\b/i.test(node.attrs)),
+  requireNotice(stack.every(node =>
+    !/(?:^|\s)(?:hidden|inert|\*ngIf|\[hidden\]|\[attr\.hidden\]|style|\[style(?:\.[^\]]+)?\])(?=\s|=|$)/i.test(node.attrs) &&
+    !/\baria-hidden\s*=\s*["']true["']/i.test(node.attrs)),
     'footer has a hidden or conditional ancestor');
 
   const attributions = [...footers[0][1].matchAll(/<span class="copyright-attribution">([^<]*)<\/span>/g)];
