@@ -38,10 +38,21 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
   if (u16(optionalStart) !== 0x020b) error('NOT_PE32_PLUS');
   if (u16(optionalStart + 68) !== 2) error('NOT_GUI_SUBSYSTEM');
   const entryPoint = u32(optionalStart + 16);
+  const sectionAlignment = u32(optionalStart + 32);
+  const fileAlignment = u32(optionalStart + 36);
+  // This Windows x64/MSVC preflight intentionally accepts conventional
+  // page-aligned images, not PE's exceptional sub-page-aligned formats.
+  const powerOfTwo = value => value > 0 && (value & (value - 1)) === 0;
+  if (!powerOfTwo(fileAlignment) || fileAlignment < 512 || fileAlignment > 65536 ||
+      !powerOfTwo(sectionAlignment) || sectionAlignment < 4096 ||
+      sectionAlignment < fileAlignment) error('ALIGNMENT_FIELDS');
   const imageSize = u32(optionalStart + 56);
   const headersSize = u32(optionalStart + 60);
   if (headersSize < tableEnd || imageSize < headersSize ||
       BigInt(headersSize) > fileBytes) error('HEADERS_LAYOUT');
+  if (headersSize % fileAlignment !== 0 || imageSize % sectionAlignment !== 0) {
+    error('IMAGE_ALIGNMENT');
+  }
   if (!entryPoint || entryPoint >= imageSize) error('ENTRYPOINT');
   let hasRawSection = false;
   let executableEntry = false;
@@ -59,10 +70,14 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
         virtualAddress + mappedSize > imageSize) error('SECTION_IMAGE_BOUNDS');
     // Raw headers are mapped at the start of the image and cannot be owned by a section.
     if (virtualAddress < headersSize) error('SECTION_HEADER_OVERLAP');
+    if (virtualAddress % sectionAlignment !== 0) error('SECTION_RVA_ALIGNMENT');
     mappedRanges.push([virtualAddress, virtualAddress + mappedSize]);
     if (rawSize) {
       if (rawPointer < headersSize ||
           BigInt(rawPointer) + BigInt(rawSize) > fileBytes) error('SECTION_RAW_BOUNDS');
+      if (rawPointer % fileAlignment !== 0 || rawSize % fileAlignment !== 0) {
+        error('SECTION_RAW_ALIGNMENT');
+      }
       rawRanges.push([rawPointer, rawPointer + rawSize]);
       hasRawSection = true;
     }
