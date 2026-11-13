@@ -26,7 +26,10 @@ function fixture() {
 const run=f=>{const x=fixture();try{f(x);}finally{x.clean();}};
 
 test('verifies a desktop Angular build with exact synthetic assets',()=>run(f=>{
-  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+  const result = verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(result.count,1);
+  assert.equal(result.stylesheets,1);
+  assert.equal(result.scripts,1);
 }));
 test('detects tampered image in Angular output',()=>run(f=>{
   writeFileSync(f.img,'bad');
@@ -107,4 +110,59 @@ test('screen stylesheet without inline event handler remains valid',()=>run(f=>{
   );
   writeFileSync(index,html);
   assert.equal(verifyOfflineBundle(f.bundle,f.staging).stylesheets,1);
+}));
+
+
+test('rejects missing or hijacked HTML base before checking packaged CSS and assets',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const bad of ['', '<base href="https://example.invalid/">',
+                    '<base href="/assets/">', '<base href="/"><base href="/">']) {
+    writeFileSync(index, canonical.replace('<base href="/">', bad));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/DESKTOP BASE HREF/);
+  }
+}));
+
+test('rejects inert document base in HTML comment or template',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const inert of ['<!-- <base href="/"> -->',
+                      '<template><base href="/"></template>',
+                      '<noscript><base href="/"></noscript>']) {
+    writeFileSync(index,canonical.replace('<base href="/">',inert));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/DESKTOP BASE HREF/);
+  }
+  // An irrelevant commented-out base must not invalidate the real one.
+  writeFileSync(index,canonical.replace('<base href="/">','<!-- <base href="/wrong/"> --><base href="/">'));
+  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+}));
+
+
+test('rejects a missing local Angular main script with valid base, CSS and synthetic assets',()=>run(f=>{
+  rmSync(join(f.bundle,'main-LCL123.js'));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Local desktop script missing/);
+}));
+test('rejects a fake CSS link in a comment even when main script and base are valid',()=>run(f=>{
+  const file=join(f.bundle,'index.html');
+  const html=readFileSync(file,'utf8').replace('<link rel="stylesheet" href="styles-LOCAL123.css">',
+    '<!-- <link rel="stylesheet" href="styles-LOCAL123.css"> -->');
+  writeFileSync(file,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/no linked stylesheet/);
+}));
+test('rejects an inactive stylesheet in a valid local Angular bundle',()=>run(f=>{
+  const file=join(f.bundle,'index.html');
+  const html=readFileSync(file,'utf8').replace('rel="stylesheet" href="styles-LOCAL123.css"',
+    'rel="stylesheet" href="styles-LOCAL123.css" disabled');
+  writeFileSync(file,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Disabled stylesheet/);
+}));
+
+test('rejects a commented-out Angular main module even if its JS file exists',()=>run(f=>{
+  const file=join(f.bundle,'index.html');
+  const html=readFileSync(file,'utf8').replace(
+    '<script src="main-LCL123.js" type="module"></script>',
+    '<!-- <script src="main-LCL123.js" type="module"></script> -->'
+  );
+  writeFileSync(file,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Missing or unclosed Angular script element/);
 }));
