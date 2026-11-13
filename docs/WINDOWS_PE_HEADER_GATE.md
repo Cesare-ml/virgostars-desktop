@@ -18,6 +18,11 @@ A preflight pass requires:
   header and section table; executable and non-DLL COFF characteristics.
 - The **AMD64** machine identifier (0x8664), **PE32+** optional-header format and
   **Windows GUI** subsystem (2), matching the present Tauri x64 release target.
+- A plausible declared `SizeOfHeaders` and `SizeOfImage`, an entrypoint inside
+  a mapped executable section, and raw-section byte ranges that fit the actual
+  on-disk file size. A valid-looking PE header with truncated sections fails closed.
+  Section metadata is inspected in the initial bounded header read; executable
+  section contents are **not** loaded or cryptographically verified.
 
 The inspection reads at most **8 KiB**, performs no writes and sends no telemetry.
 Expected failures use fixed `WINDOWS_PE_...` status strings; local file paths
@@ -48,7 +53,7 @@ step. The baseline repository keeps `bundle.active=false`.
 
 ## Security and acceptance limits
 
-This is a **structural header sanity check only**, not an integrity hash,
+This is a **structural file-layout sanity check only**, not an integrity hash,
 Authenticode signature check, trusted publisher verification, antimalware
 scan, code review, Rust/Angular correctness proof or executable runtime smoke.
 An attacker can forge a syntactically valid PE header. Best-effort file identity
