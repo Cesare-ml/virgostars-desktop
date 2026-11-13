@@ -155,6 +155,11 @@ export function displayThemeLabel(locale: Locale, theme: 'light' | 'dark'): stri
   return translate(locale, theme === 'light' ? 'settings.theme.light' : 'settings.theme.dark');
 }
 
+/** Announce the language that the toggle will activate, in the active locale. */
+export function displayLanguageAction(locale: Locale): string {
+  return translate(locale, locale === 'it' ? 'language.switchToEnglish' : 'language.switchToItalian');
+}
+
 /** Persist only a translation key in view state, never a stale localized error. */
 export function displayMessage(locale: Locale, key: MessageKey | null): string {
   return key === null ? '' : translate(locale, key);
