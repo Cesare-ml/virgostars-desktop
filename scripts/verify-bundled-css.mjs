@@ -12,11 +12,26 @@ const fail = (message) => { throw new Error('DESKTOP CSS BUNDLE: ' + message); }
 // This is intentionally a narrow build-artifact parser, not a general HTML parser.
 function extractLinkTags(html) {
   const tags = [];
-  const marker = /<link(?=[\s/>])/gi;
-  let match;
-  while ((match = marker.exec(html)) !== null) {
+  let cursor = 0;
+  while (cursor < html.length) {
+    const start = html.indexOf('<', cursor);
+    if (start < 0) break;
+
+    // HTML comments are inert; a <link> inside one is not a stylesheet.
+    if (html.startsWith('<!--', start)) {
+      const close = html.indexOf('-->', start + 4);
+      if (close < 0) fail('Unterminated HTML comment');
+      cursor = close + 3;
+      continue;
+    }
+    const opening = /^<(\/?)([A-Za-z][A-Za-z0-9:-]*)(?=[\s/>])/i.exec(html.slice(start));
+    if (!opening) {
+      cursor = start + 1;
+      continue;
+    }
+    const name = opening[2].toLowerCase();
     let quote = null;
-    let end = marker.lastIndex;
+    let end = start + opening[0].length;
     for (; end < html.length; end++) {
       const ch = html[end];
       if (quote !== null) {
@@ -26,12 +41,23 @@ function extractLinkTags(html) {
       } else if (ch === '>') {
         break;
       } else if (ch === '<') {
-        fail('Malformed HTML link tag');
+        fail('Malformed HTML tag');
       }
     }
-    if (end === html.length || quote !== null) fail('Unterminated HTML link tag');
-    tags.push(html.slice(match.index, end + 1));
-    marker.lastIndex = end + 1;
+    if (end === html.length || quote !== null) fail(name === 'link' ? 'Unterminated HTML link tag' : 'Unterminated HTML tag');
+
+    if (!opening[1] && name === 'link') tags.push(html.slice(start, end + 1));
+    cursor = end + 1;
+    // Raw-text/HTML-inert elements may contain text that looks like a link.
+    // The first literal closing tag ends a script/style/textarea/title block
+    // under HTML parsing rules; templates/noscript are excluded as well.
+    if (!opening[1] && ['script', 'style', 'textarea', 'title', 'template', 'noscript'].includes(name)) {
+      const closing = new RegExp('</' + name + '\\s*>', 'gi');
+      closing.lastIndex = cursor;
+      const match = closing.exec(html);
+      if (!match) fail('Unterminated HTML ' + name + ' element');
+      cursor = closing.lastIndex;
+    }
   }
   return tags;
 }
