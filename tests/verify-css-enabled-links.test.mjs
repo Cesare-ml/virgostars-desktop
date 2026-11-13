@@ -51,3 +51,29 @@ test('inert quoted text containing the word disabled is not an HTML disabled att
 test('existing rejection of print-only stylesheet remains intact', () => withSyntheticBundle(
   link('media="print"'), dir => assert.throws(() => inspectDesktopStyles(dir), /Deferred or print-only stylesheet/)
 ));
+test('quoted inert text containing disabled= does not disable a stylesheet', () => withSyntheticBundle(
+  link('title="documentation disabled=maybe"'), dir => assert.equal(inspectDesktopStyles(dir).stylesheets, 1)
+));
+test('quoted inert text containing onload= is not an inline event handler', () => withSyntheticBundle(
+  link('title="documentation onload=example"'), dir => assert.equal(inspectDesktopStyles(dir).stylesheets, 1)
+));
+test('a fake rel attribute inside a quoted title does not supply an active CSS link', () => withSyntheticBundle(
+  '<link title="sample rel=stylesheet" href="styles-LOCAL123.css">',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
+test('a fake href inside a quoted title cannot substitute for a missing file reference', () => withSyntheticBundle(
+  '<link rel="stylesheet" title="sample href=styles-LOCAL123.css">',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Unexpected or nonlocal stylesheet reference/)
+));
+test('explicit event handlers still fail, even with inert quoted examples', () => withSyntheticBundle(
+  link('title="docs onload=example" onload="alert(1)"'),
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Inline stylesheet event handler/)
+));
+test('HTML quoted greater-than signs remain ordinary attribute text', () => withSyntheticBundle(
+  '<link title="a > b" rel="stylesheet" href="styles-LOCAL123.css">',
+  dir => assert.equal(inspectDesktopStyles(dir).stylesheets, 1)
+));
+test('duplicate active-link attributes fail closed', () => withSyntheticBundle(
+  '<link rel="stylesheet" href="styles-LOCAL123.css" href="remote.css">',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Duplicate stylesheet link attribute/)
+));
