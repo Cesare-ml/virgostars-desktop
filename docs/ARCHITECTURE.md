@@ -8,7 +8,7 @@ Status: **DESIGN WITH ISOLATED UNVERIFIED RENDERER SPIKE** (2026-11-10). Spike 0
 - Local-first: offline edits save atomically and become pending sync operations; network reconnection is eventually consistent and never erases local work.
 - Site and Desktop share user-owned entities via future, scoped, versioned APIs, not direct PostgreSQL access.
 - Windows first, future macOS, with multiplatform shell and storage abstraction.
-- Code can become public after licensing/privacy/rights review; repo remains private for now.
+- Original code is being prepared for public-source distribution under CPAL-1.0; public visibility and third-party asset/data redistribution remain subject to separate rights and security checks.
 
 ## Component map
 ```text

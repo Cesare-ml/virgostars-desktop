@@ -4,6 +4,10 @@ import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspectDesktopStyles } from './verify-bundled-css.mjs';
+import { inspectDesktopScripts } from './verify-bundled-scripts.mjs';
+import { inspectAngularChunkGraph } from './verify-angular-chunks.mjs';
+import { verifyDesktopBaseHref } from './verify-document-base.mjs';
+import { verifyDesktopAppRoot } from './verify-desktop-app-root.mjs';
 import { PRIVATE_MANIFEST_FILE, validatePrivateManifest } from './prepare-private-assets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -36,13 +40,20 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   const assetFiles=privateMode?manifest.assets:manifest.files;
   const htmlPath=join(bundle,'index.html');safeRegular(htmlPath);
   const html=readFileSync(htmlPath,'utf8');
-  check(/<vs-desktop-app(?:\s|>)/.test(html), 'Angular bundle is not the desktop-owned app');
   check(!/<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["'](?:https?:)?\/\//i.test(html),
     'Angular bundle references an external script or stylesheet');
   check(!html.includes('desktop-assets-bootstrap.js'), 'Legacy demo bootstrap must not be packaged');
+  // Reject a tag present only in a comment/template or script string.
+  verifyDesktopAppRoot(html);
+  // Resolve all relative assets against the packaged Tauri origin before accepting CSS/JS.
+  verifyDesktopBaseHref(html);
   // The original verifier checked images and Angular root but not CSS: an
   // unstyled app could pass verification and yield a tiny chart on Windows.
   const css = inspectDesktopStyles(bundle);
+  const js = inspectDesktopScripts(bundle);
+  // A main module alone is not sufficient: every transitive Angular split
+  // chunk must be present and referenced by a verified local ESM import.
+  const graph = inspectAngularChunkGraph(bundle,js.files);
   const assets=join(bundle,'assets');safeRegular(assets,true);
   const expected=[];
   for(const f of assetFiles) {
@@ -59,7 +70,8 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   }
   const actual=filesIn(assets).sort();expected.sort();
   check(JSON.stringify(actual)===JSON.stringify(expected), 'Offline bundle contains unexpected or missing assets');
-  return {count:expected.length,bundle,stylesheets:css.stylesheets};
+  return {count:expected.length,bundle,stylesheets:css.stylesheets,scripts:js.scripts,
+    modules:graph.modules,chunks:graph.chunks,dependencies:graph.dependencies};
 }
 if(process.argv[1] && resolve(process.argv[1])===resolve(fileURLToPath(import.meta.url))) {
   try {
@@ -68,6 +80,7 @@ if(process.argv[1] && resolve(process.argv[1])===resolve(fileURLToPath(import.me
     const out=verifyOfflineBundle(resolve(ROOT,'dist/desktop/browser'),
       resolve(ROOT,privateMode?'.local/frontend-private':'.local/frontend'),{privateMode});
     console.log('Verified '+out.count+(privateMode?' approved private':' synthetic')+
-      ' files and '+out.stylesheets+' local CSS link(s). No demo bootstrap.');
+      ' files, '+out.stylesheets+' local CSS link(s), '+out.scripts+' JS entrypoint(s), '+
+      out.chunks+' imported chunk(s). No demo bootstrap.');
   }catch(error){ console.error('OFFLINE BUNDLE VERIFICATION FAILED:',error.message);process.exitCode=1; }
 }

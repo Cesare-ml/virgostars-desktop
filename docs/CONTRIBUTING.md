@@ -1,29 +1,40 @@
-# Contributing (design-stage)
+# Contributing to VirgoStars Desktop
 
-This repository is currently **private** and not yet published under an open-source license. Contributions must be specifically authorized by the maintainer; future public contribution terms are still to be decided.
+Thank you for helping build a free, independently usable desktop astrology workspace.
 
-## For newcomers and AI-assisted contributors
-You should be able to work on a synthetic local demo **without** having access to the original VirgoStars production source, private credentials, paid APIs or real user data. If your AI assistant helps develop new UI/screens, ask it to read `AGENTS.md`, the ADR, the architecture and the current roadmap first. Contributors should never be asked to provide production secrets.
+## Before you start
 
-## Planned local developer experience
-Once the first code milestone is delivered, provide:
-- A Windows PowerShell preflight/bootstrap script that detects missing prerequisites rather than blindly installing packages.
-- Pinned Node LTS and Rust toolchain with reproducible installs and lockfiles.
-- A small `npm run dev` command and `npm test` plus `npm run check`; explain the command outputs in plain English.
-- Synthetic charts and mock local/cloud services for offline demo/testing.
-- Separate instructions for user installer vs contributor compilation; normal end users should not need Node or Rust installed.
+Read [AGENTS.md](../AGENTS.md), [Architecture](ARCHITECTURE.md), [Roadmap](ROADMAP.md), [License and Publication](LICENSING_AND_PUBLICATION.md) and any relevant design/contract documents. This is a prototype; don't describe planned capabilities as already implemented.
 
-Tauri's Windows developer prerequisites include Microsoft C++ Build Tools, WebView2, Rust and Node package manager tooling (see official documentation). These requirements are **for building**, not necessarily for running the release installer.
+No production account, private repository, confidential dataset or paid API is required for the standard synthetic development workflow.
 
-## Workflow
-Read `AGENTS.md`; inspect open PR/issue and upstream contracts, work in a small branch, add tests/docs, open draft PR and report what ran and what did not. Do not enable GitHub Actions or merge/release/deploy without maintainer authorization.
+## Local prerequisites and setup
 
-## Future Python interoperability
-Do not recode astronomy in Python. Future Python tools may use upstream PyO3/maturin bindings from the Rust core and/or import/export versioned calculation/chart JSON datasets. Desktop scripting must be sandboxed/reviewed rather than allowing arbitrary code through privileged application IPC.
+Use Node.js 22.12+ or 24+, npm, and the public [Astrological Charts](https://github.com/Cesare-ml/astrological-charts) source checkout built as a sibling directory. For Tauri on Windows, install the Rust MSVC toolchain, Microsoft C++ Build Tools and WebView2 as documented by Tauri. See the exact commands in the [root README](../README.md).
 
-## Upstream status
-The public/private VirgoStars libraries are developing independently. Their current README/AGENTS remain authoritative for their own functionality. Do not assume code, manifests, rights or published packages already exist.
+After building the Charts library and its synthetic demo pack:
 
-## Offline city catalog for contributors
+```sh
+npm ci
+npm run doctor
+npm test
+npm run build:ui
+```
 
-The complete catalog is distributed separately as a private, checksum-pinned GitHub release. For repository and Charts collaborators, [Offline city packaging](LOCAL_CITY_PACKAGING.md) documents authentication, dependencies, exact build commands, data provenance and platform limitations. The regular synthetic build still works without the catalog.
+Use `npm start` for Angular UI work and `npm run tauri:dev` for the native prototype. The packaged Windows application is not a production release or an installable signed update. Don't claim full native validation from unit tests alone.
+
+## Pull requests
+
+- Discuss a coherent improvement in an issue when appropriate; use a feature branch and a draft PR.
+- Include tests and update any affected design, API, privacy or license documents.
+- Use fictional birth data, generated icons and synthetic chart assets only.
+- Keep astronomy calculations in the Rust provider; don't duplicate them in UI code.
+- State commands run, environment, test counts, missing coverage and known blockers.
+- Never commit authentication tokens, API keys, original personal birth records, unreviewed artwork, privately distributed city catalogs or external astronomical kernels.
+- Do not enable GitHub Actions, perform automatic deployments, merge to main, or publish a release without explicit maintainer approval.
+
+## Licensing and credits
+
+By submitting work, you must have the rights to contribute it under the project's [CPAL-1.0 license](../LICENSE) and preserve existing copyright notices. Contributors retain their applicable rights in their contributions; do not add third-party code under an incompatible license. Preserve attribution information and the launch/session notice where required by CPAL Exhibit B. See [NOTICE](../NOTICE).
+
+Responsible security disclosure: [SECURITY.md](../SECURITY.md).

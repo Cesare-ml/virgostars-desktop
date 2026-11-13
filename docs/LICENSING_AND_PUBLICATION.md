@@ -1,32 +1,30 @@
-# License, credits and eventual public release
+# Licensing, required attribution and source publication
 
-Status: **UNDECIDED** (2026-11-10). The owner explicitly requested that the license be determined later.
+**Decision (2026-11-12):** CPAL-1.0 is selected for original VirgoStars Desktop source. This aligns with the attribution-oriented licensing approach used by VirgoStars Ephemeris. The GitHub repository is **not automatically made public** by this decision, and no installer or user database is published.
 
-## Current rule
-**Do not add LICENSE, imply license permissions for the private code, or make this repository public yet.** Public GitHub visibility alone does not create an open-source license; selecting a license requires an explicit maintainer decision and dependency review.
+## What is covered
 
-## Invariants for future public release
-- Aim for genuinely free/open-source source code, with no paywall to study, run, modify or redistribute.
-- The official VirgoStars cloud account and hosted services remain separate from the open-source desktop client. Requiring official login to use VirgoStars cloud should not be presented as a universal technical restriction on third-party forks.
-- Display correct attribution and links to VirgoStars under all imported licenses. Never represent NASA/JPL, other upstream projects or Astrodienst as endorsing VirgoStars.
-- No user data, client secrets, private backend code, copyrighted/unapproved assets, controlled credentials or independently restricted kernel files in a public commit.
-- Contributions and copyright ownership must be tracked, especially if future relicensing is contemplated.
+The unmodified full [LICENSE](../LICENSE) contains the Common Public Attribution License 1.0, with a Desktop-specific completed Exhibit A and Exhibit B. Original project source and copyright notices follow that license; third-party packages and data retain their own independent terms. See [NOTICE](../NOTICE).
 
-## Options to assess
-| Option | Benefit | Caution |
-| --- | --- | --- |
-| CPAL-1.0 (used by VirgoStars-Ephemeris) | Attribution-related provisions and sharing obligations, consistent with some upstream repositories | Network use and interface notice duties, contributor rights, copyleft boundaries; legal review needed |
-| MPL-2.0 | File-level reciprocal license, widespread developer familiarity | Does not on its own impose a custom VirgoStars branding link in each application's UI |
-| Apache-2.0 / MIT | Broad adoption, simpler reuse | Branding/credit requirements primarily notice retention; no special mandatory interactive About link without separate conditions |
+**Exhibit B attribution:** Copyright (c) 2026 Cesare-ml (VirgoStars project); phrase **Powered by VirgoStars**; URL https://www.virgostars.it/; no required graphic image. CPAL Section 14 can require a prominent display at application launch/session, including larger works. An About link alone cannot always replace that notice. The current prototype includes the attribution in its GUI footer; review visibility in all window sizes and platforms before release. Section 15 includes source-availability obligations for external deployment.
 
-**Important:** `VirgoStars-Ephemeris` and `VirgoStars-Event-Ephemeris` already use CPAL-1.0 for their *original code*. Their requirements, including the actual Exhibit B and Section 14 notice obligations for GUIs where applicable, must be respected regardless of the desktop application's chosen license. An About page link alone is not a guarantee of satisfying CPAL Section 14. Other imported packages and binary datasets retain their own licenses.
+CPAL permissions are not a trademark license for the VirgoStars name, visual identity or associated services. Do not claim that third-party software, data or imagery is licensed by the Desktop CPAL merely because it is referenced in documentation.
 
-`astrological-charts`, `astrological-functions`, `astrological-assets` remain private/not universally licensed for public reuse according to their current docs. Public packaging is blocked pending provenance and authorizations. No automatic copying of asset pack into a public app.
+## Materials outside this code license
 
-## Before a license decision
-1. Audit dependency and font/image provenance, dynamic/native Rust linkage, npm packages, binary datasets and author permissions.
-2. Clarify desired attribution: visible at app launch vs Credits/About, link placement, use of trademark.
-3. Document required notices, source availability, distributed binaries, network service/fork policy and contributors' rights.
-4. Seek legal review if trademark and CPAL obligations are business-critical; then add the approved full LICENSE, NOTICE, third-party notices and contributions policy in a dedicated authorized PR.
+- Original branded artwork, fonts, imported icons and privately approved visual packs are subject to separate permission/provenance reviews.
+- Purchased or licensed world-city records and any generated SQLite or ZIP package are **not** automatically redistributable. The protected `places-20261112-v2` release currently includes `world-cities.zip`. **Do not make this repository public while that asset remains attached to an accessible release.**
+- NASA/JPL kernels, Swiss Ephemeris materials and any independently acquired scientific datasets require their own distribution-rights assessment.
+- Hosted VirgoStars account, API backend, personal data, credentials and signing keys are not included in the license grant.
+- Standard npm/Rust/Angular/Three.js dependencies retain their own terms. Before distributing binaries, inventory the full resolved dependency tree and preserve all required third-party notices.
 
-No legal opinion is offered here; full license texts govern.
+## Open-source distribution controls
+
+1. Verify legal authorship of original files and third-party license compatibility; confirm the whole repository history is safe to expose, not only the current branch.
+2. Relocate or remove the protected city release asset and check other releases, tags, attachments and generated bundles.
+3. Check every committed file and Git history for credentials, internal endpoints, private source, personal records and unapproved art. Revocation/secret rotation may be required if leaks ever occurred.
+4. Ensure the synthetic build can run using publicly available dependencies only; do not publish optional private-only assets or credentials.
+5. Verify CPAL source-availability, GUI attribution, LICENSE/NOTICE, lockfile dependency licenses and native installer contents.
+6. Only after a maintainer accepts [Publication Checklist](PUBLICATION_CHECKLIST.md) should GitHub visibility be changed manually. Changing visibility is not a code-review step or implied by merging this documentation.
+
+This document records an engineering licensing choice, not an individual legal opinion. The complete license governs.

@@ -1,0 +1,177 @@
+# Windows MVP integration candidate: Desktop UI + offline packaging
+
+**Status: integrated source on a draft branch, not a validated Windows executable or public release.**
+
+## Integration scope
+
+This branch is based on **draft PR #109**, itself based on the chart/shortcuts/localization/fictional CSV/PNG stack from #103/#99/#93/#82. It additionally incorporates **draft PR #105**, the consolidated offline Angular HTML-root, base, active CSS, executable JS, synthetic/private asset manifest and browser-privacy gates.
+
+The initial comparison found **zero overlapping modified paths** between these PR stacks, and the following merge was made **on a feature branch only**, with both parents recorded. All **23/23 files modified by #105** were imported as exact matching Git blobs; no CSS, privacy or script parser logic was rewritten.
+
+### Important follow-up: newer main baseline
+
+Git trees exposed additional original files from newer `main` that the older stacked UI branch did not yet carry, even though its `package.json` invokes one of them (`verify:native-ipc` through `verify:ipc`). Shipping the earlier naïve merged tree would have broken `npm run check`. Before opening this PR, the candidate was corrected by:
+
+- Restoring **16 exact files** present in the current build-line tree and absent from the older UI line, including the native IPC scanner/tests, source license and NOTICE, civil-time/queue prototypes and device-only UI preferences.
+- Adopting **13 additional exact updated files** from the current build-line tree where the UI stack had made no feature-specific edits (contributor guidance, publication/licensing docs, Rust runtime protocol and tests).
+- Reconciling the changed Angular component **narrowly**: preserve the UI stack's keyboard shortcuts, IT/EN inspector display, localized errors and safe PNG/fictional CSV; incorporate `browserUiPreferencesStorage`, `loadUiPreferences` and `saveUiPreferences` so light/dark and IT/EN choices survive restart when non-sensitive WebView storage is available; set the HTML document language before the first chart draw.
+- Preserving the **CPAL-1.0 'Powered by VirgoStars' footer attribution** from newer main alongside the CSV download status and existing controls. The local preferences module stores **only locale/theme/version**, never subjects, credentials or locations.
+- Updating both Italian and English settings help for device-only UI preference persistence.
+
+No real astronomy, cloud login or data sync was added. The existing local city selector does not alter fictional chart coordinates.
+
+## Reproducible source checks
+
+New `tests/windows-mvp-integration.test.mjs` covers the two build variants' package commands, CSS/JS/base/app-root and browser-privacy checks, Tauri output/CSP alignment, native IPC scanner presence, synthetic export boundaries, localized and locally persisted UI settings, shortcuts and CPAL attribution. These tests use only synthetic inputs and read source files; they do **not** launch WebView2.
+
+```powershell
+node --experimental-strip-types --test tests/windows-mvp-integration.test.mjs
+npm.cmd test
+npm.cmd run verify:ipc
+npm.cmd run doctor:build
+npm.cmd run build:ui
+npm.cmd run verify:css
+npm.cmd run verify:bundle
+cd src-tauri
+cargo test
+cd ..
+npm.cmd run tauri:build
+npm.cmd run doctor:verify
+```
+
+Build prerequisites: authorized sibling `astrological-charts` with its built library and synthetic pack; Node 22.12+ or 24; on Windows 11 Rust stable MSVC 1.90+, C++ Build Tools, WebView2. Use the existing documented setup; do not touch production or release artifacts. Private-artwork builds additionally require explicit asset-rights approval and should not be substituted for the public synthetic pack.
+
+## What was actually verified in this authoring environment
+
+- **Tree-level integration:** 23/23 build-gate changed paths retained **byte-identical** to PR #105; the resulting tree includes every file that existed on the selected #105 head, plus the UI/CSV/PNG integration-only paths. Source/notice/IPC/preferences restoration is explicitly recorded above.
+- **Node 22.16.0:** the unchanged upstream `tests/ui-preferences.test.mjs` and `src/app/ui-preferences.ts` matched their GitHub Git blob SHA-1 and passed **6/6 tests** in an isolated local mirror, including corrupted storage, blocked writes and no sensitive fields.
+- **TypeScript 5.8.3 strict standalone:** `src/app/ui-preferences.ts` and the actual `workspace-state.ts` compiled successfully with a small **test-only `Locale` declaration** consistent with the GitHub `translations.ts` exported union. This is **not** an Angular component compilation.
+- Earlier isolated PNG integration Node tests **19/19** passed and PNG modules compiled strictly; the unchanged new cross-feature test from PR #109 retains its exact Git blob hash.
+
+**Not yet executed in this combined checkout:** the new `tests/windows-mvp-integration.test.mjs` under the actual Node test runner, the full `npm test`, `verify:ipc` CLI with complete local source, Angular `ng build` against the installed sibling Charts library, Cargo, Tauri, real Windows GUI/CSS/WebGL or native PNG/CSV save behavior. The authoring environment does not have a complete authorized local private-repo checkout. Static GitHub source checks and partial local mirrors do not satisfy these gates.
+
+The source-side packaging verifiers can detect missing or inert CSS and unsafe files; only a **real Windows WebView2 run** can confirm the UI is fully styled and functional.
+
+## Windows 11 offline acceptance
+
+1. Run the source commands above and resolve all errors, including script and npm dependency mismatches, before attempting a native executable.
+2. Launch the actual Tauri build with the Angular development server stopped and network disconnected; verify the top bar, navigation, inspector and large chart are styled under the current restrictive CSP.
+3. Confirm Italian/English and light/dark changes, restart the app and verify only these settings persist. Do not store personal chart data in WebView storage.
+4. Exercise four fictional chart modes, Alt+Shift shortcuts without stealing text-input focus, planet/house formatting, synthetic PNG and fictional CSV download on a normal and high-DPI display. An anchor click or footer status is **not** evidence that the OS saved a file.
+5. Confirm offline city search behavior only if the licensed local catalog is separately available and authorized. Do not include the protected city ZIP in a public release.
+6. Review CPAL attribution readability, third-party licenses, sensitive assets, signing, installer and source publication separately.
+
+## Merge / publication controls
+
+This is a stacked **Draft PR** targeting #109's feature branch, **not** `main`. PR #105 and #109 were not merged into `main`, no GitHub Actions were used, no deployment/release was triggered, and no repository visibility changed. The current repository includes a protected city catalog release: **do not publish it publicly** until the maintainer has completed `docs/PUBLICATION_CHECKLIST.md` and removed/relocated that restricted attachment.
+
+Review the dependency chain and recompare the concurrently updated parent PRs before any final integration. The result is a **source integration candidate**, not a working public beta.
+
+## Native IPC timeout and packaging preflight reconciliation (13 November 2026)
+
+During integration review, main gained the completed **PR #113** fix for a Tauri runtime-probe ordering bug. The Windows MVP branch had retained the older `src/app/native/runtime-protocol.ts` and `tests/native-runtime.test.mjs` files, potentially reintroducing the error when integrated. Both are now **byte-identical to current main**, preserving the 4-second, fail-closed read-only IPC probe: the deadline is registered outside a Promise executor and before any native invocation is queued. A broken/synchronous timer cannot silently dispatch unbounded native IPC.
+
+The mainline's corresponding `docs/NATIVE_RUNTIME_BRIDGE.md` section has also been preserved, without changing account/astronomy capability claims.
+
+**Additional build guard:** `npm run tauri:build` and `npm run tauri:build:private` now invoke `npm run verify:ipc` *before* their existing Angular build and Tauri packaging stages. That avoids bypassing the IPC source/permission audit when a contributor runs the native build script directly instead of `npm run check`. This is a script-level gate; manually invoking the Tauri CLI can still bypass it. Optional city-catalog packaging is a separate workstream (#108), not implicitly authorized by this change.
+
+### Evidence (integrated candidate, not a native acceptance test)
+
+- **Actual Node.js 22.16.0 test runner** on byte-identical GitHub runtime source/test files (the updated source and test blobs are unchanged from merged PR #113): `node --experimental-strip-types --test tests/native-runtime.test.mjs` → **18/18 pass**, zero failures or skips.
+- **TypeScript 5.8.3 strict standalone typecheck** of `src/app/native/runtime-protocol.ts` → **pass**.
+- **All 10 current `tests/windows-mvp-integration.test.mjs` test bodies passed** in a JavaScript V8 isolated harness reading **19 exact branch file contents fetched from GitHub**; file reads were injected rather than executing Node's `readFileSync`. The eight original candidate checks plus two new contracts cover timeout registration before IPC and both normal/private native build script stage orders. **This is not a real `node --test` run or full Angular compile.**
+- Verified Git blob SHAs:
+  - Native helper: `ba933e01f69b678898c85427c1ba11aceadb296c`
+  - Native 18-case test file: `a99509bbd409e411121ee5dae1c997487ee8c7fe`
+  - Ten-case Windows integration file: `407477fffed23b615043131481a3089c4e0553f9`
+  - Native-gated `package.json`: `8a04016bff0b460694887abdf7c5e7957cf85894`
+
+**Still blocking beta claims:** actual complete-repository `npm test`, clean `npm ci`, public sibling Charts build, `npm run verify:ipc`, `npm run build:ui`, offline asset/private-output validation, Rust/Cargo, WebView2 Windows GUI CSS/keyboard/export/capability test, and full native packaging have **not** been executed on this integrated candidate. No main merge, production rollout, installer or repository visibility change has been performed.
+
+## Windows PE x64 executable gate (2026-11-13)
+
+The candidate now includes the **read-only PE32+ header verifier** already developed and reviewed in the separate Windows build line (#75, later carried by #105):
+
+- Exact imported `scripts/verify-windows-pe.mjs` checks a fixed native build path for a regular, non-symlinked AMD64 PE32+ Windows GUI executable; bounded DOS/PE offset, required executable section, image/section lengths, real byte ranges and best-effort unchanged file metadata. It reads **at most 8 KiB** without changing the file.
+- Exact imported `scripts/build-windows.cmd` and `scripts/build-windows-spike.ps1` run the PE verifier after native build and `doctor:verify`. Both launchers preserve explicit error handling; the PowerShell path packages the previously audited Angular output without rebuilding it through the ordinary `tauri:build` npm script.
+- Exact imported `tests/windows-pe-header.test.mjs` and `docs/WINDOWS_PE_HEADER_GATE.md` record negative cases and actual Windows manual acceptance. All five imported blobs remain byte-identical to #105 at the time of integration.
+
+### Executed verification of the imported files
+
+**Node.js 22.16.0** using the actual GitHub-matching source and test files in an isolated local mirror:
+
+```sh
+node --test tests/windows-pe-header.test.mjs
+node --check scripts/verify-windows-pe.mjs
+node --check tests/windows-pe-header.test.mjs
+```
+
+Result: **8/8 Node tests PASS; 0 failures or skips**. The tests cover valid synthetic AMD64 PE GUI, forged/truncated signatures, invalid sections and entrypoint, disk-read and symlink rejection, path-safe CLI usage, and exact launcher invocation after packaging. The four tested files exactly match the GitHub blob SHA-1 values:
+
+- PE validator: `361b3b370515b548fb791f2e1daedcb4c864acda`
+- PE tests: `6487857e2e20881e9f777a4ae6a5d699413c15f4`
+- Batch launcher: `28f8b60a2baeb403192de8df330f9d756e95d0cd`
+- PowerShell launcher: `8b6bf1acf39329322a59f0258ae2689044d3ab31`
+
+The verifier recognizes **structural consistency only**; it cannot prove that the app runs, that the binary is signed, that the image is safe or that WebView2 loads CSS and saves exported PNG/CSV files. A genuine Windows x64 executable was **not** built or launched in this test environment. Full combined `npm test`, Rust/Cargo, Angular/Charts and native Windows offline smoke remain release blockers.
+
+## Full offline Angular ESM dependency closure (13 November 2026)
+
+The Windows MVP integration now also incorporates the **#111** transitive Angular JavaScript module gate. Previously the build checked a valid `main*.js` entrypoint, active local CSS, a correct base href and image manifest, but could accidentally package a missing lazily loaded `chunk-*.js`. Such a failure could surface only after navigating into a feature **while offline**.
+
+The integrated `scripts/verify-angular-chunks.mjs` uses the **existing TypeScript 5.8.3 devDependency** to parse emitted ESM imports without executing bundled JavaScript. It walks all local static/literal dynamic `import()` edges, re-exports, recognized worker module URLs and their transitive dependencies; rejects absent or orphan chunks, unsafe/nonlocal references, malformed JavaScript, symlinks, computed import paths and oversized module graphs. It is deliberately fail-closed: a new Angular emission pattern must be reviewed rather than silently accepted.
+
+`scripts/verify-offline-bundle.mjs` now calls `inspectAngularChunkGraph(bundle, js.files)` **after** the existing active JavaScript-entrypoint gate and **before** SHA-256 image manifest validation. Because both `verify:bundle` and `verify:bundle:private` call this same verifier, the new gate applies to the regular synthetic and separately approved private-artwork build variants. It does **not** inspect external production services or licensed private assets.
+
+### Preservation and checks
+
+Five source, test and documentation files from the reviewed **#111** branch are integrated **byte-identically**, with these Git blob SHA-1 values:
+- `scripts/verify-angular-chunks.mjs`: `a9e887d532cb27d84cd65503e34304f8fd08bf7c`
+- `tests/verify-angular-chunks.test.mjs`: `4fdea6be041020f9a72c7afbecd8b249896dd0d3`
+- `docs/OFFLINE_JS_CHUNK_GRAPH.md`: `83b742263f476f412166948a294a29e970f13a23`
+- `scripts/verify-offline-bundle.mjs`: `0885a6f922a4c898ba2f82f6bc56f2dcd6f44970`
+- `tests/verify-offline-bundle.test.mjs`: `d6cf034f15865b32752170c8bf4d479c0cbd8027`
+
+Two additional source-contract tests were added to `tests/windows-mvp-integration.test.mjs`, verifying the actual script ordering, module graph invocation with the verified `js.files` entrypoints, both build variants, and reuse of the installed TypeScript package. **2/2 tests passed** in an isolated JavaScript V8 harness reading the exact six current GitHub branch source files. This was **not** a full Node `--test` invocation. The #111 author had separately reported **19/19 Node tests passed** in an earlier isolated version of the parser; its currently expanded test file and full integrated `tests/verify-offline-bundle.test.mjs` have **not** been rerun in the Windows MVP branch.
+
+The Windows integration file now contains **12 authored tests**. The previous 10 had already passed via isolated injected file-read tests; the two new ones were run separately. Do not interpret those two executions as a single 12-case Node test run.
+
+**Required before approval:** full checked-out `npm ci` and `npm test`, `npm run build:ui` and `npm run verify:bundle` against actual emitted Angular chunks, an approved private build only where rights allow, and genuine offline WebView2 navigation through lazily loaded routes. No Tauri executable, installer or release was generated by this integration. The standalone #111 PR and this stacked candidate overlap; choose a single merge path to prevent duplication.
+
+## Reconciled mainline Windows bootstrap and strict Angular host (13 Nov 2026)
+
+The Windows MVP candidate previously carried an outdated **duplicated CMD build pipeline** that used `npm install`, unpinned `cargo test`, and called the generic `tauri:build` script (thereby rebuilding Angular **after** the previous offline/CSS gate). Main already contained a revised single-build bootstrap, so this branch now imports the reviewed mainline files **byte-identically**:
+
+- `scripts/build-windows-spike.ps1` — SHA `b0bb3e6f98c5fddcff21f4fc9d900d8f3bffc70f`; uses `npm.cmd ci` and `cargo test --locked` against the committed `package-lock.json` and `src-tauri/Cargo.lock`, validates IPC, Angular bundle and CSS, then packages exactly the already-verified Angular output through the local offline Tauri CLI. No second Angular build after verification.
+- `scripts/build-windows.cmd` — SHA `8b5dfb8653a66ece0ba4e65ded27eee1c96458b5`; delegates to the same PowerShell bootstrap, propagates failures, and avoids separate mismatching commands.
+- `scripts/verify-desktop-app-root.mjs` — SHA `545edd5d38c37de68baa02393e58e470e83694fa`; rejects an extra live closing desktop root tag or inert/hidden/body-with-attributes HTML, extending prior checks for duplicate, commented or non-first roots.
+- `tests/desktop-app-root.test.mjs` — SHA `af5f93fe338c67a80e966aa339c1d90d52333af1`; includes the new HTML failure cases and checks the committed `src/index.html`.
+- `docs/WINDOWS_BUILD_GATE.md` — SHA `32323c9e5158dd25d82b0f4c7c4af32a6a2b228b`; documents the single-build and lockfile gate without outdated instructions to generate new lockfiles.
+- Added `tests/windows-spike-native-gates.test.mjs` — SHA `e34ae1bfbfd3cb87b30dd6ab425b467648a384c3`; preserves the seven mainline test cases for IPC/CSS order, pinned Rust test, offline Tauri packaging and strict PowerShell failure handling.
+
+**Lockfile verification:** Current `package-lock.json` and `src-tauri/Cargo.lock` have the same Git blob hashes on both the selected integration branch and main. The branch's checked Tauri `frontendDist` is `../dist/desktop/browser` with no `beforeBuildCommand`, so the reviewed script does not trigger a second hidden frontend build.
+
+Two further contracts were committed in `tests/windows-mvp-integration.test.mjs` — HTML host fail-closed checking and CMD delegation/single locked build. Current integration test Git blob `a536dfc1f7ed86ba1d2d52172d40896b53c3ad2e`.
+
+### Verification executed
+
+- **26/26 original test bodies pass** in a V8 isolated harness: 19 Angular root tests and 7 Windows bootstrap source tests, using the actual committed GitHub source and an injected `readFileSync` implementation that returns the corresponding GitHub file content.
+- **2/2 new integration test bodies pass** in the same kind of V8 harness against eight current GitHub source files.
+- All six imported files were read back and their Git object SHA values matched the corresponding mainline objects exactly.
+- **These V8 harness results are *not* a complete Node `--test` execution**, PowerShell test, `npm ci`, `cargo test --locked`, Angular build, native binary run, or WebView2 visual acceptance. No installer or production artifact is claimed.
+
+**Next mandatory work:** run the entire `npm test` on the complete branch with public sibling Charts dependencies, `npm run build:ui`, the exact local offline asset bundle and native Windows bootstrap. Test WebView2 under airplane mode, full CSS and chart sizing, PNG/CSV save behavior, input focus and lifecycle. Do not merge duplicate mainline fixes into main a second time; the current branch is a Draft candidate.
+
+## Bounded fit and synthetic CSV coverage restored (13 Nov 2026)
+
+The integrated Windows candidate already contains `MAX_CHART_SIDE_CSS_PX = 4096` in `src/app/workspace-state.ts` but had not inherited the later cross-module regression added to draft #103 after the #112 integration branch was created. The original **four-case** `tests/chart-fit-shortcuts-integration.test.mjs` has now been imported **byte-identically** (Git blob SHA `1ab6e5df3c2c59f04fdb923d77fbef4be1cc4a07`).
+
+**Actually executed in Node.js 22.16.0:** `node --experimental-strip-types --test tests/chart-fit-shortcuts-integration.test.mjs` → **4/4 passed, 0 failures/skips**, on an isolated mirror with exact Git blob SHA parity for the tested file and all four imported pure dependencies (`workspace-state.ts`, `desktop-shortcuts.ts`, `fictional-geometry.ts`, `synthetic-csv-export.ts`). TypeScript **5.8.3 strict standalone** compilation for those four TS files also passed. The tests cover large yet finite canvas sizes, repeated inspector/sidebar resizing, editable-field shortcut protection and preservation of all 22 fictional CSV coordinates under fit/view actions.
+
+This is **not** `npm test` against the complete Windows candidate or an Angular/Windows visual test. The Chart renderer's WebGL back-buffer size still depends on device pixel ratio and upstream graphics logic.
+
+### Status after source reconciliation
+
+The previous mainline build reconciliation retains the six original mainline Windows bootstrap and HTML root files unchanged. **26/26** original HTML/Windows source-test bodies and **2/2** new cross-feature source checks passed in a V8 harness with exact GitHub file contents; this was **not** the Node test runner. The original 4-case chart-fit suite **was** subsequently run with the actual Node test runner as described above.
+
+The Windows MVP candidate remains **Draft**. It still needs a clean full checkout, `npm ci`, `npm test`, standalone synthetic Charts build, `npm run build:ui`, `npm run verify:bundle`, locked Cargo/Tauri Windows packaging and genuine offline WebView2 screen, styling, keyboard and PNG/CSV-save tests. No main merge, release or production deployment was performed.

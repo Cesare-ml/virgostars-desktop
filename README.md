@@ -1,54 +1,62 @@
 # VirgoStars Desktop
 
-**Private experimental repository — future free/open-source desktop application for astrologers and astrology researchers.**
+**An experimental, free and open-source desktop workspace for astrology.**
 
-VirgoStars Desktop will provide an offline-first professional workstation for Windows, with macOS support planned, powered by the independent VirgoStars astronomy, astrology and graphics libraries. Users sign in with their VirgoStars account on first activation, then can work offline with previously authorized local data and synchronize safely when online.
+[License: CPAL-1.0](LICENSE) · [Contributing](docs/CONTRIBUTING.md) · [Roadmap](docs/ROADMAP.md) · [Security](docs/SECURITY_AND_PRIVACY.md)
 
-## Current state (2026-11-10)
+VirgoStars Desktop is an offline-first workstation in development. It combines an Angular/TypeScript user interface, a Tauri 2/Rust host and an interactive Three.js astrological chart renderer. The goal is a professional desktop environment for exploring natal charts, transits, synastry and research workflows on Windows, with macOS support planned.
 
-**Windows first launch (maintainer smoke test):** an experimental Tauri `.exe` has been built and opened on Windows 11, Angular renders synthetic chart data, and the local native runtime probe responds. **The visual interface is still substantially unstyled with a tiny chart.** This is NOT yet a usable beta. See [Windows GUI Smoke](docs/WINDOWS_GUI_SMOKE_2026-11-10.md) for CSS triage and the new `npm run verify:css` build-artifact check.
+**Project status: prototype, not a production release.** The current application can show **synthetic demonstration positions** and exercises a limited native runtime bridge. It does not yet offer verified real astronomical calculations, production cloud synchronization, a finished personal-data archive, a signed updater, or a supported public installer. Screenshots and fictional chart data must not be treated as scientifically calculated birth charts.
 
+## What works today
 
-- **Experimental desktop-owned Angular shell:** source now contains an Angular 20 application with a real astrological-charts renderer adapter, chart-first layout, collapsible navigation/inspector, light/dark themes, IT/EN labels, responsive sizing and PNG export paths. Synthetic assets are staged for Tauri 2 offline testing. **It has not been compiled or validated on Windows**; account login, sync, SQLite and real astronomy integration do not exist. See [Shell 001](docs/SHELL-001.md), [Spike 001](docs/SPIKE-001.md), [Native Runtime Bridge](docs/NATIVE_RUNTIME_BRIDGE.md) and [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md).
-- **Proposed stack:** Tauri 2, Angular/TypeScript, Rust and a local SQLite database, subject to an architecture spike.
-- **Windows first, macOS later:** no Windows-specific application logic in cross-platform modules.
-- **Private for now.** The future open-source license is **not yet decided**. Do **not** add a LICENSE file, claim that code is CPAL/MIT licensed or publish this repository without an explicit decision.
-- No access to live production accounts, birth data, credentials, databases, or AWS is granted by this repository.
-- No automatic GitHub Actions, deploys, releases, or production changes.
+- Desktop-owned Angular UI with responsive navigation, light/dark modes and Italian/English labels.
+- Integration adapter for the independently developed [Astrological Charts](https://github.com/Cesare-ml/astrological-charts) renderer, using locally generated synthetic assets.
+- Prototype Tauri/Rust runtime and an experimental offline location picker.
+- Synthetic-only build checks, unit tests, and read-only prerequisite diagnostics.
 
-## Proposed dependency boundaries
+Features under development include the canonical Rust astronomy engine, advanced astrological methods, secure encrypted local storage, account-aware synchronization, real chart computation and signed cross-platform distribution. The hosted VirgoStars service is separate from this open-source client.
 
-- [VirgoStars-Ephemeris](https://github.com/Cesare-ml/VirgoStars-Ephemeris): original Rust astronomy engine; experimental and not yet shipping-ready.
-- [astrological-functions](https://github.com/Cesare-ml/astrological-functions): astrology/domain functions; still experimental.
-- [astrological-charts](https://github.com/Cesare-ml/astrological-charts): Angular/Three.js chart renderer; visual/parity gates remain.
-- [astrological-assets](https://github.com/Cesare-ml/astrological-assets): separately licensed/approved artwork; private and **not approved for automatic public redistribution**.
-- [VirgoStars-Event-Ephemeris](https://github.com/Cesare-ml/VirgoStars-Event-Ephemeris): proposed compressed event data and index reader, not yet an integrated runtime.
-- [VirgoStars web/backend](https://github.com/Cesare-ml/virgo-stars): current user accounts and records; production-safe synchronization requires new versioned API contracts.
+## Build from source
 
-**Never copy credentials, private application source or users' data into this repository.** Experimental packages must not be described as validated astronomical computation or production integrations.
+This source build is aimed at contributors, **not** at end users seeking a finished installer.
 
-## Contribution workflow
+Prerequisites: Git, Node.js 22.12+ or 24+, npm, Rust with the Windows MSVC toolchain for a native Windows build, Microsoft C++ Build Tools and WebView2. A modern browser can be used for frontend development. See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-Work in dedicated branches and pull requests. Read `AGENTS.md` before touching the repository once it is introduced. Keep architecture decisions, offline/privacy invariants, and tests with each code change. No production migrations, deploys, automatic Actions, app store releases, public visibility changes or LICENSE selection without maintainer approval.
+The current npm dependency references a **local build** of the public Charts library. Clone both repositories as sibling directories:
 
-## Renderer lifecycle safety
+```powershell
+git clone https://github.com/Cesare-ml/astrological-charts.git
+git clone https://github.com/Cesare-ml/virgostars-desktop.git
+cd astrological-charts
+npm ci
+npm run build:library
+npm run demo:pack
+cd ../virgostars-desktop
+npm ci
+npm run doctor
+npm test
+npm run build:ui
+```
 
-The Angular demo protects its rendering state against out-of-order async scene completions and window teardown. See [Render Lifecycle](docs/RENDER_LIFECYCLE.md); **real WebView2 behavior still requires Windows verification**.
+Run the local Angular development UI with `npm start`. For a native prototype use `npm run tauri:dev`, or `npm run tauri:build` to attempt an executable build. `src-tauri/tauri.conf.json` currently has `bundle.active=false`: **these commands do not produce an end-user installer**. No real VirgoStars account, production service or restricted data package is required for the synthetic build.
 
-## Quick read-only setup check
+The synthetic asset generator is designed to fail closed on unexpected, modified or unapproved assets. If the local generated pack already exists, follow [Asset Pipeline](docs/ASSET_PIPELINE.md) rather than overwriting it.
 
-Run `node scripts/desktop-doctor.mjs` or `npm run doctor` on Windows to diagnose Node, Rust MSVC, WebView2, upstream Charts and Angular/Tauri build prerequisites. `npm run doctor:json` produces a shareable report with no personal paths. For the complete build attempt, use `scripts\\build-windows.cmd` (no PowerShell policy changes). See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md). This **does not prove the native app runs**; actual compilation and offline WebView2 testing remain pending.
+## Project architecture
 
-## Current working prototype (stacked draft PR)
+The Rust host owns future native storage, security-sensitive system integration and astronomical engine adapters. Angular owns UI state, while Charts owns rendering. No private backend source is required to build the synthetic preview. The upstream public [VirgoStars Ephemeris](https://github.com/Cesare-ml/VirgoStars-Ephemeris) is independently developed and **not yet integrated as a validated runtime provider**.
 
-The first separate prototype branch adds `src-tauri/`, Node-based synthetic asset staging, offline bundle checks, eight existing Node tests and an unverified follow-up Angular shell. The subsequent asset-pipeline hardening adds an isolated synthetic-only staging process and verifies the Angular bundle without compiling the old charts demo. See [offline asset pipeline](docs/ASSET_PIPELINE.md). This is **not yet an installer or production application**. Clone both authorized private repositories side-by-side and follow [Spike 001](docs/SPIKE-001.md). Neither production VirgoStars nor original artwork is required.
+For technical decisions and honest implementation status, read [Architecture](docs/ARCHITECTURE.md), [Offline Auth and Sync](docs/OFFLINE_AUTH_AND_SYNC.md), and [Roadmap](docs/ROADMAP.md).
 
-## Planned documentation
+## License, data and attribution
 
-The first design pull request introduces architecture, stack decision, offline authentication/sync, security, release/update strategy, roadmap, contributor guidelines and licensing decision log. These are **proposals**, not implemented features.
+Original VirgoStars Desktop source code is provided under the **Common Public Attribution License 1.0 (CPAL-1.0)**. See [LICENSE](LICENSE), [NOTICE](NOTICE) and [Licensing and Publication](docs/LICENSING_AND_PUBLICATION.md). The license includes required attribution information, including **Powered by VirgoStars** and https://www.virgostars.it/. Keep this notice visible where the CPAL requires it, including GUI launch or session notices where applicable. The project is free and open source; using its code does not grant ownership of the VirgoStars name or logo.
 
-## Catalogo località offline
+Third-party packages, original artworks, fonts, commercial location databases, astronomy kernels, service credentials and user information are **not** relicensed by this repository. The standard development build uses synthetic assets; third-party materials must be reviewed and licensed independently before distribution.
 
-Il prototipo include un selettore locale nel pannello Parametri e un convertitore SQLite per gli export di città e stati. La selezione è temporanea e non modifica il grafico sintetico. Il catalogo privato si prepara separatamente con l’overlay Tauri descritto in [Catalogo offline](docs/LOCAL_CITY_PACKAGING.md); una build standard non lo include.
+## Contributing and responsible disclosure
 
-Per compilare su Windows con il catalogo completo condiviso nella release privata, dopo i prerequisiti di Charts e l’autenticazione GitHub CLI, eseguire `npm run tauri:build:places:windows`. Vedere [Catalogo offline](docs/LOCAL_CITY_PACKAGING.md).
+Read [AGENTS.md](AGENTS.md) and [Contributing](docs/CONTRIBUTING.md). Use focused branches, tests and draft pull requests; report exactly what has been verified. Never include credentials, private information or production data in issues, fixtures or commits. For security issues, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
+
+This repository does not use GitHub Actions or perform automatic deployments. Publication of the source repository and distribution of release binaries are **separate maintainer decisions**.

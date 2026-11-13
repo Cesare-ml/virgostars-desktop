@@ -26,7 +26,10 @@ function fixture() {
 const run=f=>{const x=fixture();try{f(x);}finally{x.clean();}};
 
 test('verifies a desktop Angular build with exact synthetic assets',()=>run(f=>{
-  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+  const result = verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(result.count,1);
+  assert.equal(result.stylesheets,1);
+  assert.equal(result.scripts,1);
 }));
 test('detects tampered image in Angular output',()=>run(f=>{
   writeFileSync(f.img,'bad');
@@ -107,4 +110,137 @@ test('screen stylesheet without inline event handler remains valid',()=>run(f=>{
   );
   writeFileSync(index,html);
   assert.equal(verifyOfflineBundle(f.bundle,f.staging).stylesheets,1);
+}));
+
+
+test('rejects missing or hijacked HTML base before checking packaged CSS and assets',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const bad of ['', '<base href="https://example.invalid/">',
+                    '<base href="/assets/">', '<base href="/"><base href="/">']) {
+    writeFileSync(index, canonical.replace('<base href="/">', bad));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/DESKTOP BASE HREF/);
+  }
+}));
+
+test('rejects inert document base in HTML comment or template',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const inert of ['<!-- <base href="/"> -->',
+                      '<template><base href="/"></template>',
+                      '<noscript><base href="/"></noscript>']) {
+    writeFileSync(index,canonical.replace('<base href="/">',inert));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/DESKTOP BASE HREF/);
+  }
+  // An irrelevant commented-out base must not invalidate the real one.
+  writeFileSync(index,canonical.replace('<base href="/">','<!-- <base href="/wrong/"> --><base href="/">'));
+  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+}));
+
+
+test('rejects a missing local Angular main script with valid base, CSS and synthetic assets',()=>run(f=>{
+  rmSync(join(f.bundle,'main-LCL123.js'));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Local desktop script missing/);
+}));
+test('rejects a fake CSS link in a comment even when main script and base are valid',()=>run(f=>{
+  const file=join(f.bundle,'index.html');
+  const html=readFileSync(file,'utf8').replace('<link rel="stylesheet" href="styles-LOCAL123.css">',
+    '<!-- <link rel="stylesheet" href="styles-LOCAL123.css"> -->');
+  writeFileSync(file,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/no linked stylesheet/);
+}));
+test('rejects an inactive stylesheet in a valid local Angular bundle',()=>run(f=>{
+  const file=join(f.bundle,'index.html');
+  const html=readFileSync(file,'utf8').replace('rel="stylesheet" href="styles-LOCAL123.css"',
+    'rel="stylesheet" href="styles-LOCAL123.css" disabled');
+  writeFileSync(file,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Disabled stylesheet/);
+}));
+
+test('rejects a commented-out Angular main module even if its JS file exists',()=>run(f=>{
+  const file=join(f.bundle,'index.html');
+  const html=readFileSync(file,'utf8').replace(
+    '<script src="main-LCL123.js" type="module"></script>',
+    '<!-- <script src="main-LCL123.js" type="module"></script> -->'
+  );
+  writeFileSync(file,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Missing or unclosed Angular script element/);
+}));
+
+
+test('rejects a commented-out desktop app root despite valid CSS, JavaScript and image hash',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  writeFileSync(index,canonical.replace(
+    '<vs-desktop-app></vs-desktop-app>',
+    '<!-- <vs-desktop-app></vs-desktop-app> -->'
+  ));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/not the desktop-owned app/);
+}));
+
+test('rejects a duplicated or hidden desktop app root even with valid offline assets',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const bad of [
+    '<vs-desktop-app></vs-desktop-app><vs-desktop-app></vs-desktop-app>',
+    '<template><vs-desktop-app></vs-desktop-app></template>',
+    '<vs-desktop-app hidden></vs-desktop-app>'
+  ]) {
+    writeFileSync(index,canonical.replace('<vs-desktop-app></vs-desktop-app>',bad));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/not the desktop-owned app/);
+  }
+}));
+
+test('accepts a harmless HTML comment before the real Angular body root',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  writeFileSync(index,canonical.replace('<vs-desktop-app></vs-desktop-app>',
+    '<!-- synthetic comment --> <vs-desktop-app></vs-desktop-app>'));
+  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+}));
+
+test('verifies transitive Angular chunk imports with the exact offline asset manifest',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'import {a} from "./chunk-ONE.js"; console.log(a);');
+  writeFileSync(join(f.bundle,'chunk-ONE.js'),
+    'export {a} from "./chunk-TWO.js";');
+  writeFileSync(join(f.bundle,'chunk-TWO.js'),'export const a=42;');
+  const report=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(report.scripts,1);
+  assert.equal(report.modules,3);
+  assert.equal(report.chunks,2);
+  assert.equal(report.dependencies,2);
+}));
+
+test('rejects missing lazy Angular chunk before browser packaging',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'const load=()=>import("./chunk-LOST.js");');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Imported Angular JavaScript chunk missing/);
+}));
+
+test('rejects an orphan Angular JavaScript chunk not reachable from the entrypoint',()=>run(f=>{
+  writeFileSync(join(f.bundle,'chunk-ORPHAN.js'),'export const data=1;');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Unreferenced Angular JavaScript chunk/);
+}));
+
+test('rejects a missing JavaScript Worker module hidden behind import.meta.url',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./chunk-WORK-MISSING.js", import.meta.url), {type:"module"});');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Imported Angular JavaScript chunk missing/);
+}));
+
+test('accepts an offline JavaScript Worker module and transitive dependency',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./chunk-WORKER.js", import.meta.url), {type:"module"});');
+  writeFileSync(join(f.bundle,'chunk-WORKER.js'),
+    'import "./chunk-SHARED.js";');
+  writeFileSync(join(f.bundle,'chunk-SHARED.js'),
+    'export const marker="synthetic";');
+  const result=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(result.chunks,2);
+  assert.equal(result.modules,3);
+  assert.equal(result.dependencies,2);
 }));

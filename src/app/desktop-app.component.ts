@@ -23,6 +23,7 @@ import {requestSyntheticPngDownload} from './png-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
+import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -54,14 +55,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
+  private readonly uiPreferencesStorage = browserUiPreferencesStorage();
+  private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
 
   readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
   readonly planets = fictionalPlanets();
   readonly houses = fictionalHouses();
 
-  theme: UiTheme = 'light';
-  locale: Locale = 'it';
+  theme: UiTheme = this.initialUiPreferences.theme;
+  locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
   inspectorTab: InspectorTab = 'planets';
   selectedPlanet: DemoPlanet | null = null;
@@ -103,7 +106,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.fitChart();
   }
 
+  private persistUiPreferences(): void {
+    // Appearance and language are the only locally saved settings; no birth data.
+    saveUiPreferences(this.uiPreferencesStorage, {theme:this.theme, locale:this.locale});
+  }
+
   ngAfterViewInit(): void {
+    document.documentElement.lang = this.locale;
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     try {
@@ -161,12 +170,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   toggleLanguage(): void {
     this.locale = this.locale === 'it' ? 'en' : 'it';
     document.documentElement.lang = this.locale;
+    this.persistUiPreferences();
     this.cd.markForCheck();
   }
   toggleTheme(): void {
     // Do not change chart skin while a PNG export is rendering offscreen.
     if (this.exporting || this.destroyed) return;
     this.theme = this.theme === 'light' ? 'dark' : 'light';
+    this.persistUiPreferences();
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
   }

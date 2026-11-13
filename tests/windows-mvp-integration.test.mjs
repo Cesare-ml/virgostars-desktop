@@ -1,0 +1,226 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  DEFAULT_UI_PREFERENCES, UI_PREFERENCES_KEY,
+  loadUiPreferences, saveUiPreferences,
+} from '../src/app/ui-preferences.ts';
+
+const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+const json = path => JSON.parse(read(path));
+
+test('both Angular build variants require local bundle and privacy verification', () => {
+  const scripts = json('package.json').scripts;
+  assert.match(scripts['build:ui'], /ng build desktop && npm run verify:bundle$/);
+  assert.match(scripts['build:ui:private'], /ng build desktop --configuration private-artwork && npm run verify:bundle:private$/);
+  assert.equal(scripts['verify:bundle'], 'node scripts/verify-offline-bundle.mjs && npm run verify:privacy');
+  assert.equal(scripts['verify:bundle:private'], 'node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy');
+  assert.equal(scripts['verify:privacy'], 'node scripts/verify-build-privacy.mjs');
+  assert.equal(scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
+  assert.equal(scripts.check, 'npm run test && npm run verify:ipc && npm run build:ui');
+  assert.match(read('scripts/verify-native-ipc.mjs'), /desktop_runtime_info/);
+});
+
+test('offline bundle verifier requires valid root, base, CSS, JS and exact synthetic assets', () => {
+  const script = read('scripts/verify-offline-bundle.mjs');
+  for (const helper of [
+    'verifyDesktopAppRoot(html)',
+    'verifyDesktopBaseHref(html)',
+    'inspectDesktopStyles(bundle)',
+    'inspectDesktopScripts(bundle)',
+  ]) assert.ok(script.includes(helper), helper);
+  const indexes = ['verifyDesktopAppRoot(html)', 'verifyDesktopBaseHref(html)',
+    'inspectDesktopStyles(bundle)', 'inspectDesktopScripts(bundle)'].map(value => script.indexOf(value));
+  assert.ok(indexes.every(index => index >= 0));
+  assert.deepEqual([...indexes].sort((a,b) => a-b), indexes);
+  assert.match(script, /createHash\('sha256'\)/);
+  assert.match(script, /'Offline bundle contains unexpected or missing assets'/);
+  const privateScript = read('scripts/verify-build-privacy.mjs');
+  assert.match(privateScript, /DENIED_EXTENSION/);
+  assert.match(privateScript, /auditBuildPrivacy/);
+});
+
+test('source Angular, global styles and native Tauri output target the same offline app', () => {
+  const html = read('src/index.html');
+  const angular = json('angular.json');
+  const tauri = json('src-tauri/tauri.conf.json');
+  assert.match(html, /<base href="\/"/);
+  assert.match(html, /<vs-desktop-app><\/vs-desktop-app>/);
+  assert.equal(angular.projects.desktop.architect.build.options.outputPath, 'dist/desktop');
+  assert.equal(tauri.build.frontendDist, '../dist/desktop/browser');
+  assert.equal(angular.projects.desktop.architect.build.options.optimization.styles.inlineCritical, false);
+  assert.ok(angular.projects.desktop.architect.build.options.styles.includes('src/styles.css'));
+  assert.match(read('src/styles.css'), /vs-desktop-app/);
+  assert.equal(tauri.bundle.active, false);
+  assert.ok(tauri.app.security.csp.includes("script-src 'self'"));
+  assert.ok(!tauri.app.security.csp.includes("'unsafe-eval'"));
+});
+
+test('native IPC audit and current Rust protocol remain present alongside UI features', () => {
+  const ipc = read('scripts/verify-native-ipc.mjs');
+  const app = read('src/app/desktop-app.component.ts');
+  assert.match(ipc, /search_offline_places/);
+  assert.match(ipc, /desktop_runtime_info/);
+  assert.match(app, /inspectDesktopRuntime\(\)/);
+  assert.match(app, /OfflineCityPickerComponent/);
+  assert.doesNotMatch(app, /\b(?:fetch|localStorage|sessionStorage)\s*\(/);
+});
+
+test('device-only preferences round-trip without recording any account or birth data', () => {
+  let value = null;
+  const store = {
+    getItem(key) { assert.equal(key,UI_PREFERENCES_KEY); return value; },
+    setItem(key,updated) { assert.equal(key,UI_PREFERENCES_KEY); value=updated; },
+  };
+  assert.deepEqual(loadUiPreferences(null),DEFAULT_UI_PREFERENCES);
+  assert.equal(saveUiPreferences(store,{
+    theme:'dark',locale:'en',birthDate:'1999-01-01',token:'do-not-store'
+  }),true);
+  assert.deepEqual(JSON.parse(value),{version:1,theme:'dark',locale:'en'});
+  assert.deepEqual(loadUiPreferences(store),{theme:'dark',locale:'en'});
+  value='{"version":999,"theme":"dark","locale":"en"}';
+  assert.deepEqual(loadUiPreferences(store),DEFAULT_UI_PREFERENCES);
+});
+
+test('the composed Angular shell restores preferences and preserves hotkeys, localized errors and inspector', () => {
+  const app = read('src/app/desktop-app.component.ts');
+  assert.match(app, /browserUiPreferencesStorage\(\)/);
+  assert.match(app, /loadUiPreferences\(this\.uiPreferencesStorage\)/);
+  assert.match(app, /saveUiPreferences\(this\.uiPreferencesStorage/);
+  assert.match(app, /theme: UiTheme = this\.initialUiPreferences\.theme/);
+  assert.match(app, /locale: Locale = this\.initialUiPreferences\.locale/);
+  assert.match(app, /document\.documentElement\.lang = this\.locale/);
+  assert.ok((app.match(/this\.persistUiPreferences\(\);/g) ?? []).length >= 2);
+  assert.match(app, /HostListener\('window:keydown'/);
+  assert.match(app, /parseDesktopShortcut\(event\)/);
+  assert.match(app, /formatEclipticLongitude\(value, this\.locale\)/);
+  assert.match(app, /displayMessage\(this\.locale, this\.error\)/);
+});
+
+test('both safe fictional exports and required VirgoStars attribution remain visible in composed UI', () => {
+  const app = read('src/app/desktop-app.component.ts');
+  const template = read('src/app/desktop-app.component.html');
+  const strings = read('src/app/translations.ts');
+  const png = app.slice(app.indexOf('async exportPng()'),app.indexOf('exportSyntheticCsv():'));
+  assert.match(png, /validatePngDataUrl\(png\)/);
+  assert.match(png, /syntheticPngFilename\(exportMode,\s*exportTheme\)/);
+  assert.match(png, /requestSyntheticPngDownload\(safePng,\s*safeFilename/);
+  assert.match(app, /buildSyntheticChartCsv\(this\.planets, this\.houses\)/);
+  assert.match(app, /createSyntheticCsvBrowserPort\(\{/);
+  assert.match(template, /exportPng\(\)/);
+  assert.match(template, /exportSyntheticCsv\(\)/);
+  assert.match(template, /Powered by VirgoStars/);
+  assert.match(template, /https:\/\/www\.virgostars\.it\//);
+  assert.match(template, /csvStatusLabel/);
+  assert.match(template, /t\('shortcuts\.title'\)/);
+  assert.equal((strings.match(/"export\.csv":/g) ?? []).length,2);
+  assert.equal((strings.match(/"settings\.help":/g) ?? []).length,2);
+});
+
+test('current CPAL notices and source publication gate are preserved', () => {
+  const license = read('LICENSE');
+  const notice = read('NOTICE');
+  const policy = read('docs/LICENSING_AND_PUBLICATION.md');
+  assert.match(license, /Common Public Attribution License/i);
+  assert.match(notice, /VirgoStars/);
+  assert.match(policy, /city|dataset|catalog/i);
+  assert.match(read('AGENTS.md'), /CPAL-1\.0/);
+});
+
+test('native capability timeout must register outside Promise executor before IPC dispatch', () => {
+  const runtime = read('src/app/native/runtime-protocol.ts');
+  const regression = read('tests/native-runtime.test.mjs');
+  const timerStart = runtime.indexOf('handle = timers.set(');
+  const invocationStart = runtime.indexOf("const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'))");
+  assert.ok(timerStart >= 0 && invocationStart > timerStart,
+    'timer must be registered before the native invocation microtask');
+  assert.match(runtime, /if \(firedSynchronously\) throw new Error\('Native runtime probe timeout'\)/);
+  assert.match(runtime, /void timeout\.catch\(\(\) => \{\}\)/);
+  assert.match(regression, /deadline registration failure never starts an unbounded native IPC invocation/);
+  assert.match(regression, /scheduler that invokes its callback and then throws never dispatches IPC/);
+});
+
+test('both standard and private native packaging require the IPC audit before any UI build', () => {
+  const scripts = json('package.json').scripts;
+  for (const [command, uiBuild] of [
+    ['tauri:build', 'npm run build:ui'],
+    ['tauri:build:private', 'npm run build:ui:private'],
+  ]) {
+    const stages = scripts[command].split(' && ');
+    assert.deepEqual(stages, ['npm run verify:ipc', uiBuild, 'npm run prepare:icon', 'tauri build']);
+  }
+  assert.equal(scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
+});
+
+test('offline bundle traverses all Angular ESM chunks before checking image assets', () => {
+  const source = read('scripts/verify-offline-bundle.mjs');
+  const jsGate = read('scripts/verify-bundled-scripts.mjs');
+  const graph = read('scripts/verify-angular-chunks.mjs');
+  const tests = read('tests/verify-angular-chunks.test.mjs');
+  assert.match(source, /import \{ inspectAngularChunkGraph \} from '\.\/verify-angular-chunks\.mjs'/);
+  const entry = source.indexOf('const js = inspectDesktopScripts(bundle);');
+  const traversal = source.indexOf('inspectAngularChunkGraph(bundle,js.files);');
+  const images = source.indexOf("const assets=join(bundle,'assets')");
+  assert.ok(entry >= 0 && traversal > entry && images > traversal,
+    'local script entrypoints and all chunks must be checked before image manifest');
+  assert.match(jsGate, /return \{ scripts: names\.length, files: names \};/);
+  assert.match(source, /modules:graph\.modules,chunks:graph\.chunks,dependencies:graph\.dependencies/);
+  assert.match(graph, /Unreferenced Angular JavaScript chunk in bundle/);
+  assert.match(graph, /Imported Angular JavaScript chunk missing/);
+  assert.match(graph, /Unverifiable JavaScript worker source/);
+  assert.match(tests, /transitive missing chunk rejects/);
+  assert.match(tests, /orphan chunk is rejected/);
+});
+
+test('both approved Angular build variants inherit the offline chunk graph without new dependencies', () => {
+  const pkg = json('package.json');
+  const scripts = pkg.scripts;
+  assert.match(scripts['build:ui'], /&& npm run verify:bundle$/);
+  assert.match(scripts['build:ui:private'], /&& npm run verify:bundle:private$/);
+  assert.equal(scripts['verify:bundle'], 'node scripts/verify-offline-bundle.mjs && npm run verify:privacy');
+  assert.equal(scripts['verify:bundle:private'], 'node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy');
+  assert.equal(pkg.devDependencies.typescript, '5.8.3');
+  assert.equal(pkg.dependencies.typescript, undefined);
+  const graph = read('scripts/verify-angular-chunks.mjs');
+  assert.match(graph, /import ts from 'typescript'/);
+  assert.doesNotMatch(graph, /(?:fetch|https\.request|http\.request)\(/);
+});
+
+test('Windows CMD delegates to one reviewed PowerShell bootstrap and lockfile-pinned native build', () => {
+  const cmd = read('scripts/build-windows.cmd');
+  const ps = read('scripts/build-windows-spike.ps1');
+  assert.match(cmd, /powershell\.exe -NoProfile -NonInteractive -File/);
+  assert.match(cmd, /exit \/b %VS_BUILD_EXIT%/);
+  assert.doesNotMatch(cmd, /npm\.cmd\s+(?:install|ci|run\s+tauri:build)/);
+  const stages = [
+    "@('ci')",
+    "@('run', 'verify:ipc')",
+    "@('run', 'build:ui')",
+    "@('run', 'verify:css')",
+    "@('test', '--locked')",
+    "@('exec', '--offline', '--', 'tauri', 'build')",
+    "@('run', 'doctor:verify')"
+  ].map(value => ps.indexOf(value));
+  assert.ok(stages.every(pos => pos >= 0), 'missing one locked or reviewed step');
+  assert.ok(stages[0] < stages[1] && stages[1] < stages[2] &&
+    stages[2] < stages[3] && stages[3] < stages[4] &&
+    stages[4] < stages[5] && stages[5] < stages[6],
+    'validated Angular output must not be silently rebuilt');
+  assert.doesNotMatch(ps, /@\('run', 'tauri:build'\)/);
+  const tauri = json('src-tauri/tauri.conf.json');
+  assert.equal(tauri.build.frontendDist, '../dist/desktop/browser');
+  assert.ok(!tauri.build.beforeBuildCommand);
+});
+
+test('HTML bundle gate rejects duplicate close tags and invisible body attributes', () => {
+  const root = read('scripts/verify-desktop-app-root.mjs');
+  const cases = read('tests/desktop-app-root.test.mjs');
+  const bundled = read('scripts/verify-offline-bundle.mjs');
+  assert.match(root, /match\(\/<\\\/vs-desktop-app\\s\*\>\/gi\)/);
+  assert.match(root, /\^<body\\s\*>\$/i);
+  assert.match(cases, /rejects an extra closing root tag/);
+  assert.match(cases, /rejects hidden, inert and inline-hidden body attributes/);
+  assert.match(bundled, /verifyDesktopAppRoot\(html\)/);
+  const index = read('src/index.html');
+  assert.match(index, /<body><vs-desktop-app><\/vs-desktop-app><\/body>/);
+});
