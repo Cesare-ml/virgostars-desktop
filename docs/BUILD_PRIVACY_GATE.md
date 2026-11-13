@@ -1,33 +1,40 @@
 # Desktop browser packaging privacy gate
 
-Status: **Locally tested with synthetic filesystem fixtures; Windows/Tauri runtime unverified.**
+Status: **Locally tested on Node.js 22 with synthetic filesystem fixtures; Windows/Tauri runtime unverified.**
 
-The existing bundle verifier checks Angular entrypoints, CSP-compatible CSS and approved artwork checksums. This independent inspection targets accidental shipping of development files, local database snapshots or credential-like artifacts in the Tauri WebView output.
+The existing bundle verifier checks Angular entrypoints, CSP-compatible CSS and approved artwork checksums. This independent inspection blocks accidental inclusion of development files, credentials, local database snapshots and other unreviewed files in the WebView output. It runs for *both* synthetic and separately approved private-artwork builds.
 
-Run `npm run verify:privacy` to inspect only the generated `dist/desktop/browser` directory. Both `npm run verify:bundle` and `npm run verify:bundle:private` run this check after the current asset verifier. Consequently, the ordinary synthetic and separately approved private-artwork UI builds stop before Tauri packaging if the browser output fails either gate. No network access, original artworks, user records or account credentials are needed for this check.
+Run `npm run verify:privacy` to inspect only the generated `dist/desktop/browser` directory. `npm run verify:bundle` and `npm run verify:bundle:private` run this gate after the existing manifest verifier. Their corresponding `build:ui` scripts therefore stop before Tauri packaging if either check fails. No network access, original artwork, real birth records or account credentials are required.
 
-## Rejected artifacts
+## Exact file allowlist
 
-- `*.map`, emitted JavaScript/CSS with a source-map directive, and raw `*.ts`, `*.tsx`, `*.mts` or `*.cts` files.
-- `.env*`, dotfiles and dot-directories, common credentials/secrets/token files, private key/certificate formats, local SQLite/DB files, logs and backups.
-- Symbolic links, special files, unsafe or absent `index.html`, output paths colliding under Unicode-NFC/case-insensitive comparison, more than 10,000 output files, and JavaScript/CSS larger than 64 MiB per file.
+The browser bundle currently permits **only**:
 
-Normal local HTML, hashed JavaScript and CSS, font files, approved images and third-party license text are accepted. The existing exact manifest check remains responsible for determining which image assets are authorized.
+- Root `index.html`, and root-level Angular `.js`, `.mjs`, `.css` files with simple filename characters (such as `main-ABC123.js` or `styles-ABC123.css`).
+- Root `3rdpartylicenses.txt`, `LICENSE.txt`, and `NOTICE.txt` attribution files.
+- Approved-style images under `assets/img/` with `.png`, `.jpg`, `.jpeg`, or `.webp` extensions. The *separate* bundle manifest verifier must also confirm every image's exact filename, byte length and SHA-256.
+
+Everything else is rejected, including arbitrary `.json`, `.csv`, compressed backups, additional HTML/JS directories, arbitrary `.txt` files, `media/` fonts, unknown images and unexpected root files. **This is deliberately restrictive.** If a future Angular build needs WASM, local fonts, a favicon, or another type of file, the developer must explicitly review the provenance and extend this allowlist with tests; the gate must not be disabled simply to make the build succeed.
+
+The gate also rejects source maps or embedded source-map directives, dotfiles, keys, credentials, raw TypeScript, SQLite databases, logs, symlinks, special files and case-insensitive output path collisions. It bounds individual file size (64 MiB), total browser payload (256 MiB), entries (12,000), files (10,000) and directory nesting (32 levels), so unexpected output fails before packaging.
 
 ## Manual validation
 
-```sh
-node --test tests/verify-build-privacy.test.mjs
+Run from the repository on Node.js 22 or 24:
+
+~~~sh
+node --test tests/verify-build-privacy.test.mjs tests/verify-build-privacy-allowlist.test.mjs
+node --check scripts/verify-build-privacy.mjs
 npm run verify:privacy
 npm run build:ui
-# Only when an approved private-artwork configuration is available:
+# Only if an authorized private-artwork pack is staged:
 npm run build:ui:private
-```
+~~~
 
-The unit tests generate entirely fictional files. The script emits aggregate counts or fixed error reasons without printing paths or file contents.
+The synthetic regression fixtures exercise both accepted build layouts and rejected artifacts. The script emits aggregate counts or fixed error reasons without printing filenames or personal paths.
 
-## Limitations
+## Remaining limits
 
-This is a *denylist packaging gate*, **not** a general secret scanner, executable-code audit, proof that the compiled JavaScript contains no secrets, or a WebView2 network test. It does not inspect Rust binaries, native resources, metadata outside `dist/desktop/browser`, installers or update signatures. It cannot prevent deliberate filesystem replacement races between listing and reading. Separate rights, source attribution, dependency, scientific correctness, Windows GPU/CSP and release checks remain mandatory.
+This is a *build packaging guard*, **not** a general secret scanner, proof that compiled JavaScript has no embedded credentials, static analysis, WebView2 runtime test, or legal/artwork provenance audit. It does not inspect native Rust resources, installers, signing keys outside the browser output or data already inside binary files. It cannot prevent deliberate filesystem races between listing and reading. Additional rights, dependency, scientific, native IPC, Windows GPU/CSP and release gates remain mandatory.
 
-No production backend, login, user data, scientific algorithms, licensing, repository visibility, automated workflows or releases are modified by this feature.
+No production backend, login, sync, user records, scientific algorithms, license, repository visibility, automated workflow, deployment or release is changed by this feature.
