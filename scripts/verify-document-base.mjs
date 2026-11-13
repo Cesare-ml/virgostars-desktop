@@ -12,6 +12,13 @@ export function verifyDesktopBaseHref(html) {
   const markup = html.replace(/<!--[\s\S]*?-->/g, match => ' '.repeat(match.length));
   if (markup.includes('<!--') || markup.includes('-->')) invalid();
 
+  // The reviewed Angular document needs only charset and viewport metadata.
+  // Disallow http-equiv directives (especially refresh): they can silently
+  // navigate a packaged offline WebView or change document-level behavior.
+  // Account for '>' inside quoted attribute values when scanning tags.
+  const metaTags = markup.match(/<meta(?=[\s/>])(?:[^<>"']|"[^"]*"|'[^']*')*>/gi) ?? [];
+  if (metaTags.some(tag => /\bhttp-equiv\s*=/i.test(tag))) invalid();
+
   const bases = markup.match(/<base(?=[\s/>])[^>]*>/gi) ?? [];
   if (bases.length !== 1 || !/^<base\s+href\s*=\s*(["'])\/\1\s*\/?>$/i.test(bases[0])) invalid();
 
