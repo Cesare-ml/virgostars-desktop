@@ -18,12 +18,24 @@ const MAP_DIRECTIVE = /(?:\/\/[#@]|\/\*[#@])\s*sourceMappingURL\s*=/i;
 const ROOT_CODE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:js|mjs|css)$/;
 const ROOT_LICENSE = /^(?:3rdpartylicenses|LICENSE|NOTICE)\.txt$/i;
 const APPROVED_IMAGE = /^assets\/img\/(?:[a-zA-Z0-9_@. -]+\/)*[a-zA-Z0-9_@. -]+\.(?:png|jpg|jpeg|webp)$/;
+const APPROVED_IMAGE_DIRECTORY = /^assets\/img\/(?:[a-zA-Z0-9_@. -]+\/)*[a-zA-Z0-9_@. -]+$/;
+const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
 function fail(reason) { throw new Error('DESKTOP BUILD PRIVACY: ' + reason); }
 function regularDirectory(path) {
   const stat = lstatSync(path, { throwIfNoEntry: false });
   if (!stat || stat.isSymbolicLink() || !stat.isDirectory()) fail('bundle directory is missing or unsafe');
 }
+function portableName(name) {
+  if (/[. ]$/.test(name) || /[<>:"\\|?*\x00-\x1f]/.test(name) || WINDOWS_RESERVED_NAME.test(name)) {
+    fail('nonportable Windows bundle filename');
+  }
+}
+function approvedDirectory(relative) {
+  return relative === 'assets' || relative === 'assets/img' ||
+    APPROVED_IMAGE_DIRECTORY.test(relative);
+}
+
 function approvedFile(relative) {
   return relative === 'index.html' || ROOT_CODE.test(relative) ||
     ROOT_LICENSE.test(relative) || APPROVED_IMAGE.test(relative);
@@ -52,11 +64,13 @@ export function auditBuildPrivacy(bundleDir) {
       if (seen.has(key)) fail('case-insensitive duplicate output path');
       seen.add(key);
       if (name.startsWith('.')) fail('hidden file or directory in browser bundle');
+      portableName(name);
       if (entry.isSymbolicLink()) fail('symbolic link in browser bundle');
       const absolute = join(dir, name);
       const stat = lstatSync(absolute, { throwIfNoEntry: false });
       if (!stat || stat.isSymbolicLink()) fail('unsafe browser bundle entry');
       if (entry.isDirectory()) {
+        if (!approvedDirectory(child)) fail('unapproved browser bundle directory');
         if (!stat.isDirectory()) fail('unsafe browser bundle directory');
         inspect(absolute, child, depth + 1);
         continue;
