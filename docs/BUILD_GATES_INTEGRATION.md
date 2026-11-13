@@ -1,6 +1,6 @@
 # Desktop offline packaging gates — integration draft
 
-Status: **Prototype integration; source checks complete; combined test suite and native build not yet validated**.
+Status: **Prototype integration; 47 selected isolated Node tests and CLI packaging smoke passed; full Angular/Tauri/Windows build not yet validated**.
 
 This branch is **stacked on draft PR #95**, not on `main`. It assembles the independent build-artifact checks without duplicating astronomy, native IPC, auth or synchronization.
 
@@ -22,13 +22,45 @@ The combined fixture tests use only synthetic image bytes and generated HTML/CSS
 
 Imported code and tests from #49, #72 and #86 are byte-identical to their source draft branches at integration time (Git blob SHA checks). They have **not** been rewritten or silently simplified during this composition. The integration changes are limited to the orchestration, `package.json` scripts, and synthetic/private fixture tests.
 
-## Verification actually completed
+## Verification actually completed — 13 November 2026
 
-- `node --test tests/document-base.test.mjs`: **18/18 PASS** with Node 22.16.0, on a local copy with Git blob SHA parity with #95's head. The same base verifier and tests are inherited here.
-- GitHub Git blob identities: all 3 imported verifier modules and all 5 imported test files match their respective source draft branches exactly.
-- GitHub diff and package configuration inspected. No Actions or deployment were triggered.
+A minimal local checkout was constructed with the **exact GitHub blob bytes** of
+the HTML base, CSS, JS, asset-manifest and privacy verifiers, `package.json`,
+the Angular/Tauri configuration, and these five selected tests:
 
-**NOT executed for this combined branch:** complete `npm test`, combined offline and privacy integration test, Angular `npm run build:ui`, private artwork pipeline, Tauri/Rust/Windows compilation, WebView2 runtime checks. Individual source PRs document prior isolated Node tests; those results **do not certify this assembled pipeline**.
+- `tests/document-base.test.mjs`: **18/18 PASS**
+- `tests/desktop-packaging-integration.test.mjs`: **4/4 PASS**
+- `tests/verify-offline-bundle.test.mjs`: **18/18 PASS**
+- `tests/private-assets.test.mjs`: **4/4 PASS**
+- `tests/packaging-npm-contract.test.mjs`: **3/3 PASS**
+
+Combined: **47 tests passed, 0 failed, 0 skipped**, Node.js **22.16.0**.
+Every file used for the selected tests matched its GitHub content SHA; the
+new `packaging-npm-contract.test.mjs` was committed only after its local
+test passed and the SHA was independently checked on GitHub.
+
+A synthetic, entirely local browser bundle was created inside that isolated
+checkout. The **actual npm script entrypoints** were run:
+
+- `npm run verify:bundle` — **PASS** (1 image hash, 1 CSS, 1 JS and
+  the chained privacy audit inspecting 4 files).
+- `npm run verify:css` — **PASS** (local CSS present and active).
+- Added a synthetic `debug.json` to the bundle and reran
+  `npm run verify:bundle` — **expected rejection** with
+  `DESKTOP BUILD PRIVACY: unapproved browser bundle file`;
+  exit code 1. Test files were removed after the check.
+
+Original imported modules and test files from #49, #72 and #86 remain
+byte-identical to their draft sources (8/8 SHA comparisons). These checks
+confirm that the composed verification **works on synthetic fixtures**;
+the result is not a completed `npm test` from a full repository checkout.
+
+**Still NOT tested:** the complete repository test suite, real Angular
+`npm run build:ui` with its sibling `astrological-charts` dependency,
+actual owner-approved artwork packaging, Tauri/Rust native compilation,
+Windows WebView2 rendering/CSP/network behavior, macOS build or installer.
+The private-artwork test suite used **fictional generated asset bytes**
+and a synthetic injected manifest, not real artwork.
 
 Before marking ready for review, run locally in an authorized workspace:
 
