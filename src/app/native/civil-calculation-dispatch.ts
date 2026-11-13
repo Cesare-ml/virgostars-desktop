@@ -11,7 +11,7 @@ export type CommittedCivilCalculationDraftV1 = Readonly<{
   calculationKey: string;
 }>;
 
-/** Adapter boundary; the queue remains in draft #47 and is not copied here. */
+/** Generic queue port: the real latest-only queue exists but is not auto-wired. */
 export interface CivilCalculationSubmissionPort {
   submit(draft: CommittedCivilCalculationDraftV1): number | null;
 }
