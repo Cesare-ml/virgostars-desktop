@@ -39,7 +39,21 @@ The last two commands require a locally compiled Windows x64 executable. Run
 the existing Windows build and WebView2 smoke gates separately. Check the
 generated PE's sections and real entry RVA before accepting this extra guard.
 
-The synthetic tests construct a tiny, entirely invented PE-shaped byte buffer;
-they do not distribute a third-party binary, inspect real birth data, read
-secrets or access a production service. No update/release signing or
+The synthetic tests construct a tiny, entirely invented PE-shaped byte buffer.
+The on-disk regression also writes that fictional header to a temporary file,
+checks acceptance at the last meaningful executable byte, and checks rejection
+on the first padding byte. The test removes its temporary directory after use.
+It does not distribute a third-party binary, inspect real birth data, read
+secrets or access a production service.
+
+## Related draft PR
+
+Draft **#145** independently adds section overlap protections to the same
+`scripts/verify-windows-pe.mjs` file. Its raw-backed entrypoint requirement
+protects against virtual zero-fill, but the branch's current comparator does
+not also restrict `AddressOfEntryPoint` against nonzero `VirtualSize` when
+`SizeOfRawData` is larger (raw padding). This follow-up covers that boundary.
+The two PRs touch one common source file: reconcile both implementations
+and rerun the combined Node tests before merging either one; do not
+blindly choose one implementation or claim the source is already integrated. No update/release signing or
 installer is provided. No Github Actions or automatic merge are involved.
