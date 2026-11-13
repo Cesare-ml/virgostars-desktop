@@ -8,6 +8,12 @@ The existing offline bundle verifier already requires a local `styles*.css` file
 
 Synthetic, isolated regression tests live in `tests/verify-css-enabled-links.test.mjs`.
 
+### Quoted HTML attribute safety
+
+A previous regular-expression check could mistake `title="note onload=example"` for a real inline handler or `title="note rel=stylesheet"` for an actual link relationship. The verifier now reads link tag boundaries while respecting quoted `>` characters, parses attribute names and values separately, and **fails closed on duplicate or malformed attributes**. This avoids both false passes from inert text and false rejections of harmless metadata. Explicit `onload`, `onerror` and `disabled` attributes still fail.
+
+**Local isolated verification (Node.js 22.16.0):** `node --check` passes and `node --test tests/verify-css-enabled-links.test.mjs` passes **17/17** using byte-identical copies of the committed source/test files. These checks are not evidence of a full repository/Angular/Tauri/Windows acceptance run.
+
 ## Verification on an authorized checkout
 
 ```powershell
