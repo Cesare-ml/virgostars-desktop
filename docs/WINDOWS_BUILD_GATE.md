@@ -48,7 +48,7 @@ powershell -NoProfile -File .\scripts\build-windows-spike.ps1
 
 Or, from Command Prompt, invoke `scripts\build-windows.cmd`. The `.cmd` launcher now delegates to **the same** PowerShell bootstrap, returns its exit code, and never maintains a second independent installation or Tauri build path. It does not modify execution policy, install PowerShell or download anything by itself.
 
-The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies **using the reviewed npm lockfile (`npm ci`)**, runs Node tests, audits the reviewed native IPC command registry and Tauri capabilities, builds Angular with exact asset verification, checks that the bundled stylesheet exists, runs Rust unit tests with `cargo test --locked`, compiles Tauri **from that same already-audited Angular output** and checks expected output files. It stops at the first failed command.
+The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, **audits the committed Desktop npm lockfile before invoking any package installer**, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies **using the reviewed npm lockfile (`npm ci`)**, runs Node tests, audits the reviewed native IPC command registry and Tauri capabilities, builds Angular with exact asset verification, checks that the bundled stylesheet exists, runs Rust unit tests with `cargo test --locked`, compiles Tauri **from that same already-audited Angular output** and checks expected output files. It stops at the first failed command.
 
 The bootstrap invokes the locally installed Tauri CLI using `npm.cmd exec --offline -- tauri build` rather than `npm.cmd run tauri:build`: the general-purpose npm script rebuilds Angular and would invalidate the independent CSS check. The current `tauri.conf.json` has no `beforeBuildCommand`; adding one requires reviewing this gate again. The separate `npm run tauri:build` command remains available for ordinary standalone builds.
 
@@ -69,6 +69,7 @@ Only run `demo:pack` once, when `.local/demo-pack` is absent.
 In `virgostars-desktop`:
 
 ```powershell
+node scripts/verify-npm-lock.mjs
 npm.cmd ci
 npm.cmd test
 npm.cmd run verify:ipc
@@ -84,7 +85,7 @@ npm.cmd exec --offline -- tauri build
 npm.cmd run doctor:verify
 ```
 
-`package-lock.json` and `src-tauri/Cargo.lock` are **already committed and reviewed**. `npm ci` fails when the manifest and npm lockfile disagree, rather than updating the lockfile; `cargo test --locked` similarly rejects Rust lockfile drift. Review any deliberate dependency or lockfile updates in a separate PR; **never handwrite lockfiles**. The Tauri prototype still has `bundle.active=false`: no user installer or signed updater is produced.
+`package-lock.json` and `src-tauri/Cargo.lock` are **already committed and reviewed**. The offline, dependency-free `node scripts/verify-npm-lock.mjs` preflight checks the Desktop root manifest against npm lockfile v3, allows only the specific public sibling Charts symlink and SHA-512-pinned tarballs from `https://registry.npmjs.org/`. It rejects additional local links, other registries, missing integrity metadata and unapproved URLs before `npm ci`; it does **not** validate the sibling Charts repository's own lockfile. The npm registry allowlist does **not** prove package safety, authenticity beyond published hashes, vulnerability-free dependencies or harmless installation scripts. `npm ci` fails when the manifest and npm lockfile disagree, rather than updating the lockfile; `cargo test --locked` similarly rejects Rust lockfile drift. Review any deliberate dependency or lockfile updates in a separate PR; **never handwrite lockfiles**. The Tauri prototype still has `bundle.active=false`: no user installer or signed updater is produced.
 
 To use `npm.cmd run tauri:dev`, launch `npm.cmd start` in another terminal first. The development server is not needed by the intended packaged offline executable.
 
