@@ -7,10 +7,13 @@
 import { lstat, readdir, rmdir, unlink, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
+import { HORIZONS_BODIES } from './prepare-horizons-vector-plan.mjs';
 
-const RESPONSE = /^horizons-[a-z_]+\.txt$/;
+// Derive the complete file allowlist from the same public vector plan that
+// builds the ten requests; never accept arbitrary horizons-*.txt names.
+const RESPONSE_NAMES = new Set(HORIZONS_BODIES.map(body => `horizons-${body.bodyId}.txt`));
 const validName = name => typeof name === 'string' &&
-  (name === 'response-manifest.json' || RESPONSE.test(name));
+  (name === 'response-manifest.json' || RESPONSE_NAMES.has(name));
 const sameNode = (a, b) => a && b && a.dev === b.dev && a.ino === b.ino;
 const sameFile = (a, b) => sameNode(a, b) && a.isFile() && !a.isSymbolicLink() &&
   a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;

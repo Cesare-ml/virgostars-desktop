@@ -70,3 +70,24 @@ test('new response is private mode 0600 where POSIX supports chmod modes',async(
   if(process.platform!=='win32')assert.equal(st.mode&0o777,0o600);
   assert.equal(await cleanupOnlyOwnedFiles(directory,identity,[owned]),true);
 }));
+
+
+test('only the ten canonical plan-owned response basenames can be written',async()=>fixture(async({directory,identity})=>{
+  for(const name of ['horizons-foo.txt','horizons-___ .txt','horizons-earth.txt',
+    'horizons-sun_extra.txt','horizons-mars.txt','horizons-pluto.txt']) {
+    await assert.rejects(writeOwnedFileOnce(directory,identity,name,'fictional'),
+      /UNSAFE_OUTPUT_FILENAME/);
+  }
+  assert.deepEqual(await (await import('node:fs/promises')).readdir(directory),[]);
+  const owned=await writeOwnedFileOnce(directory,identity,'horizons-jupiter_barycenter.txt','fictional');
+  assert.equal(owned.name,'horizons-jupiter_barycenter.txt');
+  assert.equal(await cleanupOnlyOwnedFiles(directory,identity,[owned]),true);
+}));
+
+test('unknown horizons-style entry is treated as foreign and prevents cleanup',async()=>fixture(async({directory,identity})=>{
+  const owned=await writeOwnedFileOnce(directory,identity,'horizons-sun.txt','official-style synthetic');
+  await writeFile(join(directory,'horizons-unknown.txt'),'PRIVATE FOREIGN DATA');
+  assert.equal(await cleanupOnlyOwnedFiles(directory,identity,[owned]),false);
+  assert.equal(await readFile(join(directory,'horizons-unknown.txt'),'utf8'),'PRIVATE FOREIGN DATA');
+  assert.equal(await readFile(join(directory,owned.name),'utf8'),'official-style synthetic');
+}));

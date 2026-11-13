@@ -43,3 +43,9 @@ The acquisition now writes response bytes and the JSON manifest via `writeOwnedF
 The operation is still **not an atomic cross-process transaction**; hostile replacement after identity checks and before unlink remains possible. It is a defense against accidental data loss, not an OS sandbox.
 
 Node.js 22.16.0: 9 new actual-filesystem descriptor-ownership tests + 14 existing rollback tests pass; all locally available isolated tests total **51/51 PASS** (including the other 28 header/runner checks). The complete Horizons acquisition + bundle suite remains **unexecuted** in this isolated runtime. The full gate now requires **84 tests** instead of 75 (new suite of 9), and remains fail-closed when modules are missing.
+
+## D-17 — Canonical ten-target filename allowlist
+
+The rollback and exclusive descriptor writer now derive their permitted response basenames from the ten `HORIZONS_BODIES` entries in the same canonical query-plan module used by the acquisition tool. The manifest remains the sole other permitted filename. Previously, any `horizons-[a-z_]+.txt` name could be recorded as owned; the narrowed allowlist refuses unknown names such as `horizons-earth.txt`, `horizons-foo.txt` or `horizons-sun_extra.txt`, without affecting the ten actual target files.
+
+Two additional real-filesystem tests prove that unknown names are refused before creation and that an unknown Horizons-style file injected into the output directory is preserved along with the rest of the partial acquisition. **Executed locally on Node.js 22.16.0: 53/53 PASS** across the four available suites (14 rollback, 15 header, 13 regression runner, 11 owned writes). The `core` command remains PASS (29 tests), while the full `all` command reports `INCOMPLETE` (exit 2) in this isolated checkout. No authentic JPL data, full integrated download, native Windows build or merge is claimed.

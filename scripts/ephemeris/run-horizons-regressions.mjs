@@ -22,7 +22,7 @@ const SUITES=Object.freeze({
     'tests/owned-horizons-writes.test.mjs',
   ]),
 });
-const EXPECTED=Object.freeze({core:29,all:84});
+const EXPECTED=Object.freeze({core:29,all:86});
 const MAX_FILE=512*1024;
 const SAFE_CODE=Object.freeze({PASS:0,FAILED:1,INCOMPLETE:2,INVALID_ARGS:2,INTERNAL_ERROR:3});
 

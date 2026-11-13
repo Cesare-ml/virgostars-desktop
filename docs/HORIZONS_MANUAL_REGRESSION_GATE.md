@@ -56,3 +56,7 @@ No GitHub Actions, deploy, main merge or production change.
 ## D-16 follow-up — verified descriptor-owned writes
 
 The all-suite now also includes `tests/owned-horizons-writes.test.mjs` (9 real-file tests), increasing the required complete total from 75 to **84**. The isolated local mirror ran **51/51 PASS** (14 rollback + 15 header + 13 manual-runner + 9 owned-file tests). The manual `--suite core` still requires 29 PASS; `--suite all` reports **INCOMPLETE**, because the three acquisition/reference suites are not present in this local mirror. Do not describe the complete 84 tests as executed.
+
+## D-17 — Full-suite count updated to 86
+
+The descriptor-owned-file test module now contains **11** tests rather than 9: two new canonical-name and foreign-filename rejection cases. The `all` regression gate therefore requires **86 passes**, with zero failures/skips/cancellations. The `core` suite remains 29. Only **53** locally available tests were executed together on Node.js 22.16.0; the `all` gate still correctly returns `INCOMPLETE` in this isolated checkout and must be run on a complete authorized checkout before merge.
