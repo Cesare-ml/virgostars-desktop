@@ -22,6 +22,22 @@ function localModuleName(specifier) {
   return name;
 }
 
+/** Recognize import.meta.url as the base of a bundled, module-relative URL. */
+function isImportMetaUrl(node) {
+  return ts.isPropertyAccessExpression(node) && node.name.text === 'url' &&
+    ts.isMetaProperty(node.expression) &&
+    node.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+    node.expression.name.text === 'meta';
+}
+function isLiteral(node) {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+}
+function isModuleUrlConstructor(node) {
+  return ts.isNewExpression(node) && ts.isIdentifier(node.expression) &&
+    node.expression.text === 'URL' && node.arguments?.length === 2 &&
+    isImportMetaUrl(node.arguments[1]);
+}
+
 function importNames(name, text) {
   const source = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   if (source.parseDiagnostics.length) fail('Invalid emitted JavaScript syntax');
@@ -36,11 +52,25 @@ function importNames(name, text) {
         record(node.moduleSpecifier.text);
       }
     } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      if (node.arguments.length < 1 || node.arguments.length > 2 ||
-        !(ts.isStringLiteral(node.arguments[0]) || ts.isNoSubstitutionTemplateLiteral(node.arguments[0]))) {
+      if (node.arguments.length < 1 || node.arguments.length > 2 || !isLiteral(node.arguments[0])) {
         fail('Nonliteral dynamic JavaScript import');
       }
       record(node.arguments[0].text);
+    } else if (isModuleUrlConstructor(node)) {
+      // Angular/Web Workers can load scripts without an import() expression.
+      // Follow a literal module URL, or fail closed for computed targets.
+      const target = node.arguments[0];
+      if (!isLiteral(target)) fail('Nonliteral module-relative URL');
+      if (/\.m?js(?:[?#]|$)/i.test(target.text)) record(target.text);
+    } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) &&
+               ['Worker', 'SharedWorker'].includes(node.expression.text)) {
+      // A bare Worker('path.js') has no import() edge either. A validated
+      // new URL(..., import.meta.url) is handled by the visitor above.
+      const source = node.arguments?.[0];
+      if (source && isLiteral(source)) record(source.text);
+      else if (!source || !isModuleUrlConstructor(source)) {
+        fail('Unverifiable JavaScript worker source');
+      }
     }
     ts.forEachChild(node, visit);
   }
