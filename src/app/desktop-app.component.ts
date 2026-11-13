@@ -21,6 +21,7 @@ import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 import { nextInspectorTab } from './inspector-tab-navigation';
+import { isInspectorTab, loadInspectorTab, saveInspectorTab } from './inspector-tab-preference';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -64,7 +65,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   theme: UiTheme = this.initialUiPreferences.theme;
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
-  inspectorTab: InspectorTab = 'planets';
+  inspectorTab: InspectorTab = loadInspectorTab(this.uiPreferencesStorage);
   selectedPlanet: DemoPlanet | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
   cityClock: SelectedCityClock = {kind: 'not_selected'};
@@ -192,7 +193,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   setInspectorTab(tab:InspectorTab): void {
+    if (this.destroyed || !isInspectorTab(tab) || tab === this.inspectorTab) return;
     this.inspectorTab = tab;
+    // Navigation only. No chart parameters or personal data go into WebView storage.
+    saveInspectorTab(this.uiPreferencesStorage, tab);
     this.cd.markForCheck();
   }
   /** Tabs auto-activate because their panels are local and switch instantly. */
