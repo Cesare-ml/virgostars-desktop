@@ -38,6 +38,11 @@ function isModuleUrlConstructor(node) {
     isImportMetaUrl(node.arguments[1]);
 }
 
+function isWorkerConstructor(node) {
+  return ts.isNewExpression(node) && ts.isIdentifier(node.expression) &&
+    ['Worker', 'SharedWorker'].includes(node.expression.text);
+}
+
 function importNames(name, text) {
   const source = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   if (source.parseDiagnostics.length) fail('Invalid emitted JavaScript syntax');
@@ -61,9 +66,13 @@ function importNames(name, text) {
       // Follow a literal module URL, or fail closed for computed targets.
       const target = node.arguments[0];
       if (!isLiteral(target)) fail('Nonliteral module-relative URL');
-      if (/\.m?js(?:[?#]|$)/i.test(target.text)) record(target.text);
-    } else if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) &&
-               ['Worker', 'SharedWorker'].includes(node.expression.text)) {
+      // Every Worker/SharedWorker URL is an executable script, regardless of
+      // whether it ends in .js. Do not let remote, data:, or image URLs bypass
+      // the module allowlist simply by dropping their JavaScript extension.
+      if (isWorkerConstructor(node.parent) || /\.m?js(?:[?#]|$)/i.test(target.text)) {
+        record(target.text);
+      }
+    } else if (isWorkerConstructor(node)) {
       // A bare Worker('path.js') has no import() edge either. A validated
       // new URL(..., import.meta.url) is handled by the visitor above.
       const source = node.arguments?.[0];
