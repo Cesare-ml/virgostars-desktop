@@ -56,3 +56,23 @@ A PNG can be small in encoded bytes yet declare a huge image that expands during
 Synthetic regression tests recompute the IHDR CRC so pixel-area cases reach the new guard. A 4,096 × 4,096 or 16,384 × 1,024 declared header is accepted by this **header-only** validator, while slightly over-budget and much larger headers are rejected. Such tiny test payloads are intentionally not complete, dimension-matching PNG images; no assertion is made about full decoding or download success.
 
 This threshold is a provisional defensive cap for synthetic preview charts, **not** a proven safe memory guarantee and not a permanent resolution limit for production exports. No real chart calculations, storage, network access, cloud synchronization, private data, license or release settings are changed.
+
+### Executed checks for the pixel-budget change
+
+The focused check was **actually executed** in an isolated local mirror containing GitHub-identical source and test files, using Node.js 22.16.0:
+
+```text
+node --experimental-strip-types --test tests/png-export-safety.test.mjs
+# 12 tests, 12 passed, 0 failed
+```
+
+Strict TypeScript 5.8.3 type checking passed with the exact upstream `workspace-state.ts` file:
+
+```text
+tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/png-export-safety.ts
+# exit 0
+```
+
+Verified Git blob hashes of the tested files: `src/app/png-export-safety.ts` `560575813690cf64b6395af42ca905de128fb7c4`; `tests/png-export-safety.test.mjs` `192945c146f90cff7e84bc9b966adef376753b4e`; `src/app/workspace-state.ts` `d56b55933305ed7d01b3dd6ee719ad9fd77a2c05`.
+
+**Not executed:** full repository `npm test`, Angular `npm run build:ui`, native Tauri build, and Windows WebView2 PNG smoke. Do not treat a unit-pass as evidence of a successful on-device download.
