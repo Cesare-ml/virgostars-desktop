@@ -15,6 +15,16 @@ const SYSTEM_CLOCK: ClockDriver = {
 };
 const MAX_DATE_MS = 8_640_000_000_000_000;
 
+/** A transient invalid/throwing device clock must never preserve an obsolete instant. */
+function readClockTime(driver: ClockDriver): number {
+  try {
+    const value = driver.now();
+    return Number.isFinite(value) && Math.abs(value) <= MAX_DATE_MS ? value : NaN;
+  } catch {
+    return NaN;
+  }
+}
+
 export class DeviceClock {
   timestamp: number;
   private timer: unknown | null = null;
@@ -23,8 +33,7 @@ export class DeviceClock {
 
   constructor(driver: ClockDriver = SYSTEM_CLOCK) {
     this.driver = driver;
-    const initial = driver.now();
-    this.timestamp = Number.isFinite(initial) && Math.abs(initial) <= MAX_DATE_MS ? initial : NaN;
+    this.timestamp = readClockTime(driver);
   }
 
   /** Tick from actual wall time, not elapsed intervals, to survive OS sleep. */
@@ -36,9 +45,11 @@ export class DeviceClock {
 
   refresh(changed: () => void): void {
     if (this.disposed) return;
-    const next = this.driver.now();
-    if (!Number.isFinite(next) || Math.abs(next) > MAX_DATE_MS ||
-        Math.floor(next / 1000) === Math.floor(this.timestamp / 1000)) return;
+    const next = readClockTime(this.driver);
+    const alreadyUnavailable = Number.isNaN(next) && Number.isNaN(this.timestamp);
+    const sameSecond = Number.isFinite(next) && Number.isFinite(this.timestamp) &&
+      Math.floor(next / 1000) === Math.floor(this.timestamp / 1000);
+    if (alreadyUnavailable || sameSecond) return;
     this.timestamp = next;
     changed();
   }
