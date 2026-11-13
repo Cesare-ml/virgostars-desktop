@@ -6,6 +6,7 @@
 import {constants, closeSync, fstatSync, lstatSync, openSync, readSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isFileBackedPeEntryPoint} from './pe-entrypoint-bounds.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_HEADER_BYTES = 8192;
@@ -66,10 +67,10 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
       rawRanges.push([rawPointer, rawPointer + rawSize]);
       hasRawSection = true;
     }
-    // A nominally executable section is not evidence that an entrypoint in
-    // its zero-initialized virtual tail has actual on-disk executable bytes.
-    if (rawSize && (sectionFlags & 0x20000000) !== 0 &&
-        entryPoint >= virtualAddress && entryPoint - virtualAddress < rawSize) {
+    // The entry RVA must point to meaningful executable bytes in the file,
+    // not virtual zero-fill or raw alignment padding past VirtualSize.
+    if ((sectionFlags & 0x20000000) !== 0 &&
+        isFileBackedPeEntryPoint(entryPoint, virtualAddress, virtualSize, rawSize)) {
       executableEntry = true;
     }
   }
