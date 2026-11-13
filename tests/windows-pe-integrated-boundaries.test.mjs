@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {inspectWindowsPeHeader} from '../scripts/verify-windows-pe.mjs';
+import {inspectWindowsPeHeader, verifyWindowsExecutable} from '../scripts/verify-windows-pe.mjs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 // All bytes are fictional. Exercise the real integrated parser, not a second
 // implementation of its section/entrypoint checks.
@@ -56,4 +59,25 @@ test('integrated gate rejects unaligned raw offset before accepting section layo
   const bytes = fictionalPe();
   bytes.writeUInt32LE(0x201, 0x188 + 40 + 20);
   assert.throws(() => inspectWindowsPeHeader(bytes), /WINDOWS_PE_SECTION_RAW_ALIGNMENT/);
+});
+
+test('bounded on-disk verifier rejects both kinds of overlapping PE sections', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vs-pe-combined-'));
+  const path = join(dir, 'fictional.exe');
+  try {
+    writeFileSync(path, fictionalPe());
+    assert.equal(verifyWindowsExecutable(path).kind, 'windows_x64_gui');
+
+    const imageAlias = fictionalPe();
+    imageAlias.writeUInt32LE(0x1200, 0x188 + 8);
+    writeFileSync(path, imageAlias);
+    assert.throws(() => verifyWindowsExecutable(path), /WINDOWS_PE_SECTION_VIRTUAL_OVERLAP/);
+
+    const rawAlias = fictionalPe();
+    rawAlias.writeUInt32LE(0x200, 0x188 + 40 + 20);
+    writeFileSync(path, rawAlias);
+    assert.throws(() => verifyWindowsExecutable(path), /WINDOWS_PE_SECTION_RAW_OVERLAP/);
+  } finally {
+    rmSync(dir, {recursive:true, force:true});
+  }
 });
