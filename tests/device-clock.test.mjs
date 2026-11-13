@@ -227,3 +227,68 @@ test('synchronous disposal inside scheduler cancels returned handle without resu
   callback();
   assert.equal(clock.timestamp, 1_000);
 });
+
+test('start reentry from initial refresh cannot install a second timer', () => {
+  let now = 0;
+  let schedules = 0;
+  const cancelled = [];
+  const clock = new DeviceClock({
+    now: () => now,
+    schedule() { return ++schedules; },
+    cancel: handle => cancelled.push(handle),
+  });
+  now = 2_000;
+  let notifications = 0;
+  clock.start(() => {
+    notifications++;
+    clock.start(() => assert.fail('nested start must not register a timer'));
+  });
+  assert.equal(notifications, 1);
+  assert.equal(schedules, 1, 'at most one interval even when the UI callback reenters start');
+  clock.dispose();
+  assert.deepEqual(cancelled, [1]);
+});
+
+test('disposal during initial refresh never schedules an interval', () => {
+  let now = 0;
+  let schedules = 0;
+  let cancels = 0;
+  const clock = new DeviceClock({
+    now: () => now,
+    schedule() { schedules++; return 0; },
+    cancel() { cancels++; },
+  });
+  now = 2_000;
+  clock.start(() => clock.dispose());
+  assert.equal(schedules, 0, 'destroyed owner must not start even a temporary timer');
+  assert.equal(cancels, 0);
+  assert.equal(clock.timestamp, 2_000);
+});
+
+test('synchronous scheduler tick cannot reenter a second start', () => {
+  let now = 0;
+  let schedules = 0;
+  let cancels = 0;
+  const clock = new DeviceClock({
+    now: () => now,
+    schedule(callback) {
+      schedules++;
+      if (schedules === 1) {
+        now = 2_000;
+        callback();
+      }
+      return schedules;
+    },
+    cancel() { cancels++; },
+  });
+  let notifications = 0;
+  clock.start(() => {
+    notifications++;
+    clock.start(() => assert.fail('nested start must not register a timer'));
+  });
+  assert.equal(clock.timestamp, 2_000);
+  assert.equal(notifications, 1);
+  assert.equal(schedules, 1);
+  clock.dispose();
+  assert.equal(cancels, 1);
+});
