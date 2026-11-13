@@ -47,13 +47,18 @@ node --check scripts/verify-document-base.mjs
 node --test tests/document-base.test.mjs
 ```
 **Actually run in an isolated checkout:** syntax check succeeded; the
-expanded regression suite passed **16/16 tests** with Node.js 22.16.0.
+expanded regression suite passed **18/18 tests** with Node.js 22.16.0.
 The executed source and test match their exact current GitHub blobs:
 `eec569b6a8588b2ed14ee9aa4bfdb4a3f2f95af3` and
-`576d3435a5ed97e91996315237a22c7f94770a1b`.
+`01883ec628ff7103a9e6ee0e0ea6ca09fca658a0`.
 The extra tests cover inert/commented `<base>` tags, malformed comments,
 `<template>`/`<noscript>` containment, Angular's metadata-first head and
-unexpected elements preceding a base.
+unexpected elements preceding a base. Two additional source-contract tests
+read byte-identical copies of the current committed `src/index.html`,
+`angular.json`, and `src-tauri/tauri.conf.json`: they verify the canonical
+base, the Angular output directory matched by Tauri `frontendDist`, the
+existing `base-uri 'self'` CSP directive, and critical CSS optimization left
+disabled.
 
 Before merging, run the complete `npm test` suite and
 `npm run build:ui`, `npm run verify:bundle`,
@@ -77,4 +82,16 @@ Windows installer, deployment, GitHub Actions, or main merge.
 
 This touches `scripts/verify-offline-bundle.mjs`, also modified by
 some independently drafted build-verification PRs (for example #49).
-Reconcile those changes deliberately before merging.
+Reconcile those changes deliberately before merging. In particular:
+- **PR #49** independently verifies that the built Angular JavaScript
+  entrypoint exists and is local. Both checks belong in the final
+  `verifyOfflineBundle` pipeline; neither makes the other redundant.
+- **PR #72** independently checks the final WebView output for unapproved
+  files, Windows-incompatible names and sensitive build artifacts. Its
+  package.json integration must run after the bundle verifier.
+- **PR #86** supersedes the overlapping CSS-active-link safeguard from
+  closed, unmerged PR #91. Prefer its quote-aware link parser when integrating
+  the stylesheet check. Do not merge both implementations.
+
+No integration between these draft branches was executed here. These are
+coordination notes, not an approval to merge any of them.
