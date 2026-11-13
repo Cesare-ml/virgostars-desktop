@@ -8,7 +8,7 @@ const root='/fake/desktop', charts='/fake/astrological-charts';
 const baseFiles=new Set([
   join(charts,'package.json'), join(root,'package.json'),join(root,'angular.json'),join(root,'src-tauri','tauri.conf.json')
 ]);
-function dependencies({stage='setup', platform='linux', additional=[], versions={}}={}) {
+function dependencies({stage='setup', platform='linux', additional=[], versions={}, nodeArch='x64'}={}) {
   const files=new Set([...baseFiles,...additional]);
   const map={
     [join(root,'package.json')]:{ dependencies:{ 'grafici-astrologici':'file:../astrological-charts/dist/grafici-astrologici' } },
@@ -24,7 +24,7 @@ function dependencies({stage='setup', platform='linux', additional=[], versions=
     if(name==='reg.exe') return 'registry present';
     return null;
   };
-  return diagnoseEnvironment({root,charts,stage,platform,nodeVersion:'v22.16.0',exists:file=>files.has(file),json:file=>map[file]??null,command});
+  return diagnoseEnvironment({root,charts,stage,platform,nodeVersion:'v22.16.0',nodeArch,exists:file=>files.has(file),json:file=>map[file]??null,command});
 }
 const find=(report,key)=>report.checks.find(item=>item.id===key);
 
@@ -118,7 +118,7 @@ test('Windows MSVC toolchain requires windows-msvc host',()=>{
 });
 
 test('warning on uncertain WebView2 registry presence is not a false missing report',()=>{
-  const report=diagnoseEnvironment({platform:'win32',root,charts,exists:file=>baseFiles.has(file),
+  const report=diagnoseEnvironment({platform:'win32',nodeArch:'x64',root,charts,exists:file=>baseFiles.has(file),
     command:(name,args)=>name==='reg.exe'?null:'installed',
     json:file=>file===join(charts,'package.json')?{name:'grafici-astrologici'}:
       file===join(root,'package.json')?{dependencies:{'grafici-astrologici':'file:../astrological-charts/dist/grafici-astrologici'}}:
