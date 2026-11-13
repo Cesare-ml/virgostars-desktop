@@ -71,6 +71,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
+  get languageToggleLabel(): string { return this.t(this.locale === 'it' ? 'language.switchToEnglish' : 'language.switchToItalian'); }
   get activeThemeLabel(): string { return displayThemeLabel(this.locale, this.theme); }
   get errorText(): string { return displayMessage(this.locale, this.error); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
