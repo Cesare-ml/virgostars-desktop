@@ -11,6 +11,15 @@ const isRecord=x=>x!==null && typeof x==='object' && !Array.isArray(x);
 const assert=(condition,message)=>{if(!condition)throw new Error(message)};
 const canonical=x=>JSON.stringify(Object.entries(x).sort(([a],[b])=>a.localeCompare(b)));
 
+// SRI for SHA-512 must contain exactly 64 digest bytes in canonical padded Base64.
+// A loose "sha512-" prefix is not sufficient to establish usable npm integrity.
+function canonicalSha512Integrity(value) {
+  if (typeof value !== 'string' || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(value)) return false;
+  const encoded=value.slice('sha512-'.length);
+  const digest=Buffer.from(encoded,'base64');
+  return digest.length===64 && digest.toString('base64')===encoded;
+}
+
 export function auditNpmLock(manifest,lock) {
   assert(isRecord(manifest) && isRecord(lock) && lock.lockfileVersion===3 &&
     isRecord(lock.packages) && isRecord(lock.packages['']), 'Invalid npm lock structure');
@@ -37,8 +46,7 @@ export function auditNpmLock(manifest,lock) {
     if(name===LOCAL_TARGET || name===LOCAL_LINK)continue;
     assert(name.startsWith('node_modules/') && !name.split('/').includes('..') &&
       isRecord(entry) && entry.link!==true, 'Unreviewed npm package path or link');
-    assert(typeof entry.resolved==='string' && typeof entry.integrity==='string' &&
-      /^sha512-[A-Za-z0-9+/]+={0,2}$/.test(entry.integrity),
+    assert(typeof entry.resolved==='string' && canonicalSha512Integrity(entry.integrity),
       'Missing verified npm package origin or SHA-512 integrity');
     let url;
     try {url=new URL(entry.resolved)}catch{throw new Error('Invalid npm package URL')}
