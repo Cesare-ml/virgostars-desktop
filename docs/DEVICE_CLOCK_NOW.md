@@ -69,3 +69,9 @@ After the Rust VirgoStars-Ephemeris provider is validated and exposed via a **se
 ## Integration
 
 This change is stacked on draft PR #45 (device-only UI preferences), not yet on `main`. UI PR #7 and the AI inspector PR #23 may conflict on the desktop shell; reconcile in review. No GitHub Actions, merge, release, license/publication change or backend deployment.
+
+## Fail-closed device clock samples (2026-11-13 follow-up)
+
+A transient invalid device-time reading (NaN, Infinity, an out-of-range value, or a throwing `ClockDriver.now()`) **must invalidate the previous displayed instant** rather than leaving a plausible but stale date/time visible. The clock stores `NaN` during an invalid sample, so both device and selected-city formatters show their unavailable state, and the accessible ISO `datetime` is absent. Once the device clock supplies a valid time again, the normal one-second sampler recovers without recalculating any astrological positions.
+
+Repeated invalid samples generate no duplicate UI notification; the change to unavailable and the subsequent recovery each notify once. Errors and paths from the underlying driver are not logged or exposed. Focused Node tests cover valid→invalid→valid and throwing source behavior. Angular build and Windows WebView2 resume-from-sleep/manual-clock-change acceptance are still pending. This is a stacked draft on the existing device/city clock PR, not a production release.
