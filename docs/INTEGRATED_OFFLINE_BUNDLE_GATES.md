@@ -19,6 +19,39 @@ The integrated `verifyOfflineBundle` validates **base → CSS → JavaScript →
 
 The approved-private-artwork fixture from #95 had been updated with a correct `<base>` but lacked the local Angular `main*.js` script required by #49. As a result, naïvely combining the PRs would break the positive private-mode test. The consolidated fixture now includes a synthetic local JS module, and asserts that private mode rejects a missing module and an incorrect base. Synthetic-mode integration tests additionally cover an inactive CSS link, a fake link inside a comment, a missing JS module and a commented-out JS entrypoint that must not be considered executable.
 
+### Angular app root is a real DOM host (follow-up)
+
+The previous offline verifier only searched for the string
+`<vs-desktop-app>`. An HTML comment, a script string or a hidden
+`<template>` could satisfy that check despite there being **no actual
+mounted Desktop host**. The generated Angular index must now contain
+**exactly one empty** `<vs-desktop-app></vs-desktop-app>` as the **first
+element in `<body>`**, with only whitespace or closed comments before it.
+
+`scripts/verify-desktop-app-root.mjs` checks this narrow build contract;
+`verifyOfflineBundle` runs it before the base/CSS/JS checks, after the
+legacy-bootstrap and remote-resource preflight so existing diagnostic
+precedence remains intact. Missing, commented, nested, duplicated,
+nonempty or hidden hosts fail closed. This is intentionally limited to
+the current Angular-generated HTML; a future intentional change to the
+root markup requires updating the contract and tests, not disabling it.
+
+**Validation performed** in an isolated Node.js checkout:
+`node --test tests/desktop-app-root.test.mjs` **13/13 PASS** (0 failures
+or skips), plus syntax validation of the root verifier. The tested source
+and test match exact GitHub blob hashes:
+`de444db295eb6196721a19c44582888d7a60648f` (verifier),
+`dbdd7a9338b87e5ef4f00e8feac9788acc3b05fd` (tests).
+The positive source-contract case uses the current `src/index.html`,
+whose canonical empty root remains unchanged.
+
+Three extra synthetic cases were added to
+`tests/verify-offline-bundle.test.mjs` for fake commented hosts,
+duplicated/hidden hosts and harmless comments before the real root.
+**These full integrated fixture cases were committed but not executed
+in a complete repository checkout.** Nor were the full `npm test`,
+Angular build, Tauri compilation or Windows WebView2 smoke test.
+
 ## Output privacy gate (integration with draft #72 / #104)
 
 `scripts/verify-build-privacy.mjs` and its three dedicated test suites were imported from the existing privacy-audit integration draft #104, preserving its Windows-portable path checks, rejection of credentials/source maps/local databases/symlinks, size limits, and safe error messages. The draft's additional end-to-end packaging fixture suite is included too. The existing npm commands for synthetic and approved private artwork now **only** run the privacy scan after the manifest/CSS/JS/base verifier succeeds (shell `&&`).
