@@ -84,3 +84,36 @@ test('six-token query cancels pending work and shows explicit length limit',()=>
  h.state.input('one two three four five');
  assert.equal(h.state.status,'typing');
 });
+
+test('overlength pasted city input is never searched as an accepted prefix',()=>{
+ const h=harness();
+ h.state.input('Firenze');
+ assert.equal(h.tasks.size,1);
+ h.state.input('Firenze' + 'x'.repeat(1000));
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal([...h.state.query].length,81);
+ assert.equal(h.tasks.size,0);
+ h.flush();assert.equal(h.calls.length,0);
+ h.state.input('Firenze');
+ assert.equal(h.state.status,'typing');
+ h.flush();assert.deepEqual(h.calls,[['Firenze',12]]);
+});
+
+test('emoji input length counts Unicode scalars without broken surrogate pairs',()=>{
+ const h=harness();
+ h.state.input('🙂'.repeat(80) + 'Fi');
+ assert.equal([...h.state.query].length,81);
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal(h.state.query,'🙂'.repeat(81));
+ assert.equal(h.tasks.size,0);
+ h.state.input('🙂'.repeat(41) + 'Fi');
+ assert.equal(h.state.status,'typing');
+ h.flush();assert.equal(h.calls.length,1);
+});
+
+test('overlong whitespace still reports limit and never searches a prefix',()=>{
+ const h=harness();h.state.input(' '.repeat(90));
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal([...h.state.query].length,81);
+ h.flush();assert.equal(h.calls.length,0);
+});
