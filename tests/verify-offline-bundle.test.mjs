@@ -244,3 +244,17 @@ test('accepts an offline JavaScript Worker module and transitive dependency',()=
   assert.equal(result.modules,3);
   assert.equal(result.dependencies,2);
 }));
+
+test('rejects an extensionless remote Worker URL despite a valid main script and image manifest',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("https://example.invalid/remote-worker", import.meta.url), {type:"module"});');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /DESKTOP JS CHUNKS: Nonlocal or invalid JavaScript import/);
+}));
+
+test('rejects an image URL used as a JavaScript Worker source',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./assets/img/fictional.png", import.meta.url), {type:"module"});');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /DESKTOP JS CHUNKS: Unexpected JavaScript import filename/);
+}));
