@@ -1,4 +1,5 @@
-import {offlinePlaceQueryProblem, type OfflinePlaceV1, type PlaceQueryState} from './native/offline-places-contract';
+import {offlinePlaceQueryProblem} from './native/offline-city-query.js';
+import type {OfflinePlaceV1, PlaceQueryState} from './native/offline-places-contract';
 
 export type CityPickerStatus =
   | 'idle' | 'query_too_short' | 'query_too_long' | 'typing' | 'loading' | 'ready' | 'empty' | 'selected'
