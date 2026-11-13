@@ -10,7 +10,7 @@ import {
   chartSide, CHART_MODES, type ChartMode, type InspectorTab, type UiTheme
 } from './workspace-state';
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
-import { translate, type Locale, type MessageKey } from './translations';
+import { displayLanguageAction, displayMessage, displayThemeLabel, translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { parseDesktopShortcut } from './desktop-shortcuts';
@@ -70,14 +70,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ready = false;
   status: MessageKey = 'chart.loading';
   runtimeStatus: MessageKey = 'runtime.checking';
-  error = '';
+  error: MessageKey | null = null;
   csvStatus: MessageKey | null = null;
 
   t(key:MessageKey): string { return translate(this.locale,key); }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
-  get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
+  get languageToggleLabel(): string { return displayLanguageAction(this.locale); }
+  get activeThemeLabel(): string { return displayThemeLabel(this.locale, this.theme); }
+  get errorText(): string { return displayMessage(this.locale, this.error); }
   get csvStatusLabel(): string { return this.csvStatus ? this.t(this.csvStatus) : ''; }
   formatDegrees(value:number): string { return formatEclipticLongitude(value, this.locale); }
 
@@ -217,7 +219,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async draw(): Promise<void> {
     const ticket = this.drawGeneration.begin();
     if(ticket === null) return;
-    this.busy=true; this.ready=false; this.error=''; this.status='chart.loading';
+    this.busy=true; this.ready=false; this.error=null; this.status='chart.loading';
     this.cd.markForCheck();
     try {
       // Capture the request's mode, overlay and skin before awaiting the library.
@@ -283,7 +285,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private renderError(_error:unknown): void {
     // Do not print private birth records or paths; detailed diagnostics remain
     // available through dev-only tooling during the synthetic renderer spike.
-    this.error=this.t('chart.failed');
+    this.error='chart.failed';
     this.ready=false;
     this.busy=false;
     this.cd.markForCheck();
