@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { verifyDesktopAppRoot } from '../scripts/verify-desktop-app-root.mjs';
 
 const app = '<vs-desktop-app></vs-desktop-app>';
@@ -49,4 +50,42 @@ test('does not expose the submitted HTML or secret values in errors', () => {
   const secret = 'privatesyntheticinvalid';
   assert.throws(() => verifyDesktopAppRoot(html('<script>' + secret + '</script>')), error =>
     error.message.includes('not the desktop-owned app') && !error.message.includes(secret));
+});
+
+test('committed Angular src/index.html preserves the first-child empty desktop host', () => {
+  const source = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
+  assert.equal(verifyDesktopAppRoot(source), true);
+});
+
+test('rejects an extra closing root tag after the canonical host', () => {
+  assert.throws(() => verifyDesktopAppRoot(html(app + '</vs-desktop-app>')), /not the desktop-owned app/);
+});
+
+test('rejects an extra closing root tag outside body', () => {
+  assert.throws(() => verifyDesktopAppRoot(html(app) + '</vs-desktop-app>'), /not the desktop-owned app/);
+});
+
+test('commented-out extra closing root tag does not invalidate a genuine host', () => {
+  assert.equal(verifyDesktopAppRoot(html('<!-- </vs-desktop-app> -->' + app)), true);
+});
+
+
+test('rejects hidden, inert and inline-hidden body attributes that would blank WebView2', () => {
+  for (const opening of [
+    '<body hidden>', '<body inert>', '<body style="display:none">',
+    '<body aria-hidden="true">', '<body hidden="hidden">'
+  ]) {
+    const bad = html(app).replace('<body>', opening);
+    assert.throws(() => verifyDesktopAppRoot(bad), /not the desktop-owned app/, opening);
+  }
+});
+
+test('accepts harmless whitespace and HTML comments around an otherwise plain body', () => {
+  const doc = html(app).replace('<body>', '<!-- <body hidden> --> <BODY >');
+  assert.equal(verifyDesktopAppRoot(doc), true);
+});
+
+test('requires the current reviewed plain body instead of silently allowing future attributes', () => {
+  assert.throws(() => verifyDesktopAppRoot(html(app).replace('<body>', '<body class="future-layout">')),
+    /not the desktop-owned app/);
 });
