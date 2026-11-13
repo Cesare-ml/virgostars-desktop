@@ -224,3 +224,23 @@ test('rejects an orphan Angular JavaScript chunk not reachable from the entrypoi
   assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
     /Unreferenced Angular JavaScript chunk/);
 }));
+
+test('rejects a missing JavaScript Worker module hidden behind import.meta.url',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./chunk-WORK-MISSING.js", import.meta.url), {type:"module"});');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Imported Angular JavaScript chunk missing/);
+}));
+
+test('accepts an offline JavaScript Worker module and transitive dependency',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./chunk-WORKER.js", import.meta.url), {type:"module"});');
+  writeFileSync(join(f.bundle,'chunk-WORKER.js'),
+    'import "./chunk-SHARED.js";');
+  writeFileSync(join(f.bundle,'chunk-SHARED.js'),
+    'export const marker="synthetic";');
+  const result=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(result.chunks,2);
+  assert.equal(result.modules,3);
+  assert.equal(result.dependencies,2);
+}));
