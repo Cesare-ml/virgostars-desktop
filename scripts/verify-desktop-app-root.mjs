@@ -14,6 +14,9 @@ export function verifyDesktopAppRoot(html) {
   const bodies = [...markup.matchAll(/<body(?:\s[^<>]*)?>/gi)];
   const ends = [...markup.matchAll(/<\/body\s*>/gi)];
   if (bodies.length !== 1 || ends.length !== 1) invalid();
+  // The tracked Angular index has a plain <body>. Attributes can make a
+  // correctly mounted host invisible or inert; require the known-safe shape.
+  if (!/^<body\s*>$/i.test(bodies[0][0])) invalid();
   const begin = bodies[0].index + bodies[0][0].length;
   const finish = ends[0].index;
   if (begin >= finish) invalid();
