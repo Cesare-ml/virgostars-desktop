@@ -166,3 +166,29 @@ test('rejects a commented-out Angular main module even if its JS file exists',()
   writeFileSync(file,html);
   assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Missing or unclosed Angular script element/);
 }));
+
+test('verifies transitive Angular chunk imports with the exact offline asset manifest',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'import {a} from "./chunk-ONE.js"; console.log(a);');
+  writeFileSync(join(f.bundle,'chunk-ONE.js'),
+    'export {a} from "./chunk-TWO.js";');
+  writeFileSync(join(f.bundle,'chunk-TWO.js'),'export const a=42;');
+  const report=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(report.scripts,1);
+  assert.equal(report.modules,3);
+  assert.equal(report.chunks,2);
+  assert.equal(report.dependencies,2);
+}));
+
+test('rejects missing lazy Angular chunk before browser packaging',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'const load=()=>import("./chunk-LOST.js");');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Imported Angular JavaScript chunk missing/);
+}));
+
+test('rejects an orphan Angular JavaScript chunk not reachable from the entrypoint',()=>run(f=>{
+  writeFileSync(join(f.bundle,'chunk-ORPHAN.js'),'export const data=1;');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Unreferenced Angular JavaScript chunk/);
+}));
