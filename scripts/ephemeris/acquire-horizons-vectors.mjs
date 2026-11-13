@@ -10,6 +10,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildHorizonsVectorPlan } from './prepare-horizons-vector-plan.mjs';
+import { parseUniqueHorizonsHeaders } from './strict-horizons-headers.mjs';
 import { recordNewDirectory, recordCreatedFile, cleanupOnlyOwnedFiles } from './rollback-horizons-directory.mjs';
 
 const MAX_PLAN_BYTES = 64 * 1024;
@@ -61,11 +62,6 @@ export function validateCanonicalPlan(candidate) {
   } catch { return null; }
 }
 
-const header = (text, name) => {
-  const result = text.match(new RegExp('^' + name + '\\s*:\\s*([^\\r\\n]+)$', 'im'));
-  return result ? result[1].trim() : null;
-};
-
 /** Parse only a single JDTDB Cartesian row; no transformations or interpolation. */
 export function parseHorizonsVectorResponse(raw, expected) {
   verify(typeof raw === 'string' && Buffer.byteLength(raw, 'utf8') <= MAX_RESPONSE_BYTES,
@@ -76,15 +72,16 @@ export function parseHorizonsVectorResponse(raw, expected) {
   // Fail closed on a future version until reviewed against genuine samples.
   verify(/^API VERSION:\s*1\.0\r?\nAPI SOURCE:\s*NASA\/JPL Horizons API\r?\n(?:\r?\n)/.test(raw),
     'UNSUPPORTED_API_FORMAT');
-  const name = header(raw, 'Target body name');
-  const center = header(raw, 'Center body name');
-  const site = header(raw, 'Center-site name');
-  const unit = header(raw, 'Output units');
-  const outputType = header(raw, 'Output type');
-  const outputFormat = header(raw, 'Output format');
-  const referenceFrame = header(raw, 'Reference frame');
-  const coordinateSystem = header(raw, 'Coordinate systm') ?? header(raw, 'Coordinate system');
-  const startTime = header(raw, 'Start time');
+  const fields = parseUniqueHorizonsHeaders(raw);
+  const name = fields.targetName;
+  const center = fields.centerName;
+  const site = fields.centerSite;
+  const unit = fields.outputUnits;
+  const outputType = fields.outputType;
+  const outputFormat = fields.outputFormat;
+  const referenceFrame = fields.referenceFrame;
+  const coordinateSystem = fields.coordinateSystem;
+  const startTime = fields.startTime;
   verify(name && new RegExp('\\(' + expected.naifId + '\\)(?:\\s|$)').test(name),
     'TARGET_MISMATCH');
   verify(center && /^Solar System Barycenter\s*\(0\)(?:\s|$)/i.test(center) &&
