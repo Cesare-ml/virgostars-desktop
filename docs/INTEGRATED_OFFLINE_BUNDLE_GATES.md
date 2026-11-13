@@ -22,7 +22,7 @@ The approved-private-artwork fixture from #95 had been updated with a correct `<
 ## Checks actually executed
 
 - Node.js **v22.16.0**: `node --check` on the exact source files copied from the upstream GitHub commits for the base and JS helpers: **both pass**.
-- Node.js **v22.16.0**: **31/31 passing isolated helper scenarios** against byte-identical copies of the current integrated base and JavaScript modules, including a synthetic HTML base + local JS combination, comment-only fake scripts and inert template/textarea/attribute cases. The executed local Git blob IDs match the integrated committed modules:
+- Node.js **v22.16.0**: **37/37 passing isolated helper scenarios** against byte-identical copies of the current integrated base and JavaScript modules, including a synthetic HTML base + local JS combination, comment-only fake scripts and inert template/textarea/attribute cases. The executed local Git blob IDs match the integrated committed modules:
   - `verify-document-base.mjs`: `eec569b6a8588b2ed14ee9aa4bfdb4a3f2f95af3`
   - `verify-bundled-scripts.mjs`: `61448a5df32ecba846388f7a0adb970c031ae992`
 - Read-only **17/17 static integration assertions** on the actual GitHub branch confirm the three imports and calls, their execution order, the return fields, the asset hash check, both test fixtures and negative regression coverage.
