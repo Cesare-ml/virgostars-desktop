@@ -25,12 +25,12 @@ node --check scripts/verify-angular-chunks.mjs
 node --test tests/verify-angular-chunks.test.mjs
 ```
 
-The exact committed source and test files were executed in an isolated local checkout: **18/18 tests passed**, zero failed, zero skipped. Git blob identity matched GitHub:
+The exact committed source and test files were executed in an isolated local checkout: **19/19 tests passed**, zero failed, zero skipped. Git blob identity matched GitHub:
 
-- `scripts/verify-angular-chunks.mjs`: `292af877cf0b9592b0f69766fd240cd8d49b7675`
-- `tests/verify-angular-chunks.test.mjs`: `975ca04bf61e93371bdd656dd546668381e14f8e`
+- `scripts/verify-angular-chunks.mjs`: `f6c53f46741aead651ae59a55ddc405631b02250`
+- `tests/verify-angular-chunks.test.mjs`: `45d5cef8e4e02a151bec3b1ca133d7a6d2d51d33`
 
-Tests cover static/dynamic/re-exported and transitive chunks, missing or orphan chunks, symlinks, cycles, invalid syntax, unsafe URLs, and computed imports. Three **additional authored integration tests** are included in `tests/verify-offline-bundle.test.mjs` but are **not claimed as executed** in the complete project checkout.
+Tests cover static/dynamic/re-exported and transitive chunks, missing or orphan chunks, symlinks, cycles, invalid syntax, unsafe URLs, computed imports and redaction of inaccessible directory paths. Filesystem errors are caught and converted to fixed messages. Three **additional authored integration tests** are included in `tests/verify-offline-bundle.test.mjs` but are **not claimed as executed** in the complete project checkout.
 
 ## Required before merging or shipping
 
