@@ -182,6 +182,61 @@ test('deadline scheduler errors are contained and cannot report native readiness
   assert.deepEqual(result,{kind:'native_unavailable',info:null});
 });
 
+test('deadline registration failure never starts an unbounded native IPC invocation', async () => {
+  let calls = 0;
+  const result = await probeDesktopRuntime({
+    isNative: () => true,
+    invoke: async () => { calls++; return valid; },
+  }, {
+    timers: {
+      set() { throw new Error('OS timer registration unavailable'); },
+      clear() { throw new Error('A timer was never registered'); },
+    },
+  });
+  // Also inspect after microtasks flush: the native invocation must not
+  // have been queued before the scheduler threw.
+  await Promise.resolve();
+  assert.deepEqual(result, {kind:'native_unavailable', info:null});
+  assert.equal(calls, 0);
+});
+
+test('a timer firing synchronously prevents dispatch and clears its registered handle', async () => {
+  let calls = 0;
+  const cleared = [];
+  const result = await probeDesktopRuntime({
+    isNative: () => true,
+    invoke: async () => { calls++; return valid; },
+  }, {
+    timers: {
+      set(callback) { callback(); return 41; },
+      clear(handle) { cleared.push(handle); },
+    },
+  });
+  await Promise.resolve();
+  assert.deepEqual(result, {kind:'native_unavailable', info:null});
+  assert.equal(calls, 0);
+  assert.deepEqual(cleared, [41]);
+});
+
+test('scheduler that invokes its callback and then throws never dispatches IPC', async () => {
+  let calls = 0;
+  const result = await probeDesktopRuntime({
+    isNative: () => true,
+    invoke: async () => { calls++; return valid; },
+  }, {
+    timers: {
+      set(callback) {
+        callback();
+        throw new Error('Timer partially registered then failed');
+      },
+      clear() { throw new Error('There is no returned timer handle'); },
+    },
+  });
+  await Promise.resolve();
+  assert.deepEqual(result, {kind:'native_unavailable', info:null});
+  assert.equal(calls, 0);
+});
+
 test('timer cleanup failure is never surfaced to the UI after a successful native probe', async () => {
   const result = await probeDesktopRuntime({
     isNative:()=>true,

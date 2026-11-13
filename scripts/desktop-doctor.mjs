@@ -21,7 +21,8 @@ function safeJson(file) {
 
 /** Compare required ranges without network access or third-party semver packages. */
 export function supportsNode(version) {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-|$)/.exec(version ?? '');
+  // process.version is a stable exact version; do not accept pre-release toolchains.
+  const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version ?? '');
   if (!match) return false;
   const major = Number(match[1]), minor = Number(match[2]);
   return (major === 22 && minor >= 12) || major === 24;
@@ -62,9 +63,13 @@ export function diagnoseEnvironment({
   const rust = command('rustc', ['-vV']);
   add('cargo', cargo ? STATUS.pass : STATUS.blocked,
     cargo ? 'Cargo command available' : 'Cargo not installed or inaccessible', 'Install Rust via rustup with stable MSVC on Windows.');
-  add('rust-target', rust && (platform !== 'win32' || /host:\s*\S+-pc-windows-msvc/.test(rust)) ? STATUS.pass : STATUS.blocked,
-    rust ? 'Rust toolchain detected' : 'rustc not found',
-    'For Windows use rustup default stable-msvc, then restart the terminal.');
+  // The supported Windows prototype is x64; an ARM64/i686 MSVC host builds a
+  // different binary even when the Rust version and MSVC toolchain are valid.
+  const rustHostSupported = platform !== 'win32' || /^host:[ \t]*x86_64-pc-windows-msvc[ \t]*$/m.test(rust ?? '');
+  add('rust-target', rust && rustHostSupported ? STATUS.pass : STATUS.blocked,
+    rust && rustHostSupported ? 'Rust compiler host is suitable for the selected platform' :
+      'Rust compiler host missing or incompatible with Windows x64 MSVC',
+    'For Windows 11 x64 select the stable x86_64-pc-windows-msvc toolchain with rustup, then restart the terminal.');
   const rustSupported = supportsRustVersion(rust);
   add('rust-version', rustSupported ? STATUS.pass : STATUS.blocked,
     rustSupported ? 'Rust compiler satisfies the current Tauri dependency minimum (>= 1.90.0)' :

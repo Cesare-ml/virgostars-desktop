@@ -103,3 +103,45 @@ Then run the project's read-only Windows doctor, compile Tauri as authorized, di
 - #72 checks different classes of packaged artifacts (unapproved extras and sensitive filenames) and should follow as a separate compatible gate.
 - #75 checks the Windows PE executable after native compilation; this build-artifact verification does not replace it.
 - No accounts, user birth data, production backend, privileged native IPC, astronomy, storage migrations, release, GitHub Actions, license, visibility or deployment changes.
+
+
+## Second branch-only main reconciliation — Windows places override
+
+Another `main` advance introduced the Windows city-packaging resource
+override gate (#108). The draft integration branch was behind **57 commits**
+when reconciling this change. Exactly one tracked file overlapped:
+`package.json`.
+
+A new **two-parent merge commit**
+`cd00598f71333e568d69e4ac82a32ee0c0b10e75` merged a pinned
+`main` snapshot `3465e9a31fa78a370d13570a609ce3458c211f3b`
+**into this draft feature branch only**. The merged Git tree was reconstructed
+from the pinned `main` tree plus exactly 23 changed feature files, with a
+reconciled `package.json` blob
+`cd6e7bfcc60bbec4f1f7db5c1bc3979bcde5bf61`.
+
+The merge-tree readback proved that **all 156 expected files** matched:
+no missing paths, unexpected files, or lost `main` changes. The merged npm
+scripts preserve both chains:
+
+- `verify:bundle` and `verify:bundle:private` run the offline asset
+  checker followed by `verify:privacy`.
+- `verify:ipc` and `verify:places-override` run before `build:ui`
+  / `build:ui:private` in both city-enabled Windows packaging scripts.
+- The existing `npm run check` native IPC check remains unchanged.
+
+`tests/windows-places-packaging-contract.test.mjs` adds three regression
+cases protecting this ordering. **3/3 PASS**, Node.js 22.16.0, on an isolated
+synthetic package fixture with the verified actual npm script values.
+`node --check` also passed. The test source was verified against its
+committed GitHub blob SHA
+`44df1776467f77dcba6abbf1f464663726bdff0d`.
+A separate read-only check compared all relevant script commands against
+the authoritative package file in the updated branch. The complete
+repository test suite was **not** run.
+
+This update did **not** merge anything into `main`, modify production,
+enable GitHub Actions or build a Windows executable. A later move of
+`main` can make this branch fall behind again. Re-run conflict comparison
+and the full authorized Angular/Tauri/Windows test suite before considering
+any integration to `main`.

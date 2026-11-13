@@ -67,6 +67,16 @@
 .chart-header { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:53px; }
 .chart-header h1 { margin:0 0 2px; font-size:21px; font-weight:700; letter-spacing:-.035em; }
 .chart-header p { margin:0; font-size:12px; color:var(--vs-text-secondary); }
+.chart-header-controls { display:flex; align-items:center; justify-content:flex-end; gap:12px; min-width:0; }
+.device-clock { display:flex; flex-direction:column; align-items:flex-end; min-width:0; text-align:right; }
+.device-clock-caption { color:var(--vs-text-secondary); font-size:10px; font-weight:650; }
+.device-clock-reading { color:var(--vs-text); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.clock-compact { display:none; }
+@media (max-width:960px) {
+  .clock-full { display:none; }
+  .clock-compact { display:inline; }
+}
+
 .chart-stage {
   position:relative; flex:1; min-width:0; min-height:0; overflow:hidden; display:grid; place-items:center;
   background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:12px; margin:10px 0;
@@ -107,6 +117,10 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .numeric { font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; }
 .setting-line { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:12px 0; border-bottom:1px solid var(--vs-border); font-size:13px; }
 .setting-line strong { text-align:right; font-size:12px; }
+.city-clock-values { min-width:0; max-width:65%; display:flex; align-items:flex-end; flex-direction:column; gap:4px; text-align:right; }
+.city-clock-values strong { max-width:100%; overflow-wrap:anywhere; }
+.city-clock-values time { max-width:100%; font-size:12px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.city-clock-unavailable { font-size:12px; color:var(--vs-text-secondary); }
 @media (max-width:1140px) {
   .workspace:not(.inspector-collapsed) { grid-template-columns:var(--nav-width) minmax(0,1fr); }
   .inspector { position:absolute; right:0; top:0; bottom:0; width:min(316px,84vw); z-index:5; box-shadow:-8px 0 20px rgba(0,0,0,.15); }
