@@ -78,7 +78,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
   get csvStatusLabel(): string { return this.csvStatus ? this.t(this.csvStatus) : ''; }
-  formatDegrees(value:number): string { return formatEclipticLongitude(value); }
+  formatDegrees(value:number): string { return formatEclipticLongitude(value, this.locale); }
 
   ngAfterViewInit(): void {
     // Read-only capability check, distinct from account authentication.
