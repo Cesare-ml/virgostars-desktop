@@ -10,7 +10,7 @@ Run `npm run verify:privacy` to inspect only the generated `dist/desktop/browser
 
 The browser bundle currently permits **only**:
 
-- Root `index.html`, and root-level Angular `.js`, `.mjs`, `.css` files with simple filename characters (such as `main-ABC123.js` or `styles-ABC123.css`).
+- Root `index.html`, and only expected root-level Angular JavaScript/CSS bundle names: `main*.js`, `polyfills*.js`, hashed `chunk-*.js` and `styles*.css`. Unrelated files such as `debug.js`, `analytics.js` and `diagnostics.css` are denied.
 - Root `3rdpartylicenses.txt`, `LICENSE.txt`, and `NOTICE.txt` attribution files.
 - Approved-style images under `assets/img/` with `.png`, `.jpg`, `.jpeg`, or `.webp` extensions. The *separate* bundle manifest verifier must also confirm every image's exact filename, byte length and SHA-256.
 
@@ -33,7 +33,9 @@ npm run build:ui
 npm run build:ui:private
 ~~~
 
-The 60 locally executed synthetic regression cases cover accepted build layouts, rejected file types, unexpected directories, Windows-invalid names, and redacted errors. The script emits aggregate counts or fixed error reasons without printing filenames or personal paths.
+The 60 locally executed synthetic regression cases cover accepted build layouts, rejected file types, unexpected directories, Windows-invalid names, and redacted errors.
+
+In the consolidated integration branch, a separate set of **19/19 actually executed** Node.js 22.16.0 synthetic smoke tests covers the current stricter source module, byte-identical to GitHub blob `b76a3f57d963013dc2f5f7977ef65e255937be2f`. Four additional authored repository tests cover forbidden root debug/diagnostic files and legitimate Angular chunk/polyfills modules. The combined full repository test suite is **not yet executed**. The script emits aggregate counts or fixed error reasons without printing filenames or personal paths.
 
 ## Remaining limits
 
