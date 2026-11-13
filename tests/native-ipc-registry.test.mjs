@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {auditNativeIpc} from '../scripts/verify-native-ipc.mjs';
+import {mkdtempSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {dirname, join} from 'node:path';
+import {auditNativeIpc, auditCheckout} from '../scripts/verify-native-ipc.mjs';
 
 function fixture() {
   return {
@@ -100,4 +103,39 @@ test('an approved adapter cannot issue a second direct native command',()=>{
   const f=fixture();
   f.tsFiles['src/app/native/runtime.ts'] += "\nconst extra = invoke<unknown>('get_secret');";
   assert.throws(()=>auditNativeIpc(f),/adapter invoke changed/);
+});
+
+
+test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',()=>{
+  const root=mkdtempSync(join(tmpdir(),'vs-ipc-audit-fixture-'));
+  try {
+    const f=fixture();
+    const write=(path,content)=>{
+      const target=join(root,path);
+      mkdirSync(dirname(target),{recursive:true});
+      writeFileSync(target,content);
+    };
+    for(const [path,content] of Object.entries({
+      'src-tauri/src/lib.rs':f.entry,
+      'src-tauri/src/runtime_probe.rs':f.rustModules.runtime_probe,
+      'src-tauri/src/offline_places.rs':f.rustModules.offline_places,
+      'src-tauri/tauri.conf.json':JSON.stringify(f.tauriConfig),
+      'src/app/native/runtime-protocol.ts':f.runtimeContract,
+      'src/app/native/offline-places-contract.ts':f.placesContract,
+      ...f.tsFiles,
+      'src/main.ts':'export const demo = true;',
+    })) write(path,content);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places']);
+    for(const [path,content] of [
+      ['src/main.ts',"import('@tauri-apps/api/core');"],
+      ['src/app/misc/native.tsx',"import {invoke} from '@tauri-apps/api/core';"],
+      ['src/features/helpers.mjs',"import('@tauri-apps/plugin-fs');"],
+      ['src/features/helpers.js',"import('@tauri-apps/api/core');"],
+    ]) {
+      write(path,content);
+      assert.throws(()=>auditCheckout(root),/Unexpected Tauri import/,path);
+      write(path,'export const ok = true;');
+    }
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places']);
+  } finally { rmSync(root,{recursive:true,force:true}); }
 });
