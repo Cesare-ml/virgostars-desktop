@@ -72,8 +72,8 @@ test('rejects a symlink directory pointing outside the output', t => withBundle(
 }));
 
 test('rejects Windows case-insensitive output path collisions on a case-sensitive host', { skip: process.platform === 'win32' ? 'Requires a case-sensitive filesystem' : false }, () => withBundle(({ bundle, add }) => {
-  add('assets/fictional.jpg');
-  add('assets/FICTIONAL.jpg');
+  add('assets/img/fictional.jpg');
+  add('assets/img/FICTIONAL.jpg');
   assert.throws(() => auditBuildPrivacy(bundle), /case-insensitive duplicate/);
 }));
 
