@@ -290,3 +290,59 @@ test('queue recovers when a native reply field throws during decoding',async()=>
   assert.equal(JSON.stringify(observed).includes('native secret'),false);
   queue.dispose();
 });
+
+
+test('validated request is immutable through native provider and observer boundaries',async()=>{
+  const received=[];
+  const queue=new LatestCalculationQueue('session_1',request=>{
+    assert.equal(Object.isFrozen(request),true);
+    assert.throws(()=>{request.requestSeq=5000},TypeError);
+    assert.throws(()=>{request.calculationKey='forged'},TypeError);
+    assert.throws(()=>{delete request.sessionId},TypeError);
+    return Promise.resolve(reply(request));
+  },validate,outcome=>received.push(outcome));
+  assert.equal(queue.submit(valid(1)),1);
+  await settle();
+  assert.deepEqual(received.map(x=>x.kind),['ready']);
+  assert.equal(received[0].request.requestSeq,1);
+  assert.equal(received[0].request.calculationKey,'fixture.1');
+  assert.equal(Object.isFrozen(received[0].request),true);
+  queue.dispose();
+});
+
+test('pending request remains frozen and detached from later UI draft edits',async()=>{
+  const gate=deferred(),started=[],received=[];
+  const queue=new LatestCalculationQueue('session_1',request=>{
+    started.push(request);
+    assert.equal(Object.isFrozen(request),true);
+    return started.length===1?gate.promise:Promise.resolve(reply(request));
+  },validate,outcome=>received.push(outcome));
+  queue.submit(valid(1));await settle();
+  const mutableDraft=valid(2);
+  assert.equal(queue.submit(mutableDraft),2);
+  mutableDraft.calculationKey='modified.by.ui';
+  mutableDraft.timeZone='Not/AZone';
+  gate.resolve(reply(started[0]));
+  await settle();
+  assert.equal(started.length,2);
+  assert.equal(started[1].calculationKey,'fixture.2');
+  assert.equal(started[1].timeZone,'Europe/Rome');
+  assert.equal(started[1].requestSeq,2);
+  assert.deepEqual(received.map(x=>x.kind),['ready']);
+  queue.dispose();
+});
+
+test('provider mutation attempt fails safely and does not poison later valid work',async()=>{
+  let count=0;const observed=[];
+  const queue=new LatestCalculationQueue('session_1',request=>{
+    if(++count===1)request.calculationKey='corrupt';
+    return Promise.resolve(reply(request));
+  },validate,outcome=>observed.push(outcome));
+  queue.submit(valid(1));await settle();
+  assert.equal(observed[0].kind,'transport_error');
+  assert.equal(observed[0].request.calculationKey,'fixture.1');
+  queue.submit(valid(2));await settle();
+  assert.deepEqual(observed.map(x=>x.kind),['transport_error','ready']);
+  assert.equal(observed[1].request.calculationKey,'fixture.2');
+  queue.dispose();
+});

@@ -149,12 +149,14 @@ export class LatestCalculationQueue<T> {
     if (this.disposed || this.nextSeq >= Number.MAX_SAFE_INTEGER) return null;
     const snapshot = snapshotCalculationDraft(draft);
     if (snapshot === null || !validDraftSnapshot(snapshot)) return null;
-    const request: CalculationRequestV1 = {
-      protocolVersion: 1, sessionId: this.sessionId, requestSeq: ++this.nextSeq,
+    // Prevent a future injected provider/consumer from rewriting correlation
+    // metadata while a request is in flight. All fields are validated primitives.
+    const request: CalculationRequestV1 = Object.freeze({
+      protocolVersion: 1 as const, sessionId: this.sessionId, requestSeq: ++this.nextSeq,
       intent: snapshot.intent, utcIso: snapshot.utcIso, latMicro: snapshot.latMicro,
       lngMicro: snapshot.lngMicro, timeZone: snapshot.timeZone,
       calculationKey: snapshot.calculationKey,
-    };
+    });
     this.generation++;
     if (this.active) {
       this.pending = request;
