@@ -6,7 +6,7 @@ import {OfflineCityPickerState, type CityPickerStatus} from './offline-city-pick
 import {translate, type Locale, type MessageKey} from './translations';
 
 const STATUS_KEYS: Record<CityPickerStatus, MessageKey> = {
-  idle:'city.idle', query_too_short:'city.short', typing:'city.typing',
+  idle:'city.idle', query_too_short:'city.short', query_too_long:'city.long', typing:'city.typing',
   loading:'city.loading', ready:'city.results', empty:'city.empty',
   selected:'city.selected', not_native:'city.browser', busy:'city.busy',
   catalog_unavailable:'city.missing', unavailable:'city.error',
