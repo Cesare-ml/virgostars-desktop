@@ -9,6 +9,8 @@ export const MAX_PNG_DATA_URL_BASE64_LENGTH = 32 * 1024 * 1024;
 const PNG_PREFIX = 'data:image/png;base64,';
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 const MAX_PNG_DIMENSION = 16384;
+/** Bound total raster area as well as each side; compressed bytes are not pixel memory. */
+export const MAX_PNG_PIXELS = 4096 * 4096;
 const PNG_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 // PNG permits only these bit depths for each IHDR color type.
 const IHDR_DEPTHS: Readonly<Record<number, readonly number[]>> = {
@@ -60,7 +62,8 @@ export function validatePngDataUrl(value: unknown): string {
   }
   const width = u32(header, 16);
   const height = u32(header, 20);
-  if (width < 1 || height < 1 || width > MAX_PNG_DIMENSION || height > MAX_PNG_DIMENSION) {
+  if (width < 1 || height < 1 || width > MAX_PNG_DIMENSION || height > MAX_PNG_DIMENSION ||
+      width * height > MAX_PNG_PIXELS) {
     throw new Error('Invalid PNG export');
   }
   const bitDepth = header.charCodeAt(24);
