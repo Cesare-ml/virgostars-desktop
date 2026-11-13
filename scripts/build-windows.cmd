@@ -34,9 +34,15 @@ call npm.cmd install
 if errorlevel 1 goto :failed
 call npm.cmd test
 if errorlevel 1 goto :failed
+rem Audit the native IPC command registry and capabilities before any build.
+call npm.cmd run verify:ipc
+if errorlevel 1 goto :failed
 call npm.cmd run doctor:build
 if errorlevel 1 goto :failed
 call npm.cmd run build:ui
+if errorlevel 1 goto :failed
+rem Confirm the actual emitted stylesheet is active before native packaging.
+call npm.cmd run verify:css
 if errorlevel 1 goto :failed
 call npm.cmd run prepare:icon
 if errorlevel 1 goto :failed
@@ -50,7 +56,8 @@ popd
 
 echo [VirgoStars Desktop] Compile Tauri prototype and verify expected output
 pushd "%DESKTOP%" || goto :error
-call npm.cmd run tauri:build
+rem Package the exact already-audited Angular output: tauri:build would rebuild it.
+call npm.cmd exec --offline -- tauri build
 if errorlevel 1 goto :failed
 call npm.cmd run doctor:verify
 if errorlevel 1 goto :failed
