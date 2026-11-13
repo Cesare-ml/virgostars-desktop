@@ -26,10 +26,10 @@ The native audit and this override gate both run **before** the final Windows pa
 
 ## Tests executed
 
-- Node.js 22.16.0, `node --test tests/places-tauri-override.test.mjs`: **8/8 PASS**, covering approved output, Windows line endings, injected app/plugin/build options, extra file resources/absolute paths, duplicate JSON keys, malformed/noncanonical output, missing/oversized/directory inputs and symlinks.
+- Node.js 22.16.0, `node --test tests/places-tauri-override.test.mjs`: **9/9 PASS**, covering approved output, Windows line endings, injected app/plugin/build options, extra file resources/absolute paths, duplicate JSON keys, malformed/noncanonical output, missing/oversized/directory inputs, symlinks (skipped only when Windows disallows creating symlinks) and exact npm build-script ordering.
 - `node --check` on the new verifier and tests: **PASS**.
 - Python 3.13.5 `json.dumps(..., indent=2)` representative generator output: **PASS** through the new CLI; an injected capability changed its exit status to failure. This confirms serialization format compatibility, but does not run the full Python catalog validation routine.
-- The executed local script and test bytes were compared to committed GitHub blob hashes: `6841527c92922e209d05e28c81f88f4f3d0a46d9` and `baf0a17920341c7a98917409526a351a56da088e`.
+- The executed local script and test bytes were compared to committed GitHub blob hashes: `6841527c92922e209d05e28c81f88f4f3d0a46d9` and `b89fe3eaf13dddb57901e6d460cb4785fecd97eb`.
 
 ## Limits and next validation
 
