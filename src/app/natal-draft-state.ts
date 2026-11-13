@@ -1,5 +1,6 @@
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import type {CivilCorrectionOutput} from './natal-time-step';
+import {isValidNatalName, truncateNatalName} from './natal-name';
 
 /** Civil time is entered locally, NOT silently converted to UTC with today's offset. */
 export type NatalInputKey = 'name' | 'year' | 'month' | 'day' | 'hour' | 'minute';
@@ -106,7 +107,7 @@ export class NatalDraftState {
   update(field: NatalInputKey, value: string): void {
     if (this.disposed) return;
     // Strict upper bound avoids large strings lingering in the renderer.
-    this[field] = value.slice(0, field === 'name' ? 160 : 8);
+    this[field] = field === 'name' ? truncateNatalName(value) : value.slice(0, 8);
     this.invalidate();
   }
 
@@ -134,7 +135,7 @@ export class NatalDraftState {
     if (this.disposed) return {ok:false,preview:null,issues:[]};
     const issues: NatalIssue[] = [];
     const name=this.name.trim();
-    if (!name || name.length > 120) issues.push('name');
+    if (!isValidNatalName(name)) issues.push('name');
     const year=integerField(this.year,1,9999);
     const month=integerField(this.month,1,12);
     const day=integerField(this.day,1,31);
