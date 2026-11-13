@@ -41,7 +41,8 @@ export class OfflineCityPickerState {
   input(value: string): void {
     if (this.disposed) return;
     this.abortPending();
-    this.query = value.slice(0, 80);
+    // Match the native query limit in Unicode scalar values, not UTF-16 units.
+    this.query = [...value].slice(0, 80).join('');
     this.selected = null;
     this.results = [];
     this.activeIndex = -1;
@@ -68,9 +69,11 @@ export class OfflineCityPickerState {
       if (result.kind === 'ready') {
         this.results = result.items;
         this.status = result.items.length ? 'ready' : 'empty';
-      } else if (result.kind !== 'stale') {
+      } else {
         this.results = [];
-        this.status = result.kind;
+        // Even a current query may be invalidated by its native lookup scope.
+        // Always settle loading into an explicit retryable state.
+        this.status = result.kind === 'stale' ? 'busy' : result.kind;
       }
     } catch {
       if (ticket !== this.seq || this.disposed) return;
@@ -103,6 +106,13 @@ export class OfflineCityPickerState {
 
   chooseActive(): OfflinePlaceV1 | null { return this.choose(this.activeIndex); }
 
+  /** Manual retry only for transient native failures; reuses bounded debounce. */
+  retry(): boolean {
+    if (this.disposed || (this.status !== 'busy' && this.status !== 'unavailable')) return false;
+    this.input(this.query);
+    return true;
+  }
+
   dismiss(): void {
     if (this.disposed) return;
     this.abortPending();
@@ -120,6 +130,18 @@ export class OfflineCityPickerState {
     this.results = [];
     this.activeIndex = -1;
     this.status = 'selected';
+    this.changed();
+  }
+
+  /** Explicitly forget the temporary city; no persistence or network operation. */
+  clearSelection(): void {
+    if (this.disposed) return;
+    this.abortPending();
+    this.selected = null;
+    this.query = '';
+    this.results = [];
+    this.activeIndex = -1;
+    this.status = 'idle';
     this.changed();
   }
 
