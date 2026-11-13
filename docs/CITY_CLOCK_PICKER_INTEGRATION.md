@@ -24,6 +24,7 @@ Focused integrated synthetic Node tests:
 node --experimental-strip-types --test tests/city-clock-picker-integration.test.mjs
 node --experimental-strip-types --test tests/offline-city-picker-dom-ids.test.mjs
 node --experimental-strip-types --test tests/offline-city-parent-reconciliation.test.mjs
+node --experimental-strip-types --test tests/offline-city-ime-composition.test.mjs
 node --experimental-strip-types --test tests/offline-city-picker-state.test.mjs tests/offline-city-picker-retry.test.mjs tests/offline-city-picker-integration.test.mjs
 node --experimental-strip-types --test tests/offline-place-search.test.mjs tests/offline-place-ipc-boundaries.test.mjs tests/offline-city-selection.test.mjs
 node --experimental-strip-types --test tests/device-clock.test.mjs tests/selected-city-clock.test.mjs
@@ -67,3 +68,13 @@ The child now invokes the independently testable `reconcileParentCitySelection` 
 `tests/offline-city-parent-reconciliation.test.mjs` adds five synthetic regression cases for city/clock removal, preserving an active typed query, rejecting late replies after an external city switch, no-op empty state and Angular lifecycle wiring. **5/5 original test bodies passed** against committed GitHub source in an isolated JavaScript V8 harness after removing TypeScript-only syntax and redirecting the one source file read; this is *not* a complete Node test runner execution, Angular build or Windows WebView2 acceptance. The full checkout must run the explicit test command above and check parent-driven selection clearing while the inspector stays mounted.
 
 No persisted locations, personal birth records, network requests, native IPC privileges or astronomy calculations are introduced.
+
+## IME-safe city input (2026-11-13)
+
+The city picker must allow text composition in keyboard input methods (e.g. Chinese, Japanese or Korean) without firing searches for provisional candidates or replacing the browser's in-progress text with the normalized value. The Angular input now listens for `compositionstart` and `compositionend`. While composing, it ignores interim `input` events and suppresses combobox Arrow/Enter/Escape actions, including the WebView2/Windows legacy IME key code `229`. Only after composition finishes does it pass the final query through the existing bounded Unicode search state and emit `locationEdited` once.
+
+Some browsers dispatch an extra final `input` immediately after `compositionend`: the new pure `shouldCommitCityQuery` guard prevents re-scheduling the same query twice when there is no selected place to invalidate. No query substring, input method candidate or city name is logged or persisted.
+
+**Local QA actually performed:** `node --experimental-strip-types --test --test-name-pattern='unfinished IME|compositionend|IME Enter|Unicode scalar' tests/offline-city-ime-composition.test.mjs` ran **4/4 behavior cases** with Node.js **22.16.0** against locally mirrored files whose Git hashes matched the exact GitHub blobs. The `src/app/offline-city-input-events.ts` helper passed isolated TypeScript 5.8.3 strict compilation. A fifth source-wiring test was checked with the committed Angular component/template in an isolated V8 harness (**5/5 source+behavior test bodies passed there**), but **full Node execution of the fifth case, Angular build and real Windows IME interaction remain unverified**.
+
+**Manual Windows acceptance:** with a Japanese or Chinese IME, type and convert multi-character city text. Ensure Enter confirms an IME candidate instead of choosing a city, no native search runs during composition, final query searches once, the visible input remains untruncated during composition, and a following input event does not duplicate the query. Also verify Latin keyboards and keyboard-only navigation still work after IME completion.
