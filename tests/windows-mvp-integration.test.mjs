@@ -126,3 +126,16 @@ test('current CPAL notices and source publication gate are preserved', () => {
   assert.match(policy, /city|dataset|catalog/i);
   assert.match(read('AGENTS.md'), /CPAL-1\.0/);
 });
+
+test('native capability timeout must register outside Promise executor before IPC dispatch', () => {
+  const runtime = read('src/app/native/runtime-protocol.ts');
+  const regression = read('tests/native-runtime.test.mjs');
+  const timerStart = runtime.indexOf('handle = timers.set(');
+  const invocationStart = runtime.indexOf("const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'))");
+  assert.ok(timerStart >= 0 && invocationStart > timerStart,
+    'timer must be registered before the native invocation microtask');
+  assert.match(runtime, /if \(firedSynchronously\) throw new Error\('Native runtime probe timeout'\)/);
+  assert.match(runtime, /void timeout\.catch\(\(\) => \{\}\)/);
+  assert.match(regression, /deadline registration failure never starts an unbounded native IPC invocation/);
+  assert.match(regression, /scheduler that invokes its callback and then throws never dispatches IPC/);
+});
