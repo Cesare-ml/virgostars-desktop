@@ -6,7 +6,9 @@ This guide is for contributors who want to run VirgoStars Desktop without needin
 
 ## 1. Prerequisites
 
-Use Windows 11 x64 and install Node.js 22 LTS or 24, npm, **Rust stable MSVC 1.90.0 or newer**, Microsoft C++ Build Tools with the Desktop development with C++ workload, and WebView2. Clone authorized `astrological-charts` and `virgostars-desktop` repositories into sibling folders.
+Use Windows 11 x64 and install **x64 Node.js** 22 LTS or 24, npm, **Rust stable MSVC 1.90.0 or newer** targeting `x86_64-pc-windows-msvc`, Microsoft C++ Build Tools with the Desktop development with C++ workload, and WebView2. Clone authorized `astrological-charts` and `virgostars-desktop` repositories into sibling folders.
+
+The read-only doctor checks the actual Node process architecture on Windows and requires the complete Rust **host** triple `x86_64-pc-windows-msvc`. ARM64 and x86-native toolchains are blocked for this Windows x64 prototype rather than incorrectly treated as validated. This is **not** a claim that other architectures can never be supported, or that cross-compilation cannot work: each needs a separate explicit build and runtime acceptance gate.
 
 Official references: [Tauri Windows prerequisites](https://tauri.app/start/prerequisites/) and [Angular 20 compatibility](https://angular.dev/reference/versions).
 
