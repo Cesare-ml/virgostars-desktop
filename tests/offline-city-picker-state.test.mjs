@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {OfflineCityPickerState} from '../src/app/offline-city-picker-state.ts';
 
 const a = Object.freeze({id:1,name:'Firenze',italianName:'Florence',latMicro:43769560,lngMicro:11255810,population:360000,stateId:1,region:'Toscana',timeZone:'Europe/Rome'});
@@ -116,4 +117,10 @@ test('overlong whitespace still reports limit and never searches a prefix',()=>{
  assert.equal(h.state.status,'query_too_long');
  assert.equal([...h.state.query].length,81);
  h.flush();assert.equal(h.calls.length,0);
+});
+
+test('offline city HTML search field does not silently cap input or contain attribute comments',()=>{
+ const template=readFileSync(new URL('../src/app/offline-city-picker.component.html',import.meta.url),'utf8');
+ assert.doesNotMatch(template, /<input\\b[^>]*maxlength=/s);
+ assert.doesNotMatch(template, /<input\\b[^>]*<!--/s);
 });
