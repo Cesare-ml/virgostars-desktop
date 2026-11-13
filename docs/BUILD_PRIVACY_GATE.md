@@ -18,12 +18,14 @@ Everything else is rejected, including arbitrary `.json`, `.csv`, compressed bac
 
 The gate also rejects source maps or embedded source-map directives, dotfiles, keys, credentials, raw TypeScript, SQLite databases, logs, symlinks, special files and case-insensitive output path collisions. It bounds individual file size (64 MiB), total browser payload (256 MiB), entries (12,000), files (10,000) and directory nesting (32 levels), so unexpected output fails before packaging.
 
+Only the expected directory structure (`assets/`, `assets/img/` and safe nested image directories) is accepted; unexpected empty directories are rejected too. Every directory and file name must be portable to Windows: reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, including extension forms), trailing dot/space and Windows-invalid characters are blocked. Linux/macOS synthetic tests create otherwise invalid Windows names to verify the guard; such fixture-creation tests are explicitly skipped when running on Windows itself.
+
 ## Manual validation
 
 Run from the repository on Node.js 22 or 24:
 
 ~~~sh
-node --test tests/verify-build-privacy.test.mjs tests/verify-build-privacy-allowlist.test.mjs
+node --test tests/verify-build-privacy.test.mjs tests/verify-build-privacy-allowlist.test.mjs tests/verify-build-privacy-windows-paths.test.mjs
 node --check scripts/verify-build-privacy.mjs
 npm run verify:privacy
 npm run build:ui
@@ -31,7 +33,7 @@ npm run build:ui
 npm run build:ui:private
 ~~~
 
-The synthetic regression fixtures exercise both accepted build layouts and rejected artifacts. The script emits aggregate counts or fixed error reasons without printing filenames or personal paths.
+The 60 locally executed synthetic regression cases cover accepted build layouts, rejected file types, unexpected directories, Windows-invalid names, and redacted errors. The script emits aggregate counts or fixed error reasons without printing filenames or personal paths.
 
 ## Remaining limits
 
