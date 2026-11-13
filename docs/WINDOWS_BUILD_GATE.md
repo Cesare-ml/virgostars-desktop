@@ -38,6 +38,8 @@ The diagnostic checks Node/npm versions, Rust/Cargo and the Windows MSVC host, C
 
 After dependencies are installed, use `node scripts/desktop-doctor.mjs --stage=build --strict`. After building, use `node scripts/desktop-doctor.mjs --stage=verify --strict`. Only `--strict` turns blocked findings into an exit error.
 
+The `verify` stage now checks both the generated Angular `index.html` and its local global stylesheet through the same `inspectDesktopStyles` verifier used by offline bundle validation. Missing, deferred or CSP-incompatible styles yield a blocked `angular-css` check even when the HTML file exists. Errors are reported with fixed messages, not local paths. This remains **a build-artifact check, not proof that WebView2 loaded the CSS**; verify the native window and its CSP console as described in [Windows CSS Fix](WINDOWS_CSS_FIX.md).
+
 ## 3. One-command Windows build attempt
 
 From `virgostars-desktop`:
