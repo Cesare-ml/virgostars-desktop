@@ -166,3 +166,35 @@ test('rejects a commented-out Angular main module even if its JS file exists',()
   writeFileSync(file,html);
   assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Missing or unclosed Angular script element/);
 }));
+
+
+test('rejects a commented-out desktop app root despite valid CSS, JavaScript and image hash',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  writeFileSync(index,canonical.replace(
+    '<vs-desktop-app></vs-desktop-app>',
+    '<!-- <vs-desktop-app></vs-desktop-app> -->'
+  ));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/not the desktop-owned app/);
+}));
+
+test('rejects a duplicated or hidden desktop app root even with valid offline assets',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const bad of [
+    '<vs-desktop-app></vs-desktop-app><vs-desktop-app></vs-desktop-app>',
+    '<template><vs-desktop-app></vs-desktop-app></template>',
+    '<vs-desktop-app hidden></vs-desktop-app>'
+  ]) {
+    writeFileSync(index,canonical.replace('<vs-desktop-app></vs-desktop-app>',bad));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/not the desktop-owned app/);
+  }
+}));
+
+test('accepts a harmless HTML comment before the real Angular body root',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  writeFileSync(index,canonical.replace('<vs-desktop-app></vs-desktop-app>',
+    '<!-- synthetic comment --> <vs-desktop-app></vs-desktop-app>'));
+  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+}));
