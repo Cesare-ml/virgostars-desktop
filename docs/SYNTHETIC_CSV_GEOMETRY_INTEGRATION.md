@@ -70,6 +70,17 @@ Added `tests/synthetic-csv-browser-port.test.mjs` with eleven focused tests: suc
 
 Then run the complete `npm test` and `npm run build:ui` against the separately built `astrological-charts` package. Test in offline Windows Tauri/WebView2 on a normal and high-DPI display: chart/table agreement, all view modes, genuine PNG/CSV download behavior and Blob URL cleanup. These platform gates remain open.
 
+## Offline Windows CSV file acceptance verifier
+
+To close the gap between an in-memory Blob request and an **actual** saved file, this branch includes a read-only command `scripts/verify-synthetic-csv-download.mjs` and `tests/verify-synthetic-csv-download.test.mjs`. After a real native Windows download, the user can select the file and compare its **exact bytes** to the expected fixed fictional CSV. No file content/path/username is printed; only a PASS/FAIL/usage status is emitted, with exit codes 0/1/2.
+
+See [Windows CSV acceptance](SYNTHETIC_CSV_WINDOWS_ACCEPTANCE.md) for the manual WebView2 procedure and PowerShell command. A passing verifier is evidence of byte-identical local **fictional** output, not of an authentic chart or a successful Windows runtime test conducted by this PR.
+
+- **Local Node.js 22.16.0:** 13/13 new verification tests PASS (exact content, tampered planet/house values, metadata flags, CRLF, BOM, truncation, appended bytes, symlinks, path safety and CLI diagnostics).
+- Combined isolated mirror: **41/41 PASS** across existing geometry, actual fictional fixture with test-only graphics stub, browser adapter, browser URL cleanup and the new downloaded-file checker.
+- All tested local files match GitHub blob hashes: verifier `5915ab816971dc6a3cd1df09354d0c632a708671`; new tests `3eb35c1ceb041470733b2e48037cbed8b5a622cd`; existing fixture/geometry/browser ports verified previously.
+- Syntax checks `node --check` passed for the two new scripts. This tool does not perform an automated download or confirm Tauri/WebView2 or CSS behavior.
+
 ## Boundaries
 
 No real birth data, no astronomy calculation, no user profiles, no cloud/backend, no additional IPC, no storage, no external asset packaging or dependencies. The emitted CSV explicitly says `FICTIONAL_NOT_CALCULATED` on every row. Do not claim this prototype is a real natal chart or a released application.
