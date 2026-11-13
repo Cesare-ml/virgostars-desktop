@@ -17,7 +17,9 @@ prefixes before they reach FTS5; no arbitrary MATCH syntax is accepted.
 **Queries with six or more terms are now rejected entirely**, rather than
 silently using only the first five terms. The Angular preflight uses the same
 five-term budget and displays a localized length warning without invoking
-native IPC. Its shared `offline-city-query.js` module is importable by the
+native IPC. The shared JavaScript preflight iterates at most
+81 Unicode scalars before returning over-limit, so even large pasted inputs
+never allocate an unbounded spread array during validation. Its shared `offline-city-query.js` module is importable by the
 Node 22 test runner without a TypeScript-only extensionless import; the
 adjacent `.d.ts` supplies strict Angular types. The picker retains at most **81 Unicode scalar values** as
 an over-limit sentinel: pasted input cannot become a valid-looking truncated
