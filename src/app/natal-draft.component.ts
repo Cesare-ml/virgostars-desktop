@@ -88,6 +88,9 @@ export class NatalDraftComponent implements OnDestroy {
     const target=event.target as HTMLInputElement;
     this.stopAdjustment();
     this.draft.update(field,target.value);
+    // HTML maxlength counts UTF-16 code units, while editor bounds count
+    // Unicode scalars. Keep the visible name in sync after truncation.
+    if(field === 'name' && target.value !== this.draft.name) target.value = this.draft.name;
     this.invalidateTimezonePreview();
   }
   setKnownTime(event: Event): void {
