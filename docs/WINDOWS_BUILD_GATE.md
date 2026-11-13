@@ -95,3 +95,19 @@ To use `npm.cmd run tauri:dev`, launch `npm.cmd start` in another terminal first
 **Limitations:** The doctor checks local prerequisites and existence/consistency of output, not end-to-end rendering, native signing, astronomy accuracy or network isolation. The authoring environment lacks Rust and npm registry access; the Windows acceptance gate cannot be declared passed. The current executable name derives from the experimental Cargo package name `virgostars-desktop-spike`.
 
 Do not report a release, perform GitHub Actions, merge on main, expose original artwork or change the repository license/visibility without a separate maintainer decision.
+
+## Windows x64 toolchain diagnostics (2026-11-13)
+
+The read-only doctor now requires the `rustc -vV` **host** triple to be exactly
+`x86_64-pc-windows-msvc` for the supported Windows 11 x64 prototype.
+An otherwise current Rust compiler targeting ARM64, i686 or Windows GNU is
+**blocked**, not reported as ready for the default Windows x64 build. This is
+a host preflight only; it does not verify all installed Rust targets or the
+architecture of a final binary. The check intentionally remains non-blocking
+for non-Windows hosts pending macOS/other-platform acceptance work.
+
+The Node gate accepts stable exact `process.version` values only; strings
+with release-candidate, nightly, build-metadata or garbage suffixes do not pass.
+These checks make the preflight more conservative, not a substitute for
+`npm test`, `cargo test`, a Windows binary build and an offline WebView2 smoke.
+No production services, user data, signing keys or releases are involved.
