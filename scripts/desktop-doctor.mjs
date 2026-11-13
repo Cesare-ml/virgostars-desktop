@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { inspectDesktopStyles } from './verify-bundled-css.mjs';
+import { verifyWindowsExecutable } from './verify-windows-pe.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STATUS = Object.freeze({pass:'pass', warning:'warning', blocked:'blocked'});
@@ -40,6 +42,7 @@ export function supportsRustVersion(versionOutput) {
 export function diagnoseEnvironment({
   root = ROOT, charts = resolve(ROOT, '../astrological-charts'),
   stage = 'setup', platform = process.platform, nodeVersion = process.version,
+  nodeArch = process.arch, cssInspector = inspectDesktopStyles, peInspector = verifyWindowsExecutable,
   exists = existsSync, json = safeJson, command = commandOutput,
 } = {}) {
   if (!STAGES.has(stage)) throw new Error('stage must be setup, build, or verify');
@@ -51,6 +54,12 @@ export function diagnoseEnvironment({
   add('host-platform', platform === 'win32' ? STATUS.pass : STATUS.warning,
     platform === 'win32' ? 'Windows target detected' : 'Non-Windows host: native Windows build cannot be validated here',
     'Run the final build and WebView2 tests on Windows 11 x64.');
+  if (platform === 'win32') {
+    const x64 = nodeArch === 'x64';
+    add('windows-architecture', x64 ? STATUS.pass : STATUS.blocked,
+      x64 ? 'Node.js process is native x64' : 'Windows x64 prototype requires an x64 Node.js process',
+      'Use x64 Node.js and the x86_64-pc-windows-msvc Rust toolchain.');
+  }
   add('node-version', supportsNode(nodeVersion) ? STATUS.pass : STATUS.blocked,
     supportsNode(nodeVersion) ? 'Node version satisfies Angular 20.3' : 'Node version incompatible with Angular 20.3',
     'Install Node.js 22.12+ LTS or 24.x.');
@@ -122,11 +131,37 @@ export function diagnoseEnvironment({
   checkedFile('cargo-lock', join(root, 'src-tauri', 'Cargo.lock'), false,
     'Cargo lockfile available', 'After real Rust build, review and commit Cargo.lock.');
   if (stage === 'verify') {
-    checkedFile('angular-bundle', join(root, 'dist', 'desktop', 'browser', 'index.html'), true,
+    const bundleDir = join(root, 'dist', 'desktop', 'browser');
+    const indexFile = join(bundleDir, 'index.html');
+    checkedFile('angular-bundle', indexFile, true,
       'Desktop Angular build output present', 'Run npm run build:ui and npm run verify:bundle.');
+    // A generated index.html alone cannot establish that global CSS is usable.
+    // The same no-inline-handler, local-style rules as verify:css apply here.
+    let cssReady = false;
+    if (exists(indexFile)) {
+      try {
+        const checked = cssInspector(bundleDir);
+        cssReady = Number.isSafeInteger(checked?.stylesheets) && checked.stylesheets > 0;
+      } catch { cssReady = false; }
+    }
+    add('angular-css', cssReady ? STATUS.pass : STATUS.blocked,
+      cssReady ? 'Local Angular CSS artifacts verified' : 'Missing or invalid offline Angular CSS artifacts',
+      'Run npm run verify:css after npm run build:ui; do not weaken Tauri CSP.');
     if (platform === 'win32') {
-      checkedFile('windows-executable', join(root, 'src-tauri', 'target', 'release', 'virgostars-desktop-spike.exe'), true,
+      const executableFile = join(root, 'src-tauri', 'target', 'release', 'virgostars-desktop-spike.exe');
+      checkedFile('windows-executable', executableFile, true,
         'Windows prototype executable present', 'Run npm run tauri:build, then inspect src-tauri/target/release.');
+      // Reuse the existing #75 bounded PE32+ AMD64 GUI validator: no second
+      // competing parser and no absolute paths in the diagnostic report.
+      let peReady = false;
+      if (exists(executableFile)) {
+        try { peReady = peInspector(executableFile)?.kind === 'windows_x64_gui'; }
+        catch { peReady = false; }
+      }
+      add('windows-pe', peReady ? STATUS.pass : STATUS.blocked,
+        peReady ? 'Windows x64 GUI executable structure verified' :
+          'Windows release executable absent or invalid PE32+ AMD64 GUI',
+        'Rebuild the x64 prototype and run node scripts/verify-windows-pe.mjs; this is not signing or runtime acceptance.');
     }
   }
   return { schemaVersion: 1, stage, platform, checks: results,
