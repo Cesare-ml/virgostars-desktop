@@ -84,3 +84,35 @@ export function submitCivilCalculation(
     return {status:'queue_unavailable'};
   }
 }
+
+
+/**
+ * A view-scoped latest-only queue can invalidate an older calculation when the
+ * civil editor changes, even if the replacement input is no longer valid.
+ */
+export interface ReplaceableCivilCalculationQueue extends CivilCalculationSubmissionPort {
+  invalidate(): void;
+}
+
+/**
+ * Use on each new civil-input revision, not for unrelated display refreshes.
+ * An invalid date, DST gap or missing coordinate must retire any previous
+ * in-flight result rather than leaving an obsolete chart eligible to publish.
+ * The existing submitCivilCalculation remains available for already-validated
+ * immutable drafts and does not implicitly cancel other callers' work.
+ */
+export function replaceCivilCalculation(
+  input: CivilTimeInput,
+  selectInstant: (input: CivilTimeInput, selectedUtc: string | null) => CivilTimeSelectionResult,
+  location: Readonly<{latMicro: number; lngMicro: number}>,
+  calculationKey: string,
+  queue: ReplaceableCivilCalculationQueue,
+  selectedUtc: string | null = null,
+): CivilCalculationDispatchResult {
+  try {
+    queue.invalidate();
+  } catch {
+    return {status:'queue_unavailable'};
+  }
+  return submitCivilCalculation(input, selectInstant, location, calculationKey, queue, selectedUtc);
+}
