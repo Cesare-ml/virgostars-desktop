@@ -90,6 +90,8 @@ test('both build variants audit privacy only after offline bundle acceptance', (
   assert.equal(pkg.scripts['verify:bundle:private'],
     'node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy');
   assert.equal(pkg.scripts['verify:privacy'], 'node scripts/verify-build-privacy.mjs');
+  assert.equal(pkg.scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
+  assert.equal(pkg.scripts.check, 'npm run test && npm run verify:ipc && npm run build:ui');
   assert.match(pkg.scripts['build:ui'], /verify:bundle/);
   assert.match(pkg.scripts['build:ui:private'], /verify:bundle:private/);
 });
