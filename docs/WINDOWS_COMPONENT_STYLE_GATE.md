@@ -19,7 +19,9 @@ not guarantee the grid panels and chart stage were compiled.
   `[_ngcontent-%COMP%]` selector decoration. Mere template class names
   cannot satisfy the gate.
 - Candidate names, regular-file/symlink constraints and file/total byte limits
-  guard against unbounded reads. The gate never follows remote URLs.
+  guard against unbounded reads. **All candidates are preflighted before any
+  matching CSS is accepted**: an early valid `main*.js` cannot mask an unsafe
+  later chunk or oversized file. The gate never follows remote URLs.
 - The actual `verify-offline-bundle.mjs` CLI now invokes this check after
   base, CSS, JavaScript graph and asset verification. Both normal and optional
   private bundle checks use the CLI. The exported `verifyOfflineBundle()`
