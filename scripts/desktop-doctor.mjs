@@ -40,6 +40,7 @@ export function supportsRustVersion(versionOutput) {
 export function diagnoseEnvironment({
   root = ROOT, charts = resolve(ROOT, '../astrological-charts'),
   stage = 'setup', platform = process.platform, nodeVersion = process.version,
+  nodeArch = process.arch,
   exists = existsSync, json = safeJson, command = commandOutput,
   cssInspector = inspectDesktopStyles,
 } = {}) {
@@ -52,6 +53,15 @@ export function diagnoseEnvironment({
   add('host-platform', platform === 'win32' ? STATUS.pass : STATUS.warning,
     platform === 'win32' ? 'Windows target detected' : 'Non-Windows host: native Windows build cannot be validated here',
     'Run the final build and WebView2 tests on Windows 11 x64.');
+  // Only the native x64 Windows build has an acceptance plan. A Node.js version
+  // check alone would incorrectly accept an ARM64 or 32-bit toolchain.
+  if (platform === 'win32') {
+    const x64 = nodeArch === 'x64';
+    add('windows-architecture', x64 ? STATUS.pass : STATUS.blocked,
+      x64 ? 'Windows x64 Node process detected' :
+        'Windows native prototype build requires a 64-bit x64 toolchain',
+      'Use x64 Node.js and x86_64-pc-windows-msvc Rust; other architectures need a separate build acceptance gate.');
+  }
   add('node-version', supportsNode(nodeVersion) ? STATUS.pass : STATUS.blocked,
     supportsNode(nodeVersion) ? 'Node version satisfies Angular 20.3' : 'Node version incompatible with Angular 20.3',
     'Install Node.js 22.12+ LTS or 24.x.');
@@ -64,7 +74,11 @@ export function diagnoseEnvironment({
   const rust = command('rustc', ['-vV']);
   add('cargo', cargo ? STATUS.pass : STATUS.blocked,
     cargo ? 'Cargo command available' : 'Cargo not installed or inaccessible', 'Install Rust via rustup with stable MSVC on Windows.');
-  add('rust-target', rust && (platform !== 'win32' || /host:\s*\S+-pc-windows-msvc/.test(rust)) ? STATUS.pass : STATUS.blocked,
+  // Match the entire native host triple: "aarch64-...-msvc" is not the
+  // Windows x64 target, even though it is a valid MSVC host.
+  const supportedRustHost = Boolean(rust) &&
+    (platform !== 'win32' || /^host:[ \t]*x86_64-pc-windows-msvc[ \t]*\r?$/m.test(rust));
+  add('rust-target', supportedRustHost ? STATUS.pass : STATUS.blocked,
     rust ? 'Rust toolchain detected' : 'rustc not found',
     'For Windows use rustup default stable-msvc, then restart the terminal.');
   const rustSupported = supportsRustVersion(rust);
