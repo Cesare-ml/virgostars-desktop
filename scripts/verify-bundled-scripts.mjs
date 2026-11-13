@@ -129,6 +129,8 @@ export function inspectDesktopScripts(bundleDir) {
     if (!stat || !stat.isFile() || stat.isSymbolicLink()) {
       fail('Local desktop script missing or not a regular file');
     }
+    // A zero-byte main or polyfills script cannot bootstrap an Angular app.
+    if (stat.size === 0) fail('Local desktop script is empty');
     names.push(filename);
   }
   if (mainCount !== 1) fail('Exactly one Angular main module is required');
