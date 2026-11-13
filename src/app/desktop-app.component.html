@@ -46,9 +46,18 @@
     <main class="chart-panel">
       <div class="chart-header">
         <div><h1>{{modeLabel(mode)}}</h1><p>{{t(artworkStatus)}}</p></div>
-        <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
-          [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
-          (click)="toggleInspector()">☷</button>
+        <div class="chart-header-controls">
+          <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
+            <span class="device-clock-caption">{{t('clock.now')}}</span>
+            <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
+              <span class="clock-full">{{clockText}}</span>
+              <span class="clock-compact">{{clockCompactText}}</span>
+            </time>
+          </div>
+          <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
+            [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
+            (click)="toggleInspector()">☷</button>
+        </div>
       </div>
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')">
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
@@ -98,7 +107,15 @@
         </div>
         <div *ngIf="inspectorTab==='settings'">
           <p class="inspector-hint">{{t('settings.help')}}</p>
-          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="selectedCity = $event" (locationEdited)="selectedCity = null"></vs-offline-city-picker>
+          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
+          <div class="setting-line" *ngIf="selectedCity">
+            <span>{{t('clock.city')}}</span>
+            <div class="city-clock-values">
+              <strong>{{selectedCity.name}}</strong>
+              <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')">{{cityClockText}}</time>
+              <span *ngIf="cityClock.kind !== 'ready'" class="city-clock-unavailable">{{t('clock.city.unavailable')}}</span>
+            </div>
+          </div>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>

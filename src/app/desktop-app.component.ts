@@ -19,6 +19,7 @@ import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
+import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -52,6 +53,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private exporting = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
+  private readonly deviceClock = new DeviceClock();
 
   readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
@@ -64,6 +66,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   inspectorTab: InspectorTab = 'planets';
   selectedPlanet: DemoPlanet | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
+  cityClock: SelectedCityClock = {kind: 'not_selected'};
   navCollapsed = false;
   inspectorCollapsed = false;
   busy = true;
@@ -78,6 +81,26 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
+  get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
+  get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
+  get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
+  private updateCityClock(): void {
+    this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
+  }
+  onCitySelected(place: OfflinePlaceV1): void {
+    this.selectedCity = place;
+    this.updateCityClock();
+    this.cd.markForCheck();
+  }
+  onCityEdited(): void {
+    this.selectedCity = null;
+    this.updateCityClock();
+    this.cd.markForCheck();
+  }
+  get clockInstantIso(): string | null {
+    const ms = this.deviceClock.timestamp;
+    return Number.isFinite(ms) && Math.abs(ms) <= 8_640_000_000_000_000 ? new Date(ms).toISOString() : null;
+  }
   private persistUiPreferences(): void {
     // Best effort: storing theme/language never blocks offline interaction.
     saveUiPreferences(this.uiPreferencesStorage, {theme:this.theme, locale:this.locale});
@@ -85,6 +108,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     document.documentElement.lang = this.locale;
+    // Local clock is independent of renderer success, astronomy and account auth.
+    this.deviceClock.start(() => {
+      if (this.destroyed) return;
+      this.updateCityClock();
+      this.cd.markForCheck();
+    });
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     try {
@@ -112,6 +141,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
@@ -143,6 +173,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.locale = this.locale === 'it' ? 'en' : 'it';
     document.documentElement.lang = this.locale;
     this.persistUiPreferences();
+    this.updateCityClock();
     this.cd.markForCheck();
   }
   toggleTheme(): void {
