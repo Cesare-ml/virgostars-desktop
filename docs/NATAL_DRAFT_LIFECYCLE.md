@@ -63,3 +63,16 @@ Regression suite: `node --experimental-strip-types --test tests/natal-civil-corr
 This closes a second prototype loophole: a direct mutation of `NatalDraftState` **together with** an in-place mutation of `draft.preview` must not make an old local-to-UTC choice appear current merely because the preview and its anchor referred to the same mutable object. A new explicit preview request is necessary after any change. The preview is still provisional and discarded at shell teardown.
 
 `tests/natal-preview-freshness.test.mjs` now includes regression cases for nested preview mutation, simultaneously edited draft/preview fields, copied-object identity and explicit recapture. For verification run `node --experimental-strip-types --test tests/natal-preview-freshness.test.mjs`, then full `npm test`, Angular production build and native Windows UI smoke. This is **accidental stale-UI protection**, not a security boundary against malicious JavaScript, secure memory erasure, independent historical tzdb verification or completed astronomy.
+
+## Integrated Unicode name handling and preview-freshness guard
+
+This branch reconciles sibling draft PR #81 (Unicode subject names) with the #85 → #79 → #77 → #74 → #64 → #63 natal-editor correctness stack **without merging either sibling into `main`**. The intended single-editor approach remains the in-memory `vs-natal-draft` component; alternate form #62 is not incorporated here.
+
+- Subject names use 160 Unicode code points for temporary input and 120 for valid previews, rejecting malformed surrogate fragments, control characters and line separators. The Angular text field permits up to 320 UTF-16 units so supplementary characters can reach the state bound; a clipped value is synchronized with the visible input.
+- The independently frozen, value-copied UTC preview anchor from #85 remains authoritative after name edits, including coordinated mutation of the displayed preview and the state.
+- The atomic civil date/time correction boundary from #79 remains intact. Invalid correction payloads must not revoke a still-valid preview.
+- Two original Unicode regression suites from #81 are included unchanged; `tests/natal-unicode-anchor-integration.test.mjs` adds four cross-feature synthetic tests.
+
+**Review and acceptance:** The original sibling #81 and this integration PR must **not** be merged independently as duplicate changes. Review the integration branch only after its dependency chain. Run `node --experimental-strip-types --test tests/natal-name.test.mjs tests/natal-name-state.test.mjs tests/natal-unicode-anchor-integration.test.mjs tests/natal-preview-freshness.test.mjs tests/natal-civil-correction-boundary.test.mjs`, then full `npm test`, Angular production compilation and native Windows WebView2/IME smoke from a complete authorized checkout. Existing scientific verification, timezone provenance and local storage gates are unchanged.
+
+No personal birth records, external lookups, network requests, persistence, new native IPC, new JavaScript dependencies, automatic GitHub Actions, deployments, releases or main-branch merges are introduced.
