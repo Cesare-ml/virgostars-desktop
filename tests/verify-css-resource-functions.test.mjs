@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertNoCssResourceFunctions} from '../scripts/verify-css-resource-functions.mjs';
+import {inspectDesktopStyles} from '../scripts/verify-bundled-css.mjs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 const safe = ':root{color-scheme:light}*{box-sizing:border-box}vs-desktop-app{height:100%}';
 
@@ -40,4 +44,32 @@ test('fails closed on malformed comments, strings, and identifier escapes', () =
     assert.throws(() => assertNoCssResourceFunctions(value), /DESKTOP CSS RESOURCES:/);
   }
   assert.throws(() => assertNoCssResourceFunctions(null), /Invalid CSS stylesheet/);
+});
+
+
+function withSyntheticStylesheet(css, callback) {
+  const dir = mkdtempSync(join(tmpdir(), 'vs-css-resources-'));
+  try {
+    writeFileSync(join(dir, 'index.html'),
+      '<!doctype html><html><head><link rel="stylesheet" href="styles-LOCAL123.css"></head>' +
+      '<body><vs-desktop-app></vs-desktop-app></body></html>');
+    writeFileSync(join(dir, 'styles-LOCAL123.css'), css);
+    callback(dir);
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+}
+test('actual bundled CSS verification accepts self-contained synthetic style', () => {
+  withSyntheticStylesheet(safe, dir => assert.equal(inspectDesktopStyles(dir).stylesheets, 1));
+});
+test('actual bundled CSS verification rejects active external and local resource references', () => {
+  for (const value of ['url(https://example.invalid/tracker.png)', 'url(./missing.woff2)',
+    'image-set("https://example.invalid/2x.png" 2x)']) {
+    withSyntheticStylesheet(safe + 'p{background:' + value + '}', dir =>
+      assert.throws(() => inspectDesktopStyles(dir), /DESKTOP CSS RESOURCES:/));
+  }
+});
+test('actual bundled CSS verification still rejects un-inlined CSS imports', () => {
+  withSyntheticStylesheet('@import "./missing.css";' + safe, dir =>
+    assert.throws(() => inspectDesktopStyles(dir), /CSS @import must be inlined/));
 });
