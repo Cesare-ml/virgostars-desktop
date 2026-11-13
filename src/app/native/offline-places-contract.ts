@@ -38,6 +38,17 @@ function optionalInt(x: unknown): x is number | null {
   return x === null || int(x);
 }
 
+/** Mirrors the Rust read-only FTS query gate: at least two Unicode letters or numbers,
+ * with no more than 80 Unicode scalar values. No FTS syntax is constructed here. */
+function validPlaceQuery(query: string): boolean {
+  if ([...query].length > 80) return false;
+  let lettersOrNumbers = 0;
+  for (const character of query) {
+    if (/[\p{L}\p{N}]/u.test(character) && ++lettersOrNumbers >= 2) return true;
+  }
+  return false;
+}
+
 export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1[] {
   if (!object(raw) || raw['protocolVersion'] !== 1 || !Array.isArray(raw['items']) ||
       raw['items'].length > 30) {
@@ -91,19 +102,23 @@ export class OfflinePlaceSearch {
     if (!Number.isInteger(limit) || limit < 1 || limit > 30) {
       return {kind: 'unavailable', items: []};
     }
-    if (query.trim().length < 2 || [...query].length > 80) {
+    if (!validPlaceQuery(query)) {
       return {kind: 'query_too_short', items: []};
     }
     try {
       if (!this.transport.isNative()) return {kind: 'not_native', items: []};
       const raw = await this.transport.invoke('search_offline_places', {query, limit});
       if (ticket !== this.generation || this.disposed) return {kind: 'stale', items: []};
-      return {kind: 'ready', items: decodeOfflinePlaceResults(raw)};
+      const items = decodeOfflinePlaceResults(raw);
+      // Never show more native rows than this specific caller requested.
+      if (items.length > limit) return {kind: 'unavailable', items: []};
+      return {kind: 'ready', items};
     } catch (error: unknown) {
       if (ticket !== this.generation || this.disposed) return {kind: 'stale', items: []};
-      const code = String(error);
-      if (code === 'PLACE_SEARCH_BUSY') return {kind: 'busy', items: []};
-      if (code === 'PLACE_CATALOG_UNAVAILABLE') return {kind: 'catalog_unavailable', items: []};
+      // Rust returns exact string error codes. Do not coerce arbitrary native
+      // rejection objects: custom toString/valueOf can throw or have side effects.
+      if (error === 'PLACE_SEARCH_BUSY') return {kind: 'busy', items: []};
+      if (error === 'PLACE_CATALOG_UNAVAILABLE') return {kind: 'catalog_unavailable', items: []};
       // Never propagate Rust file paths, SQL texts, stack traces or user data.
       return {kind: 'unavailable', items: []};
     }
