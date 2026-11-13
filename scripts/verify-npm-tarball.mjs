@@ -8,9 +8,10 @@ const PACKAGE_NAME=/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const PACKAGE_VERSION=/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const DEPENDENCY_FIELDS=['dependencies','devDependencies','optionalDependencies','peerDependencies'];
 
-function hasDeclaredAlias(packages, installedName, sourceName) {
+function hasDeclaredAlias(packages, installedName, sourceName, aliasPath) {
   const prefix='npm:'+sourceName+'@';
-  return Object.values(packages).some(record =>
+  return Object.entries(packages).some(([path,record]) =>
+    path !== aliasPath &&
     record !== null && typeof record === 'object' && !Array.isArray(record) &&
     DEPENDENCY_FIELDS.some(field => {
       const deps=record[field];
@@ -36,7 +37,7 @@ export function assertNpmTarballIdentity(lockPath, entry, packages, url) {
     throw new Error('Invalid npm tarball package identity');
   }
   if (sourceName !== installedName &&
-      !hasDeclaredAlias(packages, installedName, sourceName)) {
+      !hasDeclaredAlias(packages, installedName, sourceName, lockPath)) {
     throw new Error('Undeclared npm package alias');
   }
   const basename=sourceName.split('/').at(-1);
