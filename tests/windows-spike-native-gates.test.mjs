@@ -26,7 +26,7 @@ test('bootstrap runs native IPC audit after tests and before any native build',(
     ["'run', 'verify:css'","npm.cmd"],
     ["'run', 'prepare:icon'","npm.cmd"],
     ["'test'","cargo"],
-    ["'run', 'tauri:build'","npm.cmd"],
+    ["'exec', '--offline', '--', 'tauri', 'build'","npm.cmd"],
     ["'run', 'doctor:verify'","npm.cmd"],
   ];
   const positions=stages.map(([args,binary])=>indexOfStep(steps,binary,args));
@@ -79,4 +79,36 @@ test('Windows build instructions explicitly require native and CSS source gates'
   assert.match(docs,/npm\.cmd run verify:ipc/);
   assert.match(docs,/npm\.cmd run verify:css/);
   assert.match(docs,/does not prove|not prove|not a native runtime check/i);
+});
+
+
+test('bootstrap packages the exact validated Angular bundle without a second UI build',()=>{
+  const steps=orderedSteps(bootstrap);
+  const ui=indexOfStep(steps,'npm.cmd',"'run', 'build:ui'");
+  const css=indexOfStep(steps,'npm.cmd',"'run', 'verify:css'");
+  const tauri=indexOfStep(steps,'npm.cmd',"'exec', '--offline', '--', 'tauri', 'build'");
+  assert.ok(ui >= 0 && css > ui && tauri > css,
+    'Tauri must package the existing validated frontend');
+  assert.equal(steps.filter(step=>step.argumentsText==="'run', 'build:ui'").length,1);
+  assert.equal(steps.filter(step=>step.argumentsText==="'run', 'tauri:build'").length,0,
+    'npm run tauri:build would rebuild Angular after CSS validation');
+  assert.equal(steps.filter(step=>step.argumentsText==="'exec', '--offline', '--', 'tauri', 'build'").length,1);
+  // The existing general-purpose npm script intentionally rebuilds Angular.
+  // It must not be used here after the independent bundle checks.
+  assert.ok(scripts['tauri:build'].includes('npm run build:ui'));
+  const tauriConfig=JSON.parse(read('src-tauri/tauri.conf.json'));
+  assert.equal(tauriConfig.build.frontendDist,'../dist/desktop/browser');
+  assert.ok(!tauriConfig.build.beforeBuildCommand,
+    'a Tauri beforeBuildCommand would rebuild or change the verified frontend');
+});
+
+test('a command replacing the offline Tauri CLI fails the single-build gate',()=>{
+  const candidate=bootstrap.replace(
+    "Invoke-Step 'Compile previously verified Angular/Tauri prototype' 'npm.cmd' @('exec', '--offline', '--', 'tauri', 'build')",
+    "Invoke-Step 'Compile and verify Angular/Tauri prototype' 'npm.cmd' @('run', 'tauri:build')"
+  );
+  assert.notEqual(candidate,bootstrap);
+  const steps=orderedSteps(candidate);
+  assert.equal(indexOfStep(steps,'npm.cmd',"'exec', '--offline', '--', 'tauri', 'build'"),-1);
+  assert.ok(indexOfStep(steps,'npm.cmd',"'run', 'tauri:build'")>=0);
 });
