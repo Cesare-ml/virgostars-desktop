@@ -5,7 +5,7 @@
 `node scripts/verify-desktop-attribution.mjs` checks that:
 
 - the Angular Desktop template has exactly one static `<footer>` directly under the unconditionally present `<main class="chart-panel">`; a footer in an HTML comment, inert `<template>`/`ng-template`/`noscript` or nested container does not qualify;
-- its static `copyright-attribution` span matches the **complete** expected copyright, `Powered by VirgoStars` phrase and `https://www.virgostars.it/` URL (no interpolation or extra content); a hidden or conditional ancestor invalidates the check;
+- its static `copyright-attribution` span matches the **complete** expected copyright, `Powered by VirgoStars` phrase and `https://www.virgostars.it/` URL (no interpolation or extra content); a hidden or conditional ancestor invalidates the check; Angular `@if`/`@defer`/other control-flow syntax before the footer conservatively requires manual review because it can hide the notice without changing the HTML parent stack;
 - the checked-in `NOTICE` contains the matching developer, phrase and URL;
 - CPAL-1.0 `LICENSE` Exhibit B still defines that same copyright notice, phrase and URL.
 
