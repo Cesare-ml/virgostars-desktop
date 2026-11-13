@@ -85,6 +85,8 @@ test('Angular selection clear is accessible and notifies parent while preserving
   assert.match(template, /\[attr\.aria-label\]="t\('city\.clear'\)"/);
   assert.match(template, /\(click\)="clearSelected\(\)"/);
   assert.match(template, /\{\{place\.name\}\}/);
-  assert.match(shell, /\(locationEdited\)="selectedCity = null"/);
+  const parent = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
+  assert.match(shell, /\(locationEdited\)="onCityEdited\(\)"/);
+  assert.match(parent, /onCityEdited\(\): void\s*\{\s*this\.selectedCity = null;\s*this\.updateCityClock\(\);/);
   assert.equal((translations.match(/"city\.clear":/g) || []).length, 2);
 });
