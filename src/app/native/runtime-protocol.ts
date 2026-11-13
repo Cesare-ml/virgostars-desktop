@@ -98,10 +98,13 @@ export async function probeDesktopRuntime(
 ): Promise<RuntimeProbeResult> {
   let scheduled = false;
   let handle: unknown;
-  const timers = options.timers ?? defaultProbeTimers;
+  let timers: RuntimeProbeTimers | undefined;
   try {
     if (!transport.isNative()) return { kind: 'browser_preview', info: null };
-    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    // Resolve configurable timer hooks inside the error boundary and only for
+    // native mode. Invalid or throwing hooks must not escape as raw errors.
+    timers = options?.timers ?? defaultProbeTimers;
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
       throw new Error('Invalid native runtime probe timeout');
     }
@@ -120,6 +123,9 @@ export async function probeDesktopRuntime(
       firedSynchronously = true;
       rejectTimeout(new Error('Native runtime probe timeout'));
     }, timeoutMs);
+    // A scheduler returning no cancellation handle cannot prove it installed
+    // the required deadline. Never dispatch an unbounded native call.
+    if (handle == null) throw new Error('Native runtime probe deadline unavailable');
     scheduled = true;
     if (firedSynchronously) throw new Error('Native runtime probe timeout');
     const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'));
@@ -129,7 +135,7 @@ export async function probeDesktopRuntime(
     // Do not expose local file paths, IPC errors or untrusted response details.
     return { kind: 'native_unavailable', info: null };
   } finally {
-    if (scheduled) {
+    if (scheduled && timers) {
       try { timers.clear(handle); } catch { /* diagnostic never leaks timer failures */ }
     }
   }
