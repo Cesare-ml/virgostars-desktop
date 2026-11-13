@@ -13,6 +13,8 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
+import { requestSyntheticCsvDownload } from './synthetic-csv-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -66,12 +68,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   status: MessageKey = 'chart.loading';
   runtimeStatus: MessageKey = 'runtime.checking';
   error = '';
+  csvStatus: MessageKey | null = null;
 
   t(key:MessageKey): string { return translate(this.locale,key); }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
+  get csvStatusLabel(): string { return this.csvStatus ? this.t(this.csvStatus) : ''; }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
 
   ngAfterViewInit(): void {
@@ -144,6 +148,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setMode(mode:ChartMode): void {
     if(this.busy || mode === this.mode) return;
     this.mode = mode;
+    this.csvStatus = null; // A prior download notice must not describe another chart view.
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -229,6 +234,36 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.status='exported';
     } catch(error) { if(!this.destroyed) this.renderError(error); }
     finally { this.exporting=false; if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); } }
+  }
+
+  exportSyntheticCsv(): void {
+    if (this.destroyed || this.exporting || this.mode !== 'natal') return;
+    try {
+      // Only the fixed fictional inspector values may cross this export boundary.
+      const csv = buildSyntheticChartCsv(this.planets, this.houses);
+      requestSyntheticCsvDownload(csv, SYNTHETIC_CSV_FILENAME, {
+        createUrl: content => URL.createObjectURL(new Blob([content], {type:'text/csv;charset=utf-8'})),
+        click: (url, filename) => {
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          try { anchor.click(); } finally { anchor.remove(); }
+        },
+        scheduleRevoke: (url, delayMs) => {
+          // WebView2 may not start the download until after the click returns.
+          window.setTimeout(() => URL.revokeObjectURL(url), delayMs);
+        },
+        revoke: url => URL.revokeObjectURL(url),
+      });
+      // This is only a browser request; saving the file is not guaranteed.
+      this.csvStatus = 'export.csv.started';
+    } catch (_error) {
+      // Do not leak URLs, paths, fixture contents or browser exceptions.
+      this.csvStatus = 'export.csv.failed';
+    } finally {
+      this.cd.markForCheck();
+    }
   }
   private renderError(_error:unknown): void {
     // Do not print private birth records or paths; detailed diagnostics remain
