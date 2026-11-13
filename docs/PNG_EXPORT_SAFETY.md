@@ -48,3 +48,9 @@ Synthetic tests deliberately recompute CRC when mutating dimensions and header f
 - **TypeScript v5.8.3:** strict standalone `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM` — **passed**, with a matching minimal `ChartMode`/`UiTheme` type stub.
 - The tested source and test files were verified byte-for-byte against their GitHub blob SHAs: `e2de774777b6e09717f5d0ac468532f7fc80d9be` and `f834bd7a2e276881960691b607a537acd6f19a5f`.
 - **Not executed:** repository-wide `npm test`, Angular bundle/build, Tauri/Rust build, or Windows WebView2 GUI/export smoke.
+
+## Final IEND trailer preflight (2026-11-13)
+
+The download validator also inspects the **last 12 decoded bytes** (via a fixed 24-character base64 tail window) and requires the PNG end chunk to be exactly the zero-length `IEND` marker with CRC32 `AE426082`. Missing, corrupted, nonterminal or length-modified `IEND` chunks are rejected. Only the fixed header and tail are decoded, so this remains constant-memory relative to decoded pixel data. The existing 32 MiB base64 size guard applies before decoding.
+
+This is **not a full PNG verifier**: intervening IDAT/ancillary chunks and their CRCs are not parsed, and passing this preflight does not prove a playable image or successful Windows WebView2 save. The synthetic test intentionally corrupts an IDAT byte to prove the limited guarantee is documented rather than overstated. Run `node --experimental-strip-types --test tests/png-export-safety.test.mjs`, the full package tests and an actual Windows PNG export before using a release label.
