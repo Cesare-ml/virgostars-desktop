@@ -60,8 +60,13 @@ export function inspectAngularChunkGraph(bundleDir, entrypointFiles) {
       entrypointFiles.some(name => typeof name !== 'string' || !MODULE_NAME.test(name))) {
     fail('Invalid Angular module entrypoint list');
   }
-  const diskModules = readdirSync(dir, { withFileTypes: true })
-    .filter(item => /\.js$/i.test(item.name));
+  let diskModules;
+  try {
+    diskModules = readdirSync(dir, { withFileTypes: true })
+      .filter(item => /\.js$/i.test(item.name));
+  } catch {
+    fail('Unable to inspect Angular JavaScript directory');
+  }
   if (diskModules.length > MAX_MODULES) fail('Too many Angular JavaScript modules');
   for (const item of diskModules) {
     if (!MODULE_NAME.test(item.name) || !item.isFile() || item.isSymbolicLink()) {
@@ -78,14 +83,18 @@ export function inspectAngularChunkGraph(bundleDir, entrypointFiles) {
     if (visited.has(name)) continue;
     if (!available.has(name)) fail('Local Angular JavaScript module missing');
     const path = join(dir, name);
-    const stat = lstatSync(path, { throwIfNoEntry: false });
+    let stat;
+    try { stat = lstatSync(path, { throwIfNoEntry: false }); }
+    catch { fail('Unable to inspect Angular JavaScript file'); }
     if (!stat || !stat.isFile() || stat.isSymbolicLink()) {
       fail('Missing or unsafe Angular JavaScript module');
     }
     if (stat.size > MAX_MODULE_BYTES || (bytes += stat.size) > MAX_GRAPH_BYTES) {
       fail('Angular JavaScript graph exceeds size limits');
     }
-    const body = readFileSync(path, 'utf8');
+    let body;
+    try { body = readFileSync(path, 'utf8'); }
+    catch { fail('Unable to read Angular JavaScript file'); }
     visited.add(name);
     for (const target of importNames(name, body)) {
       dependencies++;
