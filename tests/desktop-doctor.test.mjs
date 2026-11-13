@@ -139,3 +139,29 @@ test('Windows-mode build fixtures locate the .cmd Angular CLI and compiled rende
   assert.equal(find(report,'desktop-dependencies').status,'pass');
   assert.equal(report.counts.blocked,0);
 });
+
+test('exact stable Node versions only: pre-release suffixes do not satisfy the build gate',()=>{
+  for(const version of ['v22.12.0-rc.1','v24.0.0-nightly','v24.0.0+custom','v22.12.0garbage']) {
+    assert.equal(supportsNode(version),false,version);
+  }
+});
+
+test('Windows x64 build doctor rejects incompatible Rust host triples even with Rust 1.90',()=>{
+  for(const host of ['aarch64-pc-windows-msvc','i686-pc-windows-msvc',
+      'x86_64-pc-windows-gnu','x86_64-unknown-linux-gnu']) {
+    const report=dependencies({stage:'setup',platform:'win32',versions:{
+      rust:'rustc 1.90.0 (stable)\nhost: '+host,
+    }});
+    assert.equal(find(report,'rust-version').status,'pass',host);
+    assert.equal(find(report,'rust-target').status,'blocked',host);
+    assert.match(find(report,'rust-target').remedy,/x86_64-pc-windows-msvc/);
+  }
+});
+
+test('Windows x64 build doctor accepts exact MSVC host within full rustc -vV output',()=>{
+  const report=dependencies({stage:'setup',platform:'win32',versions:{
+    rust:'rustc 1.90.0 (stable)\nbinary: rustc\ncommit-date: 2025-09-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.90.0',
+  }});
+  assert.equal(find(report,'rust-target').status,'pass');
+  assert.equal(find(report,'rust-version').status,'pass');
+});
