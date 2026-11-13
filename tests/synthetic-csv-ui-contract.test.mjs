@@ -10,7 +10,9 @@ test('CSV export is wired only to the fictional inspector fixture, not a cloud o
   assert.match(source, /buildSyntheticChartCsv\(this\.planets,\s*this\.houses\)/);
   assert.match(source, /if \(this\.destroyed \|\| this\.exporting \|\| this\.mode !== 'natal'\) return;/);
   assert.ok(source.includes("from './synthetic-csv-download'"));
-  assert.ok(source.includes('requestSyntheticCsvDownload(csv, SYNTHETIC_CSV_FILENAME, {'));
+  assert.ok(source.includes("from './synthetic-csv-browser-port'"));
+  assert.ok(source.includes('requestSyntheticCsvDownload(csv, SYNTHETIC_CSV_FILENAME, createSyntheticCsvBrowserPort({'));
+  assert.ok(source.includes('new Blob([content]'));
   assert.ok(source.includes('URL.revokeObjectURL(url)'));
   assert.ok(source.includes('this.csvStatus = null;'));
   assert.doesNotMatch(source.slice(source.indexOf('  exportSyntheticCsv(): void'), source.indexOf('  private renderError')),
@@ -48,4 +50,20 @@ test('fictional CSV exporter has no renderer dependency or astronomical calculat
   assert.doesNotMatch(source, /from 'grafici-astrologici'|https?:\/\//);
   assert.match(source, /FICTIONAL_NOT_CALCULATED/);
   assert.match(source, /record_type,object_name,longitude_degrees,data_quality/);
+});
+
+
+test('CSV browser adapter owns the anchor lifecycle while Angular only supplies native browser APIs', () => {
+  const component = read('src/app/desktop-app.component.ts');
+  const adapter = read('src/app/synthetic-csv-browser-port.ts');
+  assert.ok(component.includes('createSyntheticCsvBrowserPort({'));
+  assert.ok(component.includes("createAnchor: () => document.createElement('a')"));
+  assert.ok(component.includes('appendAnchor: anchor => { document.body.appendChild(anchor); }'));
+  assert.ok(adapter.includes('environment.appendAnchor(anchor)'));
+  assert.ok(adapter.includes('anchor.click()'));
+  assert.match(adapter, /finally\\s*\\{\\s*anchor\\.remove\\(\\);/);
+  assert.ok(adapter.includes('environment.schedule(() => environment.revokeObjectUrl(url), delayMs)'));
+  for (const forbidden of ['fetch(', 'invoke(', 'localStorage', 'sessionStorage', 'console.']) {
+    assert.ok(!adapter.includes(forbidden));
+  }
 });
