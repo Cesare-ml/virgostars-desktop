@@ -9,7 +9,7 @@ Three previously separate draft PRs independently protected parts of the same of
 | Source draft | Integrated behavior |
 | --- | --- |
 | #86 | Quote-aware, active local CSS references; no disabled/alternate CSS, inert comment/template fake links, or CSP-blocked inline handlers |
-| #49 | Exactly one local regular `main*.js` module, optional local polyfills, no inline/remote/symlinked entry scripts |
+| #49 | Exactly one **active HTML** local regular `main*.js` module, optional local polyfills, no inline/remote/symlinked entry scripts or fake executable links inside comments, templates, textarea or quoted attributes |
 | #95 | Exactly one `<base href="/">` inside the document head, before any asset references; no external/relative/misplaced/inert base |
 | #91 | Earlier overlapping CSS work; closed/unmerged, not separately copied |
 
@@ -17,18 +17,18 @@ The integrated `verifyOfflineBundle` validates **base → CSS → JavaScript →
 
 ### Integration bug fixed
 
-The approved-private-artwork fixture from #95 had been updated with a correct `<base>` but lacked the local Angular `main*.js` script required by #49. As a result, naïvely combining the PRs would break the positive private-mode test. The consolidated fixture now includes a synthetic local JS module, and asserts that private mode rejects a missing module and an incorrect base. Synthetic-mode integration tests additionally cover an inactive CSS link, a fake link inside a comment, and a missing JS module.
+The approved-private-artwork fixture from #95 had been updated with a correct `<base>` but lacked the local Angular `main*.js` script required by #49. As a result, naïvely combining the PRs would break the positive private-mode test. The consolidated fixture now includes a synthetic local JS module, and asserts that private mode rejects a missing module and an incorrect base. Synthetic-mode integration tests additionally cover an inactive CSS link, a fake link inside a comment, a missing JS module and a commented-out JS entrypoint that must not be considered executable.
 
 ## Checks actually executed
 
 - Node.js **v22.16.0**: `node --check` on the exact source files copied from the upstream GitHub commits for the base and JS helpers: **both pass**.
-- Node.js **v22.16.0**: **22/22 passing isolated helper scenarios** against byte-identical copies of those two committed modules, including a synthetic HTML base + local JS combination. The executed local Git blob IDs match the integrated committed modules:
+- Node.js **v22.16.0**: **31/31 passing isolated helper scenarios** against byte-identical copies of the current integrated base and JavaScript modules, including a synthetic HTML base + local JS combination, comment-only fake scripts and inert template/textarea/attribute cases. The executed local Git blob IDs match the integrated committed modules:
   - `verify-document-base.mjs`: `eec569b6a8588b2ed14ee9aa4bfdb4a3f2f95af3`
-  - `verify-bundled-scripts.mjs`: `eb22438017f4530c72d60dcabbcaabdc5e82eda0`
+  - `verify-bundled-scripts.mjs`: `61448a5df32ecba846388f7a0adb970c031ae992`
 - Read-only **17/17 static integration assertions** on the actual GitHub branch confirm the three imports and calls, their execution order, the return fields, the asset hash check, both test fixtures and negative regression coverage.
-- The CSS verifier is reused **unchanged** from draft #86, whose 31 standalone synthetic cases were previously executed there. They have **not** been rerun as part of this consolidation.
+- The CSS verifier is reused **unchanged** from draft #86, whose 31 standalone synthetic cases were previously executed there. The JavaScript verifier inherited from #49 was additionally hardened after reproducing a real false-pass: it treated a `<script>` found solely in an HTML comment as an active module. Nine new authored regression tests cover inert script contexts, benign quoted metadata, actual handlers and malformed comments. They have **not** been rerun as part of this consolidation.
 
-**Not executed:** the complete repository `npm test` (including the integrated `tests/verify-offline-bundle.test.mjs` and `tests/private-assets.test.mjs`), Angular builds using the sibling renderer, real private-artwork bundle preparation, Rust/Tauri build, Windows native UI/WebView2/CSP/network inspection. The helper smoke does **not** prove an integrated native build works.
+**Not executed:** the complete repository `npm test` (including the integrated `tests/verify-offline-bundle.test.mjs` and `tests/private-assets.test.mjs`), Angular builds using the sibling renderer, real private-artwork bundle preparation, Rust/Tauri build, Windows native UI/WebView2/CSP/network inspection. The 31-case helper smoke does **not** prove an integrated native build works. The expanded committed Node suite (23 JS module cases plus the document-base, CSS, and end-to-end bundle cases) still requires a full checkout run.
 
 ## Pre-merge acceptance commands
 
