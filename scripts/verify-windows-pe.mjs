@@ -7,6 +7,7 @@ import {constants, closeSync, fstatSync, lstatSync, openSync, readSync} from 'no
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isFileBackedPeEntryPoint} from './pe-entrypoint-bounds.mjs';
+import {closePeDescriptorRedacted} from './pe-safe-close.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_HEADER_BYTES = 8192;
@@ -139,7 +140,7 @@ export function verifyWindowsExecutable(file) {
     // Do not print absolute paths or exception details on a shared diagnostic report.
     error('UNREADABLE');
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    if (fd !== undefined) closePeDescriptorRedacted(fd, closeSync);
   }
 }
 
