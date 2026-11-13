@@ -20,10 +20,11 @@ export function createSyntheticCsvBrowserPort(
     createUrl: csv => environment.createObjectUrl(environment.createBlob(csv)),
     click: (url, filename) => {
       const anchor = environment.createAnchor();
-      anchor.href = url;
-      anchor.download = filename;
-      // Remove the anchor even if insertion itself throws after attaching it.
+      // An anchor may throw even while assigning href/download (e.g., a
+      // hostile DOM shim). Always detach it once it has been allocated.
       try {
+        anchor.href = url;
+        anchor.download = filename;
         environment.appendAnchor(anchor);
         anchor.click();
       } finally {

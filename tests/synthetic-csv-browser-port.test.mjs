@@ -25,14 +25,37 @@ function harness(failAt = null) {
     revokeObjectUrl: url => events.push(['revoke', url]),
     createAnchor: () => {
       if (failAt === 'anchor') throw new Error('anchor');
-      anchor = {
-        href: '', download: '',
+      const element = {
         click() {
           events.push(['click', this.href, this.download]);
           if (failAt === 'click') throw new Error('click');
         },
-        remove() { events.push(['remove']); },
+        remove() {
+          events.push(['remove']);
+          if (failAt === 'remove') throw new Error('remove');
+        },
       };
+      let href = '';
+      let download = '';
+      Object.defineProperties(element, {
+        href: {
+          get: () => href,
+          set: value => {
+            if (failAt === 'href') throw new Error('href');
+            href = value;
+          },
+          enumerable: true,
+        },
+        download: {
+          get: () => download,
+          set: value => {
+            if (failAt === 'download') throw new Error('download');
+            download = value;
+          },
+          enumerable: true,
+        },
+      });
+      anchor = element;
       return anchor;
     },
     appendAnchor: a => {
@@ -65,7 +88,7 @@ test('actual browser port creates CSV Blob, clicks named link and defers URL cle
   assert.deepEqual(h.events.at(-1), ['revoke', 'blob:fixture-export']);
 });
 
-for (const failure of ['blob', 'url', 'anchor', 'append', 'click', 'schedule']) {
+for (const failure of ['blob', 'url', 'anchor', 'href', 'download', 'append', 'click', 'remove', 'schedule']) {
   test(`browser port fails closed and releases owned resources after ${failure} failure`, () => {
     const h = harness(failure);
     assert.throws(() => requestSyntheticCsvDownload(CSV, FILENAME, h.port), { message: failure });
@@ -73,7 +96,7 @@ for (const failure of ['blob', 'url', 'anchor', 'append', 'click', 'schedule']) 
     assert.deepEqual(h.events.filter(e => e[0] === 'revoke'),
       allocated ? [['revoke', 'blob:fixture-export']] : []);
     assert.deepEqual(h.events.filter(e => e[0] === 'remove'),
-      ['append', 'click', 'schedule'].includes(failure) ? [['remove']] : []);
+      ['href', 'download', 'append', 'click', 'remove', 'schedule'].includes(failure) ? [['remove']] : []);
     assert.equal(h.timers.length, 0);
   });
 }
