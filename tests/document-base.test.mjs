@@ -46,3 +46,31 @@ test('does not expose input in errors', () => {
   assert.throws(() => verifyDesktopBaseHref(html('<base href="' + secret + '">')),
     error => !error.message.includes(secret) && /DESKTOP BASE HREF/.test(error.message));
 });
+
+test('ignores inert base in a closed HTML comment rather than treating it as active', () => {
+  assert.throws(() => verifyDesktopBaseHref(html('<!-- <base href="/"> -->')), /DESKTOP BASE HREF/);
+});
+
+test('ignores a commented-out base when a genuine root base follows', () => {
+  assert.equal(verifyDesktopBaseHref(html('<!-- <base href="/bad/"> --><base href="/">')), true);
+});
+
+test('rejects an unfinished HTML comment containing a fake base', () => {
+  assert.throws(() => verifyDesktopBaseHref(html('<!-- <base href="/">')), /DESKTOP BASE HREF/);
+});
+
+test('rejects a base nested in template or noscript rather than treating it as document base', () => {
+  for (const wrapper of ['template', 'noscript']) {
+    assert.throws(() => verifyDesktopBaseHref(html('<' + wrapper + '>' + '<base href="/">' + '</' + wrapper + '>')), /DESKTOP BASE HREF/, wrapper);
+  }
+});
+
+test('accepts the actual Angular metadata-first source ordering', () => {
+  assert.equal(verifyDesktopBaseHref('<!doctype html><html lang="it"><head><meta charset="utf-8"><title>VirgoStars Desktop</title><base href="/"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><vs-desktop-app></vs-desktop-app></body></html>'), true);
+});
+
+test('rejects unexpected head elements before base even without CSS links', () => {
+  for (const before of ['<style></style>', '<div></div>', '<script type="module"></script>']) {
+    assert.throws(() => verifyDesktopBaseHref(html(before + '<base href="/">')), /DESKTOP BASE HREF/, before);
+  }
+});
