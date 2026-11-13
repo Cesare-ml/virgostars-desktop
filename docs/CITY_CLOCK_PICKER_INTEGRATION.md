@@ -89,3 +89,13 @@ On cancel, `abortPending` increments the generation **before** timer/lookup clea
 Test file: `tests/offline-city-timer-failure.test.mjs` (5 synthetic cases). **5/5 test bodies passed** in an isolated V8 JavaScript harness on the exact committed GitHub state/test source after removing TypeScript-only syntax. In addition, **13/13 existing** city picker state test bodies passed under that same isolated harness against the new state implementation. This is **not** equivalent to a complete `node --test`, `npm test`, Angular or packaged Windows/WebView2 run.
 
 Manual acceptance: simulate a failed debounce timer, verify localized transient error and Retry; simulate timer cancellation failure on Clear, and ensure the city clock and selected-city label disappear and a late reply never recreates them. Verify normal keyboard and IME search and a timer whose handle is `0`.
+
+## Main-branch reconciliation checkpoint (2026-11-13)
+
+The old stacked clock dependency chain **#45 → #46 → #101** has since been merged to `main`. This integration PR **#107 now directly targets `main`** as a draft. A two-parent **feature-branch-only** merge commit `b01fce10849b42af92342f73208921ea1562bf98` incorporated then-main head `fdb83043953c070c03b005a7965fb73c6fb6b022` into the existing #107 head `b2d97148a761af5ce421ce5bd7692414ace9e517`.
+
+The GitHub history comparison from the clock parent showed **zero overlapping changed paths** between current-main additions and the city's 22 changes, so the integration tree was built on the exact `main` tree and overlaid **only** those 22 city-feature paths. The update was a non-forced fast-forward of the feature ref with an expected-SHA lease. Read-back `main...#107` immediately afterward showed 40 commits ahead, 0 behind and exactly the 22 city-feature files. `main` itself was not modified.
+
+This proves source provenance and avoids discarding other merged work, **not** a tested executable. Before marking the PR ready or merging, run the full test suite, bundled CSS/JS/native IPC verification and `npm run build:ui` from a complete Windows checkout. Test the actual Tauri/WebView2 UI with an installed, authorized city catalog, without exposing its private files. Verify any newer `main` drift again at merge time. Keep draft until these gates and the maintainer review are complete.
+
+**Important:** The top-level introduction above describes historical branch composition. This checkpoint is authoritative for current PR base/merge status. Do not merge the superseded independent #78 city picker in addition to #107 without deduplication.
