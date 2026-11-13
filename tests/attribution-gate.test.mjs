@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyAttribution} from '../scripts/verify-attribution.mjs';
+import {readFileSync} from 'node:fs';
+const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 
 const valid = () => ({
   license: [
@@ -55,4 +57,19 @@ test('rejects non-string values rather than coerce', () => {
   const fixture = valid();
   fixture.notice = null;
   assert.throws(() => verifyAttribution(fixture), /invalid notice/);
+});
+
+test('tracked Desktop license, NOTICE and Angular footer pass the source gate', () => {
+  assert.equal(verifyAttribution({
+    license: read('LICENSE'),
+    notice: read('NOTICE'),
+    template: read('src/app/desktop-app.component.html'),
+    styles: read('src/app/desktop-app.component.css'),
+  }), true);
+});
+test('normal and private offline bundle commands enforce the attribution gate', () => {
+  const scripts = JSON.parse(read('package.json')).scripts;
+  assert.equal(scripts['verify:attribution'], 'node scripts/verify-attribution.mjs');
+  assert.match(scripts['verify:bundle'], /npm run verify:attribution$/);
+  assert.match(scripts['verify:bundle:private'], /npm run verify:attribution$/);
 });
