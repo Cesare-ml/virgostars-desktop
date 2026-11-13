@@ -120,6 +120,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       'src-tauri/src/runtime_probe.rs':f.rustModules.runtime_probe,
       'src-tauri/src/offline_places.rs':f.rustModules.offline_places,
       'src-tauri/tauri.conf.json':JSON.stringify(f.tauriConfig),
+      'src-tauri/build.rs':'fn main() { tauri_build::build(); }',
       'src/app/native/runtime-protocol.ts':f.runtimeContract,
       'src/app/native/offline-places-contract.ts':f.placesContract,
       ...f.tsFiles,
@@ -136,6 +137,19 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       assert.throws(()=>auditCheckout(root),/Unexpected Tauri import/,path);
       write(path,'export const ok = true;');
     }
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places']);
+    // In Tauri 2 an empty capabilities array still auto-loads capability files.
+    // An unexpected JSON/TOML permission file must fail closed.
+    for(const name of ['unexpected.json','unexpected.toml','readme.txt']) {
+      write('src-tauri/capabilities/'+name, 'unsafe capability');
+      assert.throws(()=>auditCheckout(root),/auto-discovered capability files/,name);
+      rmSync(join(root,'src-tauri/capabilities',name));
+    }
+    // An unknown nested capabilities directory can also introduce a new
+    // capability later and must be reviewed rather than silently accepted.
+    mkdirSync(join(root,'src-tauri/capabilities','nested'));
+    assert.throws(()=>auditCheckout(root),/auto-discovered capability files/);
+    rmSync(join(root,'src-tauri/capabilities','nested'),{recursive:true});
     assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places']);
     // A command in a newly added nested Rust file must not evade the audit.
     write('src-tauri/src/features/new_command.rs',
@@ -168,4 +182,29 @@ test('unrecognized Rust command attribute forms cannot hide command declarations
   f.rustModules.runtime_probe=f.rustModules.runtime_probe.replace(
     '#[tauri::command]', '#[tauri::command(rename_all = "snake_case")]');
   assert.throws(()=>auditNativeIpc(f),/Unsupported native command attribute syntax/);
+});
+
+test('changing Tauri build.rs from its reviewed build-only form fails closed',()=>{
+  const root=mkdtempSync(join(tmpdir(),'vs-ipc-build-fixture-'));
+  try {
+    const f=fixture();
+    const write=(path,content)=>{
+      const target=join(root,path);
+      mkdirSync(dirname(target),{recursive:true});
+      writeFileSync(target,content);
+    };
+    for(const [path,content] of Object.entries({
+      'src-tauri/src/lib.rs':f.entry,
+      'src-tauri/src/runtime_probe.rs':f.rustModules.runtime_probe,
+      'src-tauri/src/offline_places.rs':f.rustModules.offline_places,
+      'src-tauri/tauri.conf.json':JSON.stringify(f.tauriConfig),
+      'src-tauri/build.rs':'fn main() { tauri_build::build(); }',
+      'src/app/native/runtime-protocol.ts':f.runtimeContract,
+      'src/app/native/offline-places-contract.ts':f.placesContract,
+      ...f.tsFiles,
+    })) write(path,content);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places']);
+    write('src-tauri/build.rs','fn main() { tauri_build::try_build(custom_attributes()); }');
+    assert.throws(()=>auditCheckout(root),/build configuration changed/);
+  } finally {rmSync(root,{recursive:true,force:true});}
 });
