@@ -130,7 +130,6 @@ test('still accepts a valid PNG header and untouched IEND with modified payload 
   assert.equal(validatePngDataUrl(dataUrl), dataUrl);
 });
 
-
 test('accepts terminal IEND with every base64 padding alignment', () => {
   const original = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
   for (const extraLength of [0, 1, 2]) {
