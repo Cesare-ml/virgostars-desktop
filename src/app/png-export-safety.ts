@@ -10,12 +10,29 @@ const PNG_PREFIX = 'data:image/png;base64,';
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 const MAX_PNG_DIMENSION = 16384;
 const PNG_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+// PNG permits only these bit depths for each IHDR color type.
+const IHDR_DEPTHS: Readonly<Record<number, readonly number[]>> = {
+  0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8],
+  4: [8, 16], 6: [8, 16],
+};
 
 function u32(bytes: string, offset: number): number {
   return bytes.charCodeAt(offset) * 16777216 +
     bytes.charCodeAt(offset + 1) * 65536 +
     bytes.charCodeAt(offset + 2) * 256 +
     bytes.charCodeAt(offset + 3);
+}
+
+/** CRC covers only the fixed 17-byte IHDR type + data, never the full image. */
+function ihdrCrc32(bytes: string): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes.charCodeAt(i);
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 /** Return the unchanged safe URL; reject everything except bounded, PNG-shaped data. */
@@ -44,6 +61,16 @@ export function validatePngDataUrl(value: unknown): string {
   const width = u32(header, 16);
   const height = u32(header, 20);
   if (width < 1 || height < 1 || width > MAX_PNG_DIMENSION || height > MAX_PNG_DIMENSION) {
+    throw new Error('Invalid PNG export');
+  }
+  const bitDepth = header.charCodeAt(24);
+  const colorType = header.charCodeAt(25);
+  const compression = header.charCodeAt(26);
+  const filter = header.charCodeAt(27);
+  const interlace = header.charCodeAt(28);
+  if (!IHDR_DEPTHS[colorType]?.includes(bitDepth) ||
+      compression !== 0 || filter !== 0 || (interlace !== 0 && interlace !== 1) ||
+      ihdrCrc32(header.slice(12, 29)) !== u32(header, 29)) {
     throw new Error('Invalid PNG export');
   }
   return value;

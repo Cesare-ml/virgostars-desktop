@@ -28,6 +28,7 @@ function readClockTime(driver: ClockDriver): number {
 export class DeviceClock {
   timestamp: number;
   private timer: unknown | null = null;
+  private starting = false;
   private disposed = false;
   private readonly driver: ClockDriver;
 
@@ -38,25 +39,33 @@ export class DeviceClock {
 
   /** Tick from actual wall time, not elapsed intervals, to survive OS sleep. */
   start(changed: () => void): void {
-    if (this.disposed || this.timer !== null) return;
-    this.refresh(changed);
-    let handle: unknown;
+    if (this.disposed || this.timer !== null || this.starting) return;
+    // refresh() and schedule() may invoke callbacks synchronously. Treat start
+    // as in progress until the first handle has been installed or abandoned.
+    this.starting = true;
     try {
-      handle = this.driver.schedule(() => this.refresh(changed));
-    } catch {
-      this.invalidateTime(changed);
-      return;
+      this.refresh(changed);
+      if (this.disposed) return;
+      let handle: unknown;
+      try {
+        handle = this.driver.schedule(() => this.refresh(changed));
+      } catch {
+        this.invalidateTime(changed);
+        return;
+      }
+      if (handle === null || handle === undefined) {
+        this.invalidateTime(changed);
+        return;
+      }
+      // An injected scheduler may synchronously destroy the owner before returning.
+      if (this.disposed) {
+        try { this.driver.cancel(handle); } catch { /* Already disposed; do not leak driver errors. */ }
+        return;
+      }
+      this.timer = handle;
+    } finally {
+      this.starting = false;
     }
-    if (handle === null || handle === undefined) {
-      this.invalidateTime(changed);
-      return;
-    }
-    // An injected scheduler may synchronously destroy the owner before returning.
-    if (this.disposed) {
-      try { this.driver.cancel(handle); } catch { /* Already disposed; do not leak driver errors. */ }
-      return;
-    }
-    this.timer = handle;
   }
 
   /** A clock without a working scheduler cannot safely display live time. */

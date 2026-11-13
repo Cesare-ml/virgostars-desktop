@@ -86,3 +86,22 @@ An injected timer driver may throw while scheduling or cancelling, return an abs
 - Late callbacks after destruction have no effect, regardless of whether the timer driver honored cancellation.
 
 Four added synthetic Node regressions cover scheduling exceptions, empty handles, cancellation exceptions and synchronous dispose-in-schedule. They do not substitute for full Angular/WebView2 testing on Windows. There is no network, persistence, user data, astrological computation or new native capability in this follow-up.
+
+## Reentrant live-clock startup hardening (2026-11-13)
+
+A first wall-time refresh or an injected scheduler can call the UI notification
+**synchronously** before the initial interval handle exists. Previously the
+notification could call `start()` again and install a second interval, leaving an
+uncancelled timer after disposal. `DeviceClock.start()` now guards in-progress
+initialization and always clears that guard via `finally`, including failures.
+If the notification disposes the clock during its first refresh, no timer is
+scheduled. Existing zero-valued handles, invalid-time recovery, retry after
+failed scheduling, and late-callback safeguards remain unchanged.
+
+Three additional synthetic tests cover reentry from the first refresh, disposal
+during that refresh, and a synchronous scheduler tick. This is a local clock
+lifecycle correction only: no real astronomical recomputation, credentials,
+network, persistence, Tauri IPC, extra dependencies, or new release capability.
+Verify with `node --experimental-strip-types --test tests/device-clock.test.mjs`
+and then the normal complete Windows/WebView2 acceptance gates. Do not infer
+native UI acceptance from a source-only review.
