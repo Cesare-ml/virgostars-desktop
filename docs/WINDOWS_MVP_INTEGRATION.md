@@ -66,3 +66,24 @@ The source-side packaging verifiers can detect missing or inert CSS and unsafe f
 This is a stacked **Draft PR** targeting #109's feature branch, **not** `main`. PR #105 and #109 were not merged into `main`, no GitHub Actions were used, no deployment/release was triggered, and no repository visibility changed. The current repository includes a protected city catalog release: **do not publish it publicly** until the maintainer has completed `docs/PUBLICATION_CHECKLIST.md` and removed/relocated that restricted attachment.
 
 Review the dependency chain and recompare the concurrently updated parent PRs before any final integration. The result is a **source integration candidate**, not a working public beta.
+
+## Native IPC timeout and packaging preflight reconciliation (13 November 2026)
+
+During integration review, main gained the completed **PR #113** fix for a Tauri runtime-probe ordering bug. The Windows MVP branch had retained the older `src/app/native/runtime-protocol.ts` and `tests/native-runtime.test.mjs` files, potentially reintroducing the error when integrated. Both are now **byte-identical to current main**, preserving the 4-second, fail-closed read-only IPC probe: the deadline is registered outside a Promise executor and before any native invocation is queued. A broken/synchronous timer cannot silently dispatch unbounded native IPC.
+
+The mainline's corresponding `docs/NATIVE_RUNTIME_BRIDGE.md` section has also been preserved, without changing account/astronomy capability claims.
+
+**Additional build guard:** `npm run tauri:build` and `npm run tauri:build:private` now invoke `npm run verify:ipc` *before* their existing Angular build and Tauri packaging stages. That avoids bypassing the IPC source/permission audit when a contributor runs the native build script directly instead of `npm run check`. This is a script-level gate; manually invoking the Tauri CLI can still bypass it. Optional city-catalog packaging is a separate workstream (#108), not implicitly authorized by this change.
+
+### Evidence (integrated candidate, not a native acceptance test)
+
+- **Actual Node.js 22.16.0 test runner** on byte-identical GitHub runtime source/test files (the updated source and test blobs are unchanged from merged PR #113): `node --experimental-strip-types --test tests/native-runtime.test.mjs` → **18/18 pass**, zero failures or skips.
+- **TypeScript 5.8.3 strict standalone typecheck** of `src/app/native/runtime-protocol.ts` → **pass**.
+- **All 10 current `tests/windows-mvp-integration.test.mjs` test bodies passed** in a JavaScript V8 isolated harness reading **19 exact branch file contents fetched from GitHub**; file reads were injected rather than executing Node's `readFileSync`. The eight original candidate checks plus two new contracts cover timeout registration before IPC and both normal/private native build script stage orders. **This is not a real `node --test` run or full Angular compile.**
+- Verified Git blob SHAs:
+  - Native helper: `ba933e01f69b678898c85427c1ba11aceadb296c`
+  - Native 18-case test file: `a99509bbd409e411121ee5dae1c997487ee8c7fe`
+  - Ten-case Windows integration file: `407477fffed23b615043131481a3089c4e0553f9`
+  - Native-gated `package.json`: `8a04016bff0b460694887abdf7c5e7957cf85894`
+
+**Still blocking beta claims:** actual complete-repository `npm test`, clean `npm ci`, public sibling Charts build, `npm run verify:ipc`, `npm run build:ui`, offline asset/private-output validation, Rust/Cargo, WebView2 Windows GUI CSS/keyboard/export/capability test, and full native packaging have **not** been executed on this integrated candidate. No main merge, production rollout, installer or repository visibility change has been performed.
