@@ -22,6 +22,7 @@ Focused integrated synthetic Node tests:
 
 ```sh
 node --experimental-strip-types --test tests/city-clock-picker-integration.test.mjs
+node --experimental-strip-types --test tests/offline-city-picker-dom-ids.test.mjs
 node --experimental-strip-types --test tests/offline-city-picker-state.test.mjs tests/offline-city-picker-retry.test.mjs tests/offline-city-picker-integration.test.mjs
 node --experimental-strip-types --test tests/offline-place-search.test.mjs tests/offline-place-ipc-boundaries.test.mjs tests/offline-city-selection.test.mjs
 node --experimental-strip-types --test tests/device-clock.test.mjs tests/selected-city-clock.test.mjs
