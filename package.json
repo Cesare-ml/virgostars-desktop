@@ -12,7 +12,7 @@
     "prepare:icon": "node scripts/generate-spike-icon.mjs",
     "start": "npm run prepare:frontend && ng serve desktop --host 127.0.0.1 --port 4200",
     "build:ui": "npm run prepare:frontend && ng build desktop && npm run verify:bundle",
-    "tauri:dev": "npm run prepare:icon && tauri dev",
+    "tauri:dev": "node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && tauri dev",
     "tauri:build": "npm run build:ui && npm run prepare:icon && tauri build",
     "verify:bundle": "node scripts/verify-offline-bundle.mjs && npm run verify:privacy && node scripts/verify-tauri-security-config.mjs",
     "doctor": "node scripts/desktop-doctor.mjs --stage=setup",

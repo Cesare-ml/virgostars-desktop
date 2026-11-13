@@ -19,6 +19,18 @@ const EXPECTED_CSP = Object.freeze({
   'base-uri': ["'self'"],
 });
 
+
+const EXPECTED_DEV_CSP = Object.freeze({
+  'default-src': ["'self'"],
+  'script-src': ["'self'", "'unsafe-eval'"],
+  'style-src': ["'self'", "'unsafe-inline'"],
+  'img-src': ["'self'", 'data:', 'blob:', 'http://127.0.0.1:4177'],
+  'font-src': ["'self'", 'data:'],
+  'connect-src': ["'self'", 'ws://127.0.0.1:4200', 'http://127.0.0.1:4177'],
+  'object-src': ["'none'"],
+  'frame-src': ["'none'"],
+});
+
 function assertSafe(ok, reason) {
   if (!ok) throw new Error('TAURI SECURITY CONFIG: ' + reason);
 }
@@ -26,34 +38,45 @@ function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Deliberately pin the allowed production directives; any expansion needs review. */
-export function verifyProductionCsp(csp) {
+/** Pin every directive exactly. Development has narrow loopback-only allowances. */
+function verifyPinnedCsp(csp, expected, mode) {
   assertSafe(typeof csp === 'string' && csp.length > 0 && csp.length <= 2048,
-    'missing or invalid production CSP');
+    'missing or invalid ' + mode + ' CSP');
   const directives = new Map();
   for (const part of csp.split(';')) {
     const trimmed = part.trim();
     if (!trimmed) continue;
     const [name, ...sources] = trimmed.split(/\s+/);
-    assertSafe(Object.hasOwn(EXPECTED_CSP, name), 'unreviewed CSP directive');
+    assertSafe(Object.hasOwn(expected, name), 'unreviewed CSP directive');
     assertSafe(!directives.has(name), 'duplicate CSP directive');
-    assertSafe(sources.length === EXPECTED_CSP[name].length &&
-      [...sources].sort().every((source, index) => source === [...EXPECTED_CSP[name]].sort()[index]),
+    assertSafe(sources.length === expected[name].length &&
+      [...sources].sort().every((source, index) => source === [...expected[name]].sort()[index]),
       'CSP source list changed');
     directives.set(name, sources);
   }
-  assertSafe(directives.size === Object.keys(EXPECTED_CSP).length,
-    'missing production CSP directive');
+  assertSafe(directives.size === Object.keys(expected).length,
+    'missing ' + mode + ' CSP directive');
   return Object.freeze({ directives: directives.size });
 }
 
-/** Does not inspect devCsp: development has intentionally distinct allowances. */
+export function verifyProductionCsp(csp) {
+  return verifyPinnedCsp(csp, EXPECTED_CSP, 'production');
+}
+
+export function verifyDevelopmentCsp(csp) {
+  return verifyPinnedCsp(csp, EXPECTED_DEV_CSP, 'development');
+}
+
+/** Inspect both packaged and development Tauri WebView boundaries. */
 export function verifyTauriSecurityConfig(config) {
   assertSafe(isObject(config) && isObject(config.build) && isObject(config.app) &&
     isObject(config.app.security) && isObject(config.bundle), 'invalid Tauri config');
   assertSafe(config.build.frontendDist === '../dist/desktop/browser' &&
     !Object.hasOwn(config.build, 'beforeBuildCommand'),
     'packaged frontend path or build hook changed');
+  assertSafe(config.build.devUrl === 'http://127.0.0.1:4200' &&
+    !Object.hasOwn(config.build, 'beforeDevCommand'),
+    'development frontend must remain on reviewed loopback origin');
   assertSafe(config.bundle.active === false, 'installer packaging requires separate review');
   assertSafe(Array.isArray(config.app.windows) && config.app.windows.length > 0 &&
     config.app.windows.every(window => isObject(window) && !Object.hasOwn(window, 'url')),
@@ -66,6 +89,7 @@ export function verifyTauriSecurityConfig(config) {
     !Object.hasOwn(security, 'assetProtocol'),
     'native/WebView security boundary changed');
   verifyProductionCsp(security.csp);
+  verifyDevelopmentCsp(security.devCsp);
   return Object.freeze({ windows: config.app.windows.length });
 }
 

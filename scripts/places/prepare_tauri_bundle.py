@@ -5,12 +5,42 @@ The default Tauri prototype continues to work without the private catalog.
 This helper checks the catalog/manifest and never changes tracked Tauri config.
 """
 import argparse
+from contextlib import closing
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
+import tempfile
 
 EXPECTED_ROWS = 1_951_599
+# Match the private archive importer's maximum manifest size.
+MAX_MANIFEST_BYTES = 16_384
+
+
+def parse_manifest(path: Path) -> dict:
+    # Bound the actual read, not only a stat that could change before open.
+    with path.open("rb") as source:
+        raw = source.read(MAX_MANIFEST_BYTES + 1)
+    if not raw or len(raw) > MAX_MANIFEST_BYTES:
+        raise ValueError("Invalid city pack manifest size")
+
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate city pack manifest key")
+            result[key] = value
+        return result
+
+    try:
+        info = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError("Invalid city pack manifest JSON") from error
+    if not isinstance(info, dict):
+        raise ValueError("City pack manifest must be an object")
+    return info
+
 
 
 def sha256_of(file: Path) -> str:
@@ -23,18 +53,25 @@ def sha256_of(file: Path) -> str:
 
 def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
     root = root.resolve()
-    catalog = root / ".local" / "places" / "world-cities.sqlite"
-    manifest_file = root / ".local" / "places" / "world-cities.manifest.json"
+    local_dir = root / ".local"
+    places_dir = local_dir / "places"
+    catalog = places_dir / "world-cities.sqlite"
+    manifest_file = places_dir / "world-cities.manifest.json"
+    # Never package linked resources from outside the owner's local pack area.
+    if local_dir.is_symlink() or places_dir.is_symlink() or catalog.is_symlink() or manifest_file.is_symlink():
+        raise ValueError("City pack paths must not be symbolic links")
     if not catalog.is_file() or not manifest_file.is_file():
         raise FileNotFoundError("Missing catalog or manifest: build the local SQLite pack first")
-    info = json.loads(manifest_file.read_text(encoding="utf-8"))
-    if (info.get("schemaVersion") not in (1, 2) or
-        info.get("rowCount") != expected or
+    info = parse_manifest(manifest_file)
+    # bool is an int subclass in Python: reject JSON true/false for number fields.
+    if (type(expected) is not int or expected < 1 or
+        type(info.get("schemaVersion")) is not int or info["schemaVersion"] not in (1, 2) or
+        type(info.get("rowCount")) is not int or info["rowCount"] != expected or
         info.get("file") != catalog.name or
-        info.get("bytes") != catalog.stat().st_size or
+        type(info.get("bytes")) is not int or info["bytes"] != catalog.stat().st_size or
         info.get("sha256") != sha256_of(catalog)):
         raise ValueError("City pack metadata, size, count or checksum mismatch")
-    with sqlite3.connect(catalog.as_uri() + "?mode=ro", uri=True) as connection:
+    with closing(sqlite3.connect(catalog.as_uri() + "?mode=ro", uri=True)) as connection:
         count = connection.execute("SELECT value FROM catalog_meta WHERE key='rowCount'").fetchone()
         if count is None or count[0] != str(expected):
             raise ValueError("Database row count metadata does not match manifest")
@@ -46,7 +83,8 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='country_lookup'"
             ).fetchone()
             mapped_count = connection.execute("SELECT count(*) FROM country_lookup").fetchone()[0] if has_table else -1
-            if mapped_count != info.get("countryLookupCount") or mapped_count < 1:
+            if (type(info.get("countryLookupCount")) is not int or
+                mapped_count != info["countryLookupCount"] or mapped_count < 1):
                 raise ValueError("Country lookup table or count does not match manifest")
 
     # Resource inputs are resolved relative to src-tauri/ by Tauri 2.
@@ -59,8 +97,25 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
             },
         },
     }
-    out = root / ".local" / "places" / "tauri-places.conf.json"
-    out.write_text(json.dumps(override, indent=2) + "\n", encoding="utf-8")
+    out = places_dir / "tauri-places.conf.json"
+    if out.is_symlink():
+        raise ValueError("Refusing a symbolic-link Tauri city override")
+    # A crash must not truncate the last valid override. Keep the temp file in
+    # the same directory for a same-filesystem replacement; clean up on error.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n", prefix=".tauri-places-",
+            suffix=".tmp", dir=places_dir, delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(json.dumps(override, indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, out)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return out
 
 
