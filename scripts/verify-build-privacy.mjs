@@ -15,7 +15,8 @@ const MAX_BUNDLE_BYTES = 256 * 1024 * 1024;
 const DENIED_EXTENSION = /\.(?:map|ts|tsx|mts|cts|pem|key|p12|pfx|sqlite|sqlite3|db|log|bak|orig|swp)$/i;
 const DENIED_NAME = /^(?:id_rsa|id_ed25519|credentials(?:\.[\w-]+)?|secrets?(?:\.[\w-]+)?|tokens?(?:\.[\w-]+)?)$/i;
 const MAP_DIRECTIVE = /(?:\/\/[#@]|\/\*[#@])\s*sourceMappingURL\s*=/i;
-const ROOT_CODE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:js|mjs|css)$/;
+// Browser entrypoints and split Angular bundles only: no arbitrary debug.js or config.css.
+const ROOT_CODE = /^(?:(?:main|polyfills)(?:-[A-Za-z0-9_-]+)?\.js|chunk-[A-Za-z0-9_-]+\.js|styles(?:-[A-Za-z0-9_-]+)?\.css)$/;
 const ROOT_LICENSE = /^(?:3rdpartylicenses|LICENSE|NOTICE)\.txt$/i;
 const APPROVED_IMAGE = /^assets\/img\/(?:[a-zA-Z0-9_@. -]+\/)*[a-zA-Z0-9_@. -]+\.(?:png|jpg|jpeg|webp)$/;
 const APPROVED_IMAGE_DIRECTORY = /^assets\/img\/(?:[a-zA-Z0-9_@. -]+\/)*[a-zA-Z0-9_@. -]+$/;
