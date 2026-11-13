@@ -29,7 +29,22 @@ export function selectCivilInstant(
   resolver: (input: CivilTimeInput) => CivilTimeResult,
   selectedUtc: string | null = null,
 ): CivilTimeSelectionResult {
-  const result = resolver(input);
+  // Snapshot the entire civil tuple before calling an injected resolver. UI
+  // accessors may change between reads, and the resolver must not be able to
+  // rewrite the requested wall time while producing a UTC candidate.
+  if (!input || typeof input !== 'object') return {status:'invalid', code:'INVALID_LOCAL_DATE'};
+  let captured: CivilTimeInput;
+  try {
+    captured = Object.freeze({date:input.date, time:input.time, timeZone:input.timeZone});
+  } catch {
+    return {status:'invalid', code:'TIME_ZONE_UNAVAILABLE'};
+  }
+  let result: CivilTimeResult;
+  try {
+    result = resolver(captured);
+  } catch {
+    return {status:'invalid', code:'TIME_ZONE_UNAVAILABLE'};
+  }
   if (result.status === 'invalid' || result.status === 'nonexistent') return result;
   if (selectedUtc !== null && typeof selectedUtc !== 'string') return {status:'selection_invalid'};
 
@@ -41,7 +56,7 @@ export function selectCivilInstant(
     : candidates.find(option => option.instantUtc === selectedUtc);
   if (!selected) return {status:'selection_invalid'};
   return {
-    status:'ready', localDate:input.date, localTime:input.time,
+    status:'ready', localDate:captured.date, localTime:captured.time,
     timeZone:result.timeZone, instantUtc:selected.instantUtc,
     offsetSeconds:selected.offsetSeconds, timeZoneSource:'host_iana_unpinned',
   };
