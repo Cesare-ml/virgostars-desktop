@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { inspectDesktopStyles } from './verify-bundled-css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STATUS = Object.freeze({pass:'pass', warning:'warning', blocked:'blocked'});
@@ -40,6 +41,7 @@ export function diagnoseEnvironment({
   root = ROOT, charts = resolve(ROOT, '../astrological-charts'),
   stage = 'setup', platform = process.platform, nodeVersion = process.version,
   exists = existsSync, json = safeJson, command = commandOutput,
+  cssInspector = inspectDesktopStyles,
 } = {}) {
   if (!STAGES.has(stage)) throw new Error('stage must be setup, build, or verify');
   const results = [];
@@ -117,8 +119,27 @@ export function diagnoseEnvironment({
   checkedFile('cargo-lock', join(root, 'src-tauri', 'Cargo.lock'), false,
     'Cargo lockfile available', 'After real Rust build, review and commit Cargo.lock.');
   if (stage === 'verify') {
-    checkedFile('angular-bundle', join(root, 'dist', 'desktop', 'browser', 'index.html'), true,
+    const browserBundle = join(root, 'dist', 'desktop', 'browser');
+    const indexPath = join(browserBundle, 'index.html');
+    const hasIndex = exists(indexPath);
+    checkedFile('angular-bundle', indexPath, true,
       'Desktop Angular build output present', 'Run npm run build:ui and npm run verify:bundle.');
+
+    // A present index.html does not guarantee that the CSS used by WebView2
+    // exists or is compatible with the restrictive Tauri CSP.
+    let cssReady = false;
+    if (hasIndex) {
+      try {
+        const inspected = cssInspector(browserBundle);
+        cssReady = Number.isSafeInteger(inspected?.stylesheets) && inspected.stylesheets > 0;
+      } catch {
+        // Deliberately suppress filesystem and parser details in diagnostics.
+      }
+    }
+    add('angular-css', cssReady ? STATUS.pass : STATUS.blocked,
+      cssReady ? 'Local Angular stylesheet artifacts verified' :
+        'Angular stylesheet artifacts missing, invalid or incompatible with desktop CSP',
+      'Run npm run verify:css after npm run build:ui; rebuild if the styles are missing or deferred.');
     if (platform === 'win32') {
       checkedFile('windows-executable', join(root, 'src-tauri', 'target', 'release', 'virgostars-desktop-spike.exe'), true,
         'Windows prototype executable present', 'Run npm run tauri:build, then inspect src-tauri/target/release.');
