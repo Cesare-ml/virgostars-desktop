@@ -5,6 +5,7 @@
 import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertNoCssImports } from './verify-css-imports.mjs';
 
 const fail = (message) => { throw new Error('DESKTOP CSS BUNDLE: ' + message); };
 
@@ -147,6 +148,8 @@ export function inspectDesktopStyles(bundleDir) {
       fail('Local global stylesheet missing or not a regular file');
     }
     const css = readFileSync(cssFile, 'utf8');
+    // Angular must inline imported CSS before an offline Tauri build.
+    assertNoCssImports(css);
     // Both selectors are in the committed global src/styles.css and survive CSS minification.
     if (!css.includes('vs-desktop-app') || !css.includes('box-sizing')) {
       fail('Global stylesheet is incomplete or does not match VirgoStars Desktop');
