@@ -14,6 +14,33 @@ import sqlite3
 import tempfile
 
 EXPECTED_ROWS = 1_951_599
+# Match the private archive importer's maximum manifest size.
+MAX_MANIFEST_BYTES = 16_384
+
+
+def parse_manifest(path: Path) -> dict:
+    # Bound the actual read, not only a stat that could change before open.
+    with path.open("rb") as source:
+        raw = source.read(MAX_MANIFEST_BYTES + 1)
+    if not raw or len(raw) > MAX_MANIFEST_BYTES:
+        raise ValueError("Invalid city pack manifest size")
+
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate city pack manifest key")
+            result[key] = value
+        return result
+
+    try:
+        info = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError("Invalid city pack manifest JSON") from error
+    if not isinstance(info, dict):
+        raise ValueError("City pack manifest must be an object")
+    return info
+
 
 
 def sha256_of(file: Path) -> str:
@@ -35,11 +62,13 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
         raise ValueError("City pack paths must not be symbolic links")
     if not catalog.is_file() or not manifest_file.is_file():
         raise FileNotFoundError("Missing catalog or manifest: build the local SQLite pack first")
-    info = json.loads(manifest_file.read_text(encoding="utf-8"))
-    if (info.get("schemaVersion") not in (1, 2) or
-        info.get("rowCount") != expected or
+    info = parse_manifest(manifest_file)
+    # bool is an int subclass in Python: reject JSON true/false for number fields.
+    if (type(expected) is not int or expected < 1 or
+        type(info.get("schemaVersion")) is not int or info["schemaVersion"] not in (1, 2) or
+        type(info.get("rowCount")) is not int or info["rowCount"] != expected or
         info.get("file") != catalog.name or
-        info.get("bytes") != catalog.stat().st_size or
+        type(info.get("bytes")) is not int or info["bytes"] != catalog.stat().st_size or
         info.get("sha256") != sha256_of(catalog)):
         raise ValueError("City pack metadata, size, count or checksum mismatch")
     with closing(sqlite3.connect(catalog.as_uri() + "?mode=ro", uri=True)) as connection:
@@ -54,7 +83,8 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='country_lookup'"
             ).fetchone()
             mapped_count = connection.execute("SELECT count(*) FROM country_lookup").fetchone()[0] if has_table else -1
-            if mapped_count != info.get("countryLookupCount") or mapped_count < 1:
+            if (type(info.get("countryLookupCount")) is not int or
+                mapped_count != info["countryLookupCount"] or mapped_count < 1):
                 raise ValueError("Country lookup table or count does not match manifest")
 
     # Resource inputs are resolved relative to src-tauri/ by Tauri 2.
