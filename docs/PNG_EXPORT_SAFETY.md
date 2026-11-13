@@ -35,3 +35,35 @@ A click returning is *not* proof the OS saved a PNG. Real WebView2 and browser d
 Use `node --experimental-strip-types --test tests/png-export-safety.test.mjs`. Isolated unit tests cover a normal data URL, unsafe schemes/MIME, malformed body, invalid header, dangerous dimensions, oversize and static synthetic filenames.
 
 Before integration into a release, run `npm test`, `npm run build:ui`, a native Windows WebView2 smoke test and actual PNG export for all modes/themes, including error behavior and large screenshots. No GitHub Actions, production data or cloud services are required.
+
+## Combined desktop-shell integration (PR #103, 13 November 2026)
+
+The reviewed PNG safeguard from draft **#53** has been copied unchanged into the stacked desktop UI integration branch **#103** (on #99). The current Angular component calls `validatePngDataUrl(png)` before creating or appending any anchor, derives `syntheticPngFilename(exportMode, exportTheme)` from mode/theme captured **before** asynchronous rendering, and requests a transient attached-anchor download using `requestSyntheticPngDownload`.
+
+The pre-existing synthetic **CSV** feature is unaffected: it retains its separate `SyntheticCsvDownloadPort`, fixed `FICTIONAL_NOT_CALCULATED` 22-record export and independent browser Blob URL cleanup. All existing guarded keyboard shortcut, bilingual inspector and renderer-error localization logic is preserved.
+
+### Tests actually executed on the combined source
+
+An isolated checkout with **byte-identical committed GitHub source and test blobs** (SHA verified) was exercised on Node.js 22.16.0:
+
+```sh
+node --experimental-strip-types --test \
+  --test-skip-pattern='Angular uses validated' \
+  tests/png-export-safety.test.mjs \
+  tests/png-download.test.mjs \
+  tests/synthetic-png-csv-boundary.test.mjs
+
+tsc --noEmit --strict --target ES2022 --module ESNext \
+  --moduleResolution bundler --lib ES2022,DOM \
+  src/app/png-export-safety.ts src/app/png-download.ts \
+  src/app/fictional-geometry.ts src/app/synthetic-csv-export.ts \
+  src/app/workspace-state.ts
+```
+
+- **20/20 Node test cases passed**, 0 failed, 0 skipped in the filtered run (16 unchanged PNG validation/DOM-lifecycle cases, plus 4 new PNG/CSV integration cases).
+- TypeScript 5.8.3 strict standalone compilation of **five pure modules passed**.
+- **10/10 direct GitHub source checks passed** for safe Angular PNG invocation order, captured download name, attached anchor, absence of raw `link.href=png`, preserved CSV, keyboard shortcuts and localized renderer errors. These are *static checks*, not a full Angular build.
+- The fifth new test checks Angular source wiring and was intentionally **excluded from the isolated Node run** because the full Angular component is not present in that scratch checkout. Its checks were exercised separately against actual GitHub source.
+- Source blob IDs: validator `147ec126d6727999c8fb6c5f9fd4d31a8da5123e`; browser helper `dfeb2a0aada886ac60bd2a128725aefff3ad87eb`; CSV serializer `bd133f75a015d9523d9983e26799300f19a959e9`; new cross-format test `e739a5e8538e73767306d6f0d1280dc170d01c8e`.
+
+**Still required before merge:** entire `npm test` on the complete combined checkout; Angular strict build against the approved Charts library; Windows Tauri/WebView2 save/cancel/reject behavior; CSP/runtime smoke and actual chart export for every mode and theme. A request to download is **not** proof of a saved image. The PNG header inspection is **not** full image integrity verification. No main merge, GitHub Actions, production, release or public visibility change.
