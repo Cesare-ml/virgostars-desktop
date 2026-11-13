@@ -191,3 +191,37 @@ test('wire-format API header is required and version-pinned, despite valid vecto
     assert.throws(()=>parseHorizonsVectorResponse(broken,req),/UNSUPPORTED_API_FORMAT/);
   }
 });
+
+
+test('foreign file created after first successful response is preserved on failed acquisition',
+  async()=>fixture(async({planPath,output})=>{
+    let calls=0;
+    const fetchFn=async(...args)=>{
+      calls++;
+      if(calls===2){
+        await writeFile(join(output,'important-foreign.txt'),'PRESERVE THIS DATA');
+        throw Error('simulated network failure after local side effect');
+      }
+      return mock()(...args);
+    };
+    await assert.rejects(acquireHorizonsVectors(planPath,output,{...options,fetchFn}));
+    assert.equal(calls,2);
+    assert.equal(await readFile(join(output,'important-foreign.txt'),'utf8'),
+      'PRESERVE THIS DATA');
+    assert.ok((await readFile(join(output,'horizons-sun.txt'),'utf8')).includes('synthetic test'));
+  }));
+
+test('in-place edit of a response by another actor prevents any rollback deletion',
+  async()=>fixture(async({planPath,output})=>{
+    let calls=0;
+    const fetchFn=async(...args)=>{
+      calls++;
+      if(calls===2){
+        await writeFile(join(output,'horizons-sun.txt'),'FOREIGN CHANGE');
+        throw Error('simulated failure after altered response');
+      }
+      return mock()(...args);
+    };
+    await assert.rejects(acquireHorizonsVectors(planPath,output,{...options,fetchFn}));
+    assert.equal(await readFile(join(output,'horizons-sun.txt'),'utf8'),'FOREIGN CHANGE');
+  }));
