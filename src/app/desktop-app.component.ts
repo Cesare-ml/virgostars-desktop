@@ -13,6 +13,7 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { formatEclipticLongitude } from './format-longitude';
 import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
 import { requestSyntheticCsvDownload } from './synthetic-csv-download';
 import { createSyntheticCsvBrowserPort } from './synthetic-csv-browser-port';
@@ -77,7 +78,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
   get csvStatusLabel(): string { return this.csvStatus ? this.t(this.csvStatus) : ''; }
-  formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
+  formatDegrees(value:number): string { return formatEclipticLongitude(value); }
 
   ngAfterViewInit(): void {
     // Read-only capability check, distinct from account authentication.
