@@ -181,13 +181,13 @@ test('strict manual CLI arguments and failure status do not leak user-supplied p
   assert.ok(!(result.stderr+result.stdout).includes(dir));
 }));
 
-test('official text wire envelope is required even with a valid vector table',()=>{
+test('wire-format API header is required and version-pinned, despite valid vector row',()=>{
   const req={...plan().requests[0],tdbJulianDay:jd};
   const good=responseText(req);
   for(const broken of [good.replace('API VERSION: 1.0','API VERSION: 2.0'),
     good.replace('API SOURCE: NASA/JPL Horizons API','API SOURCE: Unrelated service'),
-    good.replace('API VERSION: 1.0\n',''),
-    good.replace('API SOURCE: NASA/JPL Horizons API\n',''), '  '+good]) {
+    good.replace('API VERSION: 1.0\n',''),good.replace('API SOURCE: NASA/JPL Horizons API\n',''),
+    '  '+good]) {
     assert.throws(()=>parseHorizonsVectorResponse(broken,req),/UNSUPPORTED_API_FORMAT/);
   }
 });
