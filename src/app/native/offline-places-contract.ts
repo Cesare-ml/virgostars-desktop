@@ -18,7 +18,21 @@ export interface OfflinePlaceV1 {
 
 export type PlaceQueryState =
   | Readonly<{kind: 'ready'; items: readonly OfflinePlaceV1[]}>
-  | Readonly<{kind: 'query_too_short' | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable' | 'stale'; items: readonly []}>;
+  | Readonly<{kind: 'query_too_short' | 'query_too_long' | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable' | 'stale'; items: readonly []}>;
+
+/**
+ * Preflight for Rust's bounded FTS5 query. Unicode letters, numbers and
+ * underscores delimit tokens exactly as the native parser does at this layer.
+ * Keep the Rust-side checks authoritative for every caller.
+ */
+export function offlinePlaceQueryProblem(query: string): 'query_too_short' | 'query_too_long' | null {
+  const characters = [...query];
+  if (characters.length > 80) return 'query_too_long';
+  const alphanumeric = characters.filter(char => /[\p{L}\p{N}]/u.test(char)).length;
+  if (alphanumeric < 2) return 'query_too_short';
+  const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
+  return terms.length > 5 ? 'query_too_long' : null;
+}
 
 export interface PlaceSearchTransport {
   isNative(): boolean;
@@ -91,9 +105,8 @@ export class OfflinePlaceSearch {
     if (!Number.isInteger(limit) || limit < 1 || limit > 30) {
       return {kind: 'unavailable', items: []};
     }
-    if (query.trim().length < 2 || [...query].length > 80) {
-      return {kind: 'query_too_short', items: []};
-    }
+    const problem = offlinePlaceQueryProblem(query);
+    if (problem) return {kind: problem, items: []};
     try {
       if (!this.transport.isNative()) return {kind: 'not_native', items: []};
       const raw = await this.transport.invoke('search_offline_places', {query, limit});
