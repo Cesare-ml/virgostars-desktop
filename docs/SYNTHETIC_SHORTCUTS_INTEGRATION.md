@@ -47,7 +47,7 @@ tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler
 - Strict standalone TypeScript compilation of **all six pure modules passed**. It is not an Angular component compilation or proof of a native build.
 - Git blob SHA verified for all **six pure modules** and **five executed test files**. Relevant new blobs: `src/app/translations.ts` `486cc2346562fd4aa61f922380f5c1207d9167b1`, `tests/desktop-shortcuts-i18n-regression.test.mjs` `7a4c92ad45fb1f437e346354e1ae5d66c3cf892e`.
 - **15/15 source-level GitHub readback checks** passed for current Angular shell/template, translated error/active theme/action, preserved shortcut listener, IT/EN longitudes, fictional CSV and non-networked browser export port.
-- Two source-only cases in the original shortcut/CSV integration suite, two in the new i18n suite, and four original #98 source-integration cases **have not been executed against a complete checkout**. Two source tests from #96 are also still unexecuted in a complete checkout. The actual Node runner filters such tests here; direct source readback checks are not equivalent to Angular compilation or end-to-end behavior.
+- Two source-only cases in the original shortcut/CSV integration suite, two in the new i18n suite, and four original #98 source-integration cases **have not been executed against a complete checkout**. Three original source-wiring tests from #96, plus its six pure behavior tests, have not yet been rerun with the actual Node runner in the combined full checkout. The actual Node runner filters such tests here; direct source readback checks are not equivalent to Angular compilation or end-to-end behavior.
 
 ### Newly integrated i18n slice (from #96)
 
