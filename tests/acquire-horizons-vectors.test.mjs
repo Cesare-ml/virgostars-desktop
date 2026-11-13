@@ -225,3 +225,42 @@ test('in-place edit of a response by another actor prevents any rollback deletio
     await assert.rejects(acquireHorizonsVectors(planPath,output,{...options,fetchFn}));
     assert.equal(await readFile(join(output,'horizons-sun.txt'),'utf8'),'FOREIGN CHANGE');
   }));
+
+
+test('real vector parser rejects duplicate target and mixed coordinate aliases before ephemeris',()=>{
+  const request={...plan().requests[0],tdbJulianDay:jd};
+  const good=responseText(request);
+  const addHeader = line => good.replace('$$SOE',()=>line+'\n$$SOE');
+  assert.throws(()=>parseHorizonsVectorResponse(
+    addHeader('Target body name: Moon (301)'),request),/AMBIGUOUS_RESPONSE_HEADER/);
+  assert.throws(()=>parseHorizonsVectorResponse(
+    addHeader('Coordinate system: Earth Mean Equator and Equinox of Reference Epoch'),
+    request),/AMBIGUOUS_RESPONSE_HEADER/);
+});
+
+test('real vector parser rejects a missing target even when spoofed in the footer',()=>{
+  const request={...plan().requests[0],tdbJulianDay:jd};
+  const good=responseText(request);
+  const target='Target body name: Fictional target ('+request.naifId+') {source: DE441}';
+  const spoof=good.replace(target+'\n','')+'\n'+target+'\n';
+  assert.throws(()=>parseHorizonsVectorResponse(spoof,request),/MISSING_RESPONSE_HEADER/);
+});
+
+test('network acquisition rolls back own files when a duplicate critical header appears',
+  async()=>fixture(async({planPath,output})=>{
+    let calls=0;
+    const fetchFn=async url=>{
+      const req=plan().requests.find(item=>item.url===url);
+      assert.ok(req);
+      calls++;
+      const message=responseText(req);
+      const altered=calls===2
+        ?message.replace('$$SOE',()=> 'Center body name: Earth (399)\n$$SOE')
+        :message;
+      return new Response(altered,{status:200});
+    };
+    await assert.rejects(acquireHorizonsVectors(planPath,output,
+      {...options,fetchFn}),/AMBIGUOUS_RESPONSE_HEADER/);
+    assert.equal(calls,2);
+    await assert.rejects(stat(output),{code:'ENOENT'});
+  }));
