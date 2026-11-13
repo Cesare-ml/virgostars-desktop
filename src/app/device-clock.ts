@@ -40,7 +40,30 @@ export class DeviceClock {
   start(changed: () => void): void {
     if (this.disposed || this.timer !== null) return;
     this.refresh(changed);
-    this.timer = this.driver.schedule(() => this.refresh(changed));
+    let handle: unknown;
+    try {
+      handle = this.driver.schedule(() => this.refresh(changed));
+    } catch {
+      this.invalidateTime(changed);
+      return;
+    }
+    if (handle === null || handle === undefined) {
+      this.invalidateTime(changed);
+      return;
+    }
+    // An injected scheduler may synchronously destroy the owner before returning.
+    if (this.disposed) {
+      try { this.driver.cancel(handle); } catch { /* Already disposed; do not leak driver errors. */ }
+      return;
+    }
+    this.timer = handle;
+  }
+
+  /** A clock without a working scheduler cannot safely display live time. */
+  private invalidateTime(changed: () => void): void {
+    if (this.disposed || Number.isNaN(this.timestamp)) return;
+    this.timestamp = NaN;
+    changed();
   }
 
   refresh(changed: () => void): void {
@@ -57,8 +80,11 @@ export class DeviceClock {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.timer !== null) this.driver.cancel(this.timer);
+    const handle = this.timer;
     this.timer = null;
+    if (handle !== null) {
+      try { this.driver.cancel(handle); } catch { /* Never block UI teardown. */ }
+    }
   }
 }
 
