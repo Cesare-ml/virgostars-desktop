@@ -1,6 +1,6 @@
 import {CommonModule} from '@angular/common';
 import {ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject} from '@angular/core';
-import {offlinePlaceSearch} from './native/offline-places';
+import {createOfflinePlaceSearch} from './native/offline-places';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {OfflineCityPickerState, type CityPickerStatus} from './offline-city-picker-state';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -25,7 +25,7 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   @Output() readonly locationSelected = new EventEmitter<OfflinePlaceV1>();
   @Output() readonly locationEdited = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);
-  readonly state = new OfflineCityPickerState(offlinePlaceSearch, () => this.cd.markForCheck());
+  readonly state = new OfflineCityPickerState(createOfflinePlaceSearch(), () => this.cd.markForCheck());
 
   ngOnChanges(changes: SimpleChanges): void {
     // Closing/reopening inspector tabs destroys this component, not the parent
