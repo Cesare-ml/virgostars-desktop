@@ -20,6 +20,14 @@ The gate also rejects source maps or embedded source-map directives, dotfiles, k
 
 Only the expected directory structure (`assets/`, `assets/img/` and safe nested image directories) is accepted; unexpected empty directories are rejected too. Every directory and file name must be portable to Windows: reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, including extension forms), trailing dot/space and Windows-invalid characters are blocked. Linux/macOS synthetic tests create otherwise invalid Windows names to verify the guard; such fixture-creation tests are explicitly skipped when running on Windows itself.
 
+## Strict UTF-8 and NUL acceptance
+
+Before native packaging, the privacy audit now decodes **root `index.html` and every allowed JavaScript/CSS file** with a fatal UTF-8 decoder. It rejects malformed byte sequences or embedded NUL characters with fixed, redacted error reasons. This closes a gap in Node's default `readFileSync(path, 'utf8')` behavior, which silently substitutes replacement characters in corrupt files rather than failing.
+
+This rule does not reject correctly encoded non-ASCII labels (including Italian accents), and it does not change image bytes or the independent SHA-256 art manifest. It is not a JavaScript syntax parser, a security scan of generated code, or a substitute for Windows WebView2 acceptance.
+
+**Actually executed on Node.js 22.16.0:** `node --check scripts/verify-build-privacy.mjs` passed; `node --test tests/privacy-smoke.test.mjs tests/verify-build-privacy-utf8.test.mjs` passed **35/35** (the 27-case local privacy smoke plus the 8 new committed UTF-8 tests). The executing source and committed tests were verified against the exact GitHub Git blob IDs `4158bb9124ff0f815b6389e5cee21a2fd4a2ebb0` and `144c0accdc1145cd80534ec82777f50550a7cee9`. The 27-case smoke test remains a local fixture, whereas the 8-case UTF-8 suite is committed to the repository. The full repository `npm test` and native Windows build remain **unexecuted** in this workspace.
+
 ## Manual validation
 
 Run from the repository on Node.js 22 or 24:
