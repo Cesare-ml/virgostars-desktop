@@ -137,3 +137,34 @@ installing dependencies. This is a lockfile **shape/provenance** preflight,
 not a comparison against a downloaded tarball, a signature verification,
 a vulnerability audit or proof that install scripts are harmless.
 No network requests or package installs are performed by the preflight.
+
+
+## Registry tarball identity gate (2026-11-13)
+
+The pre-`npm ci` lock audit additionally matches the exact installed registry
+package **name and pinned version** to the `resolved` tarball path. For example,
+`node_modules/three` at `0.170.0` must resolve to
+`https://registry.npmjs.org/three/-/three-0.170.0.tgz`. Merely pointing
+to any `.tgz` on the official npm registry is no longer sufficient.
+
+Scoped names (`@angular/core`) and nested `node_modules` installations are
+supported. Legitimate `npm:` aliases are permitted **only when** a dependency
+entry in the pinned lockfile explicitly declares that installed alias and
+source name, and the URL names the underlying source package. Three existing
+`@isaacs/cliui` compatibility aliases remain accepted without a blanket
+exception for arbitrary renamed packages.
+
+To inspect this gate independently:
+
+```powershell
+node --test tests/npm-tarball-identity.test.mjs tests/npm-lock-provenance.test.mjs
+node scripts/verify-npm-lock.mjs
+```
+
+This is intentionally restrictive for the current pinned npm registry layout.
+Future alternate registry URL layouts or alias conventions require a reviewed
+source change rather than a silent preflight bypass. The audit is local,
+read-only and does not fetch tarballs: it verifies only lockfile metadata,
+not actual downloaded bytes, publishers, lifecycle scripts, transitive code
+safety, or dependency vulnerabilities. npm remains responsible for validating
+tarball contents against the pinned integrity digests during installation.
