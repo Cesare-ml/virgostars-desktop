@@ -77,17 +77,25 @@ fn fts_query(input: &str) -> Option<String> {
     if input.chars().count() > MAX_QUERY_CHARS {
         return None;
     }
-    let words: Vec<String> = input
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .filter(|word| !word.is_empty())
-        .take(MAX_TOKENS)
-        .map(|word| format!("\"{}\"*", word))
+    // FTS5 one-character prefixes can scan enormous posting lists even when
+    // multiple short fragments make the overall query appear long enough.
+    // Ignore single-letter fragments such as the L in "L'Aquila".
+    let terms: Vec<&str> = input
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| word.chars().count() >= 2)
+        .take(MAX_TOKENS + 1)
         .collect();
-    // One-letter prefixes over two million localities can produce very large posting lists.
-    if words.is_empty() || input.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
+    // Do not silently discard meaningful terms beyond the supported budget.
+    if terms.is_empty() || terms.len() > MAX_TOKENS {
         return None;
     }
-    Some(words.join(" "))
+    Some(
+        terms
+            .into_iter()
+            .map(|word| format!("\"{}\"*", word))
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 fn search_database(path: &Path, query: &str, limit: u8) -> Result<PlaceSearchV1, &'static str> {
@@ -200,7 +208,14 @@ mod tests {
         assert!(fts_query(" ").is_none());
         assert!(fts_query("x").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
-        assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
+        assert_eq!(fts_query("a\" OR 1=1"), Some("\"OR\"*".into()));
+        assert!(fts_query("a b").is_none());
+        assert!(fts_query("L'").is_none());
+        assert_eq!(fts_query("L'Aquila"), Some("\"Aquila\"*".into()));
+        assert_eq!(fts_query("Côte d'Azur"), Some("\"Côte\"* \"Azur\"*".into()));
+        assert_eq!(fts_query("a San José"), Some("\"San\"* \"José\"*".into()));
+        assert_eq!(fts_query("San José Toscana Italia Centro"), Some("\"San\"* \"José\"* \"Toscana\"* \"Italia\"* \"Centro\"*".into()));
+        assert!(fts_query("San José Toscana Italia Centro Europa").is_none());
     }
 
     #[test]
@@ -261,7 +276,8 @@ mod tests {
              INSERT INTO catalog_meta VALUES ('schemaVersion','1');
              INSERT INTO places VALUES
                (1,'Firenze','Florence',43769560,11255810,350000,1,'Toscana','Europe/Rome','+0100'),
-               (2,'Firenze Piccola',NULL,42000000,11000000,NULL,1,'Lazio','Europe/Rome','+0100');
+               (2,'Firenze Piccola',NULL,42000000,11000000,NULL,1,'Lazio','Europe/Rome','+0100'),
+               (3,'L''Aquila',NULL,42350500,13399000,70000,1,'Abruzzo','Europe/Rome','+0100');
              CREATE VIRTUAL TABLE places_fts USING fts5(
                nome,nome_it,content='places',content_rowid='id',
                tokenize='unicode61 remove_diacritics 2',prefix='2 3');
@@ -276,6 +292,10 @@ mod tests {
         assert_eq!(search_database(&path, "Flor", 2).unwrap().items[0].id, 1);
         assert!(search_database(&path, "Flor", 2).unwrap().items[0].country_name.is_none());
         assert_eq!(search_database(&path, "Flor", 0).err(), Some("PLACE_LIMIT_INVALID"));
+        let aquila = search_database(&path, "L'Aquila", 12).unwrap();
+        assert_eq!(aquila.items.len(), 1);
+        assert_eq!(aquila.items[0].name, "L'Aquila");
+        assert_eq!(search_database(&path, "a b", 12).err(), Some("PLACE_QUERY_INVALID"));
         std::fs::remove_file(&path).unwrap();
     }
 
