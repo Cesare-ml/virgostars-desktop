@@ -171,3 +171,54 @@ test('throwing snapshot validator fails closed without poisoning the next calcul
   assert.equal(JSON.stringify(observed).includes('private validator diagnostic'),false);
   queue.dispose();
 });
+
+
+test('calculation draft getters are read only once and queued values match validated values',async()=>{
+  const original=valid(42), reads={};
+  const input=Object.create(null);
+  for(const [field,value] of Object.entries(original)) {
+    Object.defineProperty(input,field,{enumerable:true,get(){
+      reads[field]=(reads[field]??0)+1;
+      return reads[field]===1?value:'changed-after-validation';
+    }});
+  }
+  const started=[],observed=[];
+  const queue=new LatestCalculationQueue('session_1',req=>{
+    started.push(req);return Promise.resolve(reply(req));
+  },validate,x=>observed.push(x));
+  assert.equal(queue.submit(input),1);
+  await settle();
+  assert.deepEqual(Object.values(reads),Array(6).fill(1));
+  assert.equal(started.length,1);
+  for(const [field,value] of Object.entries(original)) {
+    assert.equal(started[0][field],value,field);
+  }
+  assert.deepEqual(observed.map(x=>x.kind),['ready']);
+  queue.dispose();
+});
+
+test('throwing or revoked draft accessors fail closed without superseding valid work',async()=>{
+  const gate=deferred(),started=[],observed=[];
+  const queue=new LatestCalculationQueue('session_1',req=>{
+    started.push(req);return gate.promise;
+  },validate,x=>observed.push(x));
+  assert.equal(queue.submit(valid(1)),1);
+  await settle();
+  const throwing=new Proxy(valid(2),{get(target,key){
+    if(key==='timeZone')throw new Error('private UI getter diagnostic');
+    return Reflect.get(target,key);
+  }});
+  assert.equal(validCalculationDraft(throwing),false);
+  assert.equal(queue.submit(throwing),null);
+  const revoked=Proxy.revocable(valid(3),{});
+  revoked.revoke();
+  assert.equal(validCalculationDraft(revoked.proxy),false);
+  assert.equal(queue.submit(revoked.proxy),null);
+  assert.equal(started.length,1);
+  assert.equal(started[0].requestSeq,1);
+  gate.resolve(reply(started[0]));
+  await settle();
+  assert.deepEqual(observed.map(x=>x.kind),['ready']);
+  assert.equal(observed[0].request.requestSeq,1);
+  queue.dispose();
+});
