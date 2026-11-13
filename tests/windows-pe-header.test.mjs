@@ -188,8 +188,16 @@ test('CLI is fixed-path only and never logs a missing local absolute executable 
   assert.doesNotMatch(denied.stderr, /private|C:\\/);
 });
 
-test('Windows build launchers invoke the standalone read-only validator after the native build', () => {
-  const read = name => readFileSync(new URL('../scripts/'+name, import.meta.url), 'utf8');
-  assert.match(read('build-windows.cmd'), /node scripts\\verify-windows-pe\.mjs\s*\r?\nif errorlevel 1 goto :failed/);
-  assert.match(read('build-windows-spike.ps1'), /Invoke-Step 'Verify Windows x64 PE header' 'node' @\('scripts\/verify-windows-pe.mjs'\)/);
+test('Windows launcher delegates to system PowerShell and runs PE validation after native build', () => {
+  const read = name => readFileSync(new URL('../scripts/' + name, import.meta.url), 'utf8');
+  const cmd = read('build-windows.cmd');
+  const ps = read('build-windows-spike.ps1');
+  // The .cmd is only a launcher now: do not falsely require a second build path.
+  assert.match(cmd, /set "VS_SYSTEM_POWERSHELL=%SystemRoot%\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe"/);
+  assert.match(cmd, /"%VS_SYSTEM_POWERSHELL%" -NoProfile -NonInteractive -File "%~dp0build-windows-spike\.ps1"/);
+  assert.match(cmd, /set "VS_BUILD_EXIT=%ERRORLEVEL%"\s*\r?\nexit \/b %VS_BUILD_EXIT%/);
+  assert.doesNotMatch(cmd, /node\s+scripts\\verify-windows-pe\.mjs/);
+  // The single PowerShell bootstrap invokes the PE gate after the verified build.
+  assert.match(ps, /Invoke-Step 'Compile previously verified Angular\/Tauri prototype' 'npm\.cmd' @\('exec', '--offline', '--', 'tauri', 'build'\)/);
+  assert.match(ps, /Invoke-Step 'Verify generated Angular files and prototype executable exist' 'npm\.cmd' @\('run', 'doctor:verify'\)\s*\r?\n\s*Invoke-Step 'Verify Windows x64 PE header' 'node' @\('scripts\/verify-windows-pe\.mjs'\)/);
 });
