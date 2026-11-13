@@ -71,7 +71,6 @@ test('base, CSS and JS gate failures cannot be bypassed by an otherwise clean pr
   }
 });
 
-
 test('commented-out main script is not accepted as an executable bundle entrypoint', () => withBundle(f => {
   const index = join(f.bundle, 'index.html');
   const html = readFileSync(index, 'utf8');
