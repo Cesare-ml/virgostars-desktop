@@ -85,10 +85,21 @@ export function auditBuildPrivacy(bundleDir) {
       bundleBytes += stat.size;
       if (bundleBytes > MAX_BUNDLE_BYTES) fail('browser bundle total size limit exceeded');
       const extension = extname(name).toLowerCase();
-      if (['.js', '.mjs', '.css'].includes(extension)) {
-        const text = readFileSync(absolute, 'utf8');
-        if (MAP_DIRECTIVE.test(text)) fail('source map directive in browser bundle');
-        sourceFiles++;
+      // The browser should never have to recover corrupted UTF-8 in entrypoint
+      // HTML, executable JavaScript, or CSS. Node's default utf8 decoder silently
+      // inserts replacement characters, which can mask an invalid artifact.
+      if (child === 'index.html' || ['.js', '.mjs', '.css'].includes(extension)) {
+        let text;
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(absolute));
+        } catch {
+          fail('invalid UTF-8 in browser HTML or code asset');
+        }
+        if (text.includes('\0')) fail('NUL character in browser HTML or code asset');
+        if (child !== 'index.html') {
+          if (MAP_DIRECTIVE.test(text)) fail('source map directive in browser bundle');
+          sourceFiles++;
+        }
       }
     }
   }
