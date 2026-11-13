@@ -107,6 +107,12 @@ export async function probeDesktopRuntime(
       firedSynchronously = true;
       rejectTimeout(new Error('Native runtime probe timeout'));
     }, timeoutMs);
+    // An absent handle cannot be cancelled reliably. Do not dispatch native IPC
+    // when a custom/broken timer driver failed to return a registered timer.
+    // Numeric handle 0 is valid in browsers and must not be rejected.
+    if (handle === null || handle === undefined) {
+      throw new Error('Native runtime probe deadline was not registered');
+    }
     scheduled = true;
     if (firedSynchronously) throw new Error('Native runtime probe timeout');
     const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'));
