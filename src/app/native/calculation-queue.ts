@@ -111,7 +111,7 @@ export function decodeCalculationReply<T>(
     // Unicode controls/formatters can spoof labels or inject terminal lines.
     if (typeof providerVersion !== 'string' || providerVersion.length < 1 ||
         providerVersion.length > 100 || providerVersion.trim().length === 0 ||
-        /[\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]/u.test(providerVersion) || !validate(snapshot)) {
+        /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(providerVersion) || !validate(snapshot)) {
       return {kind:'invalid_reply',request};
     }
     return {kind:'ready',request,value:snapshot,providerVersion};
