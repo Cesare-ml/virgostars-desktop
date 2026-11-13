@@ -27,6 +27,12 @@ The approved-private-artwork fixture from #95 had been updated with a correct `<
 
 On Node.js 22.16.0, **19/19 independent synthetic privacy smoke cases passed** against a byte-identical local copy of the newly committed `verify-build-privacy.mjs` (blob `b76a3f57d963013dc2f5f7977ef65e255937be2f`). The cases include original privacy-safety behaviors, Windows path restrictions, root-code rejection and allowed split chunks. These 19 cases were run separately from the repository test suite; the added repository tests and full combined tests still need execution on an authorized checkout.
 
+### Browser output encoding gate (follow-up)
+
+The approved root JavaScript, CSS and HTML files are now decoded with fatal UTF-8 validation before packaging; malformed byte sequences and embedded NUL characters fail closed without exposing filesystem paths. Legitimate accented IT/EN strings remain accepted. This hardening is exercised by `tests/verify-build-privacy-utf8.test.mjs` (**8/8 PASS**) and the pre-existing local privacy smoke fixture (**27/27 PASS**), **35/35 combined** on Node.js 22.16.0. This is not a full Angular/Tauri build or a source-code secret scanner.
+
+Source SHA: `4158bb9124ff0f815b6389e5cee21a2fd4a2ebb0`; committed 8-case test SHA: `144c0accdc1145cd80534ec82777f50550a7cee9`. The local smoke and exact-source hash checks were run; the full project `npm test` is still pending.
+
 ## Checks actually executed
 
 - Node.js **v22.16.0**: `node --check` on the exact source files copied from the upstream GitHub commits for the base and JS helpers: **both pass**.
