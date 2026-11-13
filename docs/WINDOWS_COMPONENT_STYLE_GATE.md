@@ -14,12 +14,12 @@ not guarantee the grid panels and chart stage were compiled.
 
 - `scripts/verify-component-styles.mjs` inspects only local Angular-generated
   `main*.js`, `polyfills*.js`, `chunk-*.js` and `styles*.css`.
-- It requires the real `.workspace` grid columns rule and `.chart-stage`
-  grid/flex rule to be present in **one** candidate, accepting Angular's
-  `[_ngcontent-%COMP%]` selector decoration. Mere template class names
-  cannot satisfy the gate.
+- It requires **three** real layout selectors in **one** emitted candidate:
+  `.desktop-app` shell grid/rows, `.workspace` grid/columns, and
+  `.chart-stage` grid/flex. It accepts Angular's `[_ngcontent-%COMP%]`
+  selector decoration. Mere template class names cannot satisfy the gate.
 - It scans **every** compiled CSS/JS candidate for explicit overrides on those
-  two layout elements (`display:block/none/flex`, `visibility:hidden`,
+  three layout elements (`display:block/none/flex`, `visibility:hidden`,
   `opacity:0`), including nested breakpoint rules and simple `:where()`/
   `:is()` selectors. A valid style in an early module cannot hide a later
   conflicting rule; child elements deliberately hidden in the collapsed
