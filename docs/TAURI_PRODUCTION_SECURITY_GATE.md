@@ -12,7 +12,7 @@ Run:
 
     node scripts/verify-tauri-security-config.mjs
 
-The command also runs during the normal npm `verify:bundle` / `build:ui` path. Its tests run with `npm test`.
+The command also runs during **both** npm `verify:bundle` / `build:ui` and `verify:bundle:private` / `build:ui:private` paths. Its tests run with `npm test`.
 
 The gate requires:
 
