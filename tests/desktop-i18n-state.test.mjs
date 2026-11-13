@@ -25,8 +25,8 @@ test('desktop error state stores the key, while the template displays the locali
   const base = new URL('../', import.meta.url);
   const component = readFileSync(new URL('src/app/desktop-app.component.ts', base), 'utf8');
   const template = readFileSync(new URL('src/app/desktop-app.component.html', base), 'utf8');
-  assert.match(component, /error: MessageKey \\| null = null;/);
-  assert.match(component, /this\\.error='chart\\.failed'/);
-  assert.match(component, /get errorText\\(\\): string \\{ return displayMessage\\(this\\.locale, this\\.error\\); \\}/);
-  assert.match(template, /role="alert">\\{\\{errorText\\}\\}/);
+  assert.match(component, /error: MessageKey \| null = null;/);
+  assert.match(component, /this\.error='chart\.failed'/);
+  assert.match(component, /get errorText\(\): string \{ return displayMessage\(this\.locale, this\.error\); \}/);
+  assert.match(template, /role="alert">\{\{errorText\}\}/);
 });
