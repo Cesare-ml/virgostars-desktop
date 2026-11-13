@@ -35,6 +35,12 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
 
   t(key: MessageKey): string { return translate(this.locale,key); }
   get message(): string { return this.t(STATUS_KEYS[this.state.status]); }
+  get selectedDetail(): string {
+    const place = this.state.selected;
+    return place ? [place.region, place.countryName, place.timeZone]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+      .join(' · ') : '';
+  }
 
   onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -56,6 +62,12 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
     } else if (event.key === 'Escape') {
       this.state.dismiss();
     }
+  }
+
+  clearSelected(): void {
+    if (!this.state.selected) return;
+    this.state.clearSelection();
+    this.locationEdited.emit();
   }
 
   choose(index: number): void {
