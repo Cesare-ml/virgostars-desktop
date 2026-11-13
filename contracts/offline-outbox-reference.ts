@@ -102,8 +102,40 @@ function freezeDeep<T extends JsonValue>(value: T): T {
   return value;
 }
 
-function snapshotMutation(change: Mutation, expectedProfile: string): Mutation {
-  if (change === null || typeof change !== 'object') throw new Error('Invalid sync mutation');
+/**
+ * Read the mutation envelope exactly once before validating its semantics.
+ * The envelope, like a receipt, must not carry accessor/inherited fields.
+ * Payload validation and cloning remain separate; no caller object is frozen.
+ */
+function snapshotMutationFields(input: unknown): Mutation {
+  try {
+    if (input === null || typeof input !== 'object' || Array.isArray(input)) throw new Error();
+    const prototype = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null) throw new Error();
+    const descriptors = Object.getOwnPropertyDescriptors(input);
+    const required = [
+      'profileId', 'mutationId', 'entityType', 'entityId',
+      'operation', 'baseServerRevision', 'createdAtUtc',
+    ] as const;
+    const allowed = new Set<string>([...required, 'payload']);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some(key => typeof key !== 'string' || !allowed.has(key))) throw new Error();
+    const hasPayload = Object.hasOwn(descriptors, 'payload');
+    if (keys.length !== required.length + (hasPayload ? 1 : 0)) throw new Error();
+    const snapshot: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const key of hasPayload ? [...required, 'payload'] : required) {
+      const descriptor = Object.hasOwn(descriptors, key) ? descriptors[key] : undefined;
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) throw new Error();
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot as unknown as Mutation;
+  } catch {
+    throw new Error('Invalid sync mutation');
+  }
+}
+
+function snapshotMutation(incoming: Mutation, expectedProfile: string): Mutation {
+  const change = snapshotMutationFields(incoming);
   checkIdentifier(change.profileId);
   checkIdentifier(change.mutationId);
   checkIdentifier(change.entityId);

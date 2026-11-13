@@ -202,3 +202,65 @@ test('invalid second receipt cannot partially apply the first acknowledgement', 
   ]), /Invalid sync receipt/);
   assert.deepEqual(nextSyncBatch(state).map(x => x.mutationId), ['mut-1','mut-2']);
 });
+
+test('mutation envelope accepts only a stable own data-only snapshot', () => {
+  const normal = change('mut-stable', 'sample-1');
+  const nullPrototype = Object.assign(Object.create(null), normal);
+  const state = enqueueMutation(createOutbox('synthetic-owner'), nullPrototype);
+  assert.equal(state.entries[0].mutation.mutationId, 'mut-stable');
+  assert.equal(state.entries[0].mutation.payload.label, 'Fictional sample-1');
+  assert.equal(Object.isFrozen(state.entries[0].mutation), true);
+  assert.deepEqual(nextSyncBatch(state).map(x => x.mutationId), ['mut-stable']);
+});
+
+test('mutation fields with getters cannot alter validated IDs, profile or payload', () => {
+  const original = createOutbox('synthetic-owner');
+  let invoked = 0;
+  for (const key of ['profileId', 'mutationId', 'entityType', 'entityId',
+    'operation', 'baseServerRevision', 'createdAtUtc', 'payload']) {
+    const mutation = change('mut-getter', 'sample-1');
+    Object.defineProperty(mutation, key, {
+      enumerable: true,
+      get() {
+        invoked++;
+        return key === 'payload' ? {label:'unexpected'} : 'mut-changed';
+      },
+    });
+    assert.throws(() => enqueueMutation(original, mutation), /Invalid sync mutation/);
+    assert.deepEqual(outboxCounts(original), {pending:0, conflicts:0});
+  }
+  assert.equal(invoked, 0, 'the reference model must never call envelope getters');
+});
+
+test('reject unexpected, inherited, symbol and nonenumerable mutation fields', () => {
+  const original = createOutbox('synthetic-owner');
+  const hidden = change('mut-hidden', 'sample-1');
+  Object.defineProperty(hidden, 'secret', {value:'must not be copied'});
+  const symbol = change('mut-symbol', 'sample-1');
+  symbol[Symbol('private')] = 'hidden';
+  const inherited = Object.create({mutationId:'mut-inherited'});
+  Object.assign(inherited, change('mut-inherited', 'sample-1'));
+  delete inherited.mutationId;
+  const nonEnumerable = change('mut-nonenumerable', 'sample-1');
+  Object.defineProperty(nonEnumerable, 'mutationId', {
+    value:nonEnumerable.mutationId, enumerable:false,
+  });
+  const missing = change('mut-missing', 'sample-1');
+  delete missing.createdAtUtc;
+  const extra = {...change('mut-extra', 'sample-1'), unexpected:true};
+  for (const unsafe of [hidden, symbol, inherited, nonEnumerable, missing, extra,
+    [change('mut-array', 'sample-1')]]) {
+    assert.throws(() => enqueueMutation(original, unsafe), /Invalid sync mutation/);
+  }
+  assert.equal(outboxCounts(original).pending, 0);
+});
+
+test('malformed second mutation never changes an already frozen outbox', () => {
+  const original = enqueueMutation(createOutbox('synthetic-owner'),
+    change('mut-1', 'sample-1'));
+  const incoming = change('mut-2', 'sample-2');
+  Object.defineProperty(incoming, 'mutationId', {get() {throw new Error('sensitive detail');}});
+  assert.throws(() => enqueueMutation(original, incoming), /Invalid sync mutation/);
+  assert.deepEqual(nextSyncBatch(original).map(x => x.mutationId), ['mut-1']);
+  assert.equal(original.entries[0].mutation.payload.label, 'Fictional sample-1');
+});
