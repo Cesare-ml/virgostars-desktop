@@ -89,3 +89,48 @@ test('invalid time/timezone fails closed without showing an artificial real date
   assert.equal(formatDeviceClock(Infinity,'en'), '—');
   assert.equal(formatDeviceClock(0,'it',false,'Not/A_Zone'), '—');
 });
+
+
+test('invalid samples replace stale displayed time with unavailable and recover', () => {
+  const fake = mockDriver(10_000);
+  const clock = new DeviceClock(fake.driver);
+  let renders = 0;
+  clock.start(() => renders++);
+  fake.advance(NaN);
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(formatDeviceClock(clock.timestamp, 'it'), '—');
+  assert.equal(renders, 1);
+  fake.advance(Infinity);
+  fake.advance(8_640_000_000_000_001);
+  assert.equal(renders, 1, 'repeat invalid readings do not trigger redraw storms');
+  fake.advance(10_700);
+  assert.equal(clock.timestamp, 10_700);
+  assert.equal(renders, 2, 'valid reading recovers even within the original second');
+  clock.dispose();
+});
+
+test('throwing system time source is contained at construction and on ticks', () => {
+  let value = 1_000;
+  let shouldThrow = true;
+  let tick = null;
+  const driver = {
+    now() { if (shouldThrow) throw new Error('private local time provider details'); return value; },
+    schedule(callback) { tick = callback; return 0; },
+    cancel(id) { assert.equal(id, 0); tick = null; },
+  };
+  const clock = new DeviceClock(driver);
+  assert.ok(Number.isNaN(clock.timestamp));
+  let renders = 0;
+  clock.start(() => renders++);
+  assert.equal(renders, 0, 'invalid->invalid does not notify');
+  shouldThrow = false;
+  tick();
+  assert.equal(clock.timestamp, 1_000);
+  assert.equal(renders, 1);
+  shouldThrow = true;
+  assert.doesNotThrow(() => tick());
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(renders, 2);
+  assert.equal(formatDeviceClock(clock.timestamp, 'en'), '—');
+  clock.dispose();
+});
