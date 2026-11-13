@@ -106,6 +106,13 @@ export class OfflineCityPickerState {
 
   chooseActive(): OfflinePlaceV1 | null { return this.choose(this.activeIndex); }
 
+  /** Manual retry only for transient native failures; reuses bounded debounce. */
+  retry(): boolean {
+    if (this.disposed || (this.status !== 'busy' && this.status !== 'unavailable')) return false;
+    this.input(this.query);
+    return true;
+  }
+
   dismiss(): void {
     if (this.disposed) return;
     this.abortPending();
