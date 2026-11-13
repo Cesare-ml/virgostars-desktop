@@ -11,7 +11,7 @@ export type CommittedCivilCalculationDraftV1 = Readonly<{
   calculationKey: string;
 }>;
 
-/** Adapter boundary; the queue remains in draft #47 and is not copied here. */
+/** Generic queue port: the real latest-only queue exists but is not auto-wired. */
 export interface CivilCalculationSubmissionPort {
   submit(draft: CommittedCivilCalculationDraftV1): number | null;
 }
@@ -83,4 +83,35 @@ export function submitCivilCalculation(
     // Keep native/queue failures private; never expose typed birth inputs.
     return {status:'queue_unavailable'};
   }
+}
+
+/**
+ * A view-scoped latest-only queue can invalidate an older calculation when the
+ * civil editor changes, even if the replacement input is no longer valid.
+ */
+export interface ReplaceableCivilCalculationQueue extends CivilCalculationSubmissionPort {
+  invalidate(): void;
+}
+
+/**
+ * Use on each new civil-input revision, not for unrelated display refreshes.
+ * An invalid date, DST gap or missing coordinate must retire any previous
+ * in-flight result rather than leaving an obsolete chart eligible to publish.
+ * The existing submitCivilCalculation remains available for already-validated
+ * immutable drafts and does not implicitly cancel other callers' work.
+ */
+export function replaceCivilCalculation(
+  input: CivilTimeInput,
+  selectInstant: (input: CivilTimeInput, selectedUtc: string | null) => CivilTimeSelectionResult,
+  location: Readonly<{latMicro: number; lngMicro: number}>,
+  calculationKey: string,
+  queue: ReplaceableCivilCalculationQueue,
+  selectedUtc: string | null = null,
+): CivilCalculationDispatchResult {
+  try {
+    queue.invalidate();
+  } catch {
+    return {status:'queue_unavailable'};
+  }
+  return submitCivilCalculation(input, selectInstant, location, calculationKey, queue, selectedUtc);
 }
