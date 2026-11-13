@@ -57,6 +57,8 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
     const mappedSize = Math.max(virtualSize, rawSize);
     if (!mappedSize || virtualAddress >= imageSize ||
         virtualAddress + mappedSize > imageSize) error('SECTION_IMAGE_BOUNDS');
+    // Raw headers are mapped at the start of the image and cannot be owned by a section.
+    if (virtualAddress < headersSize) error('SECTION_HEADER_OVERLAP');
     mappedRanges.push([virtualAddress, virtualAddress + mappedSize]);
     if (rawSize) {
       if (rawPointer < headersSize ||
@@ -64,8 +66,10 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
       rawRanges.push([rawPointer, rawPointer + rawSize]);
       hasRawSection = true;
     }
+    // A nominally executable section is not evidence that an entrypoint in
+    // its zero-initialized virtual tail has actual on-disk executable bytes.
     if (rawSize && (sectionFlags & 0x20000000) !== 0 &&
-        entryPoint >= virtualAddress && entryPoint < virtualAddress + mappedSize) {
+        entryPoint >= virtualAddress && entryPoint - virtualAddress < rawSize) {
       executableEntry = true;
     }
   }
