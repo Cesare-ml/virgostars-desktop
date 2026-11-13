@@ -92,12 +92,23 @@ export async function probeDesktopRuntime(
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
       throw new Error('Invalid native runtime probe timeout');
     }
-    // Arm a valid deadline *before* creating any native invocation promise.
-    // If timer registration throws, do not start an unbounded IPC request.
+    // Create the deadline promise first, then register its timer *outside* the
+    // Promise constructor. Constructor exceptions reject a promise rather than
+    // throwing synchronously, which could otherwise start unbounded native IPC.
+    let rejectTimeout!: (reason: Error) => void;
+    let firedSynchronously = false;
     const timeout = new Promise<never>((_resolve, reject) => {
-      handle = timers.set(() => reject(new Error('Native runtime probe timeout')), timeoutMs);
-      scheduled = true;
+      rejectTimeout = reject;
     });
+    // If a broken scheduler calls back and then throws, its rejection still
+    // needs an observer even though no Promise.race will be installed.
+    void timeout.catch(() => {});
+    handle = timers.set(() => {
+      firedSynchronously = true;
+      rejectTimeout(new Error('Native runtime probe timeout'));
+    }, timeoutMs);
+    scheduled = true;
+    if (firedSynchronously) throw new Error('Native runtime probe timeout');
     const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'));
     const payload = await Promise.race([invocation, timeout]);
     return { kind: 'desktop_demo', info: decodeDesktopRuntimeInfo(payload) };
