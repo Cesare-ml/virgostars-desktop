@@ -18,7 +18,6 @@ test('creates ICO container with embedded PNG',()=>{
   assert.equal(ico.subarray(22,30).toString('hex'),'89504e470d0a1a0a');
 });
 
-
 test('ICO directory matches the dimensions of every generated PNG variant',()=>{
   for (const size of [32,64,128]) {
     const png = temporaryIconPng(size);
