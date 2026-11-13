@@ -80,11 +80,12 @@ fn fts_query(input: &str) -> Option<String> {
     let words: Vec<String> = input
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|word| !word.is_empty())
-        .take(MAX_TOKENS)
+        // Inspect one extra token: never silently search a different, truncated place.
+        .take(MAX_TOKENS + 1)
         .map(|word| format!("\"{}\"*", word))
         .collect();
     // One-letter prefixes over two million localities can produce very large posting lists.
-    if words.is_empty() || input.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
+    if words.is_empty() || words.len() > MAX_TOKENS || input.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
         return None;
     }
     Some(words.join(" "))
@@ -201,6 +202,26 @@ mod tests {
         assert!(fts_query("x").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
         assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
+    }
+
+    #[test]
+    fn excess_search_terms_fail_closed_instead_of_being_truncated() {
+        assert_eq!(
+            fts_query("alpha beta gamma delta epsilon"),
+            Some("\"alpha\"* \"beta\"* \"gamma\"* \"delta\"* \"epsilon\"*".into())
+        );
+        assert!(fts_query("alpha beta gamma delta epsilon zeta").is_none());
+        assert!(fts_query("alpha, beta; gamma delta epsilon / zeta").is_none());
+        assert!(fts_query("alpha beta gamma delta epsilon ---").is_some());
+        // Reject before even attempting to open a local catalog.
+        assert_eq!(
+            search_database(
+                Path::new("not-a-real-catalog.sqlite"),
+                "alpha beta gamma delta epsilon zeta",
+                12
+            ).err(),
+            Some("PLACE_QUERY_INVALID")
+        );
     }
 
     #[test]
