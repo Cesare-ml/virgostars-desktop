@@ -176,3 +176,21 @@ test('Rust queries v1 and v2 resource schemas using fixed SQL branches',()=>{
   assert.match(rust,/country_name: row.get\(9\)/);
   assert.match(rust,/country_code: row.get\(10\)/);
 });
+
+test('cancelling one independent lookup never cancels another picker',async()=>{
+  const pending=[];
+  const transport={
+    isNative:()=>true,
+    invoke:(_command,args)=>new Promise(resolve=>pending.push({query:args.query,resolve})),
+  };
+  const first=new OfflinePlaceSearch(transport);
+  const second=new OfflinePlaceSearch(transport);
+  const firstRequest=first.search('Roma');
+  const secondRequest=second.search('Firenze');
+  assert.deepEqual(pending.map(x=>x.query),['Roma','Firenze']);
+  first.clear();
+  pending[1].resolve(response);
+  pending[0].resolve(response);
+  assert.equal((await firstRequest).kind,'stale');
+  assert.equal((await secondRequest).kind,'ready');
+});
