@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync, writeFileSync, symlinkSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync, symlinkSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {APPROVED_PLACES_OVERRIDE, verifyPlacesTauriOverride} from '../scripts/verify-places-tauri-override.mjs';
@@ -75,3 +75,20 @@ test('rejects symlinks to an otherwise approved file',()=>withFile(canonical(),(
   symlinkSync(path,link);
   assert.throws(()=>verifyPlacesTauriOverride(link),/Unapproved/);
 }));
+
+test('both Windows city build scripts verify native and override config before packaging',()=>{
+  const scripts=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).scripts;
+  assert.equal(scripts['verify:places-override'],'node scripts/verify-places-tauri-override.mjs');
+  for (const [key,ui] of [
+    ['tauri:build:places:windows','npm run build:ui'],
+    ['tauri:build:places:private:windows','npm run build:ui:private'],
+  ]) {
+    const parts=scripts[key].split(' && ');
+    const generate=parts.indexOf('py -3 scripts/places/prepare_tauri_bundle.py');
+    assert.ok(generate >= 0,key);
+    assert.equal(parts[generate+1],'npm run verify:ipc',key);
+    assert.equal(parts[generate+2],'npm run verify:places-override',key);
+    assert.equal(parts[generate+3],ui,key);
+    assert.equal(parts.at(-1),'tauri build --config .local/places/tauri-places.conf.json',key);
+  }
+});
