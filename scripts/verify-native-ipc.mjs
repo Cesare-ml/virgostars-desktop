@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Fail-closed, read-only audit of the small Tauri IPC attack surface. */
-import {readFileSync, readdirSync} from 'node:fs';
+import {lstatSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -70,8 +70,28 @@ export function auditNativeIpc(sources) {
   return Object.freeze({commands:Object.freeze([...NATIVE_COMMANDS]), adapters:Object.freeze([...ADAPTERS])});
 }
 
+/** Tauri 2 auto-loads capability files when capabilities is absent OR empty. */
+function verifyNoImplicitCapabilities(root) {
+  const location=join(root,'src-tauri/capabilities');
+  let stats;
+  try { stats=lstatSync(location); }
+  catch (error) {
+    if (error?.code==='ENOENT') return;
+    throw error;
+  }
+  assert(stats.isDirectory() && !stats.isSymbolicLink(),
+    'Tauri capabilities path must be a real directory');
+  assert(readdirSync(location).length===0,
+    'Tauri auto-discovered capability files require explicit review');
+}
+
 export function auditCheckout(root=ROOT) {
   const read=path=>readFileSync(join(root,path),'utf8');
+  verifyNoImplicitCapabilities(root);
+  // Any custom build script could change capability path discovery or the
+  // native command manifest. Require an explicit review of such a change.
+  assert(/^\s*fn\s+main\s*\(\s*\)\s*\{\s*tauri_build::build\(\);\s*\}\s*$/s.test(read('src-tauri/build.rs')),
+    'Tauri build configuration changed; inspect native permissions');
   const tsFiles=Object.fromEntries(listSources(root,'src').map(path=>[path,read(path)]));
   const rustModules={};
   for(const path of listSources(root,'src-tauri/src',/\.rs$/)) {
