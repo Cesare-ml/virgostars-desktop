@@ -70,3 +70,26 @@ test('base, CSS and JS gate failures cannot be bypassed by an otherwise clean pr
     });
   }
 });
+
+test('a fake main module inside HTML comment is not executable even when privacy audit is clean', () => withBundle(f => {
+  const htmlPath = join(f.bundle,'index.html');
+  const html = readFileSync(htmlPath,'utf8').replace(
+    '<script src="main-LOCAL123.js" type="module"></script>',
+    '<!-- <script src="main-LOCAL123.js" type="module"></script> -->'
+  );
+  writeFileSync(htmlPath,html);
+  // File-level privacy check does not replace HTML semantic checks.
+  assert.equal(auditBuildPrivacy(f.bundle).files,4);
+  assert.throws(() => verifyOfflineBundle(f.bundle,f.staging), /Missing or unclosed Angular script element/);
+}));
+
+test('both build variants audit privacy only after offline bundle acceptance', () => {
+  const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+  assert.equal(pkg.scripts['verify:bundle'],
+    'node scripts/verify-offline-bundle.mjs && npm run verify:privacy');
+  assert.equal(pkg.scripts['verify:bundle:private'],
+    'node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy');
+  assert.equal(pkg.scripts['verify:privacy'], 'node scripts/verify-build-privacy.mjs');
+  assert.match(pkg.scripts['build:ui'], /verify:bundle/);
+  assert.match(pkg.scripts['build:ui:private'], /verify:bundle:private/);
+});
