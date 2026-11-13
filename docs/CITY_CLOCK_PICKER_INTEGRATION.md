@@ -16,13 +16,14 @@ The temporary city and both clocks display **civil time only**. No calculated na
 
 ## Code and verification
 
-This is an **integration branch**, not a reimplementation of the source PRs. The baseline was ported from #78 pinned head `d3165717e21edee978f3a0ca20cd127c8dd250c0`. Since then, this integration intentionally changed the city picker component/template to assign unique DOM IDs, updated two imported source-contract tests to reflect its parent `onCityEdited()` clock-reset handler, merged the translation dictionary, and added focused integration and accessibility tests. All other imported #78 files remain identical to that pinned head.
+This is an **integration branch**, not a reimplementation of the source PRs. The baseline was ported from #78 pinned head `d3165717e21edee978f3a0ca20cd127c8dd250c0`. Since then, this integration intentionally changed the city picker component/template to assign unique DOM IDs and synchronize external parent selection changes, added a small pure state reconciler, updated two imported source-contract tests to reflect its parent `onCityEdited()` clock-reset handler, merged the translation dictionary, and added focused integration, accessibility and parent-state tests. The imported source is no longer entirely byte-identical to #78; review the integration diff rather than relying on the earlier blob-match count.
 
 Focused integrated synthetic Node tests:
 
 ```sh
 node --experimental-strip-types --test tests/city-clock-picker-integration.test.mjs
 node --experimental-strip-types --test tests/offline-city-picker-dom-ids.test.mjs
+node --experimental-strip-types --test tests/offline-city-parent-reconciliation.test.mjs
 node --experimental-strip-types --test tests/offline-city-picker-state.test.mjs tests/offline-city-picker-retry.test.mjs tests/offline-city-picker-integration.test.mjs
 node --experimental-strip-types --test tests/offline-place-search.test.mjs tests/offline-place-ipc-boundaries.test.mjs tests/offline-city-selection.test.mjs
 node --experimental-strip-types --test tests/device-clock.test.mjs tests/selected-city-clock.test.mjs
@@ -52,3 +53,17 @@ The integration now creates one stable `OfflineCityPickerDomIds` set per Angular
 When no suggestions exist, `aria-controls` is absent rather than pointing to an `*ngIf`-removed listbox; `aria-expanded` remains false and the active-descendant reference is cleared by the existing picker state. A new `tests/offline-city-picker-dom-ids.test.mjs` covers two instances, stable IDs after rerenders, Angular wiring and collapsed listbox behavior. The two imported #78 source-contract tests were also updated to assert this integration's `onCityEdited()` parent handler, which clears both the selected city and its clock; #78's original direct assignment assertion is no longer valid here.
 
 **Windows/WebView2 acceptance:** with two pickers in the same document, inspect unique DOM IDs and exercise both labels, independent arrow/Enter navigation, clearing, retry and Escape using keyboard and a screen reader. No native IPC or Windows release is implied by this source change.
+
+## Parent-driven city selection reconciliation (2026-11-13)
+
+The parent `selectedPlace` input is authoritative when changed **externally**. Earlier, `ngOnChanges` only restored non-null places and ignored an external transition to `null`, which could leave an obsolete chosen place visible in the child even while the parent city clock had been cleared.
+
+The child now invokes the independently testable `reconcileParentCitySelection` helper only for real `selectedPlace` input changes:
+- A non-null parent place restores the temporary local selection and cancels pending obsolete search results.
+- A null parent place clears an **already selected** local place, including its query and results, without sending `locationEdited` back to the parent.
+- If the user already edited the city name, local selection is already null: a parent null event **does not erase the typed query or its pending search**, and avoids extra notifications and native calls.
+- Null-to-null changes when the picker has no selection are no-ops.
+
+`tests/offline-city-parent-reconciliation.test.mjs` adds five synthetic regression cases for city/clock removal, preserving an active typed query, rejecting late replies after an external city switch, no-op empty state and Angular lifecycle wiring. **5/5 original test bodies passed** against committed GitHub source in an isolated JavaScript V8 harness after removing TypeScript-only syntax and redirecting the one source file read; this is *not* a complete Node test runner execution, Angular build or Windows WebView2 acceptance. The full checkout must run the explicit test command above and check parent-driven selection clearing while the inspector stays mounted.
+
+No persisted locations, personal birth records, network requests, native IPC privileges or astronomy calculations are introduced.
