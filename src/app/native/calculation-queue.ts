@@ -79,22 +79,42 @@ export function validCalculationDraft(draft: CalculationDraftV1): boolean {
   return snapshot !== null && validDraftSnapshot(snapshot);
 }
 
-/** Verify correlation metadata and status before exposing an untrusted port reply. */
+/**
+ * Verify a single bounded read of correlation metadata/status before exposing
+ * a native reply. Untrusted accessors/proxies and validators fail closed.
+ * A non-ready status is sanitized without reading its payload properties.
+ */
 export function decodeCalculationReply<T>(
   raw: unknown, request: CalculationRequestV1, validate: SnapshotValidator<T>
 ): CalculationOutcome<T> {
-  if (!isObject(raw) || raw.protocolVersion !== 1 || raw.sessionId !== request.sessionId ||
-      raw.requestSeq !== request.requestSeq || raw.calculationKey !== request.calculationKey) {
+  try {
+    if (!isObject(raw)) return {kind:'invalid_reply',request};
+    // Detach every envelope field once: getters may be mutable or throw.
+    const protocolVersion = raw.protocolVersion;
+    const sessionId = raw.sessionId;
+    const requestSeq = raw.requestSeq;
+    const calculationKey = raw.calculationKey;
+    const status = raw.status;
+    if (protocolVersion !== 1 || sessionId !== request.sessionId ||
+        requestSeq !== request.requestSeq || calculationKey !== request.calculationKey) {
+      return {kind:'invalid_reply',request};
+    }
+    if (status === 'unavailable' || status === 'unsupported') {
+      // Never consult or forward payload fields of an unavailable result.
+      return {kind: status,request};
+    }
+    if (status !== 'ready') return {kind:'invalid_reply',request};
+    const providerVersion = raw.providerVersion;
+    const snapshot = raw.snapshot;
+    if (typeof providerVersion !== 'string' || providerVersion.length < 1 ||
+        providerVersion.length > 100 || !validate(snapshot)) {
+      return {kind:'invalid_reply',request};
+    }
+    return {kind:'ready',request,value:snapshot,providerVersion};
+  } catch {
+    // Do not expose private exception messages or throw to direct consumers.
     return {kind:'invalid_reply',request};
   }
-  if (raw.status === 'unavailable' || raw.status === 'unsupported') {
-    // Explicitly do not forward accidentally bundled data on an unsupported result.
-    return {kind: raw.status, request};
-  }
-  if (raw.status !== 'ready' || typeof raw.providerVersion !== 'string' ||
-      raw.providerVersion.length < 1 || raw.providerVersion.length > 100 ||
-      !validate(raw.snapshot)) return {kind:'invalid_reply',request};
-  return {kind:'ready',request,value:raw.snapshot,providerVersion:raw.providerVersion};
 }
 
 /**
