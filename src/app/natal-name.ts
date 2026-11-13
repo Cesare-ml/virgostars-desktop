@@ -16,14 +16,17 @@ export function truncateNatalName(input: string): string {
 
 /** Reject control characters and unpaired surrogates; retain legitimate Unicode names. */
 export function isValidNatalName(input: string): boolean {
-  const name = input.trim();
-  if (!name) return false;
-  let count = 0;
-  for (const scalar of name) {
-    if (++count > NATAL_NAME_VALID_LIMIT) return false;
+  // Scan the untrimmed value first: trim() must not hide trailing tabs/newlines.
+  for (const scalar of input) {
     const cp = scalar.codePointAt(0)!;
     if (cp < 0x20 || (cp >= 0x7f && cp <= 0x9f) ||
         (cp >= 0xd800 && cp <= 0xdfff) || cp === 0x2028 || cp === 0x2029) return false;
+  }
+  const name = input.trim();
+  if (!name) return false;
+  let count = 0;
+  for (const _scalar of name) {
+    if (++count > NATAL_NAME_VALID_LIMIT) return false;
   }
   return true;
 }
