@@ -235,7 +235,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
 
   exportSyntheticCsv(): void {
-    if (this.destroyed || this.exporting) return;
+    if (this.destroyed || this.exporting || this.mode !== 'natal') return;
     let objectUrl: string | null = null;
     try {
       // The only data source here is the fixed fictional inspector fixture.
