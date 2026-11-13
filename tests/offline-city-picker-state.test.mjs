@@ -104,7 +104,7 @@ test('emoji input length counts Unicode scalars without broken surrogate pairs',
  h.state.input('🙂'.repeat(80) + 'Fi');
  assert.equal([...h.state.query].length,81);
  assert.equal(h.state.status,'query_too_long');
- assert.equal(h.state.query,'🙂'.repeat(81));
+ assert.equal(h.state.query,'🙂'.repeat(80)+'F');
  assert.equal(h.tasks.size,0);
  h.state.input('🙂'.repeat(41) + 'Fi');
  assert.equal(h.state.status,'typing');
