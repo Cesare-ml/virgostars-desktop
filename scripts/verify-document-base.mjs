@@ -2,23 +2,32 @@
 const invalid = () => { throw new Error('DESKTOP BASE HREF: Expected one root-relative base before bundled assets'); };
 
 /**
- * Validate Angular build HTML, not arbitrary internet HTML. A deliberately
- * narrow allowlist rejects additional attributes, duplicates and remote bases.
+ * Validate Angular-generated HTML, not arbitrary internet HTML. Keep comments
+ * from masquerading as real tags and require the base to follow metadata only.
  */
 export function verifyDesktopBaseHref(html) {
   if (typeof html !== 'string') invalid();
-  const bases = html.match(/<base(?=[\s/>])[^>]*>/gi) ?? [];
+  // Preserve positions while removing inert comments. A truncated comment is
+  // not a valid build artifact and must not make a fake base appear active.
+  const markup = html.replace(/<!--[\s\S]*?-->/g, match => ' '.repeat(match.length));
+  if (markup.includes('<!--') || markup.includes('-->')) invalid();
+
+  const bases = markup.match(/<base(?=[\s/>])[^>]*>/gi) ?? [];
   if (bases.length !== 1 || !/^<base\s+href\s*=\s*(["'])\/\1\s*\/?>$/i.test(bases[0])) invalid();
 
-  const headOpen = /<head(?:\s[^>]*)?>/i.exec(html);
-  const headClose = /<\/head\s*>/i.exec(html);
-  const baseIndex = html.indexOf(bases[0]);
+  const headOpen = /<head(?:\s[^>]*)?>/i.exec(markup);
+  const headClose = /<\/head\s*>/i.exec(markup);
+  const baseIndex = markup.indexOf(bases[0]);
   if (!headOpen || !headClose || baseIndex < headOpen.index + headOpen[0].length ||
       baseIndex >= headClose.index || headClose.index <= headOpen.index) invalid();
 
-  // HTML applies the base in parsing order. A preceding asset reference can
-  // resolve against the wrong location even if the base is valid later.
-  const prefix = html.slice(headOpen.index + headOpen[0].length, baseIndex);
-  if (/<(?:link|script)(?=[\s/>])/i.test(prefix)) invalid();
+  // Angular's build may emit charset, viewport and title before <base>.
+  // Other elements (notably <template>, <noscript>, <script> or <link>) can
+  // hide the tag or consume relative resources before the base takes effect.
+  const prefix = markup.slice(headOpen.index + headOpen[0].length, baseIndex);
+  const metadataOnly = prefix
+    .replace(/<meta\b[^>]*>/gi, '')
+    .replace(/<title(?:\s[^>]*)?>[\s\S]*?<\/title\s*>/gi, '');
+  if (metadataOnly.trim() !== '') invalid();
   return true;
 }
