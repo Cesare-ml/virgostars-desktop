@@ -139,3 +139,15 @@ test('native capability timeout must register outside Promise executor before IP
   assert.match(regression, /deadline registration failure never starts an unbounded native IPC invocation/);
   assert.match(regression, /scheduler that invokes its callback and then throws never dispatches IPC/);
 });
+
+test('both standard and private native packaging require the IPC audit before any UI build', () => {
+  const scripts = json('package.json').scripts;
+  for (const [command, uiBuild] of [
+    ['tauri:build', 'npm run build:ui'],
+    ['tauri:build:private', 'npm run build:ui:private'],
+  ]) {
+    const stages = scripts[command].split(' && ');
+    assert.deepEqual(stages, ['npm run verify:ipc', uiBuild, 'npm run prepare:icon', 'tauri build']);
+  }
+  assert.equal(scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
+});
