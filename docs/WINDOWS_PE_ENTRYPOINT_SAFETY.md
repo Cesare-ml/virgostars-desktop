@@ -161,3 +161,44 @@ coverage to the prior V8-only combined-parser evidence.
 `tests/windows-pe-header.test.mjs` suite from #145 (including symlink and
 launcher checks), the entire repository's `npm test`, production executable,
 Windows 11/Tauri or offline WebView2 checks. These remain pre-merge gates.
+
+## All three PE test suites — actual Node runner (2026-11-14)
+
+Ran the **full three-file PE test selection**, including real filesystem,
+symlink, subprocess/CLI and launcher-source tests, in a minimal Linux mirror
+with **Node.js v22.16.0**, after copying files byte-for-byte from this branch:
+
+```sh
+node --test tests/windows-pe-header.test.mjs tests/pe-entrypoint-bounds.test.mjs tests/windows-pe-integrated-boundaries.test.mjs
+# 25 tests: 25 passed, 0 failed, 0 skipped
+```
+
+The first combined run returned **24/25**: the existing #145
+`tests/windows-pe-header.test.mjs` still expected the Windows batch launcher
+to run the standalone PE verifier directly. The reviewed batch file now
+delegates to the **single system-PowerShell build bootstrap**, whose
+`Invoke-Step 'Verify Windows x64 PE header'` executes **after**
+`doctor:verify`. This was an obsolete assertion, **not** a failure of
+the parser or a runtime bypass.
+
+Fixed that test in this stacked integration branch to check the actual
+fail-closed path: Windows system PowerShell executable, quoted `-File`
+delegation, exit-code propagation, no redundant direct batch invocation,
+and the PowerShell build/doctor/PE step order. Rerunning the actual
+Node test runner returned **25/25 PASS**.
+
+Verified with `git hash-object` for all seven executed/read source files,
+matching GitHub's file blob SHA:
+
+- `scripts/verify-windows-pe.mjs`: `840837a30ca905378527a9b360042b8a35f5c525`
+- `scripts/pe-entrypoint-bounds.mjs`: `b72ce2f149e8cf7f268f9918e24d6e5e112693e2`
+- `tests/windows-pe-header.test.mjs` (corrected): `5fa8b45d1ec434330400cc6254b03d4e5f373f1c`
+- `tests/pe-entrypoint-bounds.test.mjs`: `08940ac7b3642a168bc4d03d1629c60cc6f8bd61`
+- `tests/windows-pe-integrated-boundaries.test.mjs`: `0c1abfe1c437d4d94ede483a4ba58eda53341021`
+- `scripts/build-windows.cmd`: `fac34f892bac987ba984a303e9d05c3f452c619e`
+- `scripts/build-windows-spike.ps1`: `4ac16ed8cec99d44983054644932d7fa574f7901`
+
+This is strong **structural PE regression** evidence; it is not a full
+repository checkout or `npm test`, a successful Windows compilation,
+an Authenticode check or native WebView2 acceptance. The PR remains draft
+and stacked above #145 without merging or distributing executables.
