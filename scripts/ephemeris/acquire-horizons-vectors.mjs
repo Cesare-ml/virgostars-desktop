@@ -5,11 +5,12 @@
  */
 import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { lstat, open, mkdir, rm, writeFile } from 'node:fs/promises';
+import { lstat, open, mkdir, writeFile } from 'node:fs/promises';
 import { setTimeout as wait } from 'node:timers/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildHorizonsVectorPlan } from './prepare-horizons-vector-plan.mjs';
+import { recordNewDirectory, recordCreatedFile, cleanupOnlyOwnedFiles } from './rollback-horizons-directory.mjs';
 
 const MAX_PLAN_BYTES = 64 * 1024;
 const MAX_RESPONSE_BYTES = 512 * 1024;
@@ -171,7 +172,10 @@ export async function acquireHorizonsVectors(planPath, outputDirectory, options 
   // No pre-existing directory may be reused or cleaned up by this tool.
   await mkdir(outputDirectory, { mode:0o700 });
   let completed = false;
+  let directoryIdentity = null;
+  const createdFiles = [];
   try {
+    directoryIdentity = await recordNewDirectory(outputDirectory);
     const manifest = {schemaVersion:1,status:'STRUCTURE_CHECKED_NOT_AUTHENTICATED',
       tdbJulianDay:plan.tdbJulianDay,frame:plan.frame,origin:plan.origin,
       responseCount:10,responses:[]};
@@ -199,6 +203,7 @@ export async function acquireHorizonsVectors(planPath, outputDirectory, options 
       verify(parsed.status === 'PARSED_VECTOR_UNAUTHENTICATED', 'INVALID_RESPONSE');
       // Never save transformed data in place of the original response bytes.
       await writeFile(join(outputDirectory, request.responseFilename), responseBytes, {flag:'wx',mode:0o600});
+      createdFiles.push(await recordCreatedFile(outputDirectory,request.responseFilename));
       manifest.responses.push({bodyId:request.bodyId,naifId:request.naifId,
         responseFilename:request.responseFilename,
         queryUrlSha256:sha256(Buffer.from(request.url,'utf8')),
@@ -206,11 +211,14 @@ export async function acquireHorizonsVectors(planPath, outputDirectory, options 
     }
     await writeFile(join(outputDirectory,'response-manifest.json'),
       JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});
+    createdFiles.push(await recordCreatedFile(outputDirectory,'response-manifest.json'));
     completed = true;
     return Object.freeze({status:'CAPTURED_10_UNAUTHENTICATED_RESPONSES',count:10,
       scientificallyValidated:false});
   } finally {
-    if (!completed) await rm(outputDirectory,{recursive:true,force:true});
+    // Do not delete files added/edited by another process: leave any ambiguous
+    // partial directory for explicit operator inspection instead of recursive rm.
+    if (!completed) await cleanupOnlyOwnedFiles(outputDirectory,directoryIdentity,createdFiles);
   }
 }
 
