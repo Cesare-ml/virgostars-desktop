@@ -37,11 +37,11 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   const assetFiles=privateMode?manifest.assets:manifest.files;
   const htmlPath=join(bundle,'index.html');safeRegular(htmlPath);
   const html=readFileSync(htmlPath,'utf8');
-  verifyDesktopBaseHref(html);
   check(/<vs-desktop-app(?:\s|>)/.test(html), 'Angular bundle is not the desktop-owned app');
   check(!/<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["'](?:https?:)?\/\//i.test(html),
     'Angular bundle references an external script or stylesheet');
   check(!html.includes('desktop-assets-bootstrap.js'), 'Legacy demo bootstrap must not be packaged');
+  verifyDesktopBaseHref(html);
   // The original verifier checked images and Angular root but not CSS: an
   // unstyled app could pass verification and yield a tiny chart on Windows.
   const css = inspectDesktopStyles(bundle);
