@@ -30,9 +30,16 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   readonly state = new OfflineCityPickerState(createOfflinePlaceSearch(), () => this.cd.markForCheck());
 
   ngOnChanges(changes: SimpleChanges): void {
-    // Closing/reopening inspector tabs destroys this component, not the parent
-    // selection. Restore its verified source ID/coordinates in the temporary UI.
-    if (changes['selectedPlace'] && this.selectedPlace) this.state.restore(this.selectedPlace);
+    if (!changes['selectedPlace']) return;
+    // The parent's temporary city is authoritative on external selection changes.
+    // Preserve an active typed query when input already cleared local selection.
+    if (this.selectedPlace !== null) {
+      this.state.restore(this.selectedPlace);
+    } else if (this.state.selected !== null) {
+      // External clear: also retire pending results, but do not emit an edit back
+      // to the parent (which would create a redundant output/change cycle).
+      this.state.clearSelection();
+    }
   }
 
   t(key: MessageKey): string { return translate(this.locale,key); }
