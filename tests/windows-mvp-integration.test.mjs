@@ -151,3 +151,37 @@ test('both standard and private native packaging require the IPC audit before an
   }
   assert.equal(scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
 });
+
+test('offline bundle traverses all Angular ESM chunks before checking image assets', () => {
+  const source = read('scripts/verify-offline-bundle.mjs');
+  const jsGate = read('scripts/verify-bundled-scripts.mjs');
+  const graph = read('scripts/verify-angular-chunks.mjs');
+  const tests = read('tests/verify-angular-chunks.test.mjs');
+  assert.match(source, /import \{ inspectAngularChunkGraph \} from '\.\/verify-angular-chunks\.mjs'/);
+  const entry = source.indexOf('const js = inspectDesktopScripts(bundle);');
+  const traversal = source.indexOf('inspectAngularChunkGraph(bundle,js.files);');
+  const images = source.indexOf("const assets=join(bundle,'assets')");
+  assert.ok(entry >= 0 && traversal > entry && images > traversal,
+    'local script entrypoints and all chunks must be checked before image manifest');
+  assert.match(jsGate, /return \{ scripts: names\.length, files: names \};/);
+  assert.match(source, /modules:graph\.modules,chunks:graph\.chunks,dependencies:graph\.dependencies/);
+  assert.match(graph, /Unreferenced Angular JavaScript chunk in bundle/);
+  assert.match(graph, /Imported Angular JavaScript chunk missing/);
+  assert.match(graph, /Unverifiable JavaScript worker source/);
+  assert.match(tests, /transitive missing chunk rejects/);
+  assert.match(tests, /orphan chunk is rejected/);
+});
+
+test('both approved Angular build variants inherit the offline chunk graph without new dependencies', () => {
+  const pkg = json('package.json');
+  const scripts = pkg.scripts;
+  assert.match(scripts['build:ui'], /&& npm run verify:bundle$/);
+  assert.match(scripts['build:ui:private'], /&& npm run verify:bundle:private$/);
+  assert.equal(scripts['verify:bundle'], 'node scripts/verify-offline-bundle.mjs && npm run verify:privacy');
+  assert.equal(scripts['verify:bundle:private'], 'node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy');
+  assert.equal(pkg.devDependencies.typescript, '5.8.3');
+  assert.equal(pkg.dependencies.typescript, undefined);
+  const graph = read('scripts/verify-angular-chunks.mjs');
+  assert.match(graph, /import ts from 'typescript'/);
+  assert.doesNotMatch(graph, /(?:fetch|https\.request|http\.request)\(/);
+});
