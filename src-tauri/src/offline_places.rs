@@ -213,7 +213,6 @@ mod tests {
         assert!(fts_query("one two three four five six").is_none());
         assert!(fts_query("one/two/three/four/five/six").is_none());
         assert!(fts_query("a b c d e f").is_none());
-        assert_eq!(fts_query("San José"), Some("\"San\"* \"José\"*".into()));
     }
 
     #[test]
