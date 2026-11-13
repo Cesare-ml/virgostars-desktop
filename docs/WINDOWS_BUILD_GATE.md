@@ -149,8 +149,8 @@ to any `.tgz` on the official npm registry is no longer sufficient.
 
 Scoped names (`@angular/core`) and nested `node_modules` installations are
 supported. Legitimate `npm:` aliases are permitted **only when** a dependency
-entry in the pinned lockfile explicitly declares that installed alias and
-source name, and the URL names the underlying source package. Three existing
+entry in a **different** pinned lockfile package explicitly declares that
+installed alias and source name, and the URL names the underlying source package. Three existing
 `@isaacs/cliui` compatibility aliases remain accepted without a blanket
 exception for arbitrary renamed packages.
 
