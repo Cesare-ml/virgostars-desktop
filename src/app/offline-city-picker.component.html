@@ -9,7 +9,8 @@
     role="combobox"
     autocomplete="off"
     spellcheck="false"
-    maxlength="80"
+    <!-- Input is validated by state rather than silently browser-truncated:
+         typing/pasting an over-limit query must display its error. -->
     [attr.placeholder]="t('city.placeholder')"
     [attr.aria-label]="t('city.title')"
     [attr.aria-autocomplete]="'list'"
