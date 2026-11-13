@@ -264,3 +264,67 @@ test('malformed second mutation never changes an already frozen outbox', () => {
   assert.deepEqual(nextSyncBatch(original).map(x => x.mutationId), ['mut-1']);
   assert.equal(original.entries[0].mutation.payload.label, 'Fictional sample-1');
 });
+
+test('ACK batch accepts dense arrays, frozen arrays and its 500-receipt boundary', () => {
+  const original = enqueueMutation(createOutbox('synthetic-owner'), change('mut-1', 'sample-1'));
+  assert.equal(applySyncReceipts(original, []), original, 'an empty batch is a no-op');
+  assert.equal(applySyncReceipts(original, Object.freeze([
+    Object.freeze({mutationId:'mut-1',result:'accepted',serverRevision:'rev1'}),
+  ])).entries.length, 0);
+
+  let many = createOutbox('synthetic-owner');
+  for (let i = 0; i < 500; i++) {
+    many = enqueueMutation(many, change('bulk-' + i, 'sample-' + i));
+  }
+  const all = nextSyncBatch(many, 500).map(mutation => ({
+    mutationId: mutation.mutationId, result:'accepted', serverRevision:'rev-final',
+  }));
+  assert.equal(all.length, 500);
+  assert.deepEqual(outboxCounts(applySyncReceipts(many, all)), {pending:0, conflicts:0});
+  assert.deepEqual(outboxCounts(many), {pending:500, conflicts:0});
+});
+
+test('ACK batches reject sparse, oversized and non-array containers before mutation', () => {
+  const original = enqueueMutation(createOutbox('synthetic-owner'), change('mut-1','sample-1'));
+  const receipt = {mutationId:'mut-1',result:'accepted',serverRevision:'rev2'};
+  const holes = new Array(2);
+  holes[1] = receipt;
+  const inherited = [receipt];
+  Object.setPrototypeOf(inherited, null);
+  const withExtra = [receipt];
+  Object.defineProperty(withExtra, 'hidden', {value:'not a receipt'});
+  const withSymbol = [receipt];
+  withSymbol[Symbol('metadata')] = true;
+  const long = new Array(501);
+  const replacedIterator = [receipt];
+  let iteratorCalls = 0;
+  Object.defineProperty(replacedIterator, Symbol.iterator, {
+    value() { iteratorCalls++; throw new Error('should not iterate'); },
+  });
+  const cases = [null, undefined, {}, new Set([receipt]), 'not an array',
+    holes, inherited, withExtra, withSymbol, long, replacedIterator];
+  for (const malformed of cases) {
+    assert.throws(() => applySyncReceipts(original, malformed), /Invalid sync receipt batch/);
+    assert.deepEqual(nextSyncBatch(original).map(x => x.mutationId), ['mut-1']);
+  }
+  assert.equal(iteratorCalls, 0, 'no untrusted iterator may execute');
+});
+
+test('ACK batch never invokes indexed getters or applies earlier successful receipts', () => {
+  let original = createOutbox('synthetic-owner');
+  original = enqueueMutation(original, change('mut-1','sample-1'));
+  original = enqueueMutation(original, change('mut-2','sample-2'));
+  let calls = 0;
+  const batch = [
+    {mutationId:'mut-1',result:'accepted',serverRevision:'rev1'},
+    {mutationId:'mut-2',result:'accepted',serverRevision:'rev2'},
+  ];
+  Object.defineProperty(batch, '1', {
+    configurable:true,
+    enumerable:true,
+    get() { calls++; return {mutationId:'mut-2',result:'accepted',serverRevision:'rev2'}; },
+  });
+  assert.throws(() => applySyncReceipts(original, batch), /Invalid sync receipt batch/);
+  assert.equal(calls, 0);
+  assert.deepEqual(nextSyncBatch(original).map(x => x.mutationId), ['mut-1','mut-2']);
+});
