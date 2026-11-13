@@ -95,6 +95,18 @@ test('rejects missing executable section contents and inconsistent PE image layo
   assert.throws(() => inspectWindowsPeHeader(withoutRaw), /NO_RAW_SECTION/);
 });
 
+test('rejects overlapping PE image and raw section ranges, but accepts adjacent ranges', () => {
+  // Individually valid extents must not alias bytes belonging to other sections.
+  const virtualOverlap = pe({patch:[[0x188 + 40 + 12, 0x1100, 4]]});
+  assert.throws(() => inspectWindowsPeHeader(virtualOverlap), /SECTION_VIRTUAL_OVERLAP/);
+  const rawOverlap = pe({patch:[[0x188 + 40 + 20, 0x300, 4]]});
+  assert.throws(() => inspectWindowsPeHeader(rawOverlap), /SECTION_RAW_OVERLAP/);
+  // Default fixture has touching raw sections: [0x200,0x400), [0x400,0x600).
+  assert.equal(inspectWindowsPeHeader(pe()).kind, 'windows_x64_gui');
+  const virtualAdjacent = pe({patch:[[0x188 + 40 + 12, 0x1200, 4]]});
+  assert.equal(inspectWindowsPeHeader(virtualAdjacent).kind, 'windows_x64_gui');
+});
+
 test('rejects wrong on-disk length while supporting bounded header reads and Uint8Array offsets', () => {
   const bytes = pe();
   assert.throws(() => inspectWindowsPeHeader(bytes, 128n), /FILE_LENGTH/);
