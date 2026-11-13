@@ -80,11 +80,14 @@ fn fts_query(input: &str) -> Option<String> {
     let words: Vec<String> = input
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|word| !word.is_empty())
-        .take(MAX_TOKENS)
+        // Inspect one extra token so over-budget searches fail closed rather than
+        // silently searching only the first five words.
+        .take(MAX_TOKENS + 1)
         .map(|word| format!("\"{}\"*", word))
         .collect();
     // One-letter prefixes over two million localities can produce very large posting lists.
-    if words.is_empty() || input.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
+    if words.len() > MAX_TOKENS || words.is_empty() ||
+        input.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
         return None;
     }
     Some(words.join(" "))
@@ -201,6 +204,17 @@ mod tests {
         assert!(fts_query("x").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
         assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
+    }
+
+    #[test]
+    fn over_budget_fts_terms_are_rejected_without_partial_matches() {
+        let five = "\"one\"* \"two\"* \"three\"* \"four\"* \"five\"*";
+        assert_eq!(fts_query("one two three four five").as_deref(), Some(five));
+        assert_eq!(fts_query("one two three four five ").as_deref(), Some(five));
+        assert!(fts_query("one two three four five six").is_none());
+        assert!(fts_query("one,two.three/four five six").is_none());
+        // Length and term budgets are independent; each must be enforced.
+        assert!(fts_query(&"A ".repeat(MAX_TOKENS + 1)).is_none());
     }
 
     #[test]
