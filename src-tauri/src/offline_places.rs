@@ -77,17 +77,22 @@ fn fts_query(input: &str) -> Option<String> {
     if input.chars().count() > MAX_QUERY_CHARS {
         return None;
     }
-    let words: Vec<String> = input
+    // Reject rather than silently discard a sixth term: otherwise the UI can
+    // present matches that do not satisfy the user's complete search query.
+    // Read at most MAX_TOKENS + 1 terms even for punctuation-heavy input.
+    let words: Vec<&str> = input
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|word| !word.is_empty())
-        .take(MAX_TOKENS)
-        .map(|word| format!("\"{}\"*", word))
+        .take(MAX_TOKENS + 1)
         .collect();
     // One-letter prefixes over two million localities can produce very large posting lists.
-    if words.is_empty() || input.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
+    if words.is_empty()
+        || words.len() > MAX_TOKENS
+        || input.chars().filter(|c| c.is_alphanumeric()).count() < 2
+    {
         return None;
     }
-    Some(words.join(" "))
+    Some(words.into_iter().map(|word| format!("\"{}\"*", word)).collect::<Vec<_>>().join(" "))
 }
 
 fn search_database(path: &Path, query: &str, limit: u8) -> Result<PlaceSearchV1, &'static str> {
@@ -201,6 +206,14 @@ mod tests {
         assert!(fts_query("x").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
         assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
+        assert_eq!(
+            fts_query("one two three four five"),
+            Some("\"one\"* \"two\"* \"three\"* \"four\"* \"five\"*".into())
+        );
+        assert!(fts_query("one two three four five six").is_none());
+        assert!(fts_query("one/two/three/four/five/six").is_none());
+        assert!(fts_query("a b c d e f").is_none());
+        assert_eq!(fts_query("San José"), Some("\"San\"* \"José\"*".into()));
     }
 
     #[test]
