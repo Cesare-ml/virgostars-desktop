@@ -141,3 +141,64 @@ test('enforces 256 KiB on serialized UTF-8 payload, not UTF-16 code units', () =
     change('emoji-over', 'sample-1', {payload:'🔭'.repeat(80000)})),
     /Payload exceeds reference-model limit/);
 });
+
+test('receipts accept only explicit own data properties for every status', () => {
+  const original = enqueueMutation(createOutbox('synthetic-owner'), change('mut-1','sample-1'));
+  const retry = Object.assign(Object.create(null), {mutationId:'mut-1', result:'retry'});
+  assert.equal(applySyncReceipts(original, [retry]).entries.length, 1);
+  assert.equal(applySyncReceipts(original, [
+    {mutationId:'mut-1', result:'accepted', serverRevision:'rev2'},
+  ]).entries.length, 0);
+  assert.equal(applySyncReceipts(original, [
+    {mutationId:'mut-1', result:'already_applied', serverRevision:'rev2'},
+  ]).entries.length, 0);
+  const conflict = applySyncReceipts(original, [
+    {mutationId:'mut-1', result:'conflict', serverRevision:null},
+  ]);
+  assert.equal(conflict.entries[0].state, 'conflict');
+  assert.equal(conflict.entries[0].conflictServerRevision, null);
+});
+
+test('malformed and accessor-backed receipts cannot acknowledge pending local edits', () => {
+  const original = enqueueMutation(createOutbox('synthetic-owner'), change('mut-1', 'sample-1'));
+  let getterCalls = 0;
+  const withGetter = (key) => {
+    const receipt = {mutationId:'mut-1', result:'accepted', serverRevision:'rev2'};
+    Object.defineProperty(receipt, key, {
+      enumerable:true,
+      get() { getterCalls++; return key === 'result' ? 'accepted' : 'mut-1'; },
+    });
+    return receipt;
+  };
+  const forged = [
+    withGetter('mutationId'), withGetter('result'), withGetter('serverRevision'),
+    Object.assign(Object.create({mutationId:'mut-1'}), {result:'accepted',serverRevision:'rev2'}),
+    {mutationId:'mut-1',result:'retry',serverRevision:'rev2'},
+    {mutationId:'mut-1',result:'accepted'},
+    {mutationId:'mut-1',result:'accepted',serverRevision:null},
+    {mutationId:'mut-1',result:'accepted',serverRevision:'rev2',unexpected:true},
+    [ {mutationId:'mut-1',result:'accepted',serverRevision:'rev2'} ],
+    JSON.parse('{"mutationId":"mut-1","result":"retry","__proto__":{}}'),
+    Object.defineProperty({mutationId:'mut-1',result:'retry'}, 'hidden', {value:'x'}),
+    new (class Receipt { constructor() { this.mutationId='mut-1'; this.result='retry'; } })(),
+  ];
+  const withSymbol = {mutationId:'mut-1',result:'retry'};
+  withSymbol[Symbol('extra')] = 1;
+  forged.push(withSymbol);
+  for (const receipt of forged) {
+    assert.throws(() => applySyncReceipts(original,[receipt]), /Invalid sync receipt/);
+    assert.deepEqual(outboxCounts(original), {pending:1, conflicts:0});
+  }
+  assert.equal(getterCalls,0,'accessor getters must never be invoked');
+});
+
+test('invalid second receipt cannot partially apply the first acknowledgement', () => {
+  let state = createOutbox('synthetic-owner');
+  state = enqueueMutation(state, change('mut-1','sample-1'));
+  state = enqueueMutation(state, change('mut-2','sample-2'));
+  assert.throws(() => applySyncReceipts(state, [
+    {mutationId:'mut-1',result:'accepted',serverRevision:'rev2'},
+    {mutationId:'mut-2',result:'retry',serverRevision:'unexpected'},
+  ]), /Invalid sync receipt/);
+  assert.deepEqual(nextSyncBatch(state).map(x => x.mutationId), ['mut-1','mut-2']);
+});
