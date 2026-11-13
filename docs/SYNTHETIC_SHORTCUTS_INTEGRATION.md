@@ -59,6 +59,19 @@ tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler
 - Exact original test files `tests/desktop-i18n-state.test.mjs` and `tests/desktop-i18n-integration.test.mjs` are preserved from #96. Added six-case `tests/desktop-shortcuts-i18n-regression.test.mjs` to exercise combined behavior.
 - **Merge choice:** this branch is an alternative integration of #96 alongside #98/#99, not approval to merge #96 independently and duplicate the same changes.
 
+## PNG/CSV safety extension and combined test run (2026-11-13)
+
+The existing security-focused **#53** PNG export guard has been ported onto this stacked integration branch, preserving the byte-identical upstream pure helper and tests. The PNG renderer output is verified as a bounded `data:image/png;base64,` payload with a PNG signature and IHDR before an anchor is created. The filename uses a captured, whitelisted synthetic chart mode and theme. The injected browser helper appends the anchor before clicking and removes it in `finally`; no raw renderer URL is directly assigned to a download link. The separate CSV Blob URL lifecycle and `FICTIONAL_NOT_CALCULATED` 22-row file are unchanged.
+
+- New `tests/synthetic-png-csv-boundary.test.mjs` (5 cases) checks that valid and rejected PNG download attempts do not mutate the fixture or CSV, unsafe URLs and filename modes fail before DOM actions, a throwing click cleans the anchor, and the Angular source still calls both independent safe exporters.
+- Original validator, PNG anchor, and their 16 tests are preserved byte-identically from #53; new boundary test blob `e739a5e8538e73767306d6f0d1280dc170d01c8e`. The source-only fifth case was checked directly against GitHub code and excluded from the isolated Node run.
+
+A **single actual Node.js 22.16.0 run** was also executed in the isolated mirror across **10 original/combined test files**, with only tests requiring the full Angular source excluded via `--test-skip-pattern`: **64/64 selected cases passed, 0 failures, 0 skips**. The selected cases comprise the prior 44 hotkey/locale/CSV/geometry tests plus 16 original PNG tests and four new PNG/CSV integration cases. **TypeScript 5.8.3 strict standalone compilation PASS** across eight pure modules: `workspace-state.ts`, `desktop-shortcuts.ts`, `translations.ts`, `fictional-geometry.ts`, `format-longitude.ts`, `synthetic-csv-export.ts`, `png-export-safety.ts` and `png-download.ts`. Hashes for all mirrored source/test files were verified against committed GitHub blobs.
+
+**10/10 additional direct source checks** passed on the integrated GitHub component for validation-before-link creation, filename snapshots, separate PNG/CSV boundaries, preserved keyboard/localization behavior, and absence of unsafe network/IPC fallback in PNG export. These are static inspections, **not** Angular compilation or native WebView2 evidence.
+
+For full acceptance, run every test including source-only cases in a complete checkout, Angular build against public Charts, Windows 11 Tauri/WebView2 PNG save/cancel/reject checks, CSV export/download smoke and CSP/keyboard/locale acceptance. Neither browser click path promises that the OS saved the file. These PNG changes are an integration alternative to standalone draft #53, not a second independent feature to merge twice.
+
 ## Run before any merge
 
 ```sh
