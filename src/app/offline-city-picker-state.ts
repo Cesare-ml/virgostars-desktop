@@ -68,9 +68,11 @@ export class OfflineCityPickerState {
       if (result.kind === 'ready') {
         this.results = result.items;
         this.status = result.items.length ? 'ready' : 'empty';
-      } else if (result.kind !== 'stale') {
+      } else {
         this.results = [];
-        this.status = result.kind;
+        // Even the latest request can be invalidated outside this picker.
+        // A stale result must not leave the user on an endless loading state.
+        this.status = result.kind === 'stale' ? 'busy' : result.kind;
       }
     } catch {
       if (ticket !== this.seq || this.disposed) return;
