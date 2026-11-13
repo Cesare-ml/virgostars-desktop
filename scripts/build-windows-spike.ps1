@@ -43,8 +43,8 @@ finally { Pop-Location }
 
 Push-Location $desktop
 try {
-    # The first npm install generates a local lockfile; review it before committing.
-    Invoke-Step 'Install local Desktop development dependencies' 'npm.cmd' @('install')
+    # package-lock.json is committed. npm ci fails rather than rewriting it or resolving new versions.
+    Invoke-Step 'Install pinned Desktop dependencies from the committed lockfile' 'npm.cmd' @('ci')
     Invoke-Step 'Run all available Node test files' 'npm.cmd' @('test')
     Invoke-Step 'Audit native IPC commands and Tauri capabilities' 'npm.cmd' @('run', 'verify:ipc')
     Invoke-Step 'Check compiled library and synthetic pack prerequisites' 'npm.cmd' @('run', 'doctor:build')
@@ -52,7 +52,7 @@ try {
     Invoke-Step 'Check standalone local CSS before Tauri packaging' 'npm.cmd' @('run', 'verify:css')
     Invoke-Step 'Generate temporary development icon' 'npm.cmd' @('run', 'prepare:icon')
     Push-Location (Join-Path $desktop 'src-tauri')
-    try { Invoke-Step 'Run Rust unit tests' 'cargo' @('test') }
+    try { Invoke-Step 'Run Rust unit tests with the committed lockfile' 'cargo' @('test', '--locked') }
     finally { Pop-Location }
     # The tauri:build npm script rebuilds Angular, invalidating the CSS/bundle checks above.
     # Call the already-installed Tauri CLI directly in offline npm mode, so the
