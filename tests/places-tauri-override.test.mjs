@@ -76,6 +76,7 @@ test('rejects symlinks to an otherwise approved file',()=>withFile(canonical(),(
   assert.throws(()=>verifyPlacesTauriOverride(link),/Unapproved/);
 }));
 
+
 test('both Windows city build scripts verify native and override config before packaging',()=>{
   const scripts=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).scripts;
   assert.equal(scripts['verify:places-override'],'node scripts/verify-places-tauri-override.mjs');
