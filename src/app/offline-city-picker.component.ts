@@ -67,6 +67,10 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
     }
   }
 
+  retry(input: HTMLInputElement): void {
+    if (this.state.retry()) input.focus();
+  }
+
   clearSelected(): void {
     if (!this.state.selected) return;
     this.state.clearSelection();
