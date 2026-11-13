@@ -81,12 +81,12 @@
         <h2>{{t('inspector')}}</h2>
         <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
       </div>
-      <div class="inspector-tabs" role="tablist">
-        <button type="button" role="tab" id="tab-planets" aria-controls="inspector-content"
+      <div class="inspector-tabs" role="tablist" [attr.aria-label]="t('inspector')" (keydown)="onInspectorTabKeydown($event)">
+        <button type="button" role="tab" id="tab-planets" aria-controls="inspector-content" [attr.tabindex]="inspectorTab==='planets' ? 0 : -1"
           [attr.aria-selected]="inspectorTab==='planets'" (click)="setInspectorTab('planets')">{{t('tab.planets')}}</button>
-        <button type="button" role="tab" id="tab-houses" aria-controls="inspector-content"
+        <button type="button" role="tab" id="tab-houses" aria-controls="inspector-content" [attr.tabindex]="inspectorTab==='houses' ? 0 : -1"
           [attr.aria-selected]="inspectorTab==='houses'" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
-        <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content"
+        <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content" [attr.tabindex]="inspectorTab==='settings' ? 0 : -1"
           [attr.aria-selected]="inspectorTab==='settings'" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
       </div>
       <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
