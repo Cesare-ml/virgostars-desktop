@@ -77,3 +77,13 @@ The synthetic `applySyncReceipts` boundary now validates the **outer receipt arr
 This closes a separate gap from the individual receipt validation (#158) and mutation envelope snapshot (#162): the outer collection is no longer trusted merely because each received element looks valid. The source includes synthetic regression tests for the 500-item boundary, malformed containers, no accessor/iterator invocation, and preservation of pending edits on rejection.
 
 **Limits:** This remains an in-memory, synthetic TypeScript reference, not an IPC deserializer, encrypted database transaction, live cloud synchronization, network protocol or actual crash-recovery implementation. JavaScript Proxy traps are not a supported transport representation. A future Rust protocol must enforce its own batch bound and decode untrusted JSON before applying durable acknowledgements.
+
+## 2026-11-14 — synthetic versioned restart snapshot (proposed)
+
+The pure in-memory outbox model now includes `serializeOutboxSnapshot(state)` and `restoreOutboxSnapshot(json, expectedProfileId)`. They provide a **plaintext, version-1, JSON-only test interchange** to simulate process restart and reconstitution of pending writes, delete tombstones, conflict server revisions and same-entity FIFO blocking. The serialized structure is `{schemaVersion:1,profileId,entries:[{mutation,state,conflictServerRevision?}]}`.
+
+The decoder validates the entire snapshot before returning any state: exact envelope/entry fields, owner profile equality, all original mutation and payload checks (including UTF-8 payload size), unique mutation IDs, valid conflict revision and the rule that only the first unresolved mutation for an entity may be marked conflicted. It reconstructs independent, deeply frozen mutation snapshots. Unsupported schema versions, truncated JSON, extra/poisoning fields, duplicate IDs, invalid conflicts and cross-profile snapshots fail closed.
+
+Limits for this reference interchange: **1,000 entries** and **8 MiB of serialized UTF-8 JSON**. The encoder refuses output beyond these bounds and validates it with the decoder. The 256 KiB *per-mutation payload* limit remains independent. No schema migration is provided: unknown versions are deliberately rejected, not guessed.
+
+**Security boundary:** These functions are **not durable persistence**. They do **not** create or write any file, encryption key, database, OS credential, backup, recovery journal, IPC route, cloud sync request or authenticated session. Plaintext fixtures must not be used to store real birth/person data. The eventual Rust/Tauri host must provide encrypted transactional SQLite, profile-bound credentials, tamper/error detection, atomic sync receipts and migration policy independently.

@@ -329,3 +329,108 @@ export function outboxCounts(state: Outbox): Readonly<{ pending: number; conflic
     conflicts: state.entries.filter((entry) => entry.state === 'conflict').length,
   });
 }
+
+/**
+ * Versioned, bounded, PLAIN JSON interchange for synthetic restart tests.
+ * This is NOT an encrypted/durable storage format. The future Rust host owns
+ * transactions, profile key isolation, integrity checks and crash recovery.
+ */
+const OUTBOX_SNAPSHOT_VERSION = 1;
+const MAX_OUTBOX_SNAPSHOT_ENTRIES = 1000;
+const MAX_OUTBOX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+
+function checkSnapshotBytes(json: string): void {
+  if (json.length > MAX_OUTBOX_SNAPSHOT_BYTES
+    || new TextEncoder().encode(json).byteLength > MAX_OUTBOX_SNAPSHOT_BYTES) {
+    throw new Error('Outbox snapshot exceeds reference-model limit');
+  }
+}
+
+function hasExactSnapshotKeys(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype) return false;
+  const ownKeys = Reflect.ownKeys(value);
+  return ownKeys.length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+
+/**
+ * Reconstruct a fresh immutable FIFO outbox from a serialized test snapshot.
+ * Validation is all-or-nothing: no partial state is returned on malformed JSON,
+ * cross-profile records, reused IDs or impossible conflict ordering.
+ */
+export function restoreOutboxSnapshot(json: string, expectedProfileId: string): Outbox {
+  checkIdentifier(expectedProfileId);
+  if (typeof json !== 'string') throw new Error('Invalid outbox snapshot');
+  checkSnapshotBytes(json);
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(json) as unknown;
+  } catch {
+    throw new Error('Invalid outbox snapshot');
+  }
+  if (!hasExactSnapshotKeys(decoded, ['schemaVersion', 'profileId', 'entries'])) {
+    throw new Error('Invalid outbox snapshot');
+  }
+  if (decoded.schemaVersion !== OUTBOX_SNAPSHOT_VERSION) throw new Error('Unsupported outbox snapshot version');
+  checkIdentifier(decoded.profileId);
+  if (decoded.profileId !== expectedProfileId) throw new Error('Cross-profile outbox snapshot prohibited');
+  const records = decoded.entries;
+  if (!Array.isArray(records) || records.length > MAX_OUTBOX_SNAPSHOT_ENTRIES) {
+    throw new Error('Invalid outbox snapshot');
+  }
+
+  const entries: OutboxEntry[] = [];
+  const usedMutationIds = new Set<string>();
+  const seenEntityKeys = new Set<string>();
+  for (const record of records) {
+    const pending = hasExactSnapshotKeys(record, ['mutation', 'state']) && record.state === 'pending';
+    const conflict = hasExactSnapshotKeys(record, ['mutation', 'state', 'conflictServerRevision'])
+      && record.state === 'conflict';
+    if (!pending && !conflict) throw new Error('Invalid outbox snapshot entry');
+    let mutation: Mutation;
+    try {
+      mutation = snapshotMutation(record.mutation as Mutation, expectedProfileId);
+    } catch {
+      throw new Error('Invalid outbox snapshot entry');
+    }
+    if (usedMutationIds.has(mutation.mutationId)) throw new Error('Duplicate outbox snapshot mutation ID');
+    usedMutationIds.add(mutation.mutationId);
+    const key = entityKey(mutation);
+    if (conflict) {
+      // An entity's first unresolved entry alone may be in conflict.
+      if (seenEntityKeys.has(key)) throw new Error('Invalid outbox snapshot conflict order');
+      const revision = record.conflictServerRevision;
+      if (revision !== null) {
+        try {
+          checkIdentifier(revision);
+        } catch {
+          throw new Error('Invalid outbox snapshot conflict revision');
+        }
+      }
+      entries.push(Object.freeze({ mutation, state: 'conflict' as const, conflictServerRevision: revision }));
+    } else {
+      entries.push(Object.freeze({ mutation, state: 'pending' as const }));
+    }
+    seenEntityKeys.add(key);
+  }
+  return newOutbox(expectedProfileId, entries);
+}
+
+/**
+ * Serialize a trusted in-memory reference outbox for a synthetic restart
+ * roundtrip. Re-validating through the decoder prevents emitting a format the
+ * same model could not restore. Never write this plaintext into production.
+ */
+export function serializeOutboxSnapshot(state: Outbox): string {
+  if (state.entries.length > MAX_OUTBOX_SNAPSHOT_ENTRIES) {
+    throw new Error('Outbox snapshot exceeds reference-model limit');
+  }
+  const json = JSON.stringify({
+    schemaVersion: OUTBOX_SNAPSHOT_VERSION,
+    profileId: state.profileId,
+    entries: state.entries,
+  });
+  checkSnapshotBytes(json);
+  restoreOutboxSnapshot(json, state.profileId);
+  return json;
+}
