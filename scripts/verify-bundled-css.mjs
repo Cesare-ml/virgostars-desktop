@@ -22,6 +22,20 @@ export function inspectDesktopStyles(bundleDir) {
   if (!stylesheetLinks.length) fail('Angular index.html has no linked stylesheet');
   const names = [];
   for (const tag of stylesheetLinks) {
+    // A stylesheet can exist on disk yet be inactive in WebView2. HTML
+    // disables alternate stylesheets by default and ignores disabled links
+    // or unsupported MIME types; presence alone is not an active-CSS proof.
+    const relTokens = (htmlAttr(tag, 'rel') ?? '').toLowerCase().split(/\s+/);
+    if (relTokens.includes('alternate')) {
+      fail('Alternate stylesheet is not active by default');
+    }
+    if (/(?:\s)disabled(?=\s|=|\/?>)/i.test(tag)) {
+      fail('Disabled stylesheet cannot style the desktop app');
+    }
+    const type = htmlAttr(tag, 'type');
+    if (type !== null && type.trim().toLowerCase() !== 'text/css') {
+      fail('Non-CSS stylesheet MIME type will not style the desktop app');
+    }
     // Angular's default critical-CSS optimization can emit:
     // <link rel="stylesheet" media="print" onload="this.media='all'">
     // Tauri's script-src blocks that inline event handler, leaving CSS inactive.
