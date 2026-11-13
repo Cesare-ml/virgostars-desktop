@@ -54,6 +54,7 @@ try {
     finally { Pop-Location }
     Invoke-Step 'Compile and verify Angular/Tauri prototype' 'npm.cmd' @('run', 'tauri:build')
     Invoke-Step 'Verify generated Angular files and prototype executable exist' 'npm.cmd' @('run', 'doctor:verify')
+    Invoke-Step 'Verify Windows x64 PE header' 'node' @('scripts/verify-windows-pe.mjs')
     Write-Host 'Prototype build finished. No installer, signing, deployment or merge performed.'
     Write-Host 'Next: disconnect Internet and test WebView2, all chart modes, PNG export and native IPC.'
 }
