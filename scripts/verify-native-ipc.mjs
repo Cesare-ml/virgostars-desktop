@@ -33,6 +33,12 @@ export function auditNativeIpc(sources) {
   assert(new Set(registered).size===registered.length, 'Duplicate native command');
   assert(JSON.stringify([...tokens].sort())===JSON.stringify([...NATIVE_HANDLERS].sort()),
     'Native command module or allowlist changed');
+  // Registered plugins and plugin initializers can widen the native surface
+  // without changing the explicit invoke handler list. Require manual review.
+  for(const rust of [sources.entry,...Object.values(sources.rustModules)]) {
+    assert(!/(?:\.\s*plugins?\s*\(|\btauri_plugin[_:-])/i.test(rust),
+      'Unexpected native Tauri plugin registration or reference');
+  }
   for(const [name,contents] of Object.entries(sources.rustModules)) {
     const defined=[...contents.matchAll(/#\[tauri::command\]\s*pub\s+(?:async\s+)?fn\s+([a-z_][a-z_0-9]*)\s*\(/g)].map(m=>m[1]);
     const expected=tokens.filter(x=>x.startsWith(name+'::')).map(x=>x.split('::')[1]);
@@ -40,6 +46,12 @@ export function auditNativeIpc(sources) {
     assert(annotations===defined.length, 'Unsupported native command attribute syntax');
     assert(defined.length===expected.length && defined.every(x=>expected.includes(x)),
       'Unregistered native command declaration');
+  }
+  // The presence of one approved call must not mask a second, unreviewed IPC.
+  // Bracket notation is also a native invoke call and requires review.
+  for(const contract of [sources.runtimeContract,sources.placesContract]) {
+    const calls=[...contract.matchAll(/(?:\.\s*invoke|\[\s*['"]invoke['"]\s*\])\s*(?:\?\.)?\s*\(/g)];
+    assert(calls.length===1, 'Unexpected protocol native invocation count');
   }
   assert(/invoke\(['"]desktop_runtime_info['"]\)/.test(sources.runtimeContract), 'Runtime contract command mismatch');
   assert(/invoke\(['"]search_offline_places['"]\s*,/.test(sources.placesContract), 'Places contract command mismatch');
