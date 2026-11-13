@@ -1,6 +1,6 @@
 # Desktop offline packaging gates — integration draft
 
-Status: **Prototype integration; 47 selected isolated Node tests and CLI packaging smoke passed; full Angular/Tauri/Windows build not yet validated**.
+Status: **Prototype integration; 75 selected isolated Node tests and repeatable npm CLI packaging checks passed; full Angular/Tauri/Windows build not yet validated**.
 
 This branch is **stacked on draft PR #95**, not on `main`. It assembles the independent build-artifact checks without duplicating astronomy, native IPC, auth or synchronization.
 
@@ -20,7 +20,7 @@ The combined fixture tests use only synthetic image bytes and generated HTML/CSS
 
 ## Exact source provenance
 
-Imported code and tests from #49, #72 and #86 are byte-identical to their source draft branches at integration time (Git blob SHA checks). They have **not** been rewritten or silently simplified during this composition. The integration changes are limited to the orchestration, `package.json` scripts, and synthetic/private fixture tests.
+On initial integration, all three imported verifiers and five test files matched their source drafts exactly (8/8 Git blob comparisons). Following regression testing, **the JavaScript verifier from #49 is intentionally hardened** to parse live HTML script tags and real attributes; it is no longer byte-identical to the original #49. The CSS and privacy verifiers and the five original imported test files retain their original blob SHAs (7/8 unchanged). The new JavaScript revision and additional tests have independently checked Git blob SHAs.
 
 ## Verification actually completed — 13 November 2026
 
@@ -29,12 +29,14 @@ the HTML base, CSS, JS, asset-manifest and privacy verifiers, `package.json`,
 the Angular/Tauri configuration, and these five selected tests:
 
 - `tests/document-base.test.mjs`: **18/18 PASS**
-- `tests/desktop-packaging-integration.test.mjs`: **4/4 PASS**
+- `tests/desktop-packaging-integration.test.mjs`: **6/6 PASS**
 - `tests/verify-offline-bundle.test.mjs`: **18/18 PASS**
 - `tests/private-assets.test.mjs`: **4/4 PASS**
 - `tests/packaging-npm-contract.test.mjs`: **3/3 PASS**
+- `tests/verify-bundled-scripts.test.mjs`: **14/14 PASS** (original #49 suite)
+- `tests/verify-script-tag-structure.test.mjs`: **12/12 PASS** (new regressions)
 
-Combined: **47 tests passed, 0 failed, 0 skipped**, Node.js **22.16.0**.
+Combined: **75 tests passed, 0 failed, 0 skipped**, Node.js **22.16.0**.
 Every file used for the selected tests matched its GitHub content SHA; the
 new `packaging-npm-contract.test.mjs` was committed only after its local
 test passed and the SHA was independently checked on GitHub.
@@ -50,9 +52,20 @@ checkout. The **actual npm script entrypoints** were run:
   `DESKTOP BUILD PRIVACY: unapproved browser bundle file`;
   exit code 1. Test files were removed after the check.
 
-Original imported modules and test files from #49, #72 and #86 remain
-byte-identical to their draft sources (8/8 SHA comparisons). These checks
-confirm that the composed verification **works on synthetic fixtures**;
+The hardened JavaScript module now rejects script-looking references inside HTML
+comments, template/noscript wrappers and malformed comments, while correctly
+accepting a harmless quoted greater-than sign or onload= metadata text.
+All 14 original JavaScript verifier tests still pass; 12 dedicated regressions
+and two combined bundle regressions cover the new behavior. Git blob SHA parity:
+JS module `bb35c4b194e1f9bc7dbad777f16ee9869bc09b3d`, new structure tests
+`f20a55eec74e8c421d0013c9a9b2c1a07e7b2072`, combined bundle tests
+`d112505cdc62abb0b2bb2d52fb89fa7d77e18a64`.
+
+The actual `npm run verify:bundle` command was rerun with the hardened module:
+valid synthetic bundle **exit 0**, script-only-in-comment **exit 1** with
+`DESKTOP JS BUNDLE: Missing or unclosed Angular script element`, benign quoted
+metadata **exit 0** with the chained privacy check. These checks confirm that
+the composed verification **works on synthetic fixtures**;
 the result is not a completed `npm test` from a full repository checkout.
 
 **Still NOT tested:** the complete repository test suite, real Angular
