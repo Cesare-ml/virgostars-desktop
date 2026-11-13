@@ -40,10 +40,19 @@ export function submitCivilCalculation(
   queue: CivilCalculationSubmissionPort,
   selectedUtc: string | null = null,
 ): CivilCalculationDispatchResult {
-  if (!location || !Number.isSafeInteger(location.latMicro) ||
-      !Number.isSafeInteger(location.lngMicro) ||
-      Math.abs(location.latMicro) > 90_000_000 ||
-      Math.abs(location.lngMicro) > 180_000_000) {
+  // Capture each coordinate once before calling externally supplied code. A
+  // mutable/accessor-backed location must not change between validation and
+  // queue submission, and a throwing getter must fail closed without logging.
+  let latMicro: number;
+  let lngMicro: number;
+  try {
+    latMicro = location.latMicro;
+    lngMicro = location.lngMicro;
+  } catch {
+    return {status:'location_invalid'};
+  }
+  if (!Number.isSafeInteger(latMicro) || !Number.isSafeInteger(lngMicro) ||
+      Math.abs(latMicro) > 90_000_000 || Math.abs(lngMicro) > 180_000_000) {
     return {status:'location_invalid'};
   }
   if (typeof calculationKey !== 'string' || !KEY_PATTERN.test(calculationKey)) {
@@ -61,7 +70,7 @@ export function submitCivilCalculation(
 
   const draft: CommittedCivilCalculationDraftV1 = {
     intent:'committed', utcIso:selection.instantUtc,
-    latMicro:location.latMicro, lngMicro:location.lngMicro,
+    latMicro, lngMicro,
     timeZone:selection.timeZone, calculationKey,
   };
   try {

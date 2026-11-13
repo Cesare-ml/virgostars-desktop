@@ -56,13 +56,22 @@ function utcOfWall(wall: WallParts): number {
  * This function is CPU-bounded and does not access disk, network or account state.
  */
 export function resolveCivilTime(input: CivilTimeInput): CivilTimeResult {
-  const date = typeof input?.date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.date) : null;
+  // UI inputs can be accessor-backed or revoked proxies. Capture each field
+  // exactly once before validating it, and never reuse a mutable caller value.
+  // Errors remain sanitized and do not reveal local birth details.
+  let rawDate: unknown;
+  try { rawDate = input?.date; }
+  catch { return { status: 'invalid', code: 'INVALID_LOCAL_DATE' }; }
+  const date = typeof rawDate === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDate) : null;
   if (!date) return { status: 'invalid', code: 'INVALID_LOCAL_DATE' };
   const year = Number(date[1]), month = Number(date[2]), day = Number(date[3]);
   if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
     return { status: 'invalid', code: 'INVALID_LOCAL_DATE' };
   }
-  const time = typeof input.time === 'string' ? /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(input.time) : null;
+  let rawTime: unknown;
+  try { rawTime = input.time; }
+  catch { return { status: 'invalid', code: 'INVALID_LOCAL_TIME' }; }
+  const time = typeof rawTime === 'string' ? /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(rawTime) : null;
   if (!time) return { status: 'invalid', code: 'INVALID_LOCAL_TIME' };
   const hour = Number(time[1]), minute = Number(time[2]), second = Number(time[3] ?? '00');
   if (hour > 23 || minute > 59 || second > 59) return { status: 'invalid', code: 'INVALID_LOCAL_TIME' };
@@ -75,15 +84,18 @@ export function resolveCivilTime(input: CivilTimeInput): CivilTimeResult {
     minute: normalized.getUTCMinutes(), second: normalized.getUTCSeconds(),
   })) return { status: 'invalid', code: 'INVALID_LOCAL_DATE' };
 
-  if (typeof input.timeZone !== 'string' || input.timeZone.length > 120 ||
-    !/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/.test(input.timeZone)) {
+  let rawTimeZone: unknown;
+  try { rawTimeZone = input.timeZone; }
+  catch { return { status: 'invalid', code: 'INVALID_TIME_ZONE' }; }
+  if (typeof rawTimeZone !== 'string' || rawTimeZone.length > 120 ||
+    !/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/.test(rawTimeZone)) {
     return { status: 'invalid', code: 'INVALID_TIME_ZONE' };
   }
 
   let formatter: Intl.DateTimeFormat;
   try {
     formatter = new Intl.DateTimeFormat('en-GB-u-ca-gregory-nu-latn', {
-      timeZone: input.timeZone,
+      timeZone: rawTimeZone,
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
     });
