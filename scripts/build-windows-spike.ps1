@@ -46,8 +46,10 @@ try {
     # The first npm install generates a local lockfile; review it before committing.
     Invoke-Step 'Install local Desktop development dependencies' 'npm.cmd' @('install')
     Invoke-Step 'Run all available Node test files' 'npm.cmd' @('test')
+    Invoke-Step 'Audit native IPC commands and Tauri capabilities' 'npm.cmd' @('run', 'verify:ipc')
     Invoke-Step 'Check compiled library and synthetic pack prerequisites' 'npm.cmd' @('run', 'doctor:build')
     Invoke-Step 'Build Angular and validate the offline assets' 'npm.cmd' @('run', 'build:ui')
+    Invoke-Step 'Check standalone local CSS before Tauri packaging' 'npm.cmd' @('run', 'verify:css')
     Invoke-Step 'Generate temporary development icon' 'npm.cmd' @('run', 'prepare:icon')
     Push-Location (Join-Path $desktop 'src-tauri')
     try { Invoke-Step 'Run Rust unit tests' 'cargo' @('test') }
