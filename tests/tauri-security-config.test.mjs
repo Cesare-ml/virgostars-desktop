@@ -73,3 +73,10 @@ test('permission expansion and enabling installer packaging require review', () 
     assert.throws(() => verifyTauriSecurityConfig(config), /TAURI SECURITY CONFIG:/);
   }
 });
+
+test('both synthetic and private bundle builds enforce the same Tauri gate', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const name of ['verify:bundle', 'verify:bundle:private']) {
+    assert.match(pkg.scripts[name], /&& node scripts\/verify-tauri-security-config\.mjs$/);
+  }
+});
