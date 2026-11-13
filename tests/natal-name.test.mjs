@@ -29,7 +29,7 @@ test('accepts names with combining marks, Arabic, CJK and accented text',()=>{
   }
 });
 test('rejects blank names, controls, surrogate fragments and line separators',()=>{
-  for(const name of ['', '  \t ', 'A\nB', 'A\rB', 'A\u0000B',
+  for(const name of ['', '  \t ', 'A\nB', 'A\rB', 'A\n', '\tAda', 'Ada\r', 'A\u0000B',
     'A\u007fB', 'A\u0085B', 'A\ud800B', 'A\udc00B', 'A\u2028B', 'A\u2029B']) {
     assert.equal(isValidNatalName(name),false,JSON.stringify(name));
   }
