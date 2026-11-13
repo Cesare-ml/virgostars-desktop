@@ -5,6 +5,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { inspectDesktopStyles } from './verify-bundled-css.mjs';
+import { inspectWindowsExecutable } from './verify-windows-executable.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STATUS = Object.freeze({pass:'pass', warning:'warning', blocked:'blocked'});
@@ -43,6 +44,7 @@ export function diagnoseEnvironment({
   nodeArch = process.arch,
   exists = existsSync, json = safeJson, command = commandOutput,
   cssInspector = inspectDesktopStyles,
+  peInspector = inspectWindowsExecutable,
 } = {}) {
   if (!STAGES.has(stage)) throw new Error('stage must be setup, build, or verify');
   const results = [];
@@ -155,8 +157,24 @@ export function diagnoseEnvironment({
         'Angular stylesheet artifacts missing, invalid or incompatible with desktop CSP',
       'Run npm run verify:css after npm run build:ui; rebuild if the styles are missing or deferred.');
     if (platform === 'win32') {
-      checkedFile('windows-executable', join(root, 'src-tauri', 'target', 'release', 'virgostars-desktop-spike.exe'), true,
+      const executablePath = join(root, 'src-tauri', 'target', 'release', 'virgostars-desktop-spike.exe');
+      const hasExecutable = exists(executablePath);
+      checkedFile('windows-executable', executablePath, true,
         'Windows prototype executable present', 'Run npm run tauri:build, then inspect src-tauri/target/release.');
+      // File presence alone does not prove that Cargo produced a Windows x64 binary.
+      let validPe = false;
+      if (hasExecutable) {
+        try {
+          const pe = peInspector(executablePath);
+          validPe = pe?.format === 'PE32+' && pe?.machine === 'AMD64';
+        } catch {
+          // Do not expose absolute paths, parser details or file contents.
+        }
+      }
+      add('windows-pe', validPe ? STATUS.pass : STATUS.blocked,
+        validPe ? 'Windows PE32+ AMD64 header verified' :
+          'Windows executable missing or not a recognizable PE32+ AMD64 file',
+        'Rebuild on Windows 11 x64 and verify the release executable. This does not verify signatures or runtime startup.');
     }
   }
   return { schemaVersion: 1, stage, platform, checks: results,
