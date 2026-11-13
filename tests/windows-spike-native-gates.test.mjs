@@ -78,7 +78,7 @@ test('Windows build instructions explicitly require native and CSS source gates'
   const docs=read('docs/WINDOWS_BUILD_GATE.md');
   assert.match(docs,/npm\.cmd run verify:ipc/);
   assert.match(docs,/npm\.cmd run verify:css/);
-  assert.match(docs,/does not prove|not prove|not a native runtime check/i);
+  assert.match(docs,/does not prove|not prove|not a native runtime check|neither check proves/i);
 });
 
 
