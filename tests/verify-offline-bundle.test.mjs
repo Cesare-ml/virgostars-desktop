@@ -119,3 +119,17 @@ test('rejects missing or hijacked HTML base before checking packaged CSS and ass
     assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/DESKTOP BASE HREF/);
   }
 }));
+
+test('rejects inert document base in HTML comment or template',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const inert of ['<!-- <base href="/"> -->',
+                      '<template><base href="/"></template>',
+                      '<noscript><base href="/"></noscript>']) {
+    writeFileSync(index,canonical.replace('<base href="/">',inert));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/DESKTOP BASE HREF/);
+  }
+  // An irrelevant commented-out base must not invalidate the real one.
+  writeFileSync(index,canonical.replace('<base href="/">','<!-- <base href="/wrong/"> --><base href="/">'));
+  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+}));
