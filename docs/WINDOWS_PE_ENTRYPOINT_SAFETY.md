@@ -87,3 +87,46 @@ was **not run** in the local mirror; it remains mandatory, alongside
 inspection and real offline WebView2 GUI smoke. A synthetic PE header
 is not a launchable or signed Windows application.
 
+## Cross-PR regression gate (2026-11-14)
+
+A dedicated `tests/windows-pe-integrated-boundaries.test.mjs` now covers the
+combined behavior of both pending PRs in **one two-section fictional PE**:
+
+1. Aligned, disjoint PE sections and entrypoint on the last meaningful byte;
+2. Rejection of an entrypoint in raw padding after nonzero `VirtualSize`;
+3. Rejection of overlapping virtual **and** raw section ranges;
+4. Rejection of unaligned `PointerToRawData`.
+
+This prevents a future conflict resolution from silently retaining only one
+PR's validation. Node's normal `npm test` glob will discover the new
+`.test.mjs` automatically; no GitHub Actions or scripts are introduced.
+
+**Executed in an isolated V8 harness**, using GitHub-fetched source code
+for `inspectWindowsPeHeader` and `isFileBackedPeEntryPoint` with simple
+synthetic byte/assert adapters (no Node filesystem or CLI):
+- `tests/windows-pe-header.test.mjs`: 7 parser-only test bodies passed;
+- `tests/pe-entrypoint-bounds.test.mjs`: 8 parser/helper-only bodies passed;
+- `tests/windows-pe-integrated-boundaries.test.mjs`: 4 bodies passed;
+- **19/19 V8 parser test bodies passed**, no failing cases.
+
+Source blob SHAs at this checkpoint:
+- Integrated parser: `840837a30ca905378527a9b360042b8a35f5c525`
+- Helper: `b72ce2f149e8cf7f268f9918e24d6e5e112693e2`
+- Existing PE baseline tests: `287c1061cf080698d9436a073b8391804dd5db6d`
+- Existing entrypoint tests: `08940ac7b3642a168bc4d03d1629c60cc6f8bd61`
+- New cross-PR test: `dcc69859b10d0a3dac2c45a4741e3efd98561d42`
+
+This isolated V8 result **does not** imply the full Node test runner passed:
+filesystem, symlink, launcher subprocess, and on-disk regression bodies
+were not executed in this combined pass. The older, separately documented
+9/9 Node entrypoint run remains scoped to its earlier isolated mirror.
+
+Required full-checkout command before merge:
+
+```powershell
+node --test tests/windows-pe-header.test.mjs tests/pe-entrypoint-bounds.test.mjs tests/windows-pe-integrated-boundaries.test.mjs
+npm test
+```
+
+Native Windows x64/Tauri build, WebView2 offline smoke and signature/release
+acceptance remain separate outstanding tasks.
