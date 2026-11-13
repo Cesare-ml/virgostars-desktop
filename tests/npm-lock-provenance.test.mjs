@@ -23,7 +23,7 @@ function fixture(){
         'node_modules/three':{
           version:'0.170.0',
           resolved:'https://registry.npmjs.org/three/-/three-0.170.0.tgz',
-          integrity:'sha512-Abcd1234+/==',
+          integrity:'sha512-'+Buffer.alloc(64,0x5a).toString('base64'),
         },
       },
     },
@@ -74,6 +74,27 @@ test('rejects missing, weak or malformed package integrity metadata',()=>{
     const f=fixture();f.lock.packages['node_modules/three'].integrity=integrity;
     assert.throws(()=>auditNpmLock(f.manifest,f.lock),/SHA-512 integrity/);
   }
+});
+
+test('rejects truncated, oversized and non-canonical SHA-512 SRI digests',()=>{
+  const valid=Buffer.alloc(64,0).toString('base64');
+  // "AB==" decodes to the same final byte as canonical "AA==", but has
+  // non-zero unused padding bits and must not pass the source audit.
+  const noncanonical=valid.slice(0,-3)+'B==';
+  for(const bad of [
+    'sha512-AAAA==',
+    'sha512-'+Buffer.alloc(63,0).toString('base64'),
+    'sha512-'+Buffer.alloc(65,0).toString('base64'),
+    'sha512-'+valid.slice(0,-2),
+    'sha512-'+noncanonical,
+  ]) {
+    const f=fixture();
+    f.lock.packages['node_modules/three'].integrity=bad;
+    assert.throws(()=>auditNpmLock(f.manifest,f.lock),/SHA-512 integrity/,bad);
+  }
+  const f=fixture();
+  f.lock.packages['node_modules/three'].integrity='sha512-'+valid;
+  assert.equal(auditNpmLock(f.manifest,f.lock).registryPackages,1);
 });
 
 test('rejects unreviewed lock entries with traversal or wrong local Charts target',()=>{

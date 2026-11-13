@@ -119,3 +119,21 @@ with release-candidate, nightly, build-metadata or garbage suffixes do not pass.
 These checks make the preflight more conservative, not a substitute for
 `npm test`, `cargo test`, a Windows binary build and an offline WebView2 smoke.
 No production services, user data, signing keys or releases are involved.
+
+
+## Canonical SHA-512 lockfile integrity (2026-11-13)
+
+Before `npm ci`, the local, dependency-free preflight additionally requires every
+registry tarball's `integrity` value to be **one** canonical
+`sha512-<Base64>` digest encoding exactly **64 bytes**. It rejects truncated,
+overlong, unpadded, invalidly padded and non-canonical Base64 values (including
+non-zero unused padding bits), even when their text begins with `sha512-`.
+The existing fixed registry origin and sibling Charts link restrictions remain
+unchanged.
+
+Run `node --test tests/npm-lock-provenance.test.mjs` and
+`node scripts/verify-npm-lock.mjs` against the committed manifest/lock before
+installing dependencies. This is a lockfile **shape/provenance** preflight,
+not a comparison against a downloaded tarball, a signature verification,
+a vulnerability audit or proof that install scripts are harmless.
+No network requests or package installs are performed by the preflight.
