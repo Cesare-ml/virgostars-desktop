@@ -41,3 +41,10 @@ Before integration into a release, run `npm test`, `npm run build:ui`, a native 
 The fixed-header validator now checks the PNG specification's IHDR field combinations and CRC32 before requesting a browser download. CRC calculation touches only the 17-byte IHDR type-and-data span, keeping the existing constant-space, header-only behavior and the 32 MiB encoded-payload upper bound. It returns the accepted data URL unchanged.
 
 Synthetic tests deliberately recompute CRC when mutating dimensions and header fields, so they exercise the intended checks independently; a separate test corrupts the stored IHDR CRC. This is **not** a full PNG decoder or a file-save confirmation. The Windows WebView2 export smoke test and full Angular build remain necessary before release.
+
+### Focused verification (IHDR follow-up)
+
+- **Node.js v22.16.0:** `node --experimental-strip-types --test tests/png-export-safety.test.mjs` — **11 passed, 0 failed** in a minimal isolated mirror.
+- **TypeScript v5.8.3:** strict standalone `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM` — **passed**, with a matching minimal `ChartMode`/`UiTheme` type stub.
+- The tested source and test files were verified byte-for-byte against their GitHub blob SHAs: `e2de774777b6e09717f5d0ac468532f7fc80d9be` and `f834bd7a2e276881960691b607a537acd6f19a5f`.
+- **Not executed:** repository-wide `npm test`, Angular bundle/build, Tauri/Rust build, or Windows WebView2 GUI/export smoke.
