@@ -3,7 +3,7 @@ import {ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy,
 import {createOfflinePlaceSearch} from './native/offline-places';
 import {newOfflineCityPickerDomIds} from './offline-city-picker-dom-ids';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
-import {OfflineCityPickerState, type CityPickerStatus} from './offline-city-picker-state';
+import {OfflineCityPickerState, reconcileParentCitySelection, type CityPickerStatus} from './offline-city-picker-state';
 import {translate, type Locale, type MessageKey} from './translations';
 
 const STATUS_KEYS: Record<CityPickerStatus, MessageKey> = {
@@ -30,15 +30,9 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   readonly state = new OfflineCityPickerState(createOfflinePlaceSearch(), () => this.cd.markForCheck());
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (!changes['selectedPlace']) return;
-    // The parent's temporary city is authoritative on external selection changes.
-    // Preserve an active typed query when input already cleared local selection.
-    if (this.selectedPlace !== null) {
-      this.state.restore(this.selectedPlace);
-    } else if (this.state.selected !== null) {
-      // External clear: also retire pending results, but do not emit an edit back
-      // to the parent (which would create a redundant output/change cycle).
-      this.state.clearSelection();
+    if (changes['selectedPlace']) {
+      // Reconcile external parent changes without echoing a locationEdited event.
+      reconcileParentCitySelection(this.state, this.selectedPlace);
     }
   }
 
