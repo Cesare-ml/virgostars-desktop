@@ -107,3 +107,25 @@ test('filenames are fixed to synthetic charts and known modes/themes', () => {
     assert.throws(() => syntheticPngFilename(mode,theme), /Invalid PNG export/);
   }
 });
+
+test('rejects missing, corrupt, or nonterminal IEND chunks without full PNG decoding', () => {
+  const original = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  const withoutIend = original.subarray(0, -12);
+  const appendedAfterIend = Buffer.concat([original, Buffer.from([0, 0, 0])]);
+  const wrongIendCrc = Buffer.from(original);
+  wrongIendCrc[wrongIendCrc.length - 1] ^= 0x01;
+  const wrongIendType = Buffer.from(original);
+  wrongIendType[wrongIendType.length - 8] = 0x58;
+  const nonzeroIendLength = Buffer.from(original);
+  nonzeroIendLength.writeUInt32BE(1, nonzeroIendLength.length - 12);
+  for (const bytes of [withoutIend, appendedAfterIend, wrongIendCrc, wrongIendType, nonzeroIendLength]) {
+    assert.throws(() => validatePngDataUrl(prefix + bytes.toString('base64')), /Invalid PNG export/);
+  }
+});
+
+test('still accepts a valid PNG header and untouched IEND with modified payload bytes', () => {
+  const image = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  image[41] ^= 0x01; // Corrupt a non-IHDR, non-IEND byte: intentionally not verified here.
+  const dataUrl = prefix + image.toString('base64');
+  assert.equal(validatePngDataUrl(dataUrl), dataUrl);
+});
