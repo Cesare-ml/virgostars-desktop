@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { verifyDesktopAppRoot } from '../scripts/verify-desktop-app-root.mjs';
 
 const app = '<vs-desktop-app></vs-desktop-app>';
@@ -49,4 +50,9 @@ test('does not expose the submitted HTML or secret values in errors', () => {
   const secret = 'privatesyntheticinvalid';
   assert.throws(() => verifyDesktopAppRoot(html('<script>' + secret + '</script>')), error =>
     error.message.includes('not the desktop-owned app') && !error.message.includes(secret));
+});
+
+test('committed Angular src/index.html preserves the first-child empty desktop host', () => {
+  const source = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
+  assert.equal(verifyDesktopAppRoot(source), true);
 });
