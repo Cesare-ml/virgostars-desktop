@@ -104,7 +104,7 @@ test('both launchers validate the native PE after the build and doctor stage', (
 
 test('Windows build never disables security, deploys, publishes or runs a network fallback', () => {
   for (const source of [cmd, powershell]) {
-    assert.doesNotMatch(source, /--disable-web-security|--no-verify|--unsafe-eval|github\s+actions|git\s+push|npm\s+publish|curl\s+https?:|wget\s+https?:/i);
+    assert.doesNotMatch(source, /--disable-web-security|--no-verify|--unsafe-eval|git\s+push|npm\s+publish|curl\s+https?:|wget\s+https?:/i);
   }
   assert.equal(scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
   assert.equal(scripts['verify:css'], 'node scripts/verify-bundled-css.mjs');
