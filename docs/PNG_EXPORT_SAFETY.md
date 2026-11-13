@@ -19,7 +19,7 @@ The original PNG export used an unattached `document.createElement('a')` followe
 
 `src/app/png-download.ts` now isolates a **testable, synchronous browser download request**. The Angular caller first validates the `data:image/png;base64,` payload with `validatePngDataUrl` and the fixed synthetic filename with `syntheticPngFilename`, then supplies browser `createElement('a')` and `document.body.appendChild` to `requestSyntheticPngDownload`.
 
-The helper sets `href` and `download`, **appends the anchor before calling `click()`**, and removes the temporary element in `finally` regardless of assignment, append or click failures (provided removal itself succeeds). If element creation fails, no element was allocated to remove. The existing generic PNG error UI handles exceptions without logging image bytes. No network, new Tauri command or persistent permission is involved.
+The helper sets `href` and `download`, **appends the anchor before calling `click()`**, and removes the temporary element in `finally` regardless of assignment, append or click failures (provided removal itself succeeds). If element creation fails, no element was allocated to remove. The PNG-specific, translated retry status handles exceptions without logging image bytes and without hiding a valid chart. No network, new Tauri command or persistent permission is involved.
 
 A click returning is *not* proof the OS saved a PNG. Real WebView2 and browser download permission testing remains mandatory. An attached anchor does not imply that all browsers honor programmatic data-URL downloads.
 
