@@ -16,7 +16,7 @@ The temporary city and both clocks display **civil time only**. No calculated na
 
 ## Code and verification
 
-This is an **integration branch**, not a reimplementation of the source PRs. The files copied from #78 are preserved from its pinned head `d3165717e21edee978f3a0ca20cd127c8dd250c0`, except for the intentionally merged translation dictionary and the additional integration test.
+This is an **integration branch**, not a reimplementation of the source PRs. The baseline was ported from #78 pinned head `d3165717e21edee978f3a0ca20cd127c8dd250c0`. Since then, this integration intentionally changed the city picker component/template to assign unique DOM IDs, updated two imported source-contract tests to reflect its parent `onCityEdited()` clock-reset handler, merged the translation dictionary, and added focused integration and accessibility tests. All other imported #78 files remain identical to that pinned head.
 
 Focused integrated synthetic Node tests:
 
