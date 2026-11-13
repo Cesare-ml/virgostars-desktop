@@ -25,6 +25,44 @@ export interface PlaceSearchTransport {
   invoke(command: 'search_offline_places', args: {query: string; limit: number}): Promise<unknown>;
 }
 
+/** A hung local IPC must not leave the picker permanently in loading state. */
+export interface PlaceSearchTimers {
+  set(callback: () => void, delayMs: number): unknown;
+  clear(handle: unknown): void;
+}
+
+export const PLACE_SEARCH_TIMEOUT_MS = 5000;
+const SYSTEM_TIMERS: PlaceSearchTimers = {
+  set: (callback, delayMs) => setTimeout(callback, delayMs),
+  clear: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+/** Never start native work if the deadline could not be installed safely. */
+async function invokeBounded(
+  invoke: () => Promise<unknown>, timers: PlaceSearchTimers,
+): Promise<unknown> {
+  let rejectDeadline!: (reason: Error) => void;
+  let expired = false;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    rejectDeadline = reject;
+  });
+  // Broken injected schedulers may fire and then throw before Promise.race exists.
+  void deadline.catch(() => {});
+  const handle = timers.set(() => {
+    expired = true;
+    rejectDeadline(new Error('Offline place search deadline exceeded'));
+  }, PLACE_SEARCH_TIMEOUT_MS);
+  if (handle === null || handle === undefined) {
+    throw new Error('Offline place search deadline unavailable');
+  }
+  try {
+    if (expired) throw new Error('Offline place search deadline exceeded');
+    return await Promise.race([Promise.resolve().then(invoke), deadline]);
+  } finally {
+    try { timers.clear(handle); } catch { /* A broken timer cannot change the search result. */ }
+  }
+}
+
 function object(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
 }
@@ -82,8 +120,12 @@ export class OfflinePlaceSearch {
   private generation = 0;
   private disposed = false;
   private readonly transport: PlaceSearchTransport;
+  private readonly timers: PlaceSearchTimers;
 
-  constructor(transport: PlaceSearchTransport) { this.transport = transport; }
+  constructor(transport: PlaceSearchTransport, timers: PlaceSearchTimers = SYSTEM_TIMERS) {
+    this.transport = transport;
+    this.timers = timers;
+  }
 
   async search(query: string, limit = 12): Promise<PlaceQueryState> {
     if (this.disposed) return {kind: 'stale', items: []};
@@ -96,7 +138,9 @@ export class OfflinePlaceSearch {
     }
     try {
       if (!this.transport.isNative()) return {kind: 'not_native', items: []};
-      const raw = await this.transport.invoke('search_offline_places', {query, limit});
+      const raw = await invokeBounded(
+        () => this.transport.invoke('search_offline_places', {query, limit}), this.timers,
+      );
       if (ticket !== this.generation || this.disposed) return {kind: 'stale', items: []};
       return {kind: 'ready', items: decodeOfflinePlaceResults(raw)};
     } catch (error: unknown) {
