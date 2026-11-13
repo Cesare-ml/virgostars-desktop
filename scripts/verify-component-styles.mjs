@@ -30,7 +30,7 @@ function componentRule(css, selector, declarations) {
 
 /**
  * Reject explicit later/conditional overrides that would turn the Desktop
- * workspace or chart stage into a non-grid/invisible surface. Keep selectors
+ * app shell, workspace or stage into a non-grid/invisible surface. Keep selectors
  * anchored to those elements, not descendants hidden by responsive nav rules.
  * This is a conservative source heuristic, not a computed-style CSS parser.
  */
@@ -40,8 +40,8 @@ export function hasDesktopLayoutOverride(css) {
     const selectors = rule[1].split(',');
     const targetsLayout = selectors.some(part => {
       const selector = part.trim();
-      return /(?:^|[\s>+~"'(\[=])\.(?:workspace|chart-stage)(?:\[[^\]{}]{1,160}\]|\.[a-z-]+)*\s*$/i.test(selector) ||
-        /:(?:is|where)\(\s*\.(?:workspace|chart-stage)\s*\)\s*$/i.test(selector);
+      return /(?:^|[\s>+~"'(\[=])\.(?:desktop-app|workspace|chart-stage)(?:\[[^\]{}]{1,160}\]|\.[a-z-]+)*\s*$/i.test(selector) ||
+        /:(?:is|where)\(\s*\.(?:desktop-app|workspace|chart-stage)\s*\)\s*$/i.test(selector);
     });
     if (!targetsLayout) continue;
     const declarations = rule[2];
@@ -54,10 +54,13 @@ export function hasDesktopLayoutOverride(css) {
   return false;
 }
 
-/** Two independent grid/stage rules must exist in compiled component CSS. */
+/** The shell, workspace and chart stage must all retain their grid layout. */
 export function hasDesktopComponentLayout(css) {
   if (typeof css !== 'string' || hasDesktopLayoutOverride(css)) return false;
-  return componentRule(css, 'workspace', [
+  return componentRule(css, 'desktop-app', [
+    /(?:^|;)\s*display\s*:\s*grid\s*(?:;|$)/,
+    /(?:^|;)\s*grid-template-rows\s*:/,
+  ]) && componentRule(css, 'workspace', [
     /(?:^|;)\s*display\s*:\s*grid\s*(?:;|$)/,
     /(?:^|;)\s*grid-template-columns\s*:/,
   ]) && componentRule(css, 'chart-stage', [
