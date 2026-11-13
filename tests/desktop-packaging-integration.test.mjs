@@ -83,12 +83,18 @@ test('a fake main module inside HTML comment is not executable even when privacy
   assert.throws(() => verifyOfflineBundle(f.bundle,f.staging), /Missing or unclosed Angular script element/);
 }));
 
-test('both build variants audit privacy only after offline bundle acceptance', () => {
+test('both build variants gate privacy and Tauri configuration after offline bundle acceptance', () => {
   const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
-  assert.equal(pkg.scripts['verify:bundle'],
-    'node scripts/verify-offline-bundle.mjs && npm run verify:privacy');
-  assert.equal(pkg.scripts['verify:bundle:private'],
-    'node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy');
+  assert.deepEqual(pkg.scripts['verify:bundle'].split(' && '), [
+    'node scripts/verify-offline-bundle.mjs',
+    'npm run verify:privacy',
+    'node scripts/verify-tauri-security-config.mjs',
+  ]);
+  assert.deepEqual(pkg.scripts['verify:bundle:private'].split(' && '), [
+    'node scripts/verify-offline-bundle.mjs --private',
+    'npm run verify:privacy',
+    'node scripts/verify-tauri-security-config.mjs',
+  ]);
   assert.equal(pkg.scripts['verify:privacy'], 'node scripts/verify-build-privacy.mjs');
   assert.equal(pkg.scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
   assert.equal(pkg.scripts.check, 'npm run test && npm run verify:ipc && npm run build:ui');
