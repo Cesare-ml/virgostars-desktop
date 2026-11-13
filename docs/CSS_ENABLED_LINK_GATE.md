@@ -12,7 +12,13 @@ Synthetic, isolated regression tests live in `tests/verify-css-enabled-links.tes
 
 A previous regular-expression check could mistake `title="note onload=example"` for a real inline handler or `title="note rel=stylesheet"` for an actual link relationship. The verifier now reads link tag boundaries while respecting quoted `>` characters, parses attribute names and values separately, and **fails closed on duplicate or malformed attributes**. This avoids both false passes from inert text and false rejections of harmless metadata. Explicit `onload`, `onerror` and `disabled` attributes still fail.
 
-**Local isolated verification (Node.js 22.16.0):** `node --check` passes and `node --test tests/verify-css-enabled-links.test.mjs` passes **22/22** using byte-identical copies of the committed source/test files. These checks are not evidence of a full repository/Angular/Tauri/Windows acceptance run.
+**Local isolated verification (Node.js 22.16.0):** `node --check` passes and `node --test tests/verify-css-enabled-links.test.mjs` passes **31/31** using byte-identical copies of the committed source/test files. These checks are not evidence of a full repository/Angular/Tauri/Windows acceptance run.
+
+
+
+### Inert HTML contexts (follow-up)
+
+A link-looking string does not load CSS when it appears inside an HTML comment, a JavaScript `<script>` block, `<style>` raw text, the attribute value of a different element, or a `<template>` element. The previous verifier scanned for `<link>` across raw HTML bytes and could incorrectly accept these as real active stylesheet links. The extractor now scans tag boundaries with quote handling, skips comments and raw/inert elements, and rejects truncated comments/HTML tags. Tests cover each previously accepted false positive, legal genuine link alongside a comment, and closing tags with whitespace. This is a deliberately bounded generated-HTML safeguard, not a standards-complete HTML parser or an actual WebView2 stylesheet load test.
 
 ## Verification on an authorized checkout
 
