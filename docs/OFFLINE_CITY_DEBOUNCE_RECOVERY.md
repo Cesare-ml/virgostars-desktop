@@ -11,7 +11,8 @@ The debounce state now:
 - accepts numeric handle `0` as valid;
 - ignores duplicate callbacks, does not preserve a handle that has already fired, and does not overwrite a newer request after re-entrant setup;
 - contains timer and lookup invalidation errors; stale callbacks remain guarded by the sequence and destroyed flag;
-- recovers on a subsequent typed input after a transient setup failure.
+- recovers on a subsequent typed input after a transient setup failure;
+- rechecks the latest request **after** notifying observers of `loading`, so synchronous view re-entrancy or disposal cannot start an obsolete Rust search.
 
 There is **no automatic retry** or new timer running in the background. No change to the Rust Tauri database/search contract, IPC privileges, regional/country data, astrology, assets, logging, network services, authentication, storage or license. Only synthetic `OfflinePlaceV1` fixtures are used in tests.
 
@@ -23,4 +24,4 @@ npm test
 npm run build:ui
 ```
 
-Focused cases cover setup exceptions, null/undefined handles, synchronous and duplicate callbacks, re-entrant input, broken cleanup and normal retry. A full Windows WebView2 smoke remains necessary: input at least two letters, rapidly edit/cancel, choose a result, close/reopen the inspector and verify correct status without stale results. Test status is only what is actually executed; a source review is not a compiled application or a private catalog acceptance test.
+Focused cases cover setup exceptions, null/undefined handles, synchronous and duplicate callbacks, re-entrant input, broken cleanup, normal retry, re-entrant UI notifications during loading and disposal before a native lookup. A full Windows WebView2 smoke remains necessary: input at least two letters, rapidly edit/cancel, choose a result, close/reopen the inspector and verify correct status without stale results. Test status is only what is actually executed; a source review is not a compiled application or a private catalog acceptance test.
