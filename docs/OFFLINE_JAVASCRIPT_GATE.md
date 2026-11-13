@@ -24,3 +24,34 @@ The isolated JavaScript module tests were run with Node.js 22.16.0: **14/14 PASS
 ## Scope and limitations
 
 This is a targeted static entrypoint and file-existence guard, **not** an HTML security parser, a full JS dependency graph audit, a promise of no network access, a script-integrity signature or proof that WebView2 loaded or executed scripts. Dynamic imports, module content, CSS imports, worker resources, asset rights, native IPC and OS packaging still require their separate checks. No production accounts, private data, astronomy algorithms, security policy relaxations, licensing changes or releases are involved.
+
+## Integration follow-up: HTML script tag parsing (PR #104)
+
+The original PR #49 verifier checked external entrypoint files but relied on
+regular expressions that could count a script in an **HTML comment** as a real
+module. It could also reject valid metadata containing quoted `>` or
+`onload=` text, because those characters were treated as actual tag boundaries
+or inline event-handler attributes.
+
+The #104 integration intentionally updates `verify-bundled-scripts.mjs`:
+- Scans the built document in order and ignores inert comments, titles, style
+  and textarea raw text. It fails closed on unterminated HTML comments/tags and
+  unexpected `template` or `noscript` containers.
+- Parses actual script attributes and rejects true inline event handlers,
+  duplicate `src`/`type`, extra scripts, invalid module types and
+  unapproved or missing local files. Harmless quoted metadata is not confused
+  with actual attributes.
+- Keeps original JavaScript import error contracts for duplicate `src`,
+  `type`, inline scripts and missing local modules.
+
+**Exact source checks**: with Node.js 22.16.0 on a minimal checkout containing
+GitHub-identical files, the original #49 14 tests, the new 12 structural
+regression tests, and all 49 other selected packaging tests passed: **75/75**.
+The command `npm run verify:bundle` was run on a fully synthetic bundle:
+accepted a real module, rejected a comment-only module (exit 1), accepted
+quoted metadata (exit 0). This is static packaging validation, not a real
+Angular/Tauri/WebView2 build or proof of full script execution integrity.
+
+The hardened module Git blob SHA is
+`bb35c4b194e1f9bc7dbad777f16ee9869bc09b3d`.
+The original #49 module is preserved in its own draft PR for review history.
