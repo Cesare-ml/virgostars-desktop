@@ -123,6 +123,18 @@ export class OfflineCityPickerState {
     this.changed();
   }
 
+  /** Explicitly forget the temporary city; no persistence or network operation. */
+  clearSelection(): void {
+    if (this.disposed) return;
+    this.abortPending();
+    this.selected = null;
+    this.query = '';
+    this.results = [];
+    this.activeIndex = -1;
+    this.status = 'idle';
+    this.changed();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
