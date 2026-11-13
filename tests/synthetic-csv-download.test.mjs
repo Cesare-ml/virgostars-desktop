@@ -29,7 +29,7 @@ function harness(options = {}) {
 
 test('successful fictional CSV download requests a single delayed URL revocation', () => {
   const h = harness();
-  requestSyntheticCsvDownload('FICTIONAL_NOT_CALCULATED', h.port);
+  requestSyntheticCsvDownload('FICTIONAL_NOT_CALCULATED', 'virgostars-FICTIONAL-NOT-CALCULATED.csv', h.port);
   assert.deepEqual(h.calls, [
     ['create','FICTIONAL_NOT_CALCULATED'],
     ['click','blob:fictional-test','virgostars-FICTIONAL-NOT-CALCULATED.csv'],
@@ -43,19 +43,19 @@ test('successful fictional CSV download requests a single delayed URL revocation
 
 test('failed anchor click revokes allocated Blob URL immediately', () => {
   const h = harness({fail:'click'});
-  assert.throws(() => requestSyntheticCsvDownload('fictional',h.port),/download blocked/);
+  assert.throws(() => requestSyntheticCsvDownload('fictional','virgostars-FICTIONAL-NOT-CALCULATED.csv',h.port),/download blocked/);
   assert.deepEqual(h.calls.map(([kind]) => kind), ['create','click','revoke']);
 });
 
 test('failed timer registration revokes allocated Blob URL immediately', () => {
   const h = harness({fail:'schedule'});
-  assert.throws(() => requestSyntheticCsvDownload('fictional',h.port),/timer unavailable/);
+  assert.throws(() => requestSyntheticCsvDownload('fictional','virgostars-FICTIONAL-NOT-CALCULATED.csv',h.port),/timer unavailable/);
   assert.deepEqual(h.calls.map(([kind]) => kind), ['create','click','schedule','revoke']);
 });
 
 test('failed URL creation does not invoke anchor, timer or revoke unknown URL', () => {
   const h = harness({fail:'create'});
-  assert.throws(() => requestSyntheticCsvDownload('fictional',h.port),/create unavailable/);
+  assert.throws(() => requestSyntheticCsvDownload('fictional','virgostars-FICTIONAL-NOT-CALCULATED.csv',h.port),/create unavailable/);
   assert.deepEqual(h.calls.map(([kind]) => kind), ['create']);
 });
 
