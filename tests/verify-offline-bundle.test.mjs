@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {verifyOfflineBundle} from '../scripts/verify-offline-bundle.mjs';
@@ -257,4 +257,36 @@ test('rejects an image URL used as a JavaScript Worker source',()=>run(f=>{
     'new Worker(new URL("./assets/img/fictional.png", import.meta.url), {type:"module"});');
   assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
     /DESKTOP JS CHUNKS: Unexpected JavaScript import filename/);
+}));
+
+test('rejects an oversized synthetic manifest before JSON decoding',()=>run(f=>{
+  const manifest=join(f.staging,'synthetic-assets-manifest.json');
+  truncateSync(manifest,8*1024*1024+1);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/manifest exceeds size budget/);
+}));
+
+test('rejects more than 2000 declared image entries before file inspection',()=>run(f=>{
+  const template=f.manifest.files[0];
+  f.manifest.files=Array.from({length:2001},(_,i)=>({
+    ...template,path:'img/fixture-'+i+'.png',
+  }));
+  f.save();
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/manifest exceeds file count budget/);
+}));
+
+test('rejects oversized declared asset metadata and an excessive total manifest budget',()=>run(f=>{
+  const template=f.manifest.files[0];
+  f.manifest.files=[{...template,bytes:20_000_001}];
+  f.save();
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Invalid generated manifest entry/);
+  f.manifest.files=Array.from({length:11},(_,i)=>({
+    ...template,path:'img/fixture-'+i+'.png',bytes:20_000_000,
+  }));
+  f.save();
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/assets exceed total size budget/);
+}));
+
+test('rejects a sparse, oversized emitted image before reading its body',()=>run(f=>{
+  truncateSync(f.img,20_000_001);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/missing or modified asset/);
 }));
