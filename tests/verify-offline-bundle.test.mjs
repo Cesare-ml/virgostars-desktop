@@ -198,3 +198,63 @@ test('accepts a harmless HTML comment before the real Angular body root',()=>run
     '<!-- synthetic comment --> <vs-desktop-app></vs-desktop-app>'));
   assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
 }));
+
+test('verifies transitive Angular chunk imports with the exact offline asset manifest',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'import {a} from "./chunk-ONE.js"; console.log(a);');
+  writeFileSync(join(f.bundle,'chunk-ONE.js'),
+    'export {a} from "./chunk-TWO.js";');
+  writeFileSync(join(f.bundle,'chunk-TWO.js'),'export const a=42;');
+  const report=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(report.scripts,1);
+  assert.equal(report.modules,3);
+  assert.equal(report.chunks,2);
+  assert.equal(report.dependencies,2);
+}));
+
+test('rejects missing lazy Angular chunk before browser packaging',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'const load=()=>import("./chunk-LOST.js");');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Imported Angular JavaScript chunk missing/);
+}));
+
+test('rejects an orphan Angular JavaScript chunk not reachable from the entrypoint',()=>run(f=>{
+  writeFileSync(join(f.bundle,'chunk-ORPHAN.js'),'export const data=1;');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Unreferenced Angular JavaScript chunk/);
+}));
+
+test('rejects a missing JavaScript Worker module hidden behind import.meta.url',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./chunk-WORK-MISSING.js", import.meta.url), {type:"module"});');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /Imported Angular JavaScript chunk missing/);
+}));
+
+test('accepts an offline JavaScript Worker module and transitive dependency',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./chunk-WORKER.js", import.meta.url), {type:"module"});');
+  writeFileSync(join(f.bundle,'chunk-WORKER.js'),
+    'import "./chunk-SHARED.js";');
+  writeFileSync(join(f.bundle,'chunk-SHARED.js'),
+    'export const marker="synthetic";');
+  const result=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(result.chunks,2);
+  assert.equal(result.modules,3);
+  assert.equal(result.dependencies,2);
+}));
+
+test('rejects an extensionless remote Worker URL despite a valid main script and image manifest',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("https://example.invalid/remote-worker", import.meta.url), {type:"module"});');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /DESKTOP JS CHUNKS: Nonlocal or invalid JavaScript import/);
+}));
+
+test('rejects an image URL used as a JavaScript Worker source',()=>run(f=>{
+  writeFileSync(join(f.bundle,'main-LCL123.js'),
+    'new Worker(new URL("./assets/img/fictional.png", import.meta.url), {type:"module"});');
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),
+    /DESKTOP JS CHUNKS: Unexpected JavaScript import filename/);
+}));
