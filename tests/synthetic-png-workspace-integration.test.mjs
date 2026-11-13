@@ -58,7 +58,7 @@ test('Angular PNG path validates payload and immutable filename before touching 
   assert.ok(png.indexOf('const exportMode = this.mode') < png.indexOf('await this.renderer.generaImmagine'));
   assert.ok(png.indexOf('const exportTheme = this.theme') < png.indexOf('await this.renderer.generaImmagine'));
   assert.ok(png.indexOf('validatePngDataUrl(png)') < png.indexOf('requestSyntheticPngDownload('));
-  const safeFilename = png.search(/syntheticPngFilename\\(exportMode,\\s*exportTheme\\)/);
+  const safeFilename = png.search(/syntheticPngFilename\(exportMode,\s*exportTheme\)/);
   assert.ok(safeFilename >= 0 && safeFilename < png.indexOf('requestSyntheticPngDownload('));
   assert.match(png, /appendAnchor: anchor => \{ document\.body\.appendChild\(anchor\); \}/);
   assert.doesNotMatch(png, /link\.href\s*=\s*png|fetch\(|invoke\(|localStorage|sessionStorage|console\./);
