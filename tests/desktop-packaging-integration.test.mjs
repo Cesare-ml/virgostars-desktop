@@ -70,3 +70,22 @@ test('base, CSS and JS gate failures cannot be bypassed by an otherwise clean pr
     });
   }
 });
+
+
+test('commented-out main script is not accepted as an executable bundle entrypoint', () => withBundle(f => {
+  const index = join(f.bundle, 'index.html');
+  const html = readFileSync(index, 'utf8');
+  const main = '<script src="main-LOCAL123.js" type="module"></script>';
+  writeFileSync(index, html.replace(main, '<!-- ' + main + ' -->'));
+  assert.throws(() => verifyOfflineBundle(f.bundle, f.staging), /Missing or unclosed Angular script element/);
+}));
+
+test('harmless quoted script metadata does not prevent valid offline packaging', () => withBundle(f => {
+  const index = join(f.bundle, 'index.html');
+  const html = readFileSync(index, 'utf8');
+  const main = '<script src="main-LOCAL123.js" type="module"></script>';
+  const decorated = '<script title="note > example onload=documentation" src="main-LOCAL123.js" type="module"></script>';
+  writeFileSync(index, html.replace(main, decorated));
+  assert.equal(verifyOfflineBundle(f.bundle, f.staging).scripts, 1);
+  assert.equal(auditBuildPrivacy(f.bundle).files, 4);
+}));
