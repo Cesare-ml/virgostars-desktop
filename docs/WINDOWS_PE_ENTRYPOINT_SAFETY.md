@@ -57,3 +57,25 @@ preserving PR #145's section-overlap checks.
 files must run together and the branch must be reviewed before either PR
 is merged. No runtime PE, Windows loader or Tauri binary is validated here. No update/release signing or
 installer is provided. No Github Actions or automatic merge are involved.
+
+## Isolated verification of this combined candidate (2026-11-13)
+
+- **Node.js v22.16.0**, real Node test runner, in an isolated synthetic-only
+  three-file mirror: `node --test tests/pe-entrypoint-bounds.test.mjs`
+  returned **9/9 PASS**, zero failures or skipped tests.
+- The executed integrated parser's **Git blob SHA** was
+  `8ebf81389bcff267ce703b719c73083c53355630`. Helper SHA:
+  `b72ce2f149e8cf7f268f9918e24d6e5e112693e2`; test SHA:
+  `690f3129d012f3f29a541907073edb14233471e4`.
+  These hashes matched files fetched back from the integration branch.
+- All three mirrored JS files passed `node --check`.
+- An independent V8 execution of the fetched integrated parser and helper
+  passed **12/12 synthetic boundary checks**, including overlap detection,
+  header aliasing, virtual zero-fill, raw padding, last meaningful backing
+  byte, wrong machine and missing raw sections. This is not the full Node
+  test suite for PR #145.
+
+**Still required before merge:** the original
+`node --test tests/windows-pe-header.test.mjs`, all checkout tests via
+`npm test`, Windows 11 x64 MSVC/Tauri build and offline WebView2 acceptance.
+No actual Windows executable, signature or malware check has been conducted.
