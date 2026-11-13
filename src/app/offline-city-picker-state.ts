@@ -160,3 +160,17 @@ export class OfflineCityPickerState {
     this.lookup.clear();
   }
 }
+
+
+/**
+ * Mirror an externally changed parent selection into one temporary picker.
+ * A parent clear must remove an obsolete chosen city, but must NOT erase
+ * an in-progress query whose local selection was already invalidated by typing.
+ * No event is sent to the parent by this state-level reconciliation.
+ */
+export function reconcileParentCitySelection(
+  state: OfflineCityPickerState, selectedPlace: OfflinePlaceV1 | null,
+): void {
+  if (selectedPlace !== null) state.restore(selectedPlace);
+  else if (state.selected !== null) state.clearSelection();
+}
