@@ -202,3 +202,56 @@ test('broken clear callbacks cannot break input, invalidation or disposal', asyn
   assert.doesNotThrow(() => state.dispose());
   assert.doesNotThrow(() => callback());
 });
+
+
+test('reentrant UI update skips the obsolete lookup before native invocation', async () => {
+  const scheduled = [];
+  const queries = [];
+  let state;
+  let reentered = false;
+  const lookup = {
+    clear() {},
+    async search(query) { queries.push(query); return {kind:'ready',items:[a]}; },
+  };
+  const timers = {
+    set(fn) { scheduled.push(fn); return scheduled.length; },
+    clear() {},
+  };
+  state = new OfflineCityPickerState(lookup, () => {
+    if (state.status === 'loading' && !reentered) {
+      reentered = true;
+      state.input('Firenze');
+    }
+  }, timers);
+  state.input('Roma');
+  scheduled[0]();
+  await Promise.resolve();
+  assert.deepEqual(queries, [], 'reentrant input must prevent the original native call');
+  assert.equal(state.query, 'Firenze');
+  assert.equal(state.status, 'typing');
+  scheduled[1]();
+  await Promise.resolve();
+  assert.deepEqual(queries, ['Firenze']);
+  assert.equal(state.status, 'ready');
+  state.dispose();
+});
+
+test('disposal inside the loading-state notification does not start native search', async () => {
+  let fire;
+  let calls = 0;
+  let state;
+  const lookup = {
+    clear() {},
+    async search() { calls++; return {kind:'ready',items:[a]}; },
+  };
+  const timers = {set(fn) { fire = fn; return 0; }, clear() {}};
+  state = new OfflineCityPickerState(lookup, () => {
+    if (state.status === 'loading') state.dispose();
+  }, timers);
+  state.input('Roma');
+  assert.doesNotThrow(() => fire());
+  await Promise.resolve();
+  assert.equal(calls, 0);
+  assert.equal(state.results.length, 0);
+  assert.equal(state.choose(0), null);
+});
