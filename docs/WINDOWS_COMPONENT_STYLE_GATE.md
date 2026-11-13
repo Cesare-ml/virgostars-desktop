@@ -18,6 +18,13 @@ not guarantee the grid panels and chart stage were compiled.
   grid/flex rule to be present in **one** candidate, accepting Angular's
   `[_ngcontent-%COMP%]` selector decoration. Mere template class names
   cannot satisfy the gate.
+- It scans **every** compiled CSS/JS candidate for explicit overrides on those
+  two layout elements (`display:block/none/flex`, `visibility:hidden`,
+  `opacity:0`), including nested breakpoint rules and simple `:where()`/
+  `:is()` selectors. A valid style in an early module cannot hide a later
+  conflicting rule; child elements deliberately hidden in the collapsed
+  navigation remain valid. This is a conservative static regex check, **not**
+  a full CSS cascade, Angular injection or computed-style proof.
 - Candidate names, regular-file/symlink constraints and file/total byte limits
   guard against unbounded reads. **All candidates are preflighted before any
   matching CSS is accepted**: an early valid `main*.js` cannot mask an unsafe
@@ -28,7 +35,7 @@ not guarantee the grid panels and chart stage were compiled.
   continues to permit minimal synthetic fixtures and is not a replacement for
   running the full CLI.
 - Tests cover the source rules, synthetic Angular JS and CSS output, absent or
-  incomplete rules, split evidence, unsafe symlinks, oversized files and CLI
+  incomplete rules, split evidence, unsafe symlinks, oversized files, unsafe layout overrides and CLI
   wiring. No dependencies or native permissions are added.
 
 ## Verification
