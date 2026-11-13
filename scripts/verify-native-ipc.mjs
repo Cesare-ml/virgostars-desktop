@@ -43,7 +43,7 @@ export function auditNativeIpc(sources) {
   for(const [path,content] of Object.entries(sources.tsFiles)) {
     const packages=[...content.matchAll(/@tauri-apps\/[a-z0-9][a-z0-9/._-]*/gi)].map(m=>m[0]);
     if(packages.length===0) continue;
-    assert(ADAPTERS.includes(path), 'Unexpected Tauri reference outside reviewed adapters');
+    assert(ADAPTERS.includes(path), 'Unexpected Tauri import outside reviewed adapters');
     assert(packages.length===1 && packages[0]==='@tauri-apps/api/core',
       'Unexpected Tauri package or multiple Tauri references');
     const imports=[...content.matchAll(/\bimport\s*\{([^}]*)\}\s*from\s*['"]@tauri-apps\/api\/core['"]/g)];
@@ -53,7 +53,7 @@ export function auditNativeIpc(sources) {
       'Unreviewed Tauri API import or alias');
     const calls=[...content.matchAll(/\binvoke\s*<unknown>\s*\(/g)];
     assert(calls.length===1 && /\binvoke\s*<unknown>\s*\(\s*command\b/.test(content),
-      'Unexpected Tauri invocation in reviewed adapter');
+      'Tauri adapter invoke changed or expanded');
   }
   for(const adapter of ADAPTERS) assert(sources.tsFiles[adapter] !== undefined &&
     /from\s*['"]@tauri-apps\/api\/core['"]/.test(sources.tsFiles[adapter]), 'Missing reviewed Tauri adapter');
