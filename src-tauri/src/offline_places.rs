@@ -214,6 +214,9 @@ mod tests {
         assert_eq!(fts_query("L'Aquila"), Some("\"Aquila\"*".into()));
         assert_eq!(fts_query("Côte d'Azur"), Some("\"Côte\"* \"Azur\"*".into()));
         assert_eq!(fts_query("a San José"), Some("\"San\"* \"José\"*".into()));
+        assert_eq!(fts_query("Rio_de_Janeiro"), Some("\"Rio\"* \"de\"* \"Janeiro\"*".into()));
+        assert_eq!(fts_query("Saint John’s"), Some("\"Saint\"* \"John\"*".into()));
+        assert_eq!(fts_query("L’Aquila"), Some("\"Aquila\"*".into()));
         assert_eq!(fts_query("San José Toscana Italia Centro"), Some("\"San\"* \"José\"* \"Toscana\"* \"Italia\"* \"Centro\"*".into()));
         assert!(fts_query("San José Toscana Italia Centro Europa").is_none());
     }
@@ -277,7 +280,9 @@ mod tests {
              INSERT INTO places VALUES
                (1,'Firenze','Florence',43769560,11255810,350000,1,'Toscana','Europe/Rome','+0100'),
                (2,'Firenze Piccola',NULL,42000000,11000000,NULL,1,'Lazio','Europe/Rome','+0100'),
-               (3,'L''Aquila',NULL,42350500,13399000,70000,1,'Abruzzo','Europe/Rome','+0100');
+               (3,'L''Aquila',NULL,42350500,13399000,70000,1,'Abruzzo','Europe/Rome','+0100'),
+               (4,'Côte d''Azur',NULL,43000000,7000000,90000,1,'Provence','Europe/Paris','+0100'),
+               (5,'Rio_de_Janeiro',NULL,-22906500,-43172600,6000000,1,'Rio','America/Sao_Paulo','-0300');
              CREATE VIRTUAL TABLE places_fts USING fts5(
                nome,nome_it,content='places',content_rowid='id',
                tokenize='unicode61 remove_diacritics 2',prefix='2 3');
@@ -296,6 +301,12 @@ mod tests {
         assert_eq!(aquila.items.len(), 1);
         assert_eq!(aquila.items[0].name, "L'Aquila");
         assert_eq!(search_database(&path, "a b", 12).err(), Some("PLACE_QUERY_INVALID"));
+        let coast = search_database(&path, "Côte d'Azur", 12).unwrap();
+        assert_eq!(coast.items.len(), 1);
+        assert_eq!(coast.items[0].name, "Côte d'Azur");
+        let rio = search_database(&path, "Rio_de_Janeiro", 12).unwrap();
+        assert_eq!(rio.items.len(), 1);
+        assert_eq!(rio.items[0].name, "Rio_de_Janeiro");
         std::fs::remove_file(&path).unwrap();
     }
 
