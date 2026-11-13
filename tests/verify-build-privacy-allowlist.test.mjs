@@ -38,7 +38,7 @@ for (const file of [
 ]) {
   test('blocks unexpected output path: ' + file, () => withBundle(({bundle, add}) => {
     add(file);
-    assert.throws(() => auditBuildPrivacy(bundle), /unapproved browser bundle file/);
+    assert.throws(() => auditBuildPrivacy(bundle), /unapproved browser bundle (?:file|directory)/);
   }));
 }
 
