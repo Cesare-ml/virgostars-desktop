@@ -134,6 +134,8 @@ test('combined Angular wiring preserves scoped lookup, explicit clear and biling
   assert.match(component, /this\.state\.clearSelection\(\);[\s\S]*?this\.locationEdited\.emit\(\)/);
   assert.match(template, /\(click\)="clearSelected\(\)"/);
   assert.match(template, /\[attr\.aria-label\]="t\('city\.clear'\)"/);
+  assert.match(template, /maxlength="160"/);
+  assert.match(component, /if \(input\.value !== this\.state\.query\) input\.value = this\.state\.query/);
   assert.equal((strings.match(/"city\.clear":/g)||[]).length, 2);
   assert.match(shell, /\(locationEdited\)="selectedCity = null"/);
   assert.match(state, /\[\.\.\.value\]\.slice\(0, 80\)\.join\(''\)/);
