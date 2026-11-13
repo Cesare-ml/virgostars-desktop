@@ -35,7 +35,6 @@ test('rejects comment-only and hidden or conditional attribution spans', () => {
   const commentOnly = f.template.replace(/<span class="copyright-attribution">[^<]*<\/span>/, match => '<!-- ' + match + ' -->');
   assert.throws(() => verifyDesktopAttribution(commentOnly, f.notice, f.license), /DESKTOP ATTRIBUTION/);
   for (const replacement of [
-
     '<span class="copyright-attribution" hidden>',
     '<span class="copyright-attribution" style="display:none">',
     '<span class="copyright-attribution" *ngIf="false">',
@@ -59,4 +58,45 @@ test('rejects NOTICE or Exhibit B drift even if the UI retains the words', () =>
     /NOTICE is inconsistent/);
   assert.throws(() => verifyDesktopAttribution(f.template, f.notice, f.license.replace('Attribution URL: https://www.virgostars.it/', 'Attribution URL: https://example.invalid/')),
     /CPAL attribution URL mismatch/);
+});
+
+test('inert template, ng-template, noscript, or script cannot supply a launch footer', () => {
+  const f = fixture();
+  const footer = f.template.match(/<footer>[\s\S]*?<\/footer>/)?.[0];
+  assert.ok(footer);
+  for (const tag of ['template', 'ng-template', 'noscript', 'script']) {
+    const moved = f.template.replace(footer, `<${tag}>${footer}</${tag}>`);
+    assert.throws(() => verifyDesktopAttribution(moved, f.notice, f.license),
+      /footer is not a direct child/);
+  }
+});
+
+test('rejects credits inside a nested element or under hidden and conditional ancestors', () => {
+  const f = fixture();
+  const footer = f.template.match(/<footer>[\s\S]*?<\/footer>/)?.[0];
+  assert.ok(footer);
+  assert.throws(() => verifyDesktopAttribution(
+    f.template.replace(footer, `<div>${footer}</div>`), f.notice, f.license),
+  /footer is not a direct child/);
+  const workspace = '<div class="workspace"';
+  for (const attr of [' hidden', ' inert', ' *ngIf="false"', ' [hidden]="true"',
+                      ' [attr.hidden]="true"', ' style="display:none"',
+                      ' [style.display]="\'none\'"', ' aria-hidden="true"']) {
+    const altered = f.template.replace(workspace, workspace + attr);
+    assert.throws(() => verifyDesktopAttribution(altered, f.notice, f.license),
+      /hidden or conditional ancestor/);
+  }
+});
+
+test('rejects text interpolation or extra text even when original credits remain intact', () => {
+  const f = fixture();
+  const original = 'Powered by VirgoStars · https://www.virgostars.it/';
+  for (const changed of [
+    'Powered by VirgoStars · https://www.virgostars.it/ {{someUserText}}',
+    'Powered by VirgoStars · https://www.virgostars.it/ · extra',
+  ]) {
+    assert.throws(() => verifyDesktopAttribution(
+      f.template.replace(original, changed), f.notice, f.license),
+    /static footer attribution text mismatch/);
+  }
 });
