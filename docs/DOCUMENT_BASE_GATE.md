@@ -27,6 +27,13 @@ Existing offline asset hashes, stylesheet checks, and external-reference
 checks remain intact. A private-artwork synthetic test fixture was made
 representative of the Angular-generated HTML contract.
 
+The validator strips HTML comments before locating `<base>` and rejects any
+pre-base head content except Angular's metadata tags (`<meta>` and `<title>`).
+This prevents a commented-out base, a `<template>`/`<noscript>` wrapper, or
+an earlier resource from masquerading as an active document base. Closed
+comments that precede a real canonical base remain harmless. Unterminated
+comments fail closed.
+
 The validator is conservative and intended for generated Angular HTML, not
 arbitrary web pages. It is not a complete HTML parser or a replacement for
 CSP enforcement, WebView2 inspection, or security review of runtime scripts.
@@ -39,10 +46,14 @@ Node.js 22.16.0:
 node --check scripts/verify-document-base.mjs
 node --test tests/document-base.test.mjs
 ```
-**Actually run in an isolated checkout:** syntax check succeeded; 10/10
-tests passed. The executed source and test match the GitHub Git blobs:
-`ff1eeb3a5026a38df2c03d307af9c965d35b42dc` and
-`9ef5425d1338d6293556f0a5ac81e884c2a7d276`.
+**Actually run in an isolated checkout:** syntax check succeeded; the
+expanded regression suite passed **16/16 tests** with Node.js 22.16.0.
+The executed source and test match their exact current GitHub blobs:
+`eec569b6a8588b2ed14ee9aa4bfdb4a3f2f95af3` and
+`576d3435a5ed97e91996315237a22c7f94770a1b`.
+The extra tests cover inert/commented `<base>` tags, malformed comments,
+`<template>`/`<noscript>` containment, Angular's metadata-first head and
+unexpected elements preceding a base.
 
 Before merging, run the complete `npm test` suite and
 `npm run build:ui`, `npm run verify:bundle`,
