@@ -41,8 +41,8 @@ test('switching display locale never changes the bytes or provenance of fictiona
     assert.equal(displayed.length, 10);
     assert.deepEqual(planets.map(({longitude}) => longitude), before);
     assert.equal(buildSyntheticChartCsv(planets, houses), csv);
-    assert.ok(csv.endsWith('FICTIONAL_NOT_CALCULATED\\r\\n'));
-    assert.ok(!csv.includes('longitude_degrees,data_quality\\r\\nplanet,Sun,19,3,'));
+    assert.ok(csv.endsWith('FICTIONAL_NOT_CALCULATED\r\n'));
+    assert.ok(!csv.includes('longitude_degrees,data_quality\r\nplanet,Sun,19,3,'));
   }
 });
 
