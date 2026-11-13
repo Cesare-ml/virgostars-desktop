@@ -47,6 +47,7 @@ powershell -NoProfile -File .\scripts\build-windows-spike.ps1
 ```
 
 Or, from Command Prompt, invoke `scripts\build-windows.cmd`. The `.cmd` launcher now delegates to **the same** PowerShell bootstrap, returns its exit code, and never maintains a second independent installation or Tauri build path. It does not modify execution policy, install PowerShell or download anything by itself.
+The CMD wrapper resolves the quoted Windows-supplied `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` directly rather than trusting `PATH`, and fails if that executable is missing.
 
 The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, **audits the committed Desktop npm lockfile before invoking any package installer**, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies **using the reviewed npm lockfile (`npm ci`)**, runs Node tests, audits the reviewed native IPC command registry and Tauri capabilities, builds Angular with exact asset verification, checks that the bundled stylesheet exists, runs Rust unit tests with `cargo test --locked`, compiles Tauri **from that same already-audited Angular output** and checks expected output files. It stops at the first failed command.
 

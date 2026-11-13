@@ -24,22 +24,23 @@ test('committed npm lockfile has the exact root dependencies and scripts-compati
 
 test('the CMD entrypoint delegates only to the reviewed PowerShell script',()=>{
   assert.match(cmd,/^@echo off\r?\n/);
-  const launches=cmd.split(/\r?\n/).filter(line=>/^\s*powershell\.exe\s+/.test(line));
+  const launches=cmd.split(/\r?\n/).filter(line=>/^\s*"%VS_SYSTEM_POWERSHELL%"\s+/.test(line));
   assert.deepEqual(launches,
-    ['powershell.exe -NoProfile -NonInteractive -File "%~dp0build-windows-spike.ps1"']);
-  assert.match(cmd,/where powershell\.exe >nul 2>nul/);
-  assert.match(cmd,/if errorlevel 1 \(/);
+    ['"%VS_SYSTEM_POWERSHELL%" -NoProfile -NonInteractive -File "%~dp0build-windows-spike.ps1"']);
+  assert.match(cmd,/set "VS_SYSTEM_POWERSHELL=%SystemRoot%\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe"/);
+  assert.match(cmd,/if not exist "%VS_SYSTEM_POWERSHELL%" \(/);
+  assert.doesNotMatch(cmd,/where powershell\.exe/);
   assert.doesNotMatch(cmd,/\b(?:npm(?:\.cmd)?|cargo|rustc|tauri(?:\.exe)?)\b/i);
   assert.doesNotMatch(cmd,/(?:ExecutionPolicy|Invoke-WebRequest|Start-Process|curl\.exe)/i);
 });
 
 test('CMD returns the real PowerShell exit code rather than reporting false success',()=>{
-  const invoke=cmd.indexOf('powershell.exe -NoProfile -NonInteractive -File');
+  const invoke=cmd.indexOf('"%VS_SYSTEM_POWERSHELL%" -NoProfile -NonInteractive -File');
   const record=cmd.indexOf('set "VS_BUILD_EXIT=%ERRORLEVEL%"');
   const finish=cmd.indexOf('exit /b %VS_BUILD_EXIT%');
   assert.ok(invoke>=0 && record>invoke && finish>record);
   assert.equal((cmd.match(/exit \/b %VS_BUILD_EXIT%/g)||[]).length,1);
-  assert.equal((cmd.match(/powershell\.exe -NoProfile -NonInteractive -File/g)||[]).length,1);
+  assert.equal((cmd.match(/"%VS_SYSTEM_POWERSHELL%" -NoProfile -NonInteractive -File/g)||[]).length,1);
 });
 
 test('the single Windows bootstrap uses npm ci for both public source trees',()=>{
