@@ -29,6 +29,6 @@ test('empty, emoji-only and one-letter searches remain too short',()=>{
 test('large pasted input is rejected before tokenization, without an unbounded copy',()=>{
   const input='Firenze'+'x'.repeat(1_000_000);
   assert.equal(offlinePlaceQueryProblem(input),'query_too_long');
-  const combining='e\\u0301'.repeat(41); // 82 scalars although 41 visible clusters
+  const combining=('e' + String.fromCodePoint(0x0301)).repeat(41); // 82 scalars although 41 visible clusters
   assert.equal(offlinePlaceQueryProblem(combining),'query_too_long');
 });
