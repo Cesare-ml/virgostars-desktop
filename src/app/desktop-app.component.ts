@@ -13,6 +13,7 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { formatEclipticLongitude } from './format-longitude';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -72,7 +73,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
-  formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
+  formatDegrees(value:number): string { return formatEclipticLongitude(value); }
 
   ngAfterViewInit(): void {
     // Read-only capability check, distinct from account authentication.
