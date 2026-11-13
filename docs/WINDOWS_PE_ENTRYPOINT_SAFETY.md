@@ -67,3 +67,23 @@ fixture now sets conventional MSVC-style alignments (`0x1000` and `0x200`).
 The extra entrypoint rule remains conservative: it does not relax any newer
 section-overlap or alignment rules.
 
+## Test evidence for the aligned integration candidate
+
+Executed with **Node.js v22.16.0** on Linux in an isolated, synthetic-only
+local mirror containing the **exact Git blobs** from this integration branch:
+
+- Integrated PE inspector: `840837a30ca905378527a9b360042b8a35f5c525`
+- Entrypoint bounds helper: `b72ce2f149e8cf7f268f9918e24d6e5e112693e2`
+- Entrypoint regression tests: `08940ac7b3642a168bc4d03d1629c60cc6f8bd61`
+
+`node --check` passed for inspector and regression tests.
+`node --test tests/pe-entrypoint-bounds.test.mjs`: **9/9 PASS**,
+0 failed, 0 skipped. The checks include reading a temporary fictional
+PE executable with permitted and rejected entry RVA values.
+
+The complete `tests/windows-pe-header.test.mjs` from the newer #145 branch
+was **not run** in the local mirror; it remains mandatory, alongside
+`npm test`, native Windows x64/MSVC Tauri build, bundled executable
+inspection and real offline WebView2 GUI smoke. A synthetic PE header
+is not a launchable or signed Windows application.
+
