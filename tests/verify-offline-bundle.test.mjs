@@ -156,3 +156,13 @@ test('rejects an inactive stylesheet in a valid local Angular bundle',()=>run(f=
   writeFileSync(file,html);
   assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Disabled stylesheet/);
 }));
+
+test('rejects a commented-out Angular main module even if its JS file exists',()=>run(f=>{
+  const file=join(f.bundle,'index.html');
+  const html=readFileSync(file,'utf8').replace(
+    '<script src="main-LCL123.js" type="module"></script>',
+    '<!-- <script src="main-LCL123.js" type="module"></script> -->'
+  );
+  writeFileSync(file,html);
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Missing or unclosed Angular script element/);
+}));
