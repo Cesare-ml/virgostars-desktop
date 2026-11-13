@@ -70,9 +70,17 @@ test('rejects missing and oversized overrides and directory paths',()=>{
   withFile(canonical(),(_path,dir)=>assert.throws(()=>verifyPlacesTauriOverride(dir),/Unapproved/));
 });
 
-test('rejects symlinks to an otherwise approved file',()=>withFile(canonical(),(path,dir)=>{
+test('rejects symlinks to an otherwise approved file',t=>withFile(canonical(),(path,dir)=>{
   const link=join(dir,'override-link.json');
-  symlinkSync(path,link);
+  try { symlinkSync(path,link); }
+  catch(error) {
+    // File symlinks may require Windows Developer Mode or elevated privileges.
+    if(process.platform==='win32' && ['EPERM','EACCES'].includes(error?.code)) {
+      t.skip('Windows symlink creation is not permitted on this host');
+      return;
+    }
+    throw error;
+  }
   assert.throws(()=>verifyPlacesTauriOverride(link),/Unapproved/);
 }));
 
