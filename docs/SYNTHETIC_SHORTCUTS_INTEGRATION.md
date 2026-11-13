@@ -83,3 +83,11 @@ npm run doctor
 On an authorized Windows 11 Tauri/WebView2 build, smoke-test all five hotkeys, keyboard focus in the offline city picker, ARIA editors, modal content, IME composition, switching IT/EN and switching visual chart mode while requests are pending. Re-test synthetic CSV download, localization and WebGL chart fit. The runtime's actual astronomical calculations are still **not connected** through these shortcuts, and no production-ready accuracy is claimed.
 
 **No merge to main**, GitHub Actions, deployment, new dependencies, app-store release, network integration, account/data changes, licensed artwork change, repository visibility or license modification. Review #98 and this stacked integration PR as **alternatives for the same hotkey changes**, not as independent duplicate commits.
+
+## Bounded canvas measurements — integrated from #84
+
+The combined branch now also contains the original **#84** `chartSide` CSS size guard (4096 CSS pixels), its exact original tests and documentation. There are **four additional executable** cross-module tests in `tests/chart-fit-shortcuts-integration.test.mjs`. They check extreme CSS measurements, repeated panel measurements, keyboard focus protection and unchanged fictional CSV content.
+
+**Current measured selected-pure-suite evidence (13 Nov 2026): 72/72 real Node.js tests pass** in the isolated copy; **eight pure TypeScript modules pass standalone strict compilation**. Exact committed Git SHA identity was checked for eight pure modules and both sizing test files (10/10). **11/11** readback assertions passed against the real GitHub Angular/source wiring. Unlike a full checked-out app, this mirror deliberately omits Angular-dependent source-contract tests; it does not establish frontend build or Windows GPU/WebView2 acceptance.
+
+The helper is a conservative CSS-pixel bound, not guaranteed device-pixel ratio or WebGL memory control. Keep the parent #99 and merged #84 source paths under review; do not merge duplicate functionality twice. No main merge or release.
