@@ -4,6 +4,7 @@ import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspectDesktopStyles } from './verify-bundled-css.mjs';
+import { verifyDesktopBaseHref } from './verify-document-base.mjs';
 import { PRIVATE_MANIFEST_FILE, validatePrivateManifest } from './prepare-private-assets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -36,6 +37,7 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   const assetFiles=privateMode?manifest.assets:manifest.files;
   const htmlPath=join(bundle,'index.html');safeRegular(htmlPath);
   const html=readFileSync(htmlPath,'utf8');
+  verifyDesktopBaseHref(html);
   check(/<vs-desktop-app(?:\s|>)/.test(html), 'Angular bundle is not the desktop-owned app');
   check(!/<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["'](?:https?:)?\/\//i.test(html),
     'Angular bundle references an external script or stylesheet');
