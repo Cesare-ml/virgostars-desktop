@@ -10,7 +10,7 @@ test('CSV export is wired only to the fictional inspector fixture, not a cloud o
   assert.match(source, /buildSyntheticChartCsv\(this\.planets,\s*this\.houses\)/);
   assert.match(source, /if \(this\.destroyed \|\| this\.exporting \|\| this\.mode !== 'natal'\) return;/);
   assert.ok(source.includes("from './synthetic-csv-download'"));
-  assert.ok(source.includes('requestSyntheticCsvDownload(csv, {'));
+  assert.ok(source.includes('requestSyntheticCsvDownload(csv, SYNTHETIC_CSV_FILENAME, {'));
   assert.ok(source.includes('URL.revokeObjectURL(url)'));
   assert.ok(source.includes('this.csvStatus = null;'));
   assert.doesNotMatch(source.slice(source.indexOf('  exportSyntheticCsv(): void'), source.indexOf('  private renderError')),
@@ -39,7 +39,7 @@ test('Italian and English copy explicitly describe synthetic export and do not p
 test('Blob URLs are cleaned on scheduling or click failures without a network fallback', () => {
   const helper = read('src/app/synthetic-csv-download.ts');
   assert.ok(helper.includes('if (!revocationScheduled) port.revoke(url);'));
-  assert.ok(helper.includes('SYNTHETIC_CSV_FILENAME'));
+  assert.ok(helper.includes('port.click(url, filename)'));
   for (const forbidden of ['fetch(', 'invoke(', 'localStorage', 'sessionStorage']) assert.ok(!helper.includes(forbidden));
 });
 
