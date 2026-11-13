@@ -142,4 +142,10 @@ test('combined Angular wiring preserves scoped lookup, explicit clear and biling
   assert.match(state, /result\.kind === 'stale' \? 'busy'/);
   assert.match(bridge, /if \(items\.length > limit\) return \{kind: 'unavailable', items: \[\]\}/);
   assert.doesNotMatch(bridge, /String\(error\)/);
+  assert.match(state, /retry\(\): boolean/);
+  assert.match(component, /retry\(input: HTMLInputElement\): void/);
+  assert.match(component, /if \(this\.state\.retry\(\)\) input\.focus\(\)/);
+  assert.match(template, /\*ngIf="state\.status === 'busy' \|\| state\.status === 'unavailable'"/);
+  assert.match(template, /\(click\)="retry\(citySearchInput\)"/);
+  assert.equal((strings.match(/"city\.retry":/g)||[]).length, 2);
 });
