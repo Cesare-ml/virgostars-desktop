@@ -2,6 +2,7 @@ import {CommonModule} from '@angular/common';
 import {ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject} from '@angular/core';
 import {createOfflinePlaceSearch} from './native/offline-places';
 import {newOfflineCityPickerDomIds} from './offline-city-picker-dom-ids';
+import {shouldCommitCityQuery, shouldHandleCityPickerKey} from './offline-city-input-events';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {OfflineCityPickerState, reconcileParentCitySelection, type CityPickerStatus} from './offline-city-picker-state';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -26,6 +27,7 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   @Output() readonly locationSelected = new EventEmitter<OfflinePlaceV1>();
   @Output() readonly locationEdited = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);
+  private composing = false;
   readonly domIds = newOfflineCityPickerDomIds();
   readonly state = new OfflineCityPickerState(createOfflinePlaceSearch(), () => this.cd.markForCheck());
 
@@ -45,16 +47,35 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
       .join(' · ') : '';
   }
 
+  onCompositionStart(): void {
+    this.composing = true;
+  }
+
+  onCompositionEnd(event: CompositionEvent): void {
+    this.composing = false;
+    // Some browsers dispatch an extra input event after compositionend.
+    this.commitInput(event.target as HTMLInputElement);
+  }
+
   onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
+    if ((event as InputEvent).isComposing === true || this.composing) return;
+    this.commitInput(input);
+  }
+
+  private commitInput(input: HTMLInputElement): void {
+    if (!shouldCommitCityQuery(
+      input.value, this.state.query, this.state.selected !== null, this.composing,
+    )) return;
     this.state.input(input.value);
-    // Browser maxlength counts UTF-16 code units; state caps at 80 code points.
-    // Reflect the normalized query so displayed text always matches IPC input.
+    // Only normalize after composition completes. Browser maxlength measures
+    // UTF-16 units, while the offline search contract counts Unicode scalars.
     if (input.value !== this.state.query) input.value = this.state.query;
     this.locationEdited.emit();
   }
 
   onKeydown(event: KeyboardEvent): void {
+    if (!shouldHandleCityPickerKey(this.composing, event.isComposing, event.keyCode)) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (this.state.results.length) {
         event.preventDefault();
