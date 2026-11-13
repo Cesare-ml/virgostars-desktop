@@ -1,7 +1,7 @@
-import type {OfflinePlaceV1, PlaceQueryState} from './native/offline-places-contract';
+import {offlinePlaceQueryProblem, type OfflinePlaceV1, type PlaceQueryState} from './native/offline-places-contract';
 
 export type CityPickerStatus =
-  | 'idle' | 'query_too_short' | 'typing' | 'loading' | 'ready' | 'empty' | 'selected'
+  | 'idle' | 'query_too_short' | 'query_too_long' | 'typing' | 'loading' | 'ready' | 'empty' | 'selected'
   | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable';
 
 export interface CityLookupPort {
@@ -46,8 +46,9 @@ export class OfflineCityPickerState {
     this.results = [];
     this.activeIndex = -1;
     const length = [...this.query.trim()].filter(c => /[\p{L}\p{N}]/u.test(c)).length;
+    const problem = offlinePlaceQueryProblem(this.query);
     if (length === 0) this.status = 'idle';
-    else if (length < 2) this.status = 'query_too_short';
+    else if (problem) this.status = problem;
     else {
       this.status = 'typing';
       const ticket = this.seq;
