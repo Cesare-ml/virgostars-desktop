@@ -60,7 +60,7 @@ export function buildHorizonsVectorPlan(tdbJulianDay) {
         format:'text',COMMAND:"'"+body.naifId+"'",OBJ_DATA:'NO',MAKE_EPHEM:'YES',
         EPHEM_TYPE:'VECTORS',CENTER:"'500@0'",REF_PLANE:'FRAME',REF_SYSTEM:'ICRF',
         OUT_UNITS:'KM-S',VEC_TABLE:'2',VEC_CORR:'NONE',CSV_FORMAT:'YES',
-        VEC_LABELS:'NO',TIME_TYPE:'TDB',TLIST_TYPE:'JD',TLIST:jd,
+        VEC_LABELS:'NO',TIME_TYPE:'TDB',TLIST_TYPE:'JD',TLIST:"'"+jd+"'",
       };
       const url=new URL(API_URL);
       for (const key of ORDER) url.searchParams.set(key,params[key]);

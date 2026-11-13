@@ -22,12 +22,12 @@ function fail(code) { throw new Error(code); }
 const verify = (condition, code) => { if (!condition) fail(code); };
 
 /** Read a small regular local file once, refusing symlinks and detectable changes. */
-async function readLocalPlan(path) {
+export async function readLocalPlan(path, maxBytes = MAX_PLAN_BYTES) {
   let before, handle;
   try {
     before = await lstat(path, { bigint: true });
     verify(before.isFile() && !before.isSymbolicLink() && before.size > 0n &&
-      before.size <= BigInt(MAX_PLAN_BYTES), 'INVALID_PLAN');
+      before.size <= BigInt(maxBytes), 'INVALID_PLAN');
     handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) |
       (constants.O_NONBLOCK ?? 0));
     const current = await handle.stat({ bigint: true });
@@ -70,6 +70,9 @@ export function parseHorizonsVectorResponse(raw, expected) {
   verify(typeof raw === 'string' && Buffer.byteLength(raw, 'utf8') <= MAX_RESPONSE_BYTES,
     'INVALID_RESPONSE');
   verify(expected && typeof expected.naifId === 'string', 'INVALID_RESPONSE');
+  // Official text wire header: pinned to v1.0 until genuine newer output is reviewed.
+  verify(/^API VERSION:\\s*1\\.0\\r?\\nAPI SOURCE:\\s*NASA\\/JPL Horizons API\\r?\\n(?:\\r?\\n)/.test(raw),
+    'UNSUPPORTED_API_FORMAT');
   const name = header(raw, 'Target body name');
   const center = header(raw, 'Center body name');
   const site = header(raw, 'Center-site name');

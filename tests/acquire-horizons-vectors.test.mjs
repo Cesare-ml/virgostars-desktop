@@ -20,6 +20,9 @@ function responseText(target,options={}) {
     ' 1.200000000000E+07, -2.300000000000E+06, 3.200000000000E+05, '+
     ' 1.230000000000E+01, -4.560000000000E+00, 0.000000000000E+00,');
   return [
+    'API VERSION: 1.0',
+    'API SOURCE: NASA/JPL Horizons API',
+    '',
     'Ephemeris / WWW_USER / synthetic test (not NASA/JPL)',
     'Target body name: Fictional target ('+(options.target??target.naifId)+') {source: DE441}',
     'Center body name: '+(options.center??'Solar System Barycenter (0) {source: DE441}'),
@@ -61,7 +64,7 @@ test('offline plan has exactly ten immutable canonical HTTPS requests',()=>{
     assert.equal(url.searchParams.get('EPHEM_TYPE'),'VECTORS');
     assert.equal(url.searchParams.get('VEC_CORR'),'NONE');
     assert.equal(url.searchParams.get('REF_PLANE'),'FRAME');
-    assert.equal(url.searchParams.get('TLIST'),jd);
+    assert.equal(url.searchParams.get('TLIST'),"'"+jd+"'");
   }
 });
 test('rejects altered plan URL/target, unknown keys, and forged ready flags',()=>{
@@ -154,7 +157,7 @@ test('rejects incorrect body or forged error document with HTTP 200',async()=>fi
   const wrong=mock({sun:{target:'301'}});
   await assert.rejects(acquireHorizonsVectors(planPath,output,{...options,fetchFn:wrong}),/TARGET_MISMATCH/);
   await assert.rejects(stat(output),{code:'ENOENT'});
-  await assert.rejects(acquireHorizonsVectors(planPath,output,{...options,fetchFn:async()=>new Response('Horizons error: too many requests')}),/TARGET_MISMATCH/);
+  await assert.rejects(acquireHorizonsVectors(planPath,output,{...options,fetchFn:async()=>new Response('Horizons error: too many requests')}),/UNSUPPORTED_API_FORMAT/);
   await assert.rejects(stat(output),{code:'ENOENT'});
 }));
 test('symlinked or tampered plan is not accepted and cannot trigger network',async()=>fixture(async({planPath,output,dir})=>{
@@ -177,3 +180,14 @@ test('strict manual CLI arguments and failure status do not leak user-supplied p
   assert.match(result.stderr,/HORIZONS_ACQUIRE:INVALID_ARGUMENTS/);
   assert.ok(!(result.stderr+result.stdout).includes(dir));
 }));
+
+test('official text wire envelope is required even with a valid vector table',()=>{
+  const req={...plan().requests[0],tdbJulianDay:jd};
+  const good=responseText(req);
+  for(const broken of [good.replace('API VERSION: 1.0','API VERSION: 2.0'),
+    good.replace('API SOURCE: NASA/JPL Horizons API','API SOURCE: Unrelated service'),
+    good.replace('API VERSION: 1.0\n',''),
+    good.replace('API SOURCE: NASA/JPL Horizons API\n',''), '  '+good]) {
+    assert.throws(()=>parseHorizonsVectorResponse(broken,req),/UNSUPPORTED_API_FORMAT/);
+  }
+});

@@ -61,3 +61,7 @@ node --test tests/prepare-horizons-vector-plan.test.mjs
 **Node.js v22.16.0: 10/10 tests passed** using only synthetic local test times and output files. The tests cover ten-body NAIF IDs, all explicit query settings, strict TDB JD bounds, rejection of unexpected/duplicate CLI arguments, no silent overwrite, and sanitized terminal output. They do not make live Horizons requests or evaluate actual celestial positions.
 
 **Not executed:** real Horizons API response or NAIF binary, independent numeric vector reduction, genuine classic DE441 access, Rust/Cargo, complete Desktop npm/Angular tests, Windows Tauri/WebView2, source licensing audit, releases or production changes. No GitHub Actions or main merge.
+
+## Numeric TLIST canonical quoting (API-format follow-up)
+
+Per the official [Horizons API guide](https://ssd-api.jpl.nasa.gov/doc/horizons.html), single numeric `TLIST` values are individually single-quoted before URL encoding. The generator now uses `TLIST=%27<reviewed-JD>%27`, while preserving `TIME_TYPE=TDB` and `TLIST_TYPE=JD`. Regenerate previously saved query plans: unquoted `TLIST` plans are intentionally no longer canonical. Run the offline bundle verifier after acquisition; see [HORIZONS_OFFLINE_BUNDLE_AUDIT.md](HORIZONS_OFFLINE_BUNDLE_AUDIT.md).

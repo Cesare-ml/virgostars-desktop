@@ -49,3 +49,13 @@ node --test tests/acquire-horizons-vectors.test.mjs
 Tests use local temporary files, simulated `Response` objects and a fake HTTP transport. They exercise all ten canonical URLs, structure/metadata checking, source hashes, no-overwrite, rollback, wrong target/frame/units/epoch, malformed vector tables, oversized HTTP responses and sanitized CLI errors. The plan module used in local tests exactly matches the upstream Git blob `c14b444655fdaf6ce8a7d4e561fa5c6b98ed4ee8`.
 
 **Not executed:** live Horizons queries (network unavailable), authentic response validation, independent normalizer, real classic DE441 kernel, Rust/Cargo, full Desktop npm/Angular tests, Windows Tauri/WebView2 build. No releases, merges, GitHub Actions, production changes or publication.
+
+## Follow-up: offline bundle integrity and pinned text API envelope
+
+After acquisition, run:
+```powershell
+node scripts/ephemeris/verify-horizons-bundle.mjs --plan 'D:\\review\\horizons-plan.json' --output-dir 'D:\\review\\responses-new'
+```
+This offline command rechecks the ten unmodified response files, their SHA-256 values, the saved canonical query URLs and header/epoch/center/frame assumptions. See [HORIZONS_OFFLINE_BUNDLE_AUDIT.md](HORIZONS_OFFLINE_BUNDLE_AUDIT.md).
+
+The text parser now requires the `API VERSION: 1.0` / `API SOURCE: NASA/JPL Horizons API` wire envelope shown in the official documentation. Newer, unreviewed wire versions are refused. The URL generator also single-quotes the numeric `TLIST` value, as documented by JPL. A matching header is **not** authentication of NASA/JPL.

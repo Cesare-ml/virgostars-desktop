@@ -37,7 +37,7 @@ test('all Horizons queries have explicitly correct inertial, geometric and TDB v
     const required={format:'text',COMMAND:"'"+q.naifId+"'",OBJ_DATA:'NO',
       MAKE_EPHEM:'YES',EPHEM_TYPE:'VECTORS',CENTER:"'500@0'",REF_PLANE:'FRAME',
       REF_SYSTEM:'ICRF',OUT_UNITS:'KM-S',VEC_TABLE:'2',VEC_CORR:'NONE',
-      CSV_FORMAT:'YES',VEC_LABELS:'NO',TIME_TYPE:'TDB',TLIST_TYPE:'JD',TLIST:stamp};
+      CSV_FORMAT:'YES',VEC_LABELS:'NO',TIME_TYPE:'TDB',TLIST_TYPE:'JD',TLIST:"'"+stamp+"'"};
     assert.deepEqual(Object.fromEntries(p),required);
     assert.equal(p.has('START_TIME'),false);
     assert.equal(p.has('QUANTITIES'),false);
