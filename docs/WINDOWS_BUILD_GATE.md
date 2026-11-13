@@ -42,6 +42,8 @@ After dependencies are installed, use `node scripts/desktop-doctor.mjs --stage=b
 
 The `verify` stage now checks both the generated Angular `index.html` and its local global stylesheet through the same `inspectDesktopStyles` verifier used by offline bundle validation. Missing, deferred or CSP-incompatible styles yield a blocked `angular-css` check even when the HTML file exists. Errors are reported with fixed messages, not local paths. This remains **a build-artifact check, not proof that WebView2 loaded the CSS**; verify the native window and its CSP console as described in [Windows CSS Fix](WINDOWS_CSS_FIX.md).
 
+On Windows, the same stage also inspects the local experimental release executable as a regular file and checks its bounded DOS/PE/COFF header for **PE32+ AMD64** (`windows-pe`). It reads only 90 bytes and rejects detected symlinks, non-files and malformed/wrong-architecture headers without exposing paths. It does not execute the file, authenticate its origin, check its signature, guarantee an untampered file, establish that the binary is fresh relative to the Angular assets or prove that it starts correctly. A passing header check is **not a release acceptance**.
+
 ## 3. One-command Windows build attempt
 
 From `virgostars-desktop`:
@@ -89,7 +91,7 @@ To use `npm.cmd run tauri:dev`, launch `npm.cmd start` in another terminal first
 ## 5. Acceptance gate still pending
 
 - [ ] Build Angular against the actual authorized Charts library and synthetic pack.
-- [ ] Run Rust unit tests, compile a Windows x64 Tauri binary and verify the required prerequisites.
+- [ ] Run Rust unit tests, compile a Windows x64 Tauri binary, run `doctor:verify` (including `windows-pe` header preflight) and verify the required prerequisites.
 - [ ] Disconnect Internet and stop the dev server; launch the packaged test binary.
 - [ ] Test the four chart modes, both themes, resize/fit, WebGL recovery and PNG export in WebView2.
 - [ ] Verify browser-preview versus native-demo runtime state.
