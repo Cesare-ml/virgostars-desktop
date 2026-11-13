@@ -70,7 +70,9 @@ export function parseHorizonsVectorResponse(raw, expected) {
   verify(typeof raw === 'string' && Buffer.byteLength(raw, 'utf8') <= MAX_RESPONSE_BYTES,
     'INVALID_RESPONSE');
   verify(expected && typeof expected.naifId === 'string', 'INVALID_RESPONSE');
-  // Official text wire header: pinned to v1.0 until genuine newer output is reviewed.
+  // Official Horizons text API includes these two transport-format headers.
+  // The API manual v1.3 still documents wire-format API VERSION 1.0.
+  // Fail closed on a future version until reviewed against genuine samples.
   verify(/^API VERSION:\s*1\.0\r?\nAPI SOURCE:\s*NASA\/JPL Horizons API\r?\n(?:\r?\n)/.test(raw),
     'UNSUPPORTED_API_FORMAT');
   const name = header(raw, 'Target body name');
