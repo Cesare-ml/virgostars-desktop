@@ -57,3 +57,18 @@ Charts package, Tauri/Cargo, Windows 11 WebView2 or macOS WKWebView.
 
 This PR changes no release, production system, private assets, license, data
 persistence, network endpoint or GitHub Actions setting.
+
+## Integrated chart-fit / shortcut regression — 13 Nov 2026
+
+The exact reviewed sizing helper and four original unit tests from draft **#84** are now included in stacked desktop-shell draft **#103**, built on #99. This is an integration of the same fix, **not** a separate replacement; avoid merging both copies independently.
+
+New `tests/chart-fit-shortcuts-integration.test.mjs` adds four executable cross-module regressions covering: guarded fit intent with extreme measured sizes; repeated panel layout changes; editable-focus/invalid-measurement refusal; and preservation of the same **22 fictional CSV coordinates** while shortcut intents are parsed.
+
+**Actual validation:** Node.js **22.16.0** ran the four original sizing cases plus the four new integration cases — **8/8 passed**. The complete *selected pure-module* isolated mirror also ran **72/72 Node tests passed**, zero failures, using `node --experimental-strip-types --test --test-skip-pattern='actual desktop source|desktop error state|the Angular component|the template announces|integrated Angular shell|integrated template|merged component|merged Angular|Angular uses validated' tests/*.test.mjs`. The pattern omits source-level tests requiring the complete Angular checkout. TypeScript **5.8.3** compiled **eight pure TypeScript modules** with `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM`. The tested sizing helper, original test and new integration test have exact Git object SHA identity with the GitHub branch:
+- `src/app/workspace-state.ts`: `d56b55933305ed7d01b3dd6ee719ad9fd77a2c05`
+- `tests/chart-sizing-bounds.test.mjs`: `c0dc3851daf2eac1145072f5b4a72eb40c50cad7`
+- `tests/chart-fit-shortcuts-integration.test.mjs`: `1ab6e5df3c2c59f04fdb923d77fbef4be1cc4a07`
+
+The actual Angular `fitStage()` calls `chartSide(bounds.width,bounds.height,24)` before changing the canvas CSS size; this and related shortcut/CSV/PNG wiring were checked by **11/11 direct GitHub source assertions**. Those are static checks, **not** a compiled Angular test.
+
+The cap applies to **CSS size only**. The real GPU backing buffer, device-pixel ratio, WebGL renderer memory, physical monitor resizing and Windows WebView2 behavior still require native acceptance. The isolated suite does **not** establish `npm test` or `npm run build:ui` on a complete dependency checkout. No production, CI, release or main merge has been performed.
