@@ -92,11 +92,13 @@ export async function probeDesktopRuntime(
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
       throw new Error('Invalid native runtime probe timeout');
     }
-    const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'));
+    // Arm a valid deadline *before* creating any native invocation promise.
+    // If timer registration throws, do not start an unbounded IPC request.
     const timeout = new Promise<never>((_resolve, reject) => {
       handle = timers.set(() => reject(new Error('Native runtime probe timeout')), timeoutMs);
       scheduled = true;
     });
+    const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'));
     const payload = await Promise.race([invocation, timeout]);
     return { kind: 'desktop_demo', info: decodeDesktopRuntimeInfo(payload) };
   } catch {
