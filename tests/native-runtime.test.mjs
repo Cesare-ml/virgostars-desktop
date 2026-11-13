@@ -237,6 +237,47 @@ test('scheduler that invokes its callback and then throws never dispatches IPC',
   assert.equal(calls, 0);
 });
 
+test('absent deadline handles fail closed before dispatch, even if their callbacks arrive later', async () => {
+  for (const missingHandle of [null, undefined]) {
+    let invoked = 0;
+    let callback;
+    let clearCount = 0;
+    const result = await probeDesktopRuntime({
+      isNative: () => true,
+      invoke: async () => { invoked++; return valid; },
+    }, {
+      timers: {
+        set(fn) { callback = fn; return missingHandle; },
+        clear() { clearCount++; },
+      },
+    });
+    await Promise.resolve();
+    assert.deepEqual(result, {kind:'native_unavailable',info:null});
+    assert.equal(invoked, 0, 'native IPC must not start without a valid deadline handle');
+    assert.equal(clearCount, 0, 'no returned timer handle can safely be cancelled');
+    callback(); // An incorrectly registered scheduler may still fire late.
+    await Promise.resolve();
+    assert.equal(invoked, 0, 'late timeout cannot resurrect native dispatch');
+  }
+});
+
+test('zero-valued deadline handle remains valid and gets cleared', async () => {
+  let invoked = 0;
+  const cleared = [];
+  const result = await probeDesktopRuntime({
+    isNative: () => true,
+    invoke: async () => { invoked++; return valid; },
+  }, {
+    timers: {
+      set() { return 0; },
+      clear(handle) { cleared.push(handle); },
+    },
+  });
+  assert.equal(result.kind, 'desktop_demo');
+  assert.equal(invoked, 1);
+  assert.deepEqual(cleared, [0]);
+});
+
 test('timer cleanup failure is never surfaced to the UI after a successful native probe', async () => {
   const result = await probeDesktopRuntime({
     isNative:()=>true,
