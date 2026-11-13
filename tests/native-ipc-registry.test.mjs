@@ -137,5 +137,35 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       write(path,'export const ok = true;');
     }
     assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places']);
+    // A command in a newly added nested Rust file must not evade the audit.
+    write('src-tauri/src/features/new_command.rs',
+      '#[tauri::command]\npub fn reveal_secret() {}');
+    assert.throws(()=>auditCheckout(root),/Unregistered native command/);
+    write('src-tauri/src/features/new_command.rs','pub fn helper() {}');
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places']);
+
+    // Distinct Rust files with identical basenames are ambiguous in the flat
+    // module-name inventory and must be reviewed rather than silently merged.
+    write('src-tauri/src/features/runtime_probe.rs','pub fn unrelated() {}');
+    assert.throws(()=>auditCheckout(root),/Ambiguous Rust module filename/);
   } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('registered Rust module identity must match the reviewed exact handler path',()=>{
+  const f=fixture();
+  f.entry=f.entry.replace('runtime_probe::desktop_runtime_info','other::desktop_runtime_info');
+  assert.throws(()=>auditNativeIpc(f),/module or allowlist changed/);
+});
+
+test('new Rust command declarations in another module are rejected',()=>{
+  const f=fixture();
+  f.rustModules.new_module='#[tauri::command]\npub fn exfiltrate() {}';
+  assert.throws(()=>auditNativeIpc(f),/Unregistered native command/);
+});
+
+test('unrecognized Rust command attribute forms cannot hide command declarations',()=>{
+  const f=fixture();
+  f.rustModules.runtime_probe=f.rustModules.runtime_probe.replace(
+    '#[tauri::command]', '#[tauri::command(rename_all = "snake_case")]');
+  assert.throws(()=>auditNativeIpc(f),/Unsupported native command attribute syntax/);
 });
