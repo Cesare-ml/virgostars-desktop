@@ -208,3 +208,22 @@ test('changing Tauri build.rs from its reviewed build-only form fails closed',()
     assert.throws(()=>auditCheckout(root),/build configuration changed/);
   } finally {rmSync(root,{recursive:true,force:true});}
 });
+
+
+test('another native invocation in a reviewed protocol cannot hide behind a valid one',()=>{
+  const f=fixture();
+  f.runtimeContract += "\nasync function unexpected(port) { return port.invoke('delete_all'); }";
+  assert.throws(()=>auditNativeIpc(f),/Unexpected protocol native invocation count/);
+  const g=fixture();
+  g.placesContract += "\nasync function unexpected(port) { return port['invoke']('delete_all',{}); }";
+  assert.throws(()=>auditNativeIpc(g),/Unexpected protocol native invocation count/);
+});
+
+test('Rust Tauri plugins require explicit review even without a new invoke handler',()=>{
+  const f=fixture();
+  f.entry=f.entry.replace('.invoke_handler(','.plugin(tauri_plugin_shell::init()).invoke_handler(');
+  assert.throws(()=>auditNativeIpc(f),/Unexpected native Tauri plugin/);
+  const g=fixture();
+  g.rustModules.extra_module='fn install() { let _ = tauri_plugin_fs::init(); }';
+  assert.throws(()=>auditNativeIpc(g),/Unexpected native Tauri plugin/);
+});
