@@ -202,3 +202,45 @@ This is strong **structural PE regression** evidence; it is not a full
 repository checkout or `npm test`, a successful Windows compilation,
 an Authenticode check or native WebView2 acceptance. The PR remains draft
 and stacked above #145 without merging or distributing executables.
+
+## Descriptor cleanup privacy regression (2026-11-14)
+
+The existing bounded PE file verifier redacted system I/O failures inside its
+`catch` block, but `closeSync(fd)` was invoked from a `finally` without
+its own error boundary. A rare descriptor-close failure could consequently
+escape with an OS-supplied error message. The read-only verifier now calls
+`closePeDescriptorRedacted(fd, closeSync)`, which suppresses all original
+close errors and raises only `WINDOWS_PE_UNREADABLE`. No filesystem path,
+private record, thrown object, or low-level failure message is attached as
+an error cause.
+
+A successful close leaves the existing PE parser result/error unchanged.
+A failed close replaces an already-pending parser error with the generic
+unreadable result; this is intentionally fail-closed. The close operation
+is attempted only after an fd was successfully opened. This does not claim
+protection against operating-system or process compromises.
+
+**Actual local tests:** Node.js 22.16.0, isolated mirror of GitHub sources:
+
+```sh
+node --check tests/pe-safe-close.test.mjs
+node --test tests/windows-pe-header.test.mjs tests/pe-entrypoint-bounds.test.mjs tests/windows-pe-integrated-boundaries.test.mjs tests/pe-safe-close.test.mjs
+# 31 tests passed; 0 failed, 0 skipped
+```
+
+All files run in that mirror were compared against their Git blob hashes:
+
+- `scripts/verify-windows-pe.mjs`: `dada9b066cc3d8b136053a24f6e4f49ce6239181`
+- `scripts/pe-safe-close.mjs`: `0101c46039468c731139e9b3fa6a2550426762fa`
+- `tests/pe-safe-close.test.mjs`: `4e74cc978a733b53bdbdf536f7817b1fd3ba55a7`
+- Other PE baseline files/Windows launcher source remain at their hashes
+  documented above and were included unmodified.
+
+The six new tests check successful close, redacted `Error` and non-`Error`
+throws, the ordering of existing parser failures and close failures, and the
+production verifier's `finally` call. An injected close callback is used
+for deterministic failure simulation, **not** a forced real OS I/O failure.
+
+Remaining mandatory gates: full-repository `npm test`, native Windows 11
+x64/MSVC Tauri build, actual PE header verification, and offline WebView2
+GUI acceptance. No installer/signing/publication or `main` merge.
