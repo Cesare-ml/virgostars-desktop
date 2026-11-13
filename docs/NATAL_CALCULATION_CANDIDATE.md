@@ -39,3 +39,13 @@ NOT run: full npm test, full Angular template compilation, Windows Tauri/WebView
 After review, choose the complete #63 natal editor rather than merging both competing forms (#62 and #63). Integrate parallel correction PR #79 explicitly. Re-run the full repository test suite and Windows GUI smoke in a combined branch before enabling any IPC or saved charts. This helper intentionally cannot send a calculation on its own.
 
 No GitHub Actions, release, main merge, production changes, backend operations, public visibility change or new dependencies.
+
+## Combined natal-editor integration on draft #89
+
+This integration branch ports the **unchanged code and tests from draft #88** on top of the single natal editor consolidated in draft #89. The resulting chain retains all of the #89 correctness protections: Unicode-safe, in-memory subject input; validated complete city records; strict atomic local calendar corrections; a fail-closed timezone interval parser; and detached frozen UTC-preview anchors. The sibling source PR #88 and this integration PR are **alternatives for merging**, not two independent features that should both be merged.
+
+The new `tests/natal-candidate-integrated-state.test.mjs` exercises the actual state, preview anchor, timezone resolver and candidate preparation together, using only invented people, locations and synthetic timezone transitions. It checks an autumn daylight-saving fold, both user-selected UTC instants, a spring gap, unknown birth time, coordinated draft/preview mutation, a rejected malformed civil correction, later valid changes, range checks and omission of names/location identities from the returned payload.
+
+Even after this composition, `provisional_only` is the **only positive result**. No transport, enqueue, astronomy, natal chart rendering, storage or backend access was added. The future queue integration in draft #94 is based on #88, and **is not integrated or enabled by this PR**. Its scientific and privacy acceptance gates remain separate.
+
+**Review/validation gates:** run `node --experimental-strip-types --test tests/natal-calculation-candidate.test.mjs tests/natal-candidate-integrated-state.test.mjs` and the existing natal/UTC suites on the complete integration branch; then the complete `npm test`, Angular compile, native Windows WebView2 smoke and independent Rust ephemeris/tzdb verification before merging or enabling any native-calculation path. Do not merge the competing natal form #62 alongside #63. No GitHub Actions, releases, production changes or main merge.
