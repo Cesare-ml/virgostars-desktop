@@ -24,6 +24,13 @@ export function verifyDesktopAttribution(template, notice, license) {
   const voidTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img',
     'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
   const prefix = source.slice(0, footers[0].index);
+  // Angular control-flow blocks (@if/@defer/etc.) do not create an HTML
+  // ancestor tag, so the HTML stack alone could approve a non-rendered footer.
+  // Be conservative: any control-flow syntax preceding this launch notice
+  // needs an explicit gate review; interpolations and comments are inert here.
+  const outsideInterpolations = prefix.replace(/{{[\s\S]*?}}/g, '');
+  requireNotice(!/@(?:if|else|for|empty|switch|case|default|defer|placeholder|loading|error)\b/.test(outsideInterpolations),
+    'Angular control-flow before footer requires review');
   for (const match of prefix.matchAll(/<\/?([a-z][a-z0-9-]*)\b([^<>]*)>/gi)) {
     const tag = match[1].toLowerCase();
     if (match[0].startsWith('</')) {
