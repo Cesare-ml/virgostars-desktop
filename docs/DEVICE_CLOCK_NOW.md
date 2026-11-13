@@ -69,3 +69,20 @@ After the Rust VirgoStars-Ephemeris provider is validated and exposed via a **se
 ## Integration
 
 This change is stacked on draft PR #45 (device-only UI preferences), not yet on `main`. UI PR #7 and the AI inspector PR #23 may conflict on the desktop shell; reconcile in review. No GitHub Actions, merge, release, license/publication change or backend deployment.
+
+## Fail-closed device clock samples (2026-11-13 follow-up)
+
+A transient invalid device-time reading (NaN, Infinity, an out-of-range value, or a throwing `ClockDriver.now()`) **must invalidate the previous displayed instant** rather than leaving a plausible but stale date/time visible. The clock stores `NaN` during an invalid sample, so both device and selected-city formatters show their unavailable state, and the accessible ISO `datetime` is absent. Once the device clock supplies a valid time again, the normal one-second sampler recovers without recalculating any astrological positions.
+
+Repeated invalid samples generate no duplicate UI notification; the change to unavailable and the subsequent recovery each notify once. Errors and paths from the underlying driver are not logged or exposed. Focused Node tests cover valid→invalid→valid and throwing source behavior. Angular build and Windows WebView2 resume-from-sleep/manual-clock-change acceptance are still pending. This is a stacked draft on the existing device/city clock PR, not a production release.
+
+## Safe timer setup and teardown (2026-11-13 follow-up)
+
+An injected timer driver may throw while scheduling or cancelling, return an absent handle, or synchronously dispose the owner while `schedule` is executing. The desktop must **not abort Angular initialization** or leave a misleading clock ticking indefinitely when that happens:
+
+- A failed/absent interval handle is treated as a clock-unavailable condition (`NaN`); the visible value becomes `—` rather than showing an old but plausible live time.
+- Repeated failed readings do not generate a notification storm. A later explicit `start` can retry after the timer provider recovers; **there is no hidden automatic retry loop**.
+- A schedule result returned after synchronous destruction is cancelled immediately. A cancellation exception during normal destruction is contained so other Angular teardown can proceed.
+- Late callbacks after destruction have no effect, regardless of whether the timer driver honored cancellation.
+
+Four added synthetic Node regressions cover scheduling exceptions, empty handles, cancellation exceptions and synchronous dispose-in-schedule. They do not substitute for full Angular/WebView2 testing on Windows. There is no network, persistence, user data, astrological computation or new native capability in this follow-up.

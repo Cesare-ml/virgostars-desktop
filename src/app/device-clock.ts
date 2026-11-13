@@ -15,6 +15,16 @@ const SYSTEM_CLOCK: ClockDriver = {
 };
 const MAX_DATE_MS = 8_640_000_000_000_000;
 
+/** A transient invalid/throwing device clock must never preserve an obsolete instant. */
+function readClockTime(driver: ClockDriver): number {
+  try {
+    const value = driver.now();
+    return Number.isFinite(value) && Math.abs(value) <= MAX_DATE_MS ? value : NaN;
+  } catch {
+    return NaN;
+  }
+}
+
 export class DeviceClock {
   timestamp: number;
   private timer: unknown | null = null;
@@ -23,22 +33,46 @@ export class DeviceClock {
 
   constructor(driver: ClockDriver = SYSTEM_CLOCK) {
     this.driver = driver;
-    const initial = driver.now();
-    this.timestamp = Number.isFinite(initial) && Math.abs(initial) <= MAX_DATE_MS ? initial : NaN;
+    this.timestamp = readClockTime(driver);
   }
 
   /** Tick from actual wall time, not elapsed intervals, to survive OS sleep. */
   start(changed: () => void): void {
     if (this.disposed || this.timer !== null) return;
     this.refresh(changed);
-    this.timer = this.driver.schedule(() => this.refresh(changed));
+    let handle: unknown;
+    try {
+      handle = this.driver.schedule(() => this.refresh(changed));
+    } catch {
+      this.invalidateTime(changed);
+      return;
+    }
+    if (handle === null || handle === undefined) {
+      this.invalidateTime(changed);
+      return;
+    }
+    // An injected scheduler may synchronously destroy the owner before returning.
+    if (this.disposed) {
+      try { this.driver.cancel(handle); } catch { /* Already disposed; do not leak driver errors. */ }
+      return;
+    }
+    this.timer = handle;
+  }
+
+  /** A clock without a working scheduler cannot safely display live time. */
+  private invalidateTime(changed: () => void): void {
+    if (this.disposed || Number.isNaN(this.timestamp)) return;
+    this.timestamp = NaN;
+    changed();
   }
 
   refresh(changed: () => void): void {
     if (this.disposed) return;
-    const next = this.driver.now();
-    if (!Number.isFinite(next) || Math.abs(next) > MAX_DATE_MS ||
-        Math.floor(next / 1000) === Math.floor(this.timestamp / 1000)) return;
+    const next = readClockTime(this.driver);
+    const alreadyUnavailable = Number.isNaN(next) && Number.isNaN(this.timestamp);
+    const sameSecond = Number.isFinite(next) && Number.isFinite(this.timestamp) &&
+      Math.floor(next / 1000) === Math.floor(this.timestamp / 1000);
+    if (alreadyUnavailable || sameSecond) return;
     this.timestamp = next;
     changed();
   }
@@ -46,8 +80,11 @@ export class DeviceClock {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.timer !== null) this.driver.cancel(this.timer);
+    const handle = this.timer;
     this.timer = null;
+    if (handle !== null) {
+      try { this.driver.cancel(handle); } catch { /* Never block UI teardown. */ }
+    }
   }
 }
 

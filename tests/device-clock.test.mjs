@@ -89,3 +89,141 @@ test('invalid time/timezone fails closed without showing an artificial real date
   assert.equal(formatDeviceClock(Infinity,'en'), '—');
   assert.equal(formatDeviceClock(0,'it',false,'Not/A_Zone'), '—');
 });
+
+
+test('invalid samples replace stale displayed time with unavailable and recover', () => {
+  const fake = mockDriver(10_000);
+  const clock = new DeviceClock(fake.driver);
+  let renders = 0;
+  clock.start(() => renders++);
+  fake.advance(NaN);
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(formatDeviceClock(clock.timestamp, 'it'), '—');
+  assert.equal(renders, 1);
+  fake.advance(Infinity);
+  fake.advance(8_640_000_000_000_001);
+  assert.equal(renders, 1, 'repeat invalid readings do not trigger redraw storms');
+  fake.advance(10_700);
+  assert.equal(clock.timestamp, 10_700);
+  assert.equal(renders, 2, 'valid reading recovers even within the original second');
+  clock.dispose();
+});
+
+test('throwing system time source is contained at construction and on ticks', () => {
+  let value = 1_000;
+  let shouldThrow = true;
+  let tick = null;
+  const driver = {
+    now() { if (shouldThrow) throw new Error('private local time provider details'); return value; },
+    schedule(callback) { tick = callback; return 0; },
+    cancel(id) { assert.equal(id, 0); tick = null; },
+  };
+  const clock = new DeviceClock(driver);
+  assert.ok(Number.isNaN(clock.timestamp));
+  let renders = 0;
+  clock.start(() => renders++);
+  assert.equal(renders, 0, 'invalid->invalid does not notify');
+  shouldThrow = false;
+  tick();
+  assert.equal(clock.timestamp, 1_000);
+  assert.equal(renders, 1);
+  shouldThrow = true;
+  assert.doesNotThrow(() => tick());
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(renders, 2);
+  assert.equal(formatDeviceClock(clock.timestamp, 'en'), '—');
+  clock.dispose();
+});
+
+
+test('scheduler failure is contained and live time becomes unavailable until retry', () => {
+  let now = 5_000;
+  let failSchedule = true;
+  let tick = null;
+  let schedules = 0;
+  const driver = {
+    now: () => now,
+    schedule(fn) {
+      schedules++;
+      if (failSchedule) throw new Error('private timer details');
+      tick = fn;
+      return 0;
+    },
+    cancel(id) { assert.equal(id, 0); tick = null; },
+  };
+  const clock = new DeviceClock(driver);
+  let notifications = 0;
+  assert.doesNotThrow(() => clock.start(() => notifications++));
+  assert.ok(Number.isNaN(clock.timestamp), 'not a frozen plausible clock');
+  assert.equal(formatDeviceClock(clock.timestamp, 'en'), '—');
+  assert.equal(notifications, 1);
+  assert.equal(schedules, 1);
+  now = 6_000;
+  failSchedule = false;
+  clock.start(() => notifications++);
+  assert.equal(clock.timestamp, 6_000);
+  assert.equal(notifications, 2);
+  assert.equal(schedules, 2);
+  clock.start(() => notifications++);
+  assert.equal(schedules, 2, 'successful start is idempotent');
+  now = 7_000;
+  tick();
+  assert.equal(clock.timestamp, 7_000);
+  assert.equal(notifications, 3);
+  clock.dispose();
+});
+
+test('scheduler rejecting an empty handle fails closed and can be retried', () => {
+  let handle = undefined;
+  let schedules = 0;
+  const driver = {
+    now: () => 0,
+    schedule() { schedules++; return handle; },
+    cancel: () => assert.fail('nothing to cancel'),
+  };
+  const clock = new DeviceClock(driver);
+  let notifications = 0;
+  clock.start(() => notifications++);
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(notifications, 1);
+  handle = null;
+  clock.start(() => notifications++);
+  assert.equal(schedules, 2);
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(notifications, 3, 'retry refresh then fails to schedule and hides the time');
+  clock.dispose();
+});
+
+test('cancel failures and late callbacks never prevent destruction', () => {
+  let lateTick;
+  const driver = {
+    now: () => 1000,
+    schedule(fn) { lateTick = fn; return 0; },
+    cancel() { throw new Error('private cancel failure'); },
+  };
+  const clock = new DeviceClock(driver);
+  let changes = 0;
+  clock.start(() => changes++);
+  assert.doesNotThrow(() => clock.dispose());
+  assert.doesNotThrow(() => clock.dispose());
+  assert.doesNotThrow(() => lateTick());
+  assert.equal(changes, 0);
+  clock.start(() => changes++);
+  assert.equal(changes, 0);
+});
+
+test('synchronous disposal inside scheduler cancels returned handle without resurrecting timer', () => {
+  let clock;
+  let cancels = 0;
+  let callback;
+  const driver = {
+    now: () => 1_000,
+    schedule(fn) { callback = fn; clock.dispose(); return 0; },
+    cancel(id) { assert.equal(id, 0); cancels++; },
+  };
+  clock = new DeviceClock(driver);
+  assert.doesNotThrow(() => clock.start(() => assert.fail('unexpected change')));
+  assert.equal(cancels, 1);
+  callback();
+  assert.equal(clock.timestamp, 1_000);
+});
