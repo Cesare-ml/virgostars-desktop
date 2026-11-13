@@ -112,7 +112,23 @@ export class NatalDraftState {
 
   /** Atomic editor-only wall-clock correction; no actual ephemeris IPC here. */
   applyCivilCorrection(next: CivilCorrectionOutput): void {
-    if (this.disposed) return;
+    if (this.disposed || !next || typeof next !== 'object') return;
+    // Recheck the step output at the state boundary before changing any field.
+    // This also covers accidental callers that bypass stepCivilCorrection().
+    if (![next.year,next.month,next.day,next.hour,next.minute]
+      .every(value => typeof value === 'string')) return;
+    const year=integerField(next.year,1,9999);
+    const month=integerField(next.month,1,12);
+    const day=integerField(next.day,1,31);
+    if (year===null || month===null || day===null ||
+        day > gregorianDaysInMonth(year,month)) return;
+    if (this.birthTimeKnown) {
+      if (integerField(next.hour,0,23)===null ||
+          integerField(next.minute,0,59)===null) return;
+    } else if (next.hour !== this.hour || next.minute !== this.minute) {
+      // A date-only correction cannot invent, erase or alter unknown-time fields.
+      return;
+    }
     this.year=next.year; this.month=next.month; this.day=next.day;
     this.hour=next.hour; this.minute=next.minute;
     this.invalidate();
