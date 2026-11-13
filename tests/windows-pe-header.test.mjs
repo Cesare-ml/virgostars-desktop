@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {inspectWindowsPeHeader, verifyWindowsExecutable} from '../scripts/verify-windows-pe.mjs';
 
 const pe = (opts = {}) => {
-  const b = Buffer.alloc(512);
+  const b = Buffer.alloc(2048);
   b.writeUInt16LE(0x5a4d, 0);
   b.writeUInt32LE(0x80, 0x3c);
   b.writeUInt32LE(0x4550, 0x80);
@@ -19,6 +19,18 @@ const pe = (opts = {}) => {
   b.writeUInt16LE(0x22, 0x96);
   b.writeUInt16LE(0x20b, 0x98);
   b.writeUInt16LE(2, 0x98 + 68);
+  // Fictional but structurally consistent .text/.rdata/.data section layout.
+  b.writeUInt32LE(0x1000, 0x98 + 16); // AddressOfEntryPoint in .text
+  b.writeUInt32LE(0x4000, 0x98 + 56); // SizeOfImage
+  b.writeUInt32LE(0x200, 0x98 + 60); // SizeOfHeaders
+  for (let i = 0; i < 3; i++) {
+    const section = 0x188 + i * 40;
+    b.writeUInt32LE(0x200, section + 8); // VirtualSize
+    b.writeUInt32LE(0x1000 + i * 0x1000, section + 12); // VirtualAddress
+    b.writeUInt32LE(0x200, section + 16); // SizeOfRawData
+    b.writeUInt32LE(0x200 + i * 0x200, section + 20); // PointerToRawData
+    b.writeUInt32LE(i === 0 ? 0x60000020 : 0x40000040, section + 36);
+  }
   for (const [offset, value, size] of opts.patch || []) {
     if (size === 4) b.writeUInt32LE(value, offset);
     else b.writeUInt16LE(value, offset);
@@ -58,6 +70,38 @@ test('rejects forged, truncated and incompatible PE headers', () => {
     [pe({patch:[[0x98 + 68,3,2]]}), /NOT_GUI_SUBSYSTEM/],
   ];
   for (const [bytes, match] of invalid) assert.throws(() => inspectWindowsPeHeader(bytes), match);
+});
+
+test('rejects missing executable section contents and inconsistent PE image layout', () => {
+  const failures = [
+    [0x98 + 60, 0x100, /HEADERS_LAYOUT/], // headers do not cover section table
+    [0x98 + 60, 4096, /HEADERS_LAYOUT/], // header bytes larger than file
+    [0x98 + 56, 128, /HEADERS_LAYOUT/], // SizeOfImage smaller than headers
+    [0x98 + 16, 0, /ENTRYPOINT/], // no entrypoint
+    [0x98 + 16, 0x2800, /ENTRYPOINT_SECTION/], // entrypoint in no section
+    [0x188 + 36, 0x40000040, /ENTRYPOINT_SECTION/], // .text not executable
+    [0x188 + 20, 64, /SECTION_RAW_BOUNDS/], // overlaps header
+    [0x188 + 20, 2048, /SECTION_RAW_BOUNDS/], // truncated executable section
+    [0x188 + 40 + 12, 0x3f00, /SECTION_IMAGE_BOUNDS/], // section past image
+  ];
+  for (const [offset, value, reason] of failures) {
+    const bad = pe();
+    bad.writeUInt32LE(value, offset);
+    assert.throws(() => inspectWindowsPeHeader(bad), reason, String(offset));
+  }
+  const withoutRaw = pe({patch:[
+    [0x188 + 16, 0, 4], [0x188 + 40 + 16, 0, 4], [0x188 + 80 + 16, 0, 4]
+  ]});
+  assert.throws(() => inspectWindowsPeHeader(withoutRaw), /NO_RAW_SECTION/);
+});
+
+test('rejects wrong on-disk length while supporting bounded header reads and Uint8Array offsets', () => {
+  const bytes = pe();
+  assert.throws(() => inspectWindowsPeHeader(bytes, 128n), /FILE_LENGTH/);
+  assert.equal(inspectWindowsPeHeader(bytes, 100000n).kind, 'windows_x64_gui');
+  // DataView must use the offset of the supplied Uint8Array, not its whole buffer.
+  const padded = Buffer.concat([Buffer.from([7]), bytes, Buffer.from([9])]);
+  assert.equal(inspectWindowsPeHeader(padded.subarray(1, padded.length - 1)).kind, 'windows_x64_gui');
 });
 
 test('on-disk bounded structural preflight detects wrong architecture and regular-file replacement', () => fixture(({file}) => {
