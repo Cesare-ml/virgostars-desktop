@@ -20,17 +20,35 @@ export interface DesktopShortcutEvent {
   readonly composedPath?: () => EventTarget[];
 }
 
+// Avoid stealing shortcuts from composite accessibility widgets as well as
+// native inputs. In particular, date/time editors often use role=spinbutton
+// on a div and custom city pickers use role=combobox/listbox.
+const INTERACTIVE_ROLES = new Set([
+  'textbox', 'searchbox', 'combobox', 'spinbutton', 'slider',
+  'listbox', 'grid', 'gridcell', 'menu', 'menuitem', 'dialog', 'alertdialog'
+]);
+const INTERACTIVE_ANCESTOR_SELECTOR = [
+  '[contenteditable]', '[aria-modal="true"]', 'dialog',
+  ...[...INTERACTIVE_ROLES].map(role => `[role="${role}"]`)
+].join(', ');
+
 function isEditing(node: unknown): boolean {
   if (!node || typeof node !== 'object') return false;
   const element = node as {
     tagName?: unknown;
     isContentEditable?: unknown;
+    getAttribute?: (name: string) => string | null;
     closest?: (selector: string) => unknown;
   };
   if (element.isContentEditable === true) return true;
   const tag = typeof element.tagName === 'string' ? element.tagName.toUpperCase() : '';
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  return typeof element.closest === 'function' && Boolean(element.closest('[contenteditable]'));
+  if (['INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'DIALOG'].includes(tag)) return true;
+  if (typeof element.getAttribute === 'function') {
+    const role = element.getAttribute('role');
+    if (typeof role === 'string' && role.toLowerCase().split(/\s+/).some(value => INTERACTIVE_ROLES.has(value))) return true;
+    if (element.getAttribute('aria-modal')?.toLowerCase() === 'true') return true;
+  }
+  return typeof element.closest === 'function' && Boolean(element.closest(INTERACTIVE_ANCESTOR_SELECTOR));
 }
 
 /** Alt+Shift+1..4 changes the fictional view; Alt+Shift+0 fits the chart.
