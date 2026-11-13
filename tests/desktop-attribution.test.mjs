@@ -100,3 +100,23 @@ test('rejects text interpolation or extra text even when original credits remain
     /static footer attribution text mismatch/);
   }
 });
+
+
+test('rejects Angular block syntax before the footer, even without an HTML ancestor', () => {
+  const f = fixture();
+  for (const opening of ['@if (false) {', '@defer {', '@for (item of []; track item) {',
+                         '@switch (mode) {', '@else {']) {
+    const altered = f.template.replace('<footer>', opening + '<footer>')
+      .replace('</footer>', '</footer>}');
+    assert.throws(() => verifyDesktopAttribution(altered, f.notice, f.license),
+      /Angular control-flow before footer requires review/);
+  }
+});
+
+test('ignores comments and interpolated literals when checking Angular block syntax', () => {
+  const f = fixture();
+  const harmless = f.template.replace('<footer>', '<!-- @if (false) { -->{{"@if"}}<footer>');
+  assert.deepEqual(verifyDesktopAttribution(harmless, f.notice, f.license), {verified: true});
+  const later = f.template + '@if (false) {<aside>not the footer</aside>}';
+  assert.deepEqual(verifyDesktopAttribution(later, f.notice, f.license), {verified: true});
+});
