@@ -69,3 +69,29 @@ test('the chart fixture sources all demo longitudes from the shared synthetic he
   assert.match(fixture, /house:\[\.\.\.angles\.houseCusps\]/);
   assert.match(fixture, /buildFictionalAngles\(0\)/);
 });
+
+test('normalization never emits the exclusive upper boundary for negative tiny values', () => {
+  for (const input of [-Number.MIN_VALUE, -Number.EPSILON, -1e-14, -1e-12]) {
+    const longitude = normalizeFictionalLongitude(input);
+    assert.ok(Number.isFinite(longitude) && longitude >= 0 && longitude < 360, String(input));
+    assert.ok(!Object.is(longitude, -0));
+  }
+});
+
+test('extreme finite shifts retain distinct fixture planets and consistent axes', () => {
+  for (const shift of [Number.MAX_VALUE, -Number.MAX_VALUE, 1e308, -1e308]) {
+    const angles = buildFictionalAngles(shift);
+    assert.equal(angles.planetLongitudes.length, 10);
+    assert.equal(new Set(angles.planetLongitudes).size, 10, 'lost planetary distinctions');
+    assert.ok(angles.planetLongitudes.every(v => Number.isFinite(v) && v >= 0 && v < 360));
+    assert.ok(angles.houseCusps.every(v => Number.isFinite(v) && v >= 0 && v < 360));
+    assert.ok(sameLongitude(angles.descendant, modulo360(angles.ascendant + 180)));
+  }
+});
+
+test('integer turn shifts do not change the deterministic base fixture', () => {
+  const natal = buildFictionalAngles(0);
+  for (const shift of [-720, -360, 360, 720]) {
+    assert.deepEqual(buildFictionalAngles(shift), natal);
+  }
+});
