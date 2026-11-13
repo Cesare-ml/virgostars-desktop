@@ -1,4 +1,4 @@
-# Tauri production security configuration gate
+# Tauri production and development WebView security configuration gate
 
 **Status:** synthetic-source build safeguard; no native runtime or release certification.
 
@@ -12,7 +12,7 @@ Run:
 
     node scripts/verify-tauri-security-config.mjs
 
-The command also runs during **both** npm `verify:bundle` / `build:ui` and `verify:bundle:private` / `build:ui:private` paths. Its tests run with `npm test`.
+The command also runs during **both** npm `verify:bundle` / `build:ui` and `verify:bundle:private` / `build:ui:private` paths, **and before `npm run tauri:dev` starts the native development host**. Its tests run with `npm test`. Standalone manual Tauri CLI invocations bypass npm script guards, so use the documented commands.
 
 The gate requires:
 
@@ -27,6 +27,6 @@ The production CSP intentionally retains `style-src 'unsafe-inline'` for the cur
 
 ## Limits and change process
 
-This is a **static source configuration audit of packaged and development settings**, not a CSP runtime test, proof that development requests are local, full secret scanner, permission proof, asset provenance verification, or signed-binary verification. Other build gates still handle implicit Tauri capability files, native IPC review, bundle completeness, private assets and Windows PE validation. Dynamic Rust windows, dependency behavior, WebView2 policy delivery and actual offline operation still need native QA.
+This is a **static source configuration audit of packaged and development settings**, not a CSP runtime test, proof that development requests are local, full secret scanner, permission proof, asset provenance verification, or signed-binary verification. The Tauri development preflight blocks unreviewed source configuration only when launched via the documented npm script; it cannot restrict arbitrary commands an authorized developer runs directly. Other build gates still handle implicit Tauri capability files, native IPC review, bundle completeness, private assets and Windows PE validation. Dynamic Rust windows, dependency behavior, WebView2 policy delivery and actual offline operation still need native QA.
 
 To add a legitimate new production source, capability, asset protocol, build hook or installer: update the explicit allowlist **in a separate reviewed change**, add focused negative tests and document the security justification. Do not bypass the gate to unblock a build. Do not change production, user data, repository visibility, updates or releases from this check.
