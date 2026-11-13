@@ -63,6 +63,13 @@ New test files cover: chart sizing using both dimensions, invalid sizes, support
 
 **No test is assumed to pass merely because it was written.** New source has not been built against Angular/Tauri here. Do not merge/release or change repo visibility without validation.
 
+## Guest appearance and language preferences
+
+The Angular shell restores light/dark and Italian/English from a strict, device-only
+versioned UI preference record. Storage errors do not block guest startup or toggles,
+and no chart, city, account, token or subject data are persisted there. A Windows WebView2 smoke test verified dark mode and English after close/reopen;
+other manual acceptance checks remain. See [device-only UI preferences](UI_PREFERENCES.md).
+
 ## Security and publication boundary
 
 No production accounts, authentication secrets, real birth information, AWS deployment, private artwork, GitHub Actions, automatic updates, licensing decision or public release. The app remains a private experimental prototype.

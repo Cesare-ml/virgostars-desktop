@@ -64,7 +64,7 @@
         <span class="status-message" role="status">{{t(status)}}</span>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
       </div>
-      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span></footer>
+      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span class="copyright-attribution"> · © 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</span></footer>
     </main>
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
