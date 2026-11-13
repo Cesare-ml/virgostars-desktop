@@ -57,5 +57,6 @@ test('production PE verifier closes through the redacted boundary', () => {
   const source = readFileSync(new URL('../scripts/verify-windows-pe.mjs', import.meta.url), 'utf8');
   assert.ok(source.includes("import {closePeDescriptorRedacted} from './pe-safe-close.mjs';"));
   assert.ok(source.includes('if (fd !== undefined) closePeDescriptorRedacted(fd, closeSync);'));
-  assert.ok(source.includes('} finally {\\n    if (fd !== undefined) closePeDescriptorRedacted(fd, closeSync);\\n  }'));
+  const finalBlock = source.slice(source.lastIndexOf('} finally {'));
+  assert.ok(finalBlock.includes('if (fd !== undefined) closePeDescriptorRedacted(fd, closeSync);'));
 });
