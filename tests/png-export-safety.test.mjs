@@ -129,3 +129,38 @@ test('still accepts a valid PNG header and untouched IEND with modified payload 
   const dataUrl = prefix + image.toString('base64');
   assert.equal(validatePngDataUrl(dataUrl), dataUrl);
 });
+
+
+test('accepts terminal IEND with every base64 padding alignment', () => {
+  const original = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  for (const extraLength of [0, 1, 2]) {
+    // Insert a correctly CRC-encoded private ancillary chunk before IEND.
+    const chunkType = Buffer.from('vpAg', 'ascii');
+    const payload = Buffer.alloc(extraLength, 0x41);
+    const chunkData = Buffer.concat([chunkType, payload]);
+    let crc = 0xffffffff;
+    for (const byte of chunkData) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) {
+        crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+      }
+    }
+    const chunkLength = Buffer.alloc(4);
+    chunkLength.writeUInt32BE(extraLength);
+    const chunkCrc = Buffer.alloc(4);
+    chunkCrc.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+    const candidate = Buffer.concat([
+      original.subarray(0, -12), chunkLength, chunkData, chunkCrc, original.subarray(-12),
+    ]);
+    const dataUrl = prefix + candidate.toString('base64');
+    assert.equal(validatePngDataUrl(dataUrl), dataUrl, `ancillary length ${extraLength}`);
+  }
+});
+
+test('rejects trailing one, two or three bytes after IEND', () => {
+  const original = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  for (const extraLength of [1, 2, 3]) {
+    const bad = Buffer.concat([original, Buffer.alloc(extraLength)]);
+    assert.throws(() => validatePngDataUrl(prefix + bad.toString('base64')), /Invalid PNG export/);
+  }
+});
