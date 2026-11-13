@@ -67,9 +67,8 @@ New test files cover: chart sizing using both dimensions, invalid sizes, support
 
 The Angular shell restores light/dark and Italian/English from a strict, device-only
 versioned UI preference record. Storage errors do not block guest startup or toggles,
-and no chart, city, account, token or subject data are persisted there. This prototype
-needs a full Windows WebView2 close/reopen validation before visual acceptance.
-See [device-only UI preferences](UI_PREFERENCES.md).
+and no chart, city, account, token or subject data are persisted there. A Windows WebView2 smoke test verified dark mode and English after close/reopen;
+other manual acceptance checks remain. See [device-only UI preferences](UI_PREFERENCES.md).
 
 ## Local Adesso clock
 

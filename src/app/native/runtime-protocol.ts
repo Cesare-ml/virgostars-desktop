@@ -53,13 +53,71 @@ export function decodeDesktopRuntimeInfo(payload: unknown): DesktopRuntimeInfoV1
   };
 }
 
-/** Explicit dependency injection makes error and browser paths locally testable. */
-export async function probeDesktopRuntime(transport: RuntimeProbeTransport): Promise<RuntimeProbeResult> {
+/**
+ * A missing native IPC reply must never leave the Angular footer in "checking"
+ * forever. The timer is local-only: no network retries, background polling or
+ * ability to infer account/auth readiness.
+ */
+export interface RuntimeProbeTimers {
+  set(callback: () => void, delayMs: number): unknown;
+  clear(handle: unknown): void;
+}
+
+export interface RuntimeProbeOptions {
+  readonly timeoutMs?: number;
+  readonly timers?: RuntimeProbeTimers;
+}
+
+const defaultProbeTimers: RuntimeProbeTimers = {
+  set: (callback, delayMs) => setTimeout(callback, delayMs),
+  clear: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+const DEFAULT_TIMEOUT_MS = 4000;
+const MAX_TIMEOUT_MS = 30000;
+
+/**
+ * Use only the read-only local IPC command. A timed-out invocation can still
+ * complete inside Tauri, but its late result cannot change this settled result.
+ */
+export async function probeDesktopRuntime(
+  transport: RuntimeProbeTransport, options: RuntimeProbeOptions = {},
+): Promise<RuntimeProbeResult> {
+  let scheduled = false;
+  let handle: unknown;
+  const timers = options.timers ?? defaultProbeTimers;
   try {
     if (!transport.isNative()) return { kind: 'browser_preview', info: null };
-    return { kind: 'desktop_demo', info: decodeDesktopRuntimeInfo(await transport.invoke('desktop_runtime_info')) };
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
+      throw new Error('Invalid native runtime probe timeout');
+    }
+    // Create the deadline promise first, then register its timer *outside* the
+    // Promise constructor. Constructor exceptions reject a promise rather than
+    // throwing synchronously, which could otherwise start unbounded native IPC.
+    let rejectTimeout!: (reason: Error) => void;
+    let firedSynchronously = false;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      rejectTimeout = reject;
+    });
+    // If a broken scheduler calls back and then throws, its rejection still
+    // needs an observer even though no Promise.race will be installed.
+    void timeout.catch(() => {});
+    handle = timers.set(() => {
+      firedSynchronously = true;
+      rejectTimeout(new Error('Native runtime probe timeout'));
+    }, timeoutMs);
+    scheduled = true;
+    if (firedSynchronously) throw new Error('Native runtime probe timeout');
+    const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'));
+    const payload = await Promise.race([invocation, timeout]);
+    return { kind: 'desktop_demo', info: decodeDesktopRuntimeInfo(payload) };
   } catch {
-    // Do not expose filesystem, IPC or private environment details to UI or logs.
+    // Do not expose local file paths, IPC errors or untrusted response details.
     return { kind: 'native_unavailable', info: null };
+  } finally {
+    if (scheduled) {
+      try { timers.clear(handle); } catch { /* diagnostic never leaks timer failures */ }
+    }
   }
 }

@@ -1,6 +1,6 @@
 # Device-only guest UI preferences (v1)
 
-**Status: Prototype — implemented in Angular source, not yet Windows/WebView2 verified.**
+**Status: Prototype — locally tested on Windows/WebView2; not released.**
 
 The light/dark toggle and IT/EN language toggle now use a small, versioned WebView-origin `localStorage` value. They are restored before the first chart render; the document language is also updated on startup. No VirgoStars account, Internet access, native IPC or backend endpoint is involved.
 
@@ -18,9 +18,13 @@ The light/dark toggle and IT/EN language toggle now use a small, versioned WebVi
 
 ## Verification
 
-Run `npm test` (includes `tests/ui-preferences.test.mjs`) and `npm run build:ui` after installing the approved upstream Charts package. The isolated six Node tests and standalone TypeScript strict check passed in the authoring environment with Node 22.16.0; **the complete Angular build and native WebView2 restart persistence have not been run here**.
+On 2026-11-12, the code at `6de54e9e5fcca4a44d088b28775390e763c21a99` was tested in an isolated Windows snapshot with Node 22.18.0 and the locally built Charts package:
 
-On Windows, toggle dark and English, fully close/reopen the native app, verify the initial selected appearance and English labels, and repeat with local storage disabled (the application should remain usable with session-only choices). Test the browser preview separately because its origin may have a separate preference store.
+- `npm test`: **128/128 passed**, including the six preference tests, malformed data, and unavailable-storage behavior.
+- Synthetic asset preparation, Angular production build, and offline bundle verification passed (392 verified synthetic assets). The build reported an existing `moment-timezone` CommonJS optimization warning.
+- Tauri Windows debug build completed with synthetic assets and a separate application identifier to avoid modifying the ordinary app profile. In WebView2, English and dark mode were selected; after fully closing and reopening the executable, English and dark mode were visibly restored. This was a local smoke test, not a release or installer test.
+
+Further verification: test storage disabled in WebView2 and browser preview separately, since their origins may have separate preference stores; test other platforms when supported. The manual smoke did not inspect `document.lang` or timing of the first painted frame.
 
 ## Integration constraints
 

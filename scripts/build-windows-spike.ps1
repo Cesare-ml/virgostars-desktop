@@ -28,6 +28,7 @@ function Invoke-Step {
 Push-Location $desktop
 try {
     Invoke-Step 'Read-only Windows setup preflight' 'node' @('scripts/desktop-doctor.mjs', '--stage=setup', '--strict')
+    Invoke-Step 'Audit committed npm lockfile origins before dependency install' 'node' @('scripts/verify-npm-lock.mjs')
 }
 finally { Pop-Location }
 
@@ -43,17 +44,23 @@ finally { Pop-Location }
 
 Push-Location $desktop
 try {
-    # The first npm install generates a local lockfile; review it before committing.
-    Invoke-Step 'Install local Desktop development dependencies' 'npm.cmd' @('install')
+    # package-lock.json is committed. npm ci fails rather than rewriting it or resolving new versions.
+    Invoke-Step 'Install pinned Desktop dependencies from the committed lockfile' 'npm.cmd' @('ci')
     Invoke-Step 'Run all available Node test files' 'npm.cmd' @('test')
+    Invoke-Step 'Audit native IPC commands and Tauri capabilities' 'npm.cmd' @('run', 'verify:ipc')
     Invoke-Step 'Check compiled library and synthetic pack prerequisites' 'npm.cmd' @('run', 'doctor:build')
     Invoke-Step 'Build Angular and validate the offline assets' 'npm.cmd' @('run', 'build:ui')
+    Invoke-Step 'Check standalone local CSS before Tauri packaging' 'npm.cmd' @('run', 'verify:css')
     Invoke-Step 'Generate temporary development icon' 'npm.cmd' @('run', 'prepare:icon')
     Push-Location (Join-Path $desktop 'src-tauri')
-    try { Invoke-Step 'Run Rust unit tests' 'cargo' @('test') }
+    try { Invoke-Step 'Run Rust unit tests with the committed lockfile' 'cargo' @('test', '--locked') }
     finally { Pop-Location }
-    Invoke-Step 'Compile and verify Angular/Tauri prototype' 'npm.cmd' @('run', 'tauri:build')
+    # The tauri:build npm script rebuilds Angular, invalidating the CSS/bundle checks above.
+    # Call the already-installed Tauri CLI directly in offline npm mode, so the
+    # native binary packages the exact previously audited frontendDist.
+    Invoke-Step 'Compile previously verified Angular/Tauri prototype' 'npm.cmd' @('exec', '--offline', '--', 'tauri', 'build')
     Invoke-Step 'Verify generated Angular files and prototype executable exist' 'npm.cmd' @('run', 'doctor:verify')
+    Invoke-Step 'Verify Windows x64 PE header' 'node' @('scripts/verify-windows-pe.mjs')
     Write-Host 'Prototype build finished. No installer, signing, deployment or merge performed.'
     Write-Host 'Next: disconnect Internet and test WebView2, all chart modes, PNG export and native IPC.'
 }

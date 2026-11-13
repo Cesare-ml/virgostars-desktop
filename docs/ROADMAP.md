@@ -5,7 +5,9 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 ## Gate 0 — Documentation and safe workspace
 - [x] Create private repository and initial README.
 - [x] Draft stack ADR, architecture, auth/sync/privacy, update, licensing and agent guidance (draft PR, not assumed merged).
-- [ ] Decide v1 scope, Windows support versions, license and open-source publishing conditions separately.
+- [x] Select CPAL-1.0 for original desktop source, with completed attribution exhibits and NOTICE.
+- [ ] Complete the public-release rights/history scan, relocate the protected city-catalog release asset, and approve any visibility change separately.
+- [ ] Decide v1 scope and Windows support versions.
 - [ ] Create minimal local developer quickstart with synthetic-only fixtures and pinned tool versions.
 
 ## Gate 1 — Tauri/Angular proof of concept (no real accounts)
