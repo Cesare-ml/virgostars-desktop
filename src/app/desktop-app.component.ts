@@ -10,7 +10,7 @@ import {
   chartSide, CHART_MODES, type ChartMode, type InspectorTab, type UiTheme
 } from './workspace-state';
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
-import { displayMessage, displayThemeLabel, translate, type Locale, type MessageKey } from './translations';
+import { displayLanguageAction, displayMessage, displayThemeLabel, translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { PRIVATE_ARTWORK } from './asset-mode';
@@ -71,7 +71,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
-  get languageToggleLabel(): string { return this.t(this.locale === 'it' ? 'language.switchToEnglish' : 'language.switchToItalian'); }
+  get languageToggleLabel(): string { return displayLanguageAction(this.locale); }
   get activeThemeLabel(): string { return displayThemeLabel(this.locale, this.theme); }
   get errorText(): string { return displayMessage(this.locale, this.error); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
