@@ -56,3 +56,15 @@ test('committed Angular src/index.html preserves the first-child empty desktop h
   const source = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
   assert.equal(verifyDesktopAppRoot(source), true);
 });
+
+test('rejects an extra closing root tag after the canonical host', () => {
+  assert.throws(() => verifyDesktopAppRoot(html(app + '</vs-desktop-app>')), /not the desktop-owned app/);
+});
+
+test('rejects an extra closing root tag outside body', () => {
+  assert.throws(() => verifyDesktopAppRoot(html(app) + '</vs-desktop-app>'), /not the desktop-owned app/);
+});
+
+test('commented-out extra closing root tag does not invalidate a genuine host', () => {
+  assert.equal(verifyDesktopAppRoot(html('<!-- </vs-desktop-app> -->' + app)), true);
+});
