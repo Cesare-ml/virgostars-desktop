@@ -45,6 +45,8 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
   if (!entryPoint || entryPoint >= imageSize) error('ENTRYPOINT');
   let hasRawSection = false;
   let executableEntry = false;
+  const mappedRanges = [];
+  const rawRanges = [];
   for (let i = 0; i < sections; i++) {
     const section = tableStart + i * 40;
     const virtualSize = u32(section + 8);
@@ -55,14 +57,27 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
     const mappedSize = Math.max(virtualSize, rawSize);
     if (!mappedSize || virtualAddress >= imageSize ||
         virtualAddress + mappedSize > imageSize) error('SECTION_IMAGE_BOUNDS');
+    mappedRanges.push([virtualAddress, virtualAddress + mappedSize]);
     if (rawSize) {
       if (rawPointer < headersSize ||
           BigInt(rawPointer) + BigInt(rawSize) > fileBytes) error('SECTION_RAW_BOUNDS');
+      rawRanges.push([rawPointer, rawPointer + rawSize]);
       hasRawSection = true;
     }
     if (rawSize && (sectionFlags & 0x20000000) !== 0 &&
         entryPoint >= virtualAddress && entryPoint < virtualAddress + mappedSize) {
       executableEntry = true;
+    }
+  }
+  // A malformed binary can have individually in-bounds sections that alias
+  // another section in memory or on disk. Adjacent non-overlapping ranges are fine.
+  for (const [ranges, code] of [
+    [mappedRanges, 'SECTION_VIRTUAL_OVERLAP'],
+    [rawRanges, 'SECTION_RAW_OVERLAP'],
+  ]) {
+    ranges.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < ranges.length; i++) {
+      if (ranges[i][0] < ranges[i - 1][1]) error(code);
     }
   }
   if (!hasRawSection) error('NO_RAW_SECTION');
