@@ -4,6 +4,7 @@
   <p class="city-note">{{t('city.demoNote')}}</p>
   <input
     id="offline-city-query"
+    #citySearchInput
     type="search"
     class="city-input"
     role="combobox"
@@ -21,6 +22,9 @@
     (keydown)="onKeydown($event)"
   >
   <p class="city-status" role="status" aria-live="polite">{{message}}</p>
+  <button type="button" class="city-retry"
+    *ngIf="state.status === 'busy' || state.status === 'unavailable'"
+    (click)="retry(citySearchInput)">{{t('city.retry')}}</button>
   <div class="city-results" id="offline-city-options" role="listbox" [attr.aria-label]="t('city.results.label')" *ngIf="state.results.length">
     <button type="button" class="city-option" role="option"
       *ngFor="let city of state.results; let i=index; trackBy:trackCity"
