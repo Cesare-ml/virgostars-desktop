@@ -61,7 +61,7 @@ test('CSV browser adapter owns the anchor lifecycle while Angular only supplies 
   assert.ok(component.includes('appendAnchor: anchor => { document.body.appendChild(anchor); }'));
   assert.ok(adapter.includes('environment.appendAnchor(anchor)'));
   assert.ok(adapter.includes('anchor.click()'));
-  assert.match(adapter, /finally\\s*\\{\\s*anchor\\.remove\\(\\);/);
+  assert.match(adapter, /finally\s*\{\s*anchor\.remove\(\);/);
   assert.ok(adapter.includes('environment.schedule(() => environment.revokeObjectUrl(url), delayMs)'));
   for (const forbidden of ['fetch(', 'invoke(', 'localStorage', 'sessionStorage', 'console.']) {
     assert.ok(!adapter.includes(forbidden));
