@@ -49,18 +49,28 @@ export function inspectDesktopComponentStyles(bundleDir) {
   catch { fail('Cannot list Angular output'); }
   const names = entries.filter(entry => JS_NAME.test(entry.name) || CSS_NAME.test(entry.name));
   if (!names.length || names.length > MAX_FILES) fail('Unexpected number of compiled style candidates');
+  // Inspect EVERY candidate before accepting an early layout match: otherwise
+  // a valid main module can hide a later symlink or oversized chunk from review.
   let bytes = 0;
+  const candidates = [];
   for (const entry of names) {
     if (!entry.isFile() || entry.isSymbolicLink()) fail('Unsafe compiled style candidate');
     const path = join(root, entry.name);
     let stat;
     try { stat = lstatSync(path); } catch { fail('Cannot inspect compiled style candidate'); }
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES_PER_FILE ||
-        (bytes += stat.size) > MAX_TOTAL_BYTES) fail('Compiled style candidate exceeds limits');
+    if (!stat.isFile() || stat.isSymbolicLink()) fail('Unsafe compiled style candidate');
+    if (!Number.isSafeInteger(stat.size) || stat.size < 0 ||
+        stat.size > MAX_BYTES_PER_FILE || (bytes += stat.size) > MAX_TOTAL_BYTES) {
+      fail('Compiled style candidate exceeds limits');
+    }
+    candidates.push({name: entry.name, path});
+  }
+  for (const candidate of candidates) {
     let css;
-    try { css = readFileSync(path, 'utf8'); } catch { fail('Cannot read compiled style candidate'); }
+    try { css = readFileSync(candidate.path, 'utf8'); }
+    catch { fail('Cannot read compiled style candidate'); }
     if (hasDesktopComponentLayout(css)) {
-      return {checked: names.length, evidence: entry.name};
+      return {checked: candidates.length, evidence: candidate.name};
     }
   }
   fail('Missing Angular workspace and chart-stage component CSS rules');
