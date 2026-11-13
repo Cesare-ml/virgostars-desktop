@@ -15,6 +15,7 @@ import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
 import { requestSyntheticCsvDownload } from './synthetic-csv-download';
+import { createSyntheticCsvBrowserPort } from './synthetic-csv-browser-port';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -241,21 +242,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     try {
       // Only the fixed fictional inspector values may cross this export boundary.
       const csv = buildSyntheticChartCsv(this.planets, this.houses);
-      requestSyntheticCsvDownload(csv, SYNTHETIC_CSV_FILENAME, {
-        createUrl: content => URL.createObjectURL(new Blob([content], {type:'text/csv;charset=utf-8'})),
-        click: (url, filename) => {
-          const anchor = document.createElement('a');
-          anchor.href = url;
-          anchor.download = filename;
-          document.body.appendChild(anchor);
-          try { anchor.click(); } finally { anchor.remove(); }
-        },
-        scheduleRevoke: (url, delayMs) => {
-          // WebView2 may not start the download until after the click returns.
-          window.setTimeout(() => URL.revokeObjectURL(url), delayMs);
-        },
-        revoke: url => URL.revokeObjectURL(url),
-      });
+      requestSyntheticCsvDownload(csv, SYNTHETIC_CSV_FILENAME, createSyntheticCsvBrowserPort({
+        createBlob: content => new Blob([content], {type:'text/csv;charset=utf-8'}),
+        createObjectUrl: blob => URL.createObjectURL(blob),
+        revokeObjectUrl: url => URL.revokeObjectURL(url),
+        createAnchor: () => document.createElement('a'),
+        appendAnchor: anchor => { document.body.appendChild(anchor); },
+        // WebView2 may start the download after anchor.click() returns.
+        schedule: (callback, delayMs) => { window.setTimeout(callback, delayMs); },
+      }));
       // This is only a browser request; saving the file is not guaranteed.
       this.csvStatus = 'export.csv.started';
     } catch (_error) {
