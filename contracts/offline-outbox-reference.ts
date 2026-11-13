@@ -184,25 +184,59 @@ export function nextSyncBatch(state: Outbox, limit = 50): readonly Mutation[] {
 }
 
 /**
+ * A receipt is untrusted until its own data descriptors have been captured.
+ * Reject getters, inherited fields and unexpected properties rather than
+ * reading a mutable remote reply repeatedly while deciding whether to ACK.
+ */
+function snapshotReceipt(input: unknown): Receipt {
+  try {
+    if (input === null || typeof input !== 'object' || Array.isArray(input)) throw new Error();
+    const prototype = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null) throw new Error();
+    const props = Object.getOwnPropertyDescriptors(input);
+    const keys = Reflect.ownKeys(props);
+    const allowed = new Set(['mutationId', 'result', 'serverRevision']);
+    if (keys.some(key => typeof key !== 'string' || !allowed.has(key))) throw new Error();
+    const ownData = (key: string): unknown => {
+      const descriptor = Object.hasOwn(props, key) ? props[key] : undefined;
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) throw new Error();
+      return descriptor.value;
+    };
+    const mutationId = ownData('mutationId');
+    checkIdentifier(mutationId);
+    const result = ownData('result');
+    if (result === 'retry' && keys.length === 2) {
+      return Object.freeze({mutationId, result});
+    }
+    if (keys.length !== 3) throw new Error();
+    const serverRevision = ownData('serverRevision');
+    if (result === 'conflict') {
+      if (serverRevision !== null) checkIdentifier(serverRevision);
+      return Object.freeze({mutationId, result, serverRevision});
+    }
+    if (result === 'accepted' || result === 'already_applied') {
+      checkIdentifier(serverRevision);
+      return Object.freeze({mutationId, result, serverRevision});
+    }
+    throw new Error();
+  } catch {
+    // Do not expose potentially sensitive diagnostics from untrusted objects.
+    throw new Error('Invalid sync receipt');
+  }
+}
+
+/**
  * Process a server response atomically as a pure transformation. Unknown,
  * duplicated or out-of-order receipts fail closed; retries keep pending writes.
  * A conflict remains available to the user and blocks later edits to that entity.
  */
 export function applySyncReceipts(state: Outbox, receipts: readonly Receipt[]): Outbox {
   const byId = new Map<string, Receipt>();
-  for (const receipt of receipts) {
-    if (!receipt || typeof receipt !== 'object') throw new Error('Invalid sync receipt');
-    checkIdentifier(receipt.mutationId);
+  for (const raw of receipts) {
+    const receipt = snapshotReceipt(raw);
     if (byId.has(receipt.mutationId)) throw new Error('Duplicated sync receipt');
     if (!state.entries.some((entry) => entry.mutation.mutationId === receipt.mutationId)) {
       throw new Error('Unexpected sync receipt');
-    }
-    if (receipt.result === 'accepted' || receipt.result === 'already_applied') {
-      checkIdentifier(receipt.serverRevision);
-    } else if (receipt.result === 'conflict') {
-      if (receipt.serverRevision !== null) checkIdentifier(receipt.serverRevision);
-    } else if (receipt.result !== 'retry') {
-      throw new Error('Unsupported sync receipt');
     }
     byId.set(receipt.mutationId, receipt);
   }

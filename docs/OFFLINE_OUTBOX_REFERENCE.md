@@ -15,7 +15,7 @@ The future VirgoStars Desktop **Rust/Tauri host** owns SQLite transactions, cred
 - **Stable mutation IDs:** exact retry with identical content is idempotent, but reusing an ID with different data raises an error.
 - **Immutable FIFO outbox:** payloads are validated as JSON, limited to **256 KiB (262,144 UTF-8 bytes of serialized JSON, including JSON delimiters and escaping)**, cloned and frozen before enqueue; unsupported operations or unsafe payloads are rejected. The cap is on bytes rather than JavaScript UTF-16 string length, preventing multi-byte Unicode from exceeding the intended envelope.
 - **Batching:** bounded batches (1–500) select the oldest unresolved change for each entity. Two pending changes to one record cannot be sent in the same batch.
-- **Receipts:** accepted / already-applied receipts remove the specified entry in the *pure model*. No receipt or retry leaves it pending; unknown, duplicate or out-of-order receipts fail closed.
+- **Receipts:** accepted / already-applied receipts remove the specified entry in the *pure model*. No receipt or retry leaves it pending; unknown, duplicate or out-of-order receipts fail closed. Receipt validation takes a single detached snapshot of explicitly owned, enumerable data fields before applying any acknowledgements; getters, inherited fields and unexpected metadata are rejected.
 - **Conflicts:** conflict receipts preserve the local change and server revision; later changes on that entity are blocked while unrelated records can continue.
 - **Deletes:** explicit tombstones remain pending until acknowledged. An absent entity is not interpreted as a delete.
 
@@ -57,3 +57,9 @@ Repository visibility, licensing and release approval remain unchanged. Do not u
 ## 2026-11-13 UTF-8 envelope follow-up (proposed)
 
 The reference model now rejects JSON payloads whose UTF-8 encoding exceeds 262,144 bytes, even when their JavaScript string length is shorter. A fast UTF-16 code-unit check avoids encoding obviously oversized JSON; the final byte measurement uses `TextEncoder`. Exact ASCII and non-ASCII size-boundary regressions were added. This is **only an in-memory synthetic reference guard**, not a limit enforced by a live IPC endpoint, Rust database, or server.
+
+## 2026-11-13 — atomic receipt-validation follow-up (proposed)
+
+The pure reference model now snapshots each untrusted receipt into a frozen, data-only value **before** building the acknowledgement map. It checks own property descriptors rather than reading mutable/accessor-backed objects repeatedly. Supported shapes remain `{mutationId, result, serverRevision}` for accepted/already-applied/conflict, and `{mutationId, result:'retry'}` for retry; unknown, hidden and symbol fields fail closed. The full list of receipts is validated before any new outbox state is returned. New synthetic regressions cover getters, prototype-inherited fields, malformed receipts, and nonpartial application.
+
+This does **not** implement a real network trust boundary, protection against JavaScript Proxy traps, durable SQLite acknowledgement, server authorization or signature validation. Real transport data must be decoded independently by the eventual Rust host. No real records or external services are used.
