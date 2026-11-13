@@ -29,6 +29,16 @@ npx tsc --noEmit --strict --target ES2022 --module ESNext \
   src/app/fictional-geometry.ts src/app/synthetic-csv-export.ts src/app/synthetic-csv-download.ts
 ```
 
+### Verified in an isolated Node.js 22.16.0 mirror
+
+The checked-out test copies matched their GitHub blob SHA-1 values before execution (geometry `4cacbba4ee1147a7e59f4175dbf6b3927ee13fff`, inherited geometry tests `bfc15a17e79f26c565e21e30b7b9407b79d3de25`, integration tests `252d5530567fb12f3f042bf23fe3de920f1008c0`).
+
+- Three runtime CSV/geometry assertions passed; the fourth (reading the actual Angular component and renderer-backed fixture source) was checked as seven direct GitHub source assertions instead of executing it in the partial mirror.
+- Eight of the inherited geometry tests passed; the ninth depends on the full source checkout and was not executed in that mirror.
+- All five inherited browser-download lifecycle tests passed.
+- Strict, standalone TypeScript 5.8.3 compilation passed for the pure geometry, CSV serializer and browser-download helper.
+- All data remain explicitly fictional. These tests do not establish JavaScript/Angular package compatibility, real WebView2 rendering or real astronomical accuracy.
+
 Then run the complete `npm test` and `npm run build:ui` against the separately built `astrological-charts` package. Test in offline Windows Tauri/WebView2 on a normal and high-DPI display: chart/table agreement, all view modes, genuine PNG/CSV download behavior and Blob URL cleanup. These platform gates remain open.
 
 ## Boundaries
