@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createOutbox, enqueueMutation, nextSyncBatch, applySyncReceipts, outboxCounts,
+  serializeOutboxSnapshot, restoreOutboxSnapshot,
 } from '../contracts/offline-outbox-reference.ts';
 
 const change = (mutationId, entityId, extra = {}) => ({
@@ -327,4 +328,87 @@ test('ACK batch never invokes indexed getters or applies earlier successful rece
   assert.throws(() => applySyncReceipts(original, batch), /Invalid sync receipt batch/);
   assert.equal(calls, 0);
   assert.deepEqual(nextSyncBatch(original).map(x => x.mutationId), ['mut-1','mut-2']);
+});
+
+test('synthetic snapshot restores pending, conflicts and FIFO blockers after restart', () => {
+  let live = createOutbox('synthetic-owner');
+  live = enqueueMutation(live, change('first', 'one'));
+  live = enqueueMutation(live, change('second', 'one'));
+  live = enqueueMutation(live, change('third', 'two'));
+  live = applySyncReceipts(live, [
+    {mutationId:'first', result:'conflict', serverRevision:'server9'},
+  ]);
+  const serialized = serializeOutboxSnapshot(live);
+  const restored = restoreOutboxSnapshot(serialized, 'synthetic-owner');
+  assert.deepEqual(restored, live);
+  assert.notEqual(restored, live);
+  assert.equal(Object.isFrozen(restored), true);
+  assert.equal(Object.isFrozen(restored.entries[0].mutation.payload), true);
+  assert.equal(restored.entries[0].conflictServerRevision, 'server9');
+  assert.deepEqual(nextSyncBatch(restored).map(x => x.mutationId), ['third']);
+  assert.equal(serializeOutboxSnapshot(restored), serialized);
+  // Recovered queue remains persistent across a new pending write in the pure model.
+  const after = enqueueMutation(restored, change('fourth', 'three'));
+  assert.deepEqual(nextSyncBatch(after).map(x => x.mutationId), ['third','fourth']);
+  assert.deepEqual(outboxCounts(live), {pending:2,conflicts:1});
+});
+
+test('synthetic snapshot restores deletion tombstones and null conflict revisions', () => {
+  const deleted = change('gone', 'sample-1', {operation:'delete'});
+  delete deleted.payload;
+  let live = enqueueMutation(createOutbox('synthetic-owner'), deleted);
+  live = enqueueMutation(live, change('other','sample-2'));
+  live = applySyncReceipts(live, [{mutationId:'other',result:'conflict',serverRevision:null}]);
+  const restored = restoreOutboxSnapshot(serializeOutboxSnapshot(live), 'synthetic-owner');
+  assert.equal(Object.hasOwn(restored.entries[0].mutation, 'payload'), false);
+  assert.equal(restored.entries[1].conflictServerRevision, null);
+  assert.deepEqual(nextSyncBatch(restored).map(x=>x.mutationId), ['gone']);
+});
+
+test('snapshot decoder rejects bad schema, cross-profile and forged entry shapes', () => {
+  let state = enqueueMutation(createOutbox('synthetic-owner'),change('mut-1','sample-1'));
+  state = enqueueMutation(state,change('mut-2','sample-1'));
+  const json = serializeOutboxSnapshot(state);
+  assert.throws(() => restoreOutboxSnapshot('{', 'synthetic-owner'), /Invalid outbox snapshot/);
+  assert.throws(() => restoreOutboxSnapshot(json, 'another-owner'), /Cross-profile/);
+  const parsed = JSON.parse(json);
+  const mutate = (fn) => {
+    const clone = JSON.parse(json);
+    fn(clone);
+    return JSON.stringify(clone);
+  };
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {x.schemaVersion=2;}), 'synthetic-owner'), /Unsupported outbox snapshot version/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {x.extra='not allowed';}), 'synthetic-owner'), /Invalid outbox snapshot/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {x.entries[0].extra='not allowed';}), 'synthetic-owner'), /Invalid outbox snapshot entry/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {x.entries[0].state='unknown';}), 'synthetic-owner'), /Invalid outbox snapshot entry/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {x.entries[0].conflictServerRevision='server2';}), 'synthetic-owner'), /Invalid outbox snapshot entry/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {delete x.entries[0].mutation.mutationId;}), 'synthetic-owner'), /Invalid outbox snapshot entry/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {x.entries[0].mutation.profileId='another-owner';}), 'synthetic-owner'), /Invalid outbox snapshot entry/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {x.entries[1].mutation.mutationId='mut-1';}), 'synthetic-owner'), /Duplicate outbox snapshot mutation ID/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {
+    x.entries[1].state='conflict'; x.entries[1].conflictServerRevision='server2';
+  }), 'synthetic-owner'), /Invalid outbox snapshot conflict order/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {
+    x.entries[0].state='conflict'; x.entries[0].conflictServerRevision='';
+  }), 'synthetic-owner'), /Invalid outbox snapshot conflict revision/);
+  assert.throws(() => restoreOutboxSnapshot(mutate(x => {
+    x.entries[0].mutation.payload = JSON.parse('{"__proto__":{"unsafe":true}}');
+  }), 'synthetic-owner'), /Invalid outbox snapshot entry/);
+  assert.deepEqual(outboxCounts(state), {pending:2,conflicts:0});
+  assert.deepEqual(JSON.parse(json), parsed);
+});
+
+test('snapshot decoding refuses excessive entry counts and UTF-8 byte length', () => {
+  const empty = serializeOutboxSnapshot(createOutbox('synthetic-owner'));
+  assert.deepEqual(outboxCounts(restoreOutboxSnapshot(empty,'synthetic-owner')), {pending:0, conflicts:0});
+  assert.throws(() => restoreOutboxSnapshot(
+    JSON.stringify({schemaVersion:1, profileId:'synthetic-owner', entries:Array(1001).fill(null)}),
+    'synthetic-owner',
+  ), /Invalid outbox snapshot/);
+  assert.throws(() => serializeOutboxSnapshot({
+    profileId:'synthetic-owner', entries:Array(1001).fill(null),
+  }), /Outbox snapshot exceeds reference-model limit/);
+  // Under the UTF-16 code unit cap but over 8 MiB of serialized UTF-8 bytes.
+  assert.throws(() => restoreOutboxSnapshot('é'.repeat(4_194_305), 'synthetic-owner'),
+    /Outbox snapshot exceeds reference-model limit/);
 });
