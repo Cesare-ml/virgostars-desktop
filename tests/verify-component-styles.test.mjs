@@ -63,3 +63,14 @@ test('rejects missing bundle directory and irrelevant filenames',()=>{
     assert.throws(()=>inspectDesktopComponentStyles(root),/Unexpected number/);
   });
 });
+
+
+test('the real offline bundle CLI executes the compiled component style check',()=>{
+  const cli=readFileSync(new URL('../scripts/verify-offline-bundle.mjs',import.meta.url),'utf8');
+  const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+  assert.match(cli,/import\s*\{\s*inspectDesktopComponentStyles\s*\}\s*from\s*['"]\.\/verify-component-styles\.mjs['"]/);
+  const cliBranch=cli.slice(cli.indexOf('if(process.argv[1]'));
+  assert.match(cliBranch,/inspectDesktopComponentStyles\(resolve\(ROOT,'dist\/desktop\/browser'\)\)/);
+  assert.match(pkg.scripts['verify:bundle'],/node scripts\/verify-offline-bundle\.mjs/);
+  assert.match(pkg.scripts['verify:bundle:private'],/node scripts\/verify-offline-bundle\.mjs --private/);
+});
