@@ -25,6 +25,7 @@ node --experimental-strip-types --test tests/city-clock-picker-integration.test.
 node --experimental-strip-types --test tests/offline-city-picker-dom-ids.test.mjs
 node --experimental-strip-types --test tests/offline-city-parent-reconciliation.test.mjs
 node --experimental-strip-types --test tests/offline-city-ime-composition.test.mjs
+node --experimental-strip-types --test tests/offline-city-timer-failure.test.mjs
 node --experimental-strip-types --test tests/offline-city-picker-state.test.mjs tests/offline-city-picker-retry.test.mjs tests/offline-city-picker-integration.test.mjs
 node --experimental-strip-types --test tests/offline-place-search.test.mjs tests/offline-place-ipc-boundaries.test.mjs tests/offline-city-selection.test.mjs
 node --experimental-strip-types --test tests/device-clock.test.mjs tests/selected-city-clock.test.mjs
@@ -78,3 +79,13 @@ Some browsers dispatch an extra final `input` immediately after `compositionend`
 **Local QA actually performed:** `node --experimental-strip-types --test --test-name-pattern='unfinished IME|compositionend|IME Enter|Unicode scalar' tests/offline-city-ime-composition.test.mjs` ran **4/4 behavior cases** with Node.js **22.16.0** against locally mirrored files whose Git hashes matched the exact GitHub blobs. The `src/app/offline-city-input-events.ts` helper passed isolated TypeScript 5.8.3 strict compilation. A fifth source-wiring test was checked with the committed Angular component/template in an isolated V8 harness (**5/5 source+behavior test bodies passed there**), but **full Node execution of the fifth case, Angular build and real Windows IME interaction remain unverified**.
 
 **Manual Windows acceptance:** with a Japanese or Chinese IME, type and convert multi-character city text. Ensure Enter confirms an IME candidate instead of choosing a city, no native search runs during composition, final query searches once, the visible input remains untruncated during composition, and a following input event does not duplicate the query. Also verify Latin keyboards and keyboard-only navigation still work after IME completion.
+
+## Debounce timer failure containment (2026-11-13)
+
+The city search state now handles injectable timer scheduler failures without raising UI exceptions or leaving the picker indefinitely in `typing`. A scheduler that throws or returns an absent handle settles in explicit `unavailable` state, allowing the existing manual Retry control to attempt a fresh search. Timer handle `0` remains valid. Previously selected city state is cleared on an edited query even when scheduling fails.
+
+On cancel, `abortPending` increments the generation **before** timer/lookup cleanup and resets the stored handle. If timer cancellation or lookup-scope cancellation throws, both errors are contained; the generation guard prevents a late callback or Promise response from restoring a cleared city. Error details, paths and native internals are never emitted to the UI.
+
+Test file: `tests/offline-city-timer-failure.test.mjs` (5 synthetic cases). **5/5 test bodies passed** in an isolated V8 JavaScript harness on the exact committed GitHub state/test source after removing TypeScript-only syntax. In addition, **13/13 existing** city picker state test bodies passed under that same isolated harness against the new state implementation. This is **not** equivalent to a complete `node --test`, `npm test`, Angular or packaged Windows/WebView2 run.
+
+Manual acceptance: simulate a failed debounce timer, verify localized transient error and Retry; simulate timer cancellation failure on Clear, and ensure the city clock and selected-city label disappear and a late reply never recreates them. Verify normal keyboard and IME search and a timer whose handle is `0`.
