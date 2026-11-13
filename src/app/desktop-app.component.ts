@@ -22,6 +22,7 @@ import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } fro
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 import { nextInspectorTab } from './inspector-tab-navigation';
 import { isInspectorTab, loadInspectorTab, saveInspectorTab } from './inspector-tab-preference';
+import { preserveInspectorFocusOnClose } from './inspector-focus';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -42,6 +43,8 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
+  @ViewChild('inspectorToggle', {static:true}) readonly inspectorToggle!: ElementRef<HTMLButtonElement>;
+  @ViewChild('inspectorPanel') readonly inspectorPanel?: ElementRef<HTMLElement>;
 
   private readonly cd = inject(ChangeDetectorRef);
   private readonly renderer = new GraficoRenderService();
@@ -168,6 +171,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   toggleInspector(): void {
+    if (this.destroyed) return;
+    if (!this.inspectorCollapsed) {
+      // The aside is removed by *ngIf; move any focus inside it to the
+      // persistent header toggle before Angular tears down that view.
+      preserveInspectorFocusOnClose(
+        this.inspectorPanel?.nativeElement, document.activeElement,
+        this.inspectorToggle.nativeElement,
+      );
+    }
     this.inspectorCollapsed = !this.inspectorCollapsed;
     this.cd.markForCheck();
   }

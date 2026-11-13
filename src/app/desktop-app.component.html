@@ -54,7 +54,7 @@
               <span class="clock-compact">{{clockCompactText}}</span>
             </time>
           </div>
-          <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
+          <button type="button" #inspectorToggle class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
             [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
             (click)="toggleInspector()">☷</button>
         </div>
@@ -76,7 +76,7 @@
       <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span class="copyright-attribution"> · © 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</span></footer>
     </main>
 
-    <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
+    <aside class="inspector" #inspectorPanel [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
       <div class="inspector-head">
         <h2>{{t('inspector')}}</h2>
         <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>

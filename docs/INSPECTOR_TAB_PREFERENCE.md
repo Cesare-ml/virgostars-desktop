@@ -17,3 +17,9 @@ Actually executed in an isolated local source copy on Node.js 22.16.0, TypeScrip
 - `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/inspector-tab-preference.ts` — **pass**.
 
 **Not run:** full repository `npm test`, Angular `build:ui`, Windows WebView2 persistence and keyboard smoke, real Tauri build. Those gates remain mandatory before merge/release. No npm dependencies, native permissions, remote services, GitHub Actions, personal data, assets or license/NOTICE edits.
+
+## Focus restoration when hiding the inspector
+
+The inspector's close button lives inside the conditional `*ngIf` view. Hiding that view while a tab, row or close button has focus could discard the active focus target. The shared `toggleInspector()` now checks the focused element before collapsing: if it is inside the inspector, focus moves to the persistent header inspector-toggle using `{preventScroll: true}`. If focus is outside, it is left untouched. Failed DOM focus does not block closing. This enhancement works with the roving tab keyboard navigation in PR #146.
+
+In an isolated local source copy, `node --experimental-strip-types --test tests/inspector-focus.test.mjs` passed **6/6** tests on Node 22.16.0. The TypeScript 5.8.3 strict DOM check for `src/app/inspector-focus.ts` also passed. This does not replace Angular compilation, real WebView2 keyboard focus testing or assistive technology verification, which remain pending.
