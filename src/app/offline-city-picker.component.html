@@ -19,6 +19,8 @@
     [attr.aria-activedescendant]="state.activeIndex >= 0 ? domIds.optionId(state.activeIndex) : null"
     [value]="state.query"
     (input)="onInput($event)"
+    (compositionstart)="onCompositionStart()"
+    (compositionend)="onCompositionEnd($event)"
     (keydown)="onKeydown($event)"
   >
   <p class="city-status" role="status" aria-live="polite">{{message}}</p>
