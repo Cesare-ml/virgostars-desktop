@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, readFileSync, rmSync, symlinkSync, truncateSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {hasDesktopComponentLayout, inspectDesktopComponentStyles} from '../scripts/verify-component-styles.mjs';
+import {hasDesktopComponentLayout, hasDesktopLayoutOverride, inspectDesktopComponentStyles} from '../scripts/verify-component-styles.mjs';
 
 const COMPONENT_CSS = '.workspace[_ngcontent-%COMP%]{display:grid;grid-template-columns:208px minmax(0,1fr) 316px}' +
   '.chart-stage[_ngcontent-%COMP%]{position:relative;flex:1;min-height:0;display:grid;place-items:center}';
@@ -88,3 +88,29 @@ test('the real offline bundle CLI executes the compiled component style check',(
   assert.match(pkg.scripts['verify:bundle'],/node scripts\/verify-offline-bundle\.mjs/);
   assert.match(pkg.scripts['verify:bundle:private'],/node scripts\/verify-offline-bundle\.mjs --private/);
 });
+
+test('rejects layout-hiding and non-grid overrides despite otherwise valid source styles',()=>{
+  for(const override of [
+    '.workspace{display:block}',
+    '.chart-stage{display:none!important}',
+    '@media(max-width:760px){.workspace{display:flex}}',
+    ':where(.workspace){opacity:0}',
+    ':is(.chart-stage){visibility:hidden}',
+  ]) {
+    assert.equal(hasDesktopLayoutOverride(COMPONENT_CSS+override),true,override);
+    assert.equal(hasDesktopComponentLayout(COMPONENT_CSS+override),false,override);
+  }
+});
+
+test('rejects a hidden stage in later compiled chunk after a valid main module',()=>fixture(root=>{
+  writeFileSync(join(root,'main-ABC.js'),'const styles='+JSON.stringify(COMPONENT_CSS));
+  writeFileSync(join(root,'chunk-ABCD.js'),'const hidden=\".chart-stage{display:none}\"');
+  assert.throws(()=>inspectDesktopComponentStyles(root),/layout overridden/);
+}));
+
+test('preserves responsive descendant-only visibility rules and safe grid overrides',()=>fixture(root=>{
+  const css=COMPONENT_CSS + '@media(max-width:760px){.workspace.nav-collapsed .nav-label{display:none}.workspace{display:grid;grid-template-columns:60px 1fr}}';
+  writeFileSync(join(root,'main-ABC.js'),css);
+  assert.equal(hasDesktopLayoutOverride(css),false);
+  assert.equal(inspectDesktopComponentStyles(root).evidence,'main-ABC.js');
+}));
