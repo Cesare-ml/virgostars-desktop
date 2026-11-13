@@ -4,6 +4,7 @@ import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspectDesktopStyles } from './verify-bundled-css.mjs';
+import { verifyDesktopBaseHref } from './verify-document-base.mjs';
 import { PRIVATE_MANIFEST_FILE, validatePrivateManifest } from './prepare-private-assets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,6 +41,7 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   check(!/<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["'](?:https?:)?\/\//i.test(html),
     'Angular bundle references an external script or stylesheet');
   check(!html.includes('desktop-assets-bootstrap.js'), 'Legacy demo bootstrap must not be packaged');
+  verifyDesktopBaseHref(html);
   // The original verifier checked images and Angular root but not CSS: an
   // unstyled app could pass verification and yield a tiny chart on Windows.
   const css = inspectDesktopStyles(bundle);

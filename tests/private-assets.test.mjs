@@ -28,7 +28,7 @@ test('stages only approved pinned images and verifies the private bundle',()=>ru
   assert.equal(preparePrivateAssets(f.source,f.stage,f.expected).reused,true);
   mkdirSync(join(f.bundle,'assets/img'),{recursive:true});
   writeFileSync(join(f.bundle,'assets/img/example.png'),f.data);
-  writeFileSync(join(f.bundle,'index.html'),'<link rel="stylesheet" href="styles.css"><vs-desktop-app></vs-desktop-app>');
+  writeFileSync(join(f.bundle,'index.html'),'<html><head><base href="/"><link rel="stylesheet" href="styles.css"></head><body><vs-desktop-app></vs-desktop-app></body></html>');
   writeFileSync(join(f.bundle,'styles.css'),'*{box-sizing:border-box}vs-desktop-app{display:block}');
   assert.equal(verifyOfflineBundle(f.bundle,f.stage,{privateMode:true,expectedPrivateHash:f.expected}).count,1);
   writeFileSync(join(f.bundle,'assets/img/example.png'),'changed');
