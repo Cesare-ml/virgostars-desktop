@@ -28,9 +28,35 @@ function componentRule(css, selector, declarations) {
   return false;
 }
 
+/**
+ * Reject explicit later/conditional overrides that would turn the Desktop
+ * workspace or chart stage into a non-grid/invisible surface. Keep selectors
+ * anchored to those elements, not descendants hidden by responsive nav rules.
+ * This is a conservative source heuristic, not a computed-style CSS parser.
+ */
+export function hasDesktopLayoutOverride(css) {
+  if (typeof css !== 'string') return false;
+  for (const rule of css.matchAll(/([^{}]{1,400})\{([^{}]{0,1200})\}/g)) {
+    const selectors = rule[1].split(',');
+    const targetsLayout = selectors.some(part => {
+      const selector = part.trim();
+      return /(?:^|[\s>+~"'(\[=])\.(?:workspace|chart-stage)(?:\[[^\]{}]{1,160}\]|\.[a-z-]+)*\s*$/i.test(selector) ||
+        /:(?:is|where)\(\s*\.(?:workspace|chart-stage)\s*\)\s*$/i.test(selector);
+    });
+    if (!targetsLayout) continue;
+    const declarations = rule[2];
+    for (const display of declarations.matchAll(/(?:^|;)\s*display\s*:\s*([a-z-]+)\s*(?:!important)?\s*(?=;|$)/gi)) {
+      if (!['grid', 'inline-grid'].includes(display[1].toLowerCase())) return true;
+    }
+    if (/(?:^|;)\s*visibility\s*:\s*hidden\s*(?:!important)?\s*(?=;|$)/i.test(declarations) ||
+        /(?:^|;)\s*opacity\s*:\s*0(?:\.0+)?\s*(?:!important)?\s*(?=;|$)/i.test(declarations)) return true;
+  }
+  return false;
+}
+
 /** Two independent grid/stage rules must exist in compiled component CSS. */
 export function hasDesktopComponentLayout(css) {
-  if (typeof css !== 'string') return false;
+  if (typeof css !== 'string' || hasDesktopLayoutOverride(css)) return false;
   return componentRule(css, 'workspace', [
     /(?:^|;)\s*display\s*:\s*grid\s*(?:;|$)/,
     /(?:^|;)\s*grid-template-columns\s*:/,
@@ -65,14 +91,17 @@ export function inspectDesktopComponentStyles(bundleDir) {
     }
     candidates.push({name: entry.name, path});
   }
+  let evidence = null;
   for (const candidate of candidates) {
     let css;
     try { css = readFileSync(candidate.path, 'utf8'); }
     catch { fail('Cannot read compiled style candidate'); }
-    if (hasDesktopComponentLayout(css)) {
-      return {checked: candidates.length, evidence: candidate.name};
-    }
+    // Continue after the first valid candidate: a later Angular chunk may
+    // contain an overriding style that makes the completed UI invisible.
+    if (hasDesktopLayoutOverride(css)) fail('Desktop layout overridden by compiled CSS');
+    if (evidence === null && hasDesktopComponentLayout(css)) evidence = candidate.name;
   }
+  if (evidence !== null) return {checked: candidates.length, evidence};
   fail('Missing Angular workspace and chart-stage component CSS rules');
 }
 
