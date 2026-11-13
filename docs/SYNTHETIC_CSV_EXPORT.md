@@ -9,7 +9,7 @@ The desktop chart-first demo now offers **Export demo CSV / Esporta CSV demo** i
 1. Open the synthetic natal chart, optionally offline.
 2. Select **Export demo CSV**. The app prepares a short CSV in memory, creates a temporary Blob URL, and requests a browser download using a normal anchor click.
 3. The footer reports that a download was **requested**, not that the operating system definitely saved it. Browser/WebView2 download behavior must be confirmed on a Windows build.
-4. Filename: virgostars-FICTIONAL-NOT-CALCULATED.csv. No account, local database, cloud API, authentication token or native Tauri command is used. The temporary Blob URL is revoked after a short delay.
+4. Filename: virgostars-FICTIONAL-NOT-CALCULATED.csv. No account, local database, cloud API, authentication token or native Tauri command is used. The temporary Blob URL is scheduled for revocation after 30 seconds; if the browser click or timer setup fails, cleanup occurs immediately. The status notice clears when the user switches chart modes.
 
 ## Data contract
 
@@ -31,17 +31,18 @@ The serializer is intentionally isolated from grafici-astrologici: it formats su
 Run from an authorized checkout with Node.js 22.12+ or 24 and TypeScript 5.8:
 
 ~~~sh
-node --experimental-strip-types --test tests/synthetic-csv-export.test.mjs tests/synthetic-csv-ui-contract.test.mjs
-npx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/synthetic-csv-export.ts
+node --experimental-strip-types --test tests/synthetic-csv-export.test.mjs tests/synthetic-csv-download.test.mjs tests/synthetic-csv-ui-contract.test.mjs
+npx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/synthetic-csv-export.ts src/app/synthetic-csv-download.ts
 npm run build:ui
 ~~~
 
-The standalone serializer has been locally tested with **23/23 passing Node tests**, and standalone strict TypeScript compilation passed. The four additional Angular source-contract tests were added for repository validation; they do **not** replace the complete Angular build. A Windows Tauri/WebView2 manual smoke is still required to confirm actual CSV downloading, browser permissions, toolbar layout at small widths, screen-reader messages and offline operation.
+The pre-existing standalone serializer was locally tested with **23/23 passing Node tests**. The new isolated, byte-identical download helper and its tests have been run with **Node.js 22.16.0: 5/5 passing** and **TypeScript 5.8.3 strict check: passed** (Git blob SHA verified against the GitHub branch). The UI contract tests were updated, but **not executed as a complete repository suite**. These checks do **not** replace the complete Angular build. A Windows Tauri/WebView2 manual smoke is still required to confirm actual CSV downloading, browser permissions, toolbar layout at small widths, screen-reader messages and offline operation.
 
 ## Boundaries and integration
 
 - No server calls, production records, new IPC/capabilities, new dependencies, local persistence or automatic telemetry.
 - No actual ephemerides or user birth information in the emitted file.
 - PNG export and upstream chart renderer remain untouched.
+- The browser request and Blob URL cleanup now use a dependency-free, injected port. A failed create/click/schedule path cannot leave an allocated URL undisposed by the helper; the port uses the existing fixed fictional filename only.
 - The new feature is separate from the natal editor, private city catalog, SQLCipher and scientific calculation PR stacks.
 - Do not publish a release or merge without normal build and platform review.
