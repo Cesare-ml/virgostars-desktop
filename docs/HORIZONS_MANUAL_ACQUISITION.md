@@ -66,3 +66,14 @@ The text parser now requires the `API VERSION: 1.0` / `API SOURCE: NASA/JPL Hori
 The downloader now imports `rollback-horizons-directory.mjs` instead of calling recursive `rm` on an error. The rollback preflights the complete directory and tracks device/inode, size, modification time and change time for each file created by this run. If even one artifact differs or a foreign file is present, the tool retains the whole directory for manual review. See [HORIZONS_SAFE_ROLLBACK.md](HORIZONS_SAFE_ROLLBACK.md).
 
 Locally executed on Node.js 22.16.0: 14 isolated rollback tests passed. Two extra full-acquirer regression tests were committed to `tests/acquire-horizons-vectors.test.mjs` but **have not been executed in this container's partial checkout**. Full combined Node/npm, Angular, Rust and Windows builds remain unexecuted.
+
+
+## D-14 — Unique pre-table Horizons header fields
+
+The acquisition parser now imports the **shared** `strict-horizons-headers.mjs` reader. It extracts critical metadata only from the text preceding the first `$$SOE` vector-table marker. A missing field cannot be supplied by a line added after the vector table or in a response footer.
+
+The following pre-table fields are required **exactly once** (case-insensitive labels): `API VERSION`, `API SOURCE`, `Target body name`, `Center body name`, `Center-site name`, `Output units`, `Output type`, `Output format`, `Reference frame`, coordinate system, and `Start time`. The documented `Coordinate systm` and `Coordinate system` spellings are **mutually exclusive aliases**. Duplicates, blank values and control characters result in fixed parser errors.
+
+This helper is used by both the network downloader and the offline original-response verifier, so there is no separate, weaker interpretation of target/frame/center metadata. The API version and content are still self-asserted text; this is a structural guard, **not** cryptographic source authentication.
+
+**Executed locally:** Node.js 22.16.0 `node --test tests/strict-horizons-headers.test.mjs` → **15/15 PASS** (actual module), with tests for duplicate target, center, API version and coordinate alias, missing fields supplied only in the footer and valid header variants. Existing rollback suite `tests/rollback-horizons-directory.test.mjs` was also rerun: **14/14 PASS**. Total **29/29 targeted tests** executed. Three additional full-parser/network regression tests were committed to `tests/acquire-horizons-vectors.test.mjs` but have **not** been executed together with the complete acquisition source checkout here. A full Node regression, real NASA/JPL live response, Windows build and independent DE441 scientific comparison remain outstanding.
