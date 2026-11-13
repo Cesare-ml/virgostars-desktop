@@ -76,3 +76,16 @@ test('Windows contributor guide documents both equivalent entrypoints and locked
   assert.match(guide,/already committed|committed lockfile|committed and reviewed/i);
   assert.doesNotMatch(guide,/npm\.cmd install|first real install\/build should create/i);
 });
+
+test('offline Desktop npm provenance preflight runs before either dependency installation',()=>{
+  const steps=stages();
+  const preflight=steps.findIndex(x=>x.binary==='node' &&
+    x.args==="'scripts/verify-npm-lock.mjs'");
+  const installs=steps.map((step,i)=>step.binary==='npm.cmd' && step.args==="'ci'" ? i : -1)
+    .filter(index=>index>=0);
+  assert.equal(installs.length,2);
+  assert.ok(preflight>=0 && installs.every(index=>index>preflight),
+    'verify the committed Desktop lock before running npm ci');
+  assert.equal(steps.filter(x=>x.args==="'scripts/verify-npm-lock.mjs'").length,1);
+  assert.match(read('docs/WINDOWS_BUILD_GATE.md'),/node scripts\/verify-npm-lock\.mjs/);
+});
