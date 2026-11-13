@@ -52,14 +52,33 @@ function plausibleZone(value: string | null): boolean {
     value === 'UTC' || /^(?:[A-Za-z_]+\/)+[A-Za-z0-9_+\-]+$/.test(value)
   );
 }
+function nullableText(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && value.length <= 255);
+}
+function nullableNonnegativeInteger(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' &&
+    Number.isSafeInteger(value) && value >= 0);
+}
+
+/**
+ * Revalidate a caller-supplied place at the natal input boundary, even when it
+ * bypasses the native lookup decoder. Reject malformed optional metadata before
+ * copying it into a birth preview. No geocoding or timezone guessing occurs.
+ */
 function validPlace(place: OfflinePlaceV1 | null): place is OfflinePlaceV1 {
   return !!place &&
     Number.isSafeInteger(place.id) && place.id > 0 &&
     typeof place.name === 'string' && !!place.name.trim() && place.name.length <= 255 &&
+    nullableText(place.italianName) &&
     Number.isSafeInteger(place.latMicro) && Math.abs(place.latMicro) <= 90_000_000 &&
     Number.isSafeInteger(place.lngMicro) && Math.abs(place.lngMicro) <= 180_000_000 &&
-    (place.countryName === null || typeof place.countryName === 'string') &&
-    (place.countryCode === null || (typeof place.countryCode === 'string' && /^[A-Z]{2}$/.test(place.countryCode)));
+    nullableNonnegativeInteger(place.population) &&
+    nullableNonnegativeInteger(place.stateId) &&
+    nullableText(place.region) &&
+    nullableText(place.timeZone) &&
+    nullableText(place.countryName) &&
+    (place.countryCode === null ||
+      (typeof place.countryCode === 'string' && /^[A-Z]{2}$/.test(place.countryCode)));
 }
 
 /**

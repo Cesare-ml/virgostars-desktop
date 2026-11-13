@@ -31,3 +31,11 @@ The UI now uses `captureNatalPreviewAnchor` and `isNatalPreviewCurrent` from a s
 `currentPreview` and `currentTimeResult` are the only sources of visible preview content. The template hides both the birth preview and the DST buttons whenever the anchor is stale; `chooseUtc` checks the same guard. Unknown birth time still shows an unresolved preview, never an invented UTC. Existing tests that asserted the old revision-only guard are updated.
 
 Local synthetic validation: ten new actual-data tests plus seven existing lifecycle tests passed on Node v22.16.0 (**17/17**), with standalone TypeScript 5.8.3 strict compilation of the state and freshness helper. No Angular template compiler or real Windows GUI retest was run for this additional change. The comparison is an in-memory safety check, not a security boundary against malicious JavaScript or a scientific guarantee for the unverified tzdb.
+
+## Offline place input boundary (follow-up)
+
+The in-memory natal draft now **revalidates every field of an `OfflinePlaceV1` record that it receives**, even if the caller bypasses the normal native search decoder. In particular, absent or malformed nullable city metadata (`italianName`, `population`, `stateId`, `region`, `timeZone`, `countryName`) no longer slips into a preview as `undefined`, a negative ID, an object, or an unbounded string.
+
+This is a correctness and display-boundary check, **not** validation that a location exists or that a timezone is historically correct. A valid selected place with a missing zone remains previewable when birth time is unknown; a **known** birth time requires a plausible IANA timezone string and continues to report `time_zone` rather than guessing an instant. The trusted v1 offline decoder already normalizes unavailable country metadata to explicit `null`, preserving that compatibility.
+
+New synthetic Node regression cases: `node --experimental-strip-types --test tests/natal-place-boundary.test.mjs`. Full `npm test`, Angular compilation, native Windows/WebView2 and end-to-end timezone verification are separate acceptance gates. No user record, persistence, scientific validation, capability or network surface changed.
