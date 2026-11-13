@@ -135,7 +135,7 @@ export class NatalDraftState {
     if (this.disposed) return {ok:false,preview:null,issues:[]};
     const issues: NatalIssue[] = [];
     const name=this.name.trim();
-    if (!isValidNatalName(name)) issues.push('name');
+    if (!isValidNatalName(this.name)) issues.push('name');
     const year=integerField(this.year,1,9999);
     const month=integerField(this.month,1,12);
     const day=integerField(this.day,1,31);
