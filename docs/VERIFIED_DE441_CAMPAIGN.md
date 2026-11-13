@@ -67,6 +67,14 @@ The 18 core tests exercised the exact campaign implementation with injected synt
 
 The synthetic files and mock normalizer have *fabricated* observations. Successful tests do not prove numerical accuracy, scientific independence, provenance rights, source authenticity or native readiness.
 
+### Additional real cross-module behavioral tests
+
+Seven additional cases in `tests/verified-de441-campaign-crossmodules.test.mjs` import and compose the **real** D-04 `compareExperimentalSky`, D-06 `runVerifiedDe441Audit` and D-09 `runVerifiedCampaign` functions. They cover a successful crossed 2×2 review, a failed angular tolerance, wrong reference location, falsely certified numerical response, rejected provenance, modified snapshot hash and excess distance error.
+
+**Executed now:** 7/7 cases passed using the exact GitHub module function bodies and the exact test cases in a JavaScript V8 in-memory harness, with only filesystem-backed evidence and fingerprint operations injected as synthetic stand-ins. This *does not run Node's native test runner*, read local files, execute the CLI or prove real JPL/NAIF output. The committed test file is written to run with Node's native test runner on a full checkout and must be executed there before integration. The earlier 25-test suites were not rerun on this branch revision.
+
+This closes one coordination-level gap: D-09 has now been exercised against the **real numeric comparator** instead of relying entirely on fabricated D-06 results. It does not close the original real-filesystem integration gap, physical-frame modeling, or ephemeris accuracy.
+
 ### Still required before claiming astronomical correctness
 
 1. Re-run all D-04/D-05/D-06, D-08 and D-09 Node suites together on the current stacked branch with the **real** D-06 and no injected mocks, including the CLI 4-case tests.
