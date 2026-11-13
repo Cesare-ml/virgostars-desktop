@@ -71,7 +71,7 @@ export function parseHorizonsVectorResponse(raw, expected) {
     'INVALID_RESPONSE');
   verify(expected && typeof expected.naifId === 'string', 'INVALID_RESPONSE');
   // Official text wire header: pinned to v1.0 until genuine newer output is reviewed.
-  verify(/^API VERSION:\\s*1\\.0\\r?\\nAPI SOURCE:\\s*NASA\\/JPL Horizons API\\r?\\n(?:\\r?\\n)/.test(raw),
+  verify(/^API VERSION:\s*1\.0\r?\nAPI SOURCE:\s*NASA\/JPL Horizons API\r?\n(?:\r?\n)/.test(raw),
     'UNSUPPORTED_API_FORMAT');
   const name = header(raw, 'Target body name');
   const center = header(raw, 'Center body name');
