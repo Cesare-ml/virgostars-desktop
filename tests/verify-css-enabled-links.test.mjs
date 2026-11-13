@@ -97,3 +97,41 @@ test('unterminated quoted stylesheet link is rejected', () => withSyntheticBundl
   '<link rel="stylesheet" href="styles-LOCAL123.css broken>',
   dir => assert.throws(() => inspectDesktopStyles(dir), /Unterminated HTML link tag/)
 ));
+
+test('a stylesheet link only present in an HTML comment does not count', () => withSyntheticBundle(
+  '<!-- <link rel="stylesheet" href="styles-LOCAL123.css"> -->',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
+test('a comment plus a genuine active stylesheet counts only the real link', () => withSyntheticBundle(
+  '<!-- <link rel="stylesheet" href="styles-LOCAL123.css"> -->' + link(),
+  dir => assert.equal(inspectDesktopStyles(dir).stylesheets, 1)
+));
+test('link-looking string inside a script block is not a stylesheet', () => withSyntheticBundle(
+  '<script>const text = `<link rel="stylesheet" href="styles-LOCAL123.css">`;</script>',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
+test('a fake link inside another element quoted attribute is not a link', () => withSyntheticBundle(
+  `<div title='<link rel="stylesheet" href="styles-LOCAL123.css">'></div>`,
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
+test('a fake link inside style raw text is not a link', () => withSyntheticBundle(
+  '<style>/* <link rel="stylesheet" href="styles-LOCAL123.css"> */</style>',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
+test('template content cannot substitute for an active global stylesheet', () => withSyntheticBundle(
+  '<template><link rel="stylesheet" href="styles-LOCAL123.css"></template>',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
+test('unterminated HTML comment fails closed', () => withSyntheticBundle(
+  '<!-- <link rel="stylesheet" href="styles-LOCAL123.css">',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Unterminated HTML comment/)
+));
+
+test('raw script closing tag may have whitespace before >', () => withSyntheticBundle(
+  '<script>const value = `<link rel="stylesheet" href="styles-LOCAL123.css">`;</script >',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
+test('styles in raw style text stay inert with a spaced closing tag', () => withSyntheticBundle(
+  '<style>/* <link rel="stylesheet" href="styles-LOCAL123.css"> */</style >',
+  dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
+));
