@@ -1,13 +1,29 @@
 import type {NatalDraftPreview, NatalDraftState} from './natal-draft-state';
 
-/** A preview is bound both to a mutation revision and the exact source snapshot. */
+/** Bind a preview to its original identity AND a detached, frozen value copy. */
 export type NatalPreviewAnchor = Readonly<{
   revision: number;
+  /** Original object reference, used only as an identity token. */
   preview: NatalDraftPreview;
+  /** Never shares mutable nested objects with the displayed draft preview. */
+  snapshot: NatalDraftPreview;
 }>;
 
+function detachedSnapshot(value: NatalDraftPreview): NatalDraftPreview {
+  return Object.freeze({
+    ...value,
+    civil: Object.freeze({...value.civil}),
+    place: Object.freeze({...value.place}),
+  });
+}
+
 export function captureNatalPreviewAnchor(draft: NatalDraftState): NatalPreviewAnchor | null {
-  return draft.preview ? {revision: draft.inputRevision, preview: draft.preview} : null;
+  if (!draft.preview) return null;
+  return Object.freeze({
+    revision: draft.inputRevision,
+    preview: draft.preview,
+    snapshot: detachedSnapshot(draft.preview),
+  });
 }
 
 function equalSnapshot(a: NatalDraftPreview, b: NatalDraftPreview): boolean {
@@ -35,5 +51,10 @@ export function isNatalPreviewCurrent(
     return false;
   }
   const current=draft.validate();
-  return current.ok && equalSnapshot(current.preview,anchor.preview);
+  // Check both the draft input and the displayed preview against values
+  // captured at selection time. Mutating BOTH draft and preview in place
+  // must not silently authorize the old UTC instant.
+  return current.ok &&
+    equalSnapshot(current.preview,anchor.snapshot) &&
+    equalSnapshot(draft.preview,anchor.snapshot);
 }
