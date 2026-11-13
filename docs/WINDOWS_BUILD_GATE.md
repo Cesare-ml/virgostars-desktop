@@ -46,7 +46,9 @@ From `virgostars-desktop`:
 powershell -NoProfile -File .\scripts\build-windows-spike.ps1
 ```
 
-The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies, runs Node and Rust unit tests, builds the Angular UI with exact asset verification, compiles Tauri and checks expected output files. It stops at the first failed command.
+The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies, runs Node tests, audits the reviewed native IPC command registry and Tauri capabilities, builds Angular with exact asset verification, checks that the bundled stylesheet exists, runs Rust unit tests, compiles Tauri **from that same already-audited Angular output** and checks expected output files. It stops at the first failed command.
+
+The bootstrap invokes the locally installed Tauri CLI using `npm.cmd exec --offline -- tauri build` rather than `npm.cmd run tauri:build`: the general-purpose npm script rebuilds Angular and would invalidate the independent CSS check. The current `tauri.conf.json` has no `beforeBuildCommand`; adding one requires reviewing this gate again. The separate `npm run tauri:build` command remains available for ordinary standalone builds.
 
 It does not change PowerShell execution policy, delete generated folders automatically, access production, deploy software, or merge a PR. A successful build is not proof of scientific/visual accuracy.
 
@@ -67,14 +69,16 @@ In `virgostars-desktop`:
 ```powershell
 npm.cmd install
 npm.cmd test
+npm.cmd run verify:ipc
 npm.cmd run doctor:build
 npm.cmd run build:ui
+npm.cmd run verify:css
 npm.cmd run verify:bundle
 npm.cmd run prepare:icon
 cd src-tauri
 cargo test
 cd ..
-npm.cmd run tauri:build
+npm.cmd exec --offline -- tauri build
 npm.cmd run doctor:verify
 ```
 
@@ -92,7 +96,7 @@ To use `npm.cmd run tauri:dev`, launch `npm.cmd start` in another terminal first
 - [ ] Confirm no unexpected network requests, and test keyboard and contrast at 1280×720, 1366×768, 1600×900 and 1920×1080 with DPI scaling.
 - [ ] Review generated npm/Cargo locks, dependencies, licenses and asset rights before any public build.
 
-**Limitations:** The doctor checks local prerequisites and existence/consistency of output, not end-to-end rendering, native signing, astronomy accuracy or network isolation. The authoring environment lacks Rust and npm registry access; the Windows acceptance gate cannot be declared passed. The current executable name derives from the experimental Cargo package name `virgostars-desktop-spike`.
+**Limitations:** `verify:ipc` is a conservative native IPC/capability **source audit**, and `verify:css` checks the produced local CSS files; neither check proves that WebView2 has loaded the stylesheet or that compiled native capabilities are safe. The doctor checks local prerequisites and existence/consistency of output, not end-to-end rendering, native signing, astronomy accuracy or network isolation. The authoring environment lacks Rust and npm registry access; the Windows acceptance gate cannot be declared passed. The current executable name derives from the experimental Cargo package name `virgostars-desktop-spike`.
 
 Do not report a release, perform GitHub Actions, merge on main, expose original artwork or change the repository license/visibility without a separate maintainer decision.
 
