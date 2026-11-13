@@ -51,3 +51,10 @@ The full manual Horizons regression gate now expects **99 tests** (the former 86
 Collect genuine raw responses from JPL under the **exact** planned ten-target SSB/ICRF geometric-vector requests. Independently check wire 1.2 against documented response semantics, archive and fingerprint the original data and query, then explicitly add narrow parser support with tests. Only after that should the existing D-11 original-response downloader accept live 1.2 vectors. Keep the current experimental sky quarantine throughout.
 
 No merge to main, GitHub Actions, deployment, release, account data or private birth records.
+
+
+## D-19 — Read-only review of original 1.2 vector samples
+
+A new dedicated command, `node scripts/ephemeris/review-horizons-wire-sample.mjs --file <local-original-response> --body sun --tdb-jd 2460000.500000`, permits **offline structural inspection** of an unmodified 1.2 vector text sample. It never downloads anything, modifies the input, returns private coordinates, or permits chart use. Even positive output is `WIRE_1_2_STRUCTURE_REVIEWABLE_UNVERIFIED`, and every readiness/authenticity flag remains false. It uses the ten canonical body names, independently reviewed TDB JD, original file identity/UTF-8 checks and the shared strict header reader. See [HORIZONS_WIRE12_OFFLINE_SAMPLE_REVIEW.md](HORIZONS_WIRE12_OFFLINE_SAMPLE_REVIEW.md).
+
+The old D-11 acquisition parser remains **strictly pinned to wire 1.0** until genuine 1.2 source responses are acquired, provenance checked and scientific conventions reviewed; this new tool **does not** whitelist 1.2 or claim DE441 parity. Node.js 22.16.0: 16 new synthetic/real-file review tests PASS, **82/82 locally mounted tests PASS**. The full manual suite now requires 115 tests and remains **INCOMPLETE** in the partial mirror.
