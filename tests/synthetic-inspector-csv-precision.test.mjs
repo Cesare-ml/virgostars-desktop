@@ -24,9 +24,26 @@ test('all 22 fictional inspector longitudes match the exported CSV display preci
     ...houses.map(({number, longitude}) => ({kind: 'house', name: String(number), longitude})),
   ];
   source.forEach((entry, i) => {
-    assert.deepEqual(rows[i], [entry.kind, entry.name,
-      formatEclipticLongitude(entry.longitude).replace('°', ''), SYNTHETIC_DATA_STATUS]);
+    const english = formatEclipticLongitude(entry.longitude, 'en').replace('°', '');
+    const italian = formatEclipticLongitude(entry.longitude, 'it').replace('°', '');
+    assert.deepEqual(rows[i], [entry.kind, entry.name, english, SYNTHETIC_DATA_STATUS]);
+    assert.equal(italian.replace(',', '.'), english, 'Italian punctuation must not alter numerical values');
+    assert.ok(italian.includes(','), 'Italian display should use a comma');
+    assert.ok(!rows[i][2].includes(','), 'CSV must use a locale-independent decimal point');
   });
+});
+
+test('switching display locale never changes the bytes or provenance of fictional CSV', () => {
+  const {planets, houses, csv} = baseFixtureRows();
+  for (const locale of ['en', 'it', 'en', 'it']) {
+    const before = planets.map(({longitude}) => longitude);
+    const displayed = planets.map(({longitude}) => formatEclipticLongitude(longitude, locale));
+    assert.equal(displayed.length, 10);
+    assert.deepEqual(planets.map(({longitude}) => longitude), before);
+    assert.equal(buildSyntheticChartCsv(planets, houses), csv);
+    assert.ok(csv.endsWith('FICTIONAL_NOT_CALCULATED\\r\\n'));
+    assert.ok(!csv.includes('longitude_degrees,data_quality\\r\\nplanet,Sun,19,3,'));
+  }
 });
 
 test('invalid inspector longitudes are unavailable, not silently normalized into CSV', () => {
@@ -54,7 +71,7 @@ test('actual desktop source uses the same formatter for planet and house inspect
   const component = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
   const template = readFileSync(new URL('../src/app/desktop-app.component.html', import.meta.url), 'utf8');
   assert.match(component, /import \{ formatEclipticLongitude \} from '\.\/format-longitude';/);
-  assert.match(component, /formatDegrees\(value:number\): string \{ return formatEclipticLongitude\(value\); \}/);
+  assert.match(component, /formatDegrees\(value:number\): string \{ return formatEclipticLongitude\(value, this\.locale\); \}/);
   assert.match(component, /buildSyntheticChartCsv\(this\.planets, this\.houses\)/);
   assert.match(template, /formatDegrees\(planet\.longitude\)/);
   assert.match(template, /formatDegrees\(house\.longitude\)/);
