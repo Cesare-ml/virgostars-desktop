@@ -5,8 +5,6 @@
  * the browser adapter revokes it later to avoid interrupting WebView downloads.
  * This does not prove a file was saved.
  */
-import { SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
-
 export const SYNTHETIC_CSV_REVOKE_DELAY_MS = 30_000;
 
 export interface SyntheticCsvDownloadPort {
@@ -18,13 +16,14 @@ export interface SyntheticCsvDownloadPort {
 
 export function requestSyntheticCsvDownload(
   csv: string,
+  filename: string,
   port: SyntheticCsvDownloadPort,
 ): void {
   // If createUrl fails, no URL was returned and there is nothing to revoke.
   const url = port.createUrl(csv);
   let revocationScheduled = false;
   try {
-    port.click(url, SYNTHETIC_CSV_FILENAME);
+    port.click(url, filename);
     port.scheduleRevoke(url, SYNTHETIC_CSV_REVOKE_DELAY_MS);
     revocationScheduled = true;
   } finally {
