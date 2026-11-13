@@ -2,7 +2,7 @@
   "name": "virgostars-desktop",
   "version": "0.0.1",
   "private": true,
-  "description": "Private experimental VirgoStars desktop Angular workstation with real Astrological Charts renderer",
+  "description": "Open-source-ready experimental VirgoStars desktop Angular workstation with synthetic Astrological Charts renderer",
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
