@@ -53,6 +53,24 @@ test('rejects explicit CSS hiding on desktop or narrow layout', () => {
   fixture.styles = 'footer { opacity: 0; }';
   assert.throws(() => verifyAttribution(fixture), /hidden by CSS/);
 });
+test('rejects hiding attribution through functional CSS selectors', () => {
+  const fixture = valid();
+  fixture.styles = '@media(max-width:700px) { :where(footer) { display: none; } }';
+  assert.throws(() => verifyAttribution(fixture), /hidden by CSS/);
+  fixture.styles = ':is(.copyright-attribution) { visibility: hidden; }';
+  assert.throws(() => verifyAttribution(fixture), /hidden by CSS/);
+  fixture.styles = ':where(.footer-secondary) { display: none; }';
+  assert.equal(verifyAttribution(fixture), true);
+});
+test('session credits remain non-shrinking and wrappable at narrow widths', () => {
+  const css = read('src/app/desktop-app.component.css');
+  const footerRule = css.match(/footer\s*\{([^}]*)\}/);
+  assert.ok(footerRule, 'missing footer style');
+  assert.match(footerRule[1], /(?:^|;)\s*flex-shrink:\s*0\s*;/);
+  assert.match(footerRule[1], /(?:^|;)\s*overflow-wrap:\s*anywhere\s*;/);
+  assert.match(footerRule[1], /(?:^|;)\s*line-height:\s*1\.45\s*;/);
+});
+
 test('rejects non-string values rather than coerce', () => {
   const fixture = valid();
   fixture.notice = null;
