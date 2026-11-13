@@ -31,7 +31,7 @@ npm run build:ui
 
 The new regression suite checks dictionary key parity, both destination-language labels, current-theme labels, live retranslation of a renderer-error key and Angular component/template source bindings.
 
-**Validation performed in this development pass:** GitHub source readback and integration assertions; the full Node test runner, complete npm suite and strict Angular build were **not** executed on the private repository checkout. A native Windows 11 Tauri/WebView2 and screen-reader acceptance pass remains pending.
+**Validation actually performed in this development pass:** the exact **nine test bodies** from the committed parent suite (3) and integration suite (6) ran against the committed translation/helper source in an isolated V8 harness: **9/9 PASS**. The harness removed TypeScript-only syntax, provided narrow assert/test and file-read shims, and supplied the actual committed Angular component/template strings for source assertions. GitHub source blob identities were verified for all five files. **This is not execution of the committed Node test files with Node's own test runner, nor a complete checkout**; the full \`npm test\`, Angular strict build and native Windows 11 Tauri/WebView2/screen-reader acceptance remain pending.
 
 ## Review and merge ordering
 
