@@ -35,3 +35,11 @@ The 14 **executed local unit tests** use real temporary local files, including n
 Two additional real-acquisition mock-transport regressions have been added to the existing `tests/acquire-horizons-vectors.test.mjs`. They verify preservation of an untracked file and an in-place modified response on a failed second request. **These two full-acquisition tests were not run in the isolated local mirror.** Re-run the full Node suite from an up-to-date checkout before making the change merge-ready.
 
 **Not executed:** real Horizons networking, end-to-end current-repo Node suite, Rust/Cargo, Angular, Windows Tauri/WebView2 or a DE441 scientific comparison. No merge, release, GitHub Actions, publication, user records or production change.
+
+## D-16 — Ownership is recorded from the original file handle
+
+The acquisition now writes response bytes and the JSON manifest via `writeOwnedFileOnce`, using exclusive, no-follow file creation and an opened descriptor, then captures device/inode, size, mtime and ctime **from that same descriptor** before closing it. A fresh path/directory lookup must still match those objects before the file is added to the run-owned cleanup list. This removes the earlier gap in which ownership was first recorded by reopening a filename after a separate `writeFile` call. Changed names, swapped folders, symlinks, preexisting destinations and inconsistent descriptor/path metadata cause an error; ambiguous partial files are intentionally retained.
+
+The operation is still **not an atomic cross-process transaction**; hostile replacement after identity checks and before unlink remains possible. It is a defense against accidental data loss, not an OS sandbox.
+
+Node.js 22.16.0: 9 new actual-filesystem descriptor-ownership tests + 14 existing rollback tests pass; all locally available isolated tests total **51/51 PASS** (including the other 28 header/runner checks). The complete Horizons acquisition + bundle suite remains **unexecuted** in this isolated runtime. The full gate now requires **84 tests** instead of 75 (new suite of 9), and remains fail-closed when modules are missing.

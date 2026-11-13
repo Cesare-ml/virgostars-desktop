@@ -5,13 +5,13 @@
  */
 import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { lstat, open, mkdir, writeFile } from 'node:fs/promises';
+import { lstat, open, mkdir } from 'node:fs/promises';
 import { setTimeout as wait } from 'node:timers/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildHorizonsVectorPlan } from './prepare-horizons-vector-plan.mjs';
 import { parseUniqueHorizonsHeaders } from './strict-horizons-headers.mjs';
-import { recordNewDirectory, recordCreatedFile, cleanupOnlyOwnedFiles } from './rollback-horizons-directory.mjs';
+import { recordNewDirectory, writeOwnedFileOnce, cleanupOnlyOwnedFiles } from './rollback-horizons-directory.mjs';
 
 const MAX_PLAN_BYTES = 64 * 1024;
 const MAX_RESPONSE_BYTES = 512 * 1024;
@@ -199,16 +199,15 @@ export async function acquireHorizonsVectors(planPath, outputDirectory, options 
       const parsed = parseHorizonsVectorResponse(text, {...request,tdbJulianDay:plan.tdbJulianDay});
       verify(parsed.status === 'PARSED_VECTOR_UNAUTHENTICATED', 'INVALID_RESPONSE');
       // Never save transformed data in place of the original response bytes.
-      await writeFile(join(outputDirectory, request.responseFilename), responseBytes, {flag:'wx',mode:0o600});
-      createdFiles.push(await recordCreatedFile(outputDirectory,request.responseFilename));
+      createdFiles.push(await writeOwnedFileOnce(outputDirectory,directoryIdentity,
+        request.responseFilename,responseBytes));
       manifest.responses.push({bodyId:request.bodyId,naifId:request.naifId,
         responseFilename:request.responseFilename,
         queryUrlSha256:sha256(Buffer.from(request.url,'utf8')),
         originalResponseSha256:sha256(responseBytes),sourceClaim:parsed.sourceClaim});
     }
-    await writeFile(join(outputDirectory,'response-manifest.json'),
-      JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});
-    createdFiles.push(await recordCreatedFile(outputDirectory,'response-manifest.json'));
+    createdFiles.push(await writeOwnedFileOnce(outputDirectory,directoryIdentity,
+      'response-manifest.json',JSON.stringify(manifest,null,2)+'\n'));
     completed = true;
     return Object.freeze({status:'CAPTURED_10_UNAUTHENTICATED_RESPONSES',count:10,
       scientificallyValidated:false});

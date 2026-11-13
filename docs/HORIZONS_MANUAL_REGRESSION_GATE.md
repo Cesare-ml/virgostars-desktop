@@ -6,7 +6,7 @@
 
 The JPL/Horizons request planner, downloader, original-response bundle verifier, safe rollback helper and strict header parser were developed as adjacent pieces. A test suite that runs only the available files on a partial checkout can misleadingly look green even if the downloader, plan or verifier were never exercised.
 
-The new entrypoint `scripts/ephemeris/run-horizons-regressions.mjs` uses an **explicit closed list** of tests and exact expected counts. It refuses missing, symlinked, zero-byte or excessively large test files and fails closed if Node's TAP report is missing, truncated, inconsistent or reports any failing, skipped, cancelled or TODO cases. It executes exactly the five selected test files without arbitrary path arguments. Its output consists of fixed status codes and a passing test count; no response bodies, private epochs or local file paths are printed.
+The new entrypoint `scripts/ephemeris/run-horizons-regressions.mjs` uses an **explicit closed list** of tests and exact expected counts. It refuses missing, symlinked, zero-byte or excessively large test files and fails closed if Node's TAP report is missing, truncated, inconsistent or reports any failing, skipped, cancelled or TODO cases. It executes exactly the six selected test files without arbitrary path arguments. Its output consists of fixed status codes and a passing test count; no response bodies, private epochs or local file paths are printed.
 
 ## Commands (Node.js 22+)
 
@@ -18,7 +18,7 @@ node scripts/ephemeris/run-horizons-regressions.mjs --suite all
 ```
 
 - `--suite core`: 29 tests: conservative rollback (14), strict pre-ephemeris headers (15).
-- `--suite all`: **75 tests**: reviewed query plan (10), mocked acquisition (21), offline ten-response audit (15), rollback (14), strict header reader (15).
+- `--suite all`: **84 tests**: reviewed query plan (10), mocked acquisition (21), offline ten-response audit (15), rollback (14), strict header reader (15), descriptor-owned writes (9).
 
 The count is pinned deliberately. Any added or removed tests must trigger a review and update of this contract. Never lower the expected count to mask failing, skipped or unavailable tests.
 
@@ -49,6 +49,10 @@ Locally executed source and test byte content exactly matches GitHub blob hashes
 - `scripts/ephemeris/run-horizons-regressions.mjs`: `4e0b47fe0825da6167d66d75f36d8d7f6257cde5`
 - `tests/run-horizons-regressions.test.mjs`: `d928e01bb2f7392b3d6c00f5b9feffc3a7af26c2`
 
-**Not executed:** the complete 75-case suite on a full clone, any real Horizons request, real JPL data, scientific DE441 comparison, Cargo/Rust, Angular/npm, Windows Tauri/WebView2 or releases. A green 75-case result in future would verify these particular simulated integration and security tests only, not source authenticity or astronomical precision.
+**Not executed:** the complete 84-case suite on a full clone, any real Horizons request, real JPL data, scientific DE441 comparison, Cargo/Rust, Angular/npm, Windows Tauri/WebView2 or releases. A green 84-case result in future would verify these particular simulated integration and security tests only, not source authenticity or astronomical precision.
 
 No GitHub Actions, deploy, main merge or production change.
+
+## D-16 follow-up — verified descriptor-owned writes
+
+The all-suite now also includes `tests/owned-horizons-writes.test.mjs` (9 real-file tests), increasing the required complete total from 75 to **84**. The isolated local mirror ran **51/51 PASS** (14 rollback + 15 header + 13 manual-runner + 9 owned-file tests). The manual `--suite core` still requires 29 PASS; `--suite all` reports **INCOMPLETE**, because the three acquisition/reference suites are not present in this local mirror. Do not describe the complete 84 tests as executed.

@@ -19,9 +19,10 @@ const SUITES=Object.freeze({
     'tests/verify-horizons-bundle.test.mjs',
     'tests/rollback-horizons-directory.test.mjs',
     'tests/strict-horizons-headers.test.mjs',
+    'tests/owned-horizons-writes.test.mjs',
   ]),
 });
-const EXPECTED=Object.freeze({core:29,all:75});
+const EXPECTED=Object.freeze({core:29,all:84});
 const MAX_FILE=512*1024;
 const SAFE_CODE=Object.freeze({PASS:0,FAILED:1,INCOMPLETE:2,INVALID_ARGS:2,INTERNAL_ERROR:3});
 
