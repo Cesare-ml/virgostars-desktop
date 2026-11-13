@@ -8,7 +8,7 @@ The planet and house inspector rows in the current synthetic chart shell now use
 
 - Accept only finite source ecliptic longitudes in **[0, 360)** degrees.
 - Render invalid, missing, untyped or out-of-range runtime values as **—** (unavailable); never render `NaN°` or `Infinity°`.
-- Round to one decimal **for display only**. A valid near-360 value that rounds to 360.0° is displayed as 0.0° at the circular boundary.
+- Round to one decimal **for display only**. A valid near-360 value that rounds to 360.0° is displayed as 0.0° (English) or 0,0° (Italian) at the circular boundary. Current UI locale selects `19.3°` (EN) versus `19,3°` (IT); the synthetic CSV remains locale-independent with a decimal point.
 - Do not coerce strings, perform astronomical calculation, validate ephemeris accuracy or normalize values outside the accepted range.
 - No network calls, user records, profile storage, new native commands, credentials, dependencies or asset rights changes.
 
@@ -23,7 +23,7 @@ node --experimental-strip-types --test tests/format-longitude.test.mjs
 tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/format-longitude.ts
 ```
 
-Four standalone Node tests passed locally and TypeScript standalone compilation passed. **Not executed here:** the complete `npm test` suite, Angular build, Rust/Cargo, Windows Tauri/WebView2 GUI, or inspection with real ephemeris data.
+Five standalone Node formatter tests passed locally, plus four cross-module CSV/geometry tests (9/9 total in the isolated mirror), and TypeScript standalone compilation passed. Unknown runtime locales produce an unavailable dash instead of an invented format. The remaining Angular-source integration test needs a complete checkout. **Not executed here:** the complete `npm test` suite, Angular build, Rust/Cargo, Windows Tauri/WebView2 GUI, or inspection with real ephemeris data.
 
 ## Integration
 
