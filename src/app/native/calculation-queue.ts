@@ -137,7 +137,11 @@ export class LatestCalculationQueue<T> {
 
   constructor(sessionId: string, port: CalculationPort, validate: SnapshotValidator<T>,
     notify: (outcome: CalculationOutcome<T>) => void) {
-    if (!/^[A-Za-z0-9_-]{1,80}$/.test(sessionId)) throw new Error('Invalid calculation session');
+    // RegExp.test coerces non-strings (e.g. 123, null or objects) to text.
+    // Session correlation IDs must be actual primitive strings at runtime.
+    if (typeof sessionId !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(sessionId)) {
+      throw new Error('Invalid calculation session');
+    }
     this.sessionId = sessionId;
     this.port = port;
     this.validate = validate;

@@ -346,3 +346,41 @@ test('provider mutation attempt fails safely and does not poison later valid wor
   assert.equal(observed[1].request.calculationKey,'fixture.2');
   queue.dispose();
 });
+
+
+test('session constructor rejects non-string IDs without coercion or private callbacks',()=>{
+  let coercions=0;
+  const disguised={toString(){coercions++;return 'session_1';}};
+  const revoked=Proxy.revocable({},{});
+  revoked.revoke();
+  const bad=[
+    123,0,false,true,null,undefined,NaN,Infinity,
+    ['session_1'],new String('session_1'),disguised,revoked.proxy,
+    Symbol('session_1'),
+  ];
+  for(const id of bad) {
+    assert.throws(
+      ()=>new LatestCalculationQueue(id,()=>Promise.resolve(),validate,()=>{}),
+      {message:'Invalid calculation session'},
+    );
+  }
+  assert.equal(coercions,0,'user-defined conversion must not execute');
+});
+
+test('session constructor enforces ASCII identifier bounds without changing valid requests',async()=>{
+  const seen=[],results=[];
+  const queue=new LatestCalculationQueue('S'.repeat(80),req=>{
+    seen.push(req);return Promise.resolve(reply(req));
+  },validate,x=>results.push(x));
+  assert.equal(queue.submit(valid(1)),1);
+  await settle();
+  assert.equal(seen[0].sessionId,'S'.repeat(80));
+  assert.equal(results[0].kind,'ready');
+  queue.dispose();
+  for(const id of ['', 'S'.repeat(81),'with space','with.dot','con\u00e8']) {
+    assert.throws(
+      ()=>new LatestCalculationQueue(id,()=>Promise.resolve(),validate,()=>{}),
+      {message:'Invalid calculation session'},
+    );
+  }
+});
