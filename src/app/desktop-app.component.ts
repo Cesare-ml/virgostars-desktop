@@ -15,6 +15,8 @@ import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
+import { NatalDraftComponent } from './natal-draft.component';
+import { NatalDraftState } from './natal-draft-state';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 
@@ -30,7 +32,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, OfflineCityPickerComponent],
+  imports:[CommonModule, OfflineCityPickerComponent, NatalDraftComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -62,6 +64,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   inspectorTab: InspectorTab = 'planets';
   selectedPlanet: DemoPlanet | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
+  readonly natalDraft = new NatalDraftState();
   navCollapsed = false;
   inspectorCollapsed = false;
   busy = true;
@@ -160,6 +163,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setInspectorTab(tab:InspectorTab): void {
     this.inspectorTab = tab;
     this.cd.markForCheck();
+  }
+  openNatalDraft(): void {
+    this.inspectorCollapsed = false;
+    this.setInspectorTab('draft');
+  }
+  updateDraftCity(place: OfflinePlaceV1 | null): void {
+    this.selectedCity = place;
+  }
+  selectOfflineCity(place: OfflinePlaceV1): void {
+    this.selectedCity = place;
+    this.natalDraft.setPlace(place);
+  }
+  clearOfflineCity(): void {
+    this.selectedCity = null;
+    this.natalDraft.setPlace(null);
   }
   selectPlanet(name:DemoPlanet): void {
     // Inspector-only selection; the upstream renderer does not yet expose a stable

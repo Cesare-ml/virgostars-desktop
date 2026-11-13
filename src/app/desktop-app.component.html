@@ -34,6 +34,10 @@
         </button>
       </div>
       <div class="nav-separator"></div>
+      <button type="button" class="nav-item" [class.selected]="inspectorTab==='draft' && !inspectorCollapsed"
+        [attr.title]="t('natal.title')" (click)="openNatalDraft()">
+        <span class="nav-mark" aria-hidden="true">⊕</span><span class="nav-label">{{t('natal.title')}}</span>
+      </button>
       <button type="button" class="nav-item" disabled [attr.title]="t('archive')">
         <span class="nav-mark" aria-hidden="true">▤</span><span class="nav-label">{{t('archive')}}</span>
       </button>
@@ -79,6 +83,8 @@
           [attr.aria-selected]="inspectorTab==='houses'" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
         <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content"
           [attr.aria-selected]="inspectorTab==='settings'" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
+        <button type="button" role="tab" id="tab-draft" aria-controls="inspector-content"
+          [attr.aria-selected]="inspectorTab==='draft'" (click)="setInspectorTab('draft')">{{t('tab.draft')}}</button>
       </div>
       <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
         <div *ngIf="inspectorTab==='planets'">
@@ -98,10 +104,13 @@
         </div>
         <div *ngIf="inspectorTab==='settings'">
           <p class="inspector-hint">{{t('settings.help')}}</p>
-          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="selectedCity = $event" (locationEdited)="selectedCity = null"></vs-offline-city-picker>
+          <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="selectOfflineCity($event)" (locationEdited)="clearOfflineCity()"></vs-offline-city-picker>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
+        </div>
+        <div *ngIf="inspectorTab==='draft'">
+          <vs-natal-draft [locale]="locale" [draft]="natalDraft" (cityChanged)="updateDraftCity($event)"></vs-natal-draft>
         </div>
       </div>
     </aside>
