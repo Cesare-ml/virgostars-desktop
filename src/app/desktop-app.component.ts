@@ -13,7 +13,7 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
-import { buildSyntheticChartCsv } from './synthetic-csv-export';
+import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
 import { requestSyntheticCsvDownload } from './synthetic-csv-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
@@ -241,7 +241,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     try {
       // Only the fixed fictional inspector values may cross this export boundary.
       const csv = buildSyntheticChartCsv(this.planets, this.houses);
-      requestSyntheticCsvDownload(csv, {
+      requestSyntheticCsvDownload(csv, SYNTHETIC_CSV_FILENAME, {
         createUrl: content => URL.createObjectURL(new Blob([content], {type:'text/csv;charset=utf-8'})),
         click: (url, filename) => {
           const anchor = document.createElement('a');
