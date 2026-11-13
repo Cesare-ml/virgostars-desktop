@@ -5,7 +5,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {hasDesktopComponentLayout, hasDesktopLayoutOverride, inspectDesktopComponentStyles} from '../scripts/verify-component-styles.mjs';
 
-const COMPONENT_CSS = '.workspace[_ngcontent-%COMP%]{display:grid;grid-template-columns:208px minmax(0,1fr) 316px}' +
+const COMPONENT_CSS = '.desktop-app[_ngcontent-%COMP%]{display:grid;grid-template-rows:60px minmax(0,1fr)}' +
+  '.workspace[_ngcontent-%COMP%]{display:grid;grid-template-columns:208px minmax(0,1fr) 316px}' +
   '.chart-stage[_ngcontent-%COMP%]{position:relative;flex:1;min-height:0;display:grid;place-items:center}';
 const GLOBAL_CSS = ':root{color-scheme:light}vs-desktop-app{height:100%}*{box-sizing:border-box}';
 
@@ -91,6 +92,7 @@ test('the real offline bundle CLI executes the compiled component style check',(
 
 test('rejects layout-hiding and non-grid overrides despite otherwise valid source styles',()=>{
   for(const override of [
+    '.desktop-app{display:none}',
     '.workspace{display:block}',
     '.chart-stage{display:none!important}',
     '@media(max-width:760px){.workspace{display:flex}}',
@@ -114,3 +116,9 @@ test('preserves responsive descendant-only visibility rules and safe grid overri
   assert.equal(hasDesktopLayoutOverride(css),false);
   assert.equal(inspectDesktopComponentStyles(root).evidence,'main-ABC.js');
 }));
+
+test('requires the desktop app shell grid as well as both inner layout grids',()=>{
+  const noShell=COMPONENT_CSS.replace(/\.desktop-app\[[^\]]+\]\{[^}]+\}/,'');
+  assert.equal(hasDesktopComponentLayout(noShell),false);
+  assert.equal(hasDesktopComponentLayout(COMPONENT_CSS),true);
+});
