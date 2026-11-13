@@ -69,3 +69,30 @@ Before declaring this milestone integrated: record a compiled Windows binary and
 The verified `platform` and protocol version can later help gate update packages, local SQLite, and native ephemeris bindings. This command is **not** a substitute for any of those implementations.
 
 No GitHub Actions, merge, release, deployment or change to VirgoStars production services is part of this increment. Repository is still private and the eventual open-source license remains undecided.
+
+## Bounded native capability handshake (2026-11-13, draft)
+
+The Angular runtime label must not remain on "checking" forever if the
+local Tauri IPC command hangs. The `probeDesktopRuntime` adapter now applies a
+**4,000 ms default deadline** only to the read-only `desktop_runtime_info`
+native invocation. A successful v1 reply still produces `desktop_demo`.
+A timeout, malformed response, rejected native invocation, invalid configured
+deadline or timer setup failure produces `native_unavailable` with no raw
+exception details. Browser previews skip both the IPC command and timer.
+
+The deadline is cleared when the probe settles. A late native reply after
+timeout is ignored by the settled promise; this does **not** cancel an operation
+inside Tauri. The call is strictly read-only and local, so no retry or
+background polling is introduced. The default is fixed at 4 seconds for the
+application; tests can inject deterministic timers and a positive integral
+timeout up to 30 seconds. This is not an authentication, login, cloud-sync or
+ephemeris readiness signal.
+
+Run `node --experimental-strip-types --test tests/native-runtime.test.mjs`
+and the full `npm test` suite in the authorized desktop checkout. Synthetic
+tests cover never-settling IPC, cleanup, late replies, invalid timeouts, and
+the browser-preview bypass. Windows WebView2 UI and production builds still
+require a separate real-machine acceptance test; a synthetic timeout test
+does not prove native stability, operating-system integration, or astronomical
+accuracy. No sensitive paths, credentials, production users or cloud calls
+are involved.

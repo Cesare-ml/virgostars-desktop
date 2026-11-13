@@ -1,10 +1,10 @@
 # Catalogo offline di città e stati
 
-**Stato: prototipo, catalogo condiviso nella release privata.** Il convertitore importa i CSV forniti dal proprietario in SQLite/FTS5, senza contattare PostgreSQL o servizi remoti. La ricerca nativa e il selettore in Parametri sono sperimentali. La scelta è temporanea e non modifica il grafico dimostrativo.
+**Stato: prototipo; il catalogo è un asset ad accesso riservato e non è concesso automaticamente in redistribuzione pubblica.** Il convertitore importa i CSV forniti dal proprietario in SQLite/FTS5, senza contattare PostgreSQL o servizi remoti. La ricerca nativa e il selettore in Parametri sono sperimentali. La scelta è temporanea e non modifica il grafico dimostrativo.
 
 ## Compilare con il catalogo completo
 
-Il repository è privato: serve un account GitHub con accesso al repository, anche per scaricare la release privata del catalogo. Installare [GitHub CLI](https://cli.github.com/), autenticarsi con `gh auth login` e seguire i prerequisiti per Node, Rust, WebView2 e il repository `astrological-charts` in [Shell 001](SHELL-001.md). Serve anche accesso al repository privato `Cesare-ml/astrological-charts`. Il pacchetto è fissato alla release `places-20261112-v2`; lo script confronta SHA-256 dell'archivio e del database con valori presenti nel codice, rifiuta file inattesi e non sovrascrive un catalogo diverso.
+**AVVERTENZA PRIMA DELLA PUBBLICAZIONE:** la release `places-20261112-v2` contiene `world-cities.zip`. Se questo repository diventa pubblico, anche la release e il database potrebbero diventare pubblicamente scaricabili. Spostare o rimuovere l'asset da questa release e verificare i diritti e la cronologia PRIMA di cambiare la visibilità. Fino ad allora il download richiede un account GitHub con accesso autorizzato. Installare [GitHub CLI](https://cli.github.com/), autenticarsi con `gh auth login` e seguire i prerequisiti per Node, Rust, WebView2 e il repository `astrological-charts` in [Shell 001](SHELL-001.md). Il sorgente di `astrological-charts` è disponibile pubblicamente. L'attuale pacchetto riservato è fissato alla release `places-20261112-v2` e il comando relativo dovrà essere disabilitato o spostato prima della pubblicazione; lo script confronta SHA-256 dell'archivio e del database con valori presenti nel codice, rifiuta file inattesi e non sovrascrive un catalogo diverso.
 
 Su Windows, in una cartella che conterrà entrambi i progetti, preparare i due checkout e autenticare GitHub CLI:
 
@@ -23,7 +23,7 @@ npm run tauri:build:places:windows
 
 Se il pack sintetico Charts è già stato generato, seguire [Shell 001](SHELL-001.md) per riutilizzarlo senza sovrascriverlo.
 
-Il comando scarica il catalogo autorizzato, genera l'overlay, compila il frontend e crea gli installer. Il database si conserva in `.local/places` e viene incluso come risorsa offline; la normale `npm run tauri:build` resta la build sintetica senza catalogo. Su macOS, con gli stessi prerequisiti della piattaforma, eseguire `python3 scripts/places/fetch_catalog.py`, `python3 scripts/places/prepare_tauri_bundle.py`, `npm run build:ui`, `npm run prepare:icon` e `npx tauri build --config .local/places/tauri-places.conf.json`; il percorso macOS non è stato verificato. L’accesso alla release privata richiede i permessi del repository e non equivale a disponibilità pubblica.
+Il comando scarica il catalogo autorizzato, genera l'overlay, compila il frontend e crea gli installer. Il database si conserva in `.local/places` e viene incluso come risorsa offline; la normale `npm run tauri:build` resta la build sintetica senza catalogo. Su macOS, con gli stessi prerequisiti della piattaforma, eseguire `python3 scripts/places/fetch_catalog.py`, `python3 scripts/places/prepare_tauri_bundle.py`, `npm run build:ui`, `npm run prepare:icon` e `npx tauri build --config .local/places/tauri-places.conf.json`; il percorso macOS non è stato verificato. L'accesso riservato è valido soltanto finché la release non è pubblicamente visibile. **Non rendere pubblico questo repository con l'asset ancora allegato.**
 
 ## Conversione degli export originali
 
@@ -48,4 +48,4 @@ I test locali hanno verificato checksum ed estrazione del pacchetto completo, e 
 
 ## Build con immagini astrologiche originali
 
-La build standard qui descritta usa immagini sintetiche. Per includere le immagini approvate, clonare anche il repository privato `astrological-assets` accanto a Desktop e Charts, quindi usare `npm run tauri:build:places:private:windows`. Consultare [pipeline degli asset](ASSET_PIPELINE.md) per verifiche e limiti di condivisione.
+La build standard qui descritta usa immagini sintetiche. Per includere le immagini approvate, clonare anche il checkout locale autorizzato `astrological-assets` accanto a Desktop e Charts, quindi usare `npm run tauri:build:places:private:windows`. Consultare [pipeline degli asset](ASSET_PIPELINE.md) per verifiche e limiti di condivisione.
