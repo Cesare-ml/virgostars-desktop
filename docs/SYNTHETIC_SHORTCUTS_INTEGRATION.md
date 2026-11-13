@@ -30,12 +30,14 @@ Actual isolated validation with Node.js **22.16.0** and TypeScript **5.8.3**, us
 
 ```sh
 node --experimental-strip-types --test \
-  --test-skip-pattern='merged component|merged Angular|integrated Angular shell|integrated template|actual desktop source' \
+  --test-skip-pattern='merged component|merged Angular|integrated Angular shell|integrated template|actual desktop source|desktop error state|the Angular component|the template announces' \
   tests/desktop-shortcuts.test.mjs \
   tests/synthetic-shortcuts-integration.test.mjs \
   tests/desktop-shortcuts-i18n-regression.test.mjs \
   tests/format-longitude.test.mjs \
-  tests/synthetic-inspector-csv-precision.test.mjs
+  tests/synthetic-inspector-csv-precision.test.mjs \
+  tests/desktop-i18n-state.test.mjs \
+  tests/desktop-i18n-integration.test.mjs
 
 tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM \
   src/app/desktop-shortcuts.ts src/app/workspace-state.ts \
@@ -43,11 +45,11 @@ tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler
   src/app/synthetic-csv-export.ts src/app/translations.ts
 ```
 
-- **38/38 selected real Node tests passed, 0 failures and 0 skips.** This includes **22 upstream parser cases**, **3 executable shortcut/CSV integration cases**, **4 executable new i18n/keyboard cases**, and **9 existing geometry/longitude/CSV cases**.
+- **44/44 selected real Node tests passed, 0 failures and 0 skips.** This includes **22 upstream parser cases**, **3 executable shortcut/CSV integration cases**, **4 executable new i18n/keyboard cases**, **9 existing geometry/longitude/CSV cases**, and **6 original #96 pure i18n cases**.
 - Strict standalone TypeScript compilation of **all six pure modules passed**. It is not an Angular component compilation or proof of a native build.
-- Git blob SHA verified for all **six pure modules** and **five executed test files**. Relevant new blobs: `src/app/translations.ts` `486cc2346562fd4aa61f922380f5c1207d9167b1`, `tests/desktop-shortcuts-i18n-regression.test.mjs` `7a4c92ad45fb1f437e346354e1ae5d66c3cf892e`.
+- Git blob SHA verified for all **six pure modules** and **seven executed test files**. Relevant new blobs: `src/app/translations.ts` `486cc2346562fd4aa61f922380f5c1207d9167b1`, `tests/desktop-shortcuts-i18n-regression.test.mjs` `7a4c92ad45fb1f437e346354e1ae5d66c3cf892e`.
 - **15/15 source-level GitHub readback checks** passed for current Angular shell/template, translated error/active theme/action, preserved shortcut listener, IT/EN longitudes, fictional CSV and non-networked browser export port.
-- Two source-only cases in the original shortcut/CSV integration suite, two in the new i18n suite, and four original #98 source-integration cases **have not been executed against a complete checkout**. Three original source-wiring tests from #96, plus its six pure behavior tests, have not yet been rerun with the actual Node runner in the combined full checkout. The actual Node runner filters such tests here; direct source readback checks are not equivalent to Angular compilation or end-to-end behavior.
+- Two source-only cases in the original shortcut/CSV integration suite, two in the new i18n suite, and four original #98 source-integration cases **have not been executed against a complete checkout**. Three original source-wiring tests from #96 remain excluded from the isolated Node run; its **six pure behavior tests have now passed under Node's real test runner**. None of these source checks has been executed in a complete checkout. The actual Node runner filters such tests here; direct source readback checks are not equivalent to Angular compilation or end-to-end behavior.
 
 ### Newly integrated i18n slice (from #96)
 
