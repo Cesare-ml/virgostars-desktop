@@ -45,6 +45,9 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.state.input(input.value);
+    // Browser maxlength counts UTF-16 code units; state caps at 80 code points.
+    // Reflect the normalized query so displayed text always matches IPC input.
+    if (input.value !== this.state.query) input.value = this.state.query;
     this.locationEdited.emit();
   }
 
