@@ -37,13 +37,16 @@ export function loadUiPreferences(storage: UiPreferencesStorage | null): UiPrefe
   } catch { return {...DEFAULT_UI_PREFERENCES}; }
 }
 
-/** Best-effort persistence: failed writes must never stop the local UI. */
+/** Best-effort persistence: failed writes and malformed callers never stop the local UI. */
 export function saveUiPreferences(storage: UiPreferencesStorage | null, preferences: UiPreferences): boolean {
-  if (!storage || !['light','dark'].includes(preferences.theme) || !['it','en'].includes(preferences.locale)) return false;
   try {
-    storage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
-      version:1, theme:preferences.theme, locale:preferences.locale,
-    }));
+    if (!storage || !preferences) return false;
+    // Snapshot exactly once. Mutable/accessor-backed values must not change
+    // between validation and serialization, or inject unrelated fields.
+    const theme = preferences.theme;
+    const locale = preferences.locale;
+    if ((theme !== 'light' && theme !== 'dark') || (locale !== 'it' && locale !== 'en')) return false;
+    storage.setItem(UI_PREFERENCES_KEY, JSON.stringify({version: 1, theme, locale}));
     return true;
   } catch { return false; }
 }
