@@ -54,7 +54,10 @@ try {
     Push-Location (Join-Path $desktop 'src-tauri')
     try { Invoke-Step 'Run Rust unit tests' 'cargo' @('test') }
     finally { Pop-Location }
-    Invoke-Step 'Compile and verify Angular/Tauri prototype' 'npm.cmd' @('run', 'tauri:build')
+    # The tauri:build npm script rebuilds Angular, invalidating the CSS/bundle checks above.
+    # Call the already-installed Tauri CLI directly in offline npm mode, so the
+    # native binary packages the exact previously audited frontendDist.
+    Invoke-Step 'Compile previously verified Angular/Tauri prototype' 'npm.cmd' @('exec', '--offline', '--', 'tauri', 'build')
     Invoke-Step 'Verify generated Angular files and prototype executable exist' 'npm.cmd' @('run', 'doctor:verify')
     Write-Host 'Prototype build finished. No installer, signing, deployment or merge performed.'
     Write-Host 'Next: disconnect Internet and test WebView2, all chart modes, PNG export and native IPC.'
