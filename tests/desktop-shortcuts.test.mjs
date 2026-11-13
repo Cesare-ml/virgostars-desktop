@@ -65,3 +65,42 @@ test('IME composition does not trigger chart mode changes', () => {
 test('already-handled shortcut events remain untouched', () => {
   assert.equal(parseDesktopShortcut(key('Digit1',{defaultPrevented:true})), null);
 });
+
+test('ARIA composite editors keep their hotkeys, even when built from divs', () => {
+  for (const role of ['textbox','searchbox','combobox','spinbutton','slider','listbox','grid','gridcell','menu','menuitem']) {
+    const target = {tagName:'DIV',getAttribute:name => name === 'role' ? role : null,closest:()=>null};
+    assert.equal(parseDesktopShortcut(key('Digit1',{target})),null,role);
+  }
+});
+test('ARIA dialog and native dialog block chart changes from their buttons', () => {
+  for (const role of ['dialog','alertdialog']) {
+    const target = {tagName:'BUTTON',closest:selector => selector.includes(`[role="${role}"]`) ? {} : null};
+    assert.equal(parseDesktopShortcut(key('Digit2',{target})),null,role);
+  }
+  assert.equal(parseDesktopShortcut(key('Digit2',{target:{tagName:'DIALOG'}})),null);
+  assert.equal(parseDesktopShortcut(key('Digit2',{target:{tagName:'BUTTON',closest:selector=>selector.includes('dialog') ? {} : null}})),null);
+});
+test('aria-modal dialog container blocks shortcuts', () => {
+  const target = {tagName:'DIV',getAttribute:name=>name==='aria-modal' ? 'true' : null,closest:()=>null};
+  assert.equal(parseDesktopShortcut(key('Digit3',{target})),null);
+});
+test('role fallbacks and mixed-case roles remain protected', () => {
+  const target = {tagName:'DIV',getAttribute:name=>name==='role' ? 'custom TeXtBoX' : null,closest:()=>null};
+  assert.equal(parseDesktopShortcut(key('Digit4',{target})),null);
+});
+test('role=toolbar does not hide shortcuts from normal workspace controls', () => {
+  const target = {tagName:'BUTTON',getAttribute:name=>name==='role' ? 'toolbar' : null,closest:()=>null};
+  assert.deepEqual(parseDesktopShortcut(key('Digit4',{target})),{kind:'mode',mode:'latitude'});
+});
+test('an ARIA editor inside the composed path cannot trigger a shortcut', () => {
+  const target={tagName:'CUSTOM-DATE'};
+  const inner={tagName:'DIV',getAttribute:name=>name==='role' ? 'spinbutton' : null,closest:()=>null};
+  assert.equal(parseDesktopShortcut(key('Digit0',{target,composedPath:()=>[inner,target]})),null);
+});
+test('untrusted role getter errors fail closed', () => {
+  const target={tagName:'DIV',getAttribute:()=>{throw new Error('untrusted node')}};
+  assert.equal(parseDesktopShortcut(key('Digit1',{target})),null);
+});
+test('native select option is considered an editable target', () => {
+  assert.equal(parseDesktopShortcut(key('Digit1',{target:{tagName:'OPTION'}})),null);
+});
