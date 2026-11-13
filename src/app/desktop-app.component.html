@@ -11,7 +11,7 @@
     </div>
     <div class="top-actions">
       <span class="lab-indicator">{{t('lab')}}</span>
-      <button type="button" class="small-control" [attr.aria-label]="t('language')" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button>
+      <button type="button" class="small-control" [attr.aria-label]="languageToggleLabel" [attr.title]="languageToggleLabel" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button>
       <button type="button" class="small-control" [attr.aria-label]="themeToggleLabel" [attr.title]="themeToggleLabel" (click)="toggleTheme()">{{theme === 'light' ? '☾' : '☼'}}</button>
     </div>
   </header>
@@ -54,7 +54,7 @@
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
         <span class="fixture-label">{{t('fixture')}}</span>
         <div class="chart-message" *ngIf="busy" role="status">{{t('chart.loading')}}</div>
-        <p class="chart-error" *ngIf="error" role="alert">{{error}}</p>
+        <p class="chart-error" *ngIf="error" role="alert">{{errorText}}</p>
       </section>
       <div class="chart-toolbar" role="toolbar" [attr.aria-label]="t('chart')">
         <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
@@ -101,6 +101,7 @@
           <p class="inspector-hint">{{t('settings.help')}}</p>
           <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="selectedCity = $event" (locationEdited)="selectedCity = null"></vs-offline-city-picker>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
+          <div class="setting-line"><span>{{t('shortcuts.title')}}</span><strong>{{t('shortcuts.help')}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
         </div>

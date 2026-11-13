@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import {
-  AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy,
+  AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy,
   ViewChild, inject
 } from '@angular/core';
 import {
@@ -10,13 +10,16 @@ import {
   chartSide, CHART_MODES, type ChartMode, type InspectorTab, type UiTheme
 } from './workspace-state';
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
-import { translate, type Locale, type MessageKey } from './translations';
+import { displayLanguageAction, displayMessage, displayThemeLabel, translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { parseDesktopShortcut } from './desktop-shortcuts';
 import { formatEclipticLongitude } from './format-longitude';
 import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
 import { requestSyntheticCsvDownload } from './synthetic-csv-download';
 import { createSyntheticCsvBrowserPort } from './synthetic-csv-browser-port';
+import {validatePngDataUrl, syntheticPngFilename} from './png-export-safety';
+import {requestSyntheticPngDownload} from './png-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -69,16 +72,36 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ready = false;
   status: MessageKey = 'chart.loading';
   runtimeStatus: MessageKey = 'runtime.checking';
-  error = '';
+  error: MessageKey | null = null;
   csvStatus: MessageKey | null = null;
 
   t(key:MessageKey): string { return translate(this.locale,key); }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
-  get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
+  get languageToggleLabel(): string { return displayLanguageAction(this.locale); }
+  get activeThemeLabel(): string { return displayThemeLabel(this.locale, this.theme); }
+  get errorText(): string { return displayMessage(this.locale, this.error); }
   get csvStatusLabel(): string { return this.csvStatus ? this.t(this.csvStatus) : ''; }
   formatDegrees(value:number): string { return formatEclipticLongitude(value, this.locale); }
+
+  @HostListener('window:keydown', ['$event'])
+  onDesktopShortcut(event: KeyboardEvent): void {
+    if (this.destroyed || this.exporting) return;
+    const action = parseDesktopShortcut(event);
+    if (!action) return;
+    if (action.kind === 'mode') {
+      // Respect the same disabled/loading gate as the visible chart-mode buttons.
+      if (!this.initialized || this.busy || action.mode === this.mode) return;
+      event.preventDefault();
+      this.setMode(action.mode);
+      return;
+    }
+    // Fit must be inert until a chart is actually ready to display.
+    if (!this.ready || this.busy) return;
+    event.preventDefault();
+    this.fitChart();
+  }
 
   ngAfterViewInit(): void {
     // Read-only capability check, distinct from account authentication.
@@ -198,7 +221,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async draw(): Promise<void> {
     const ticket = this.drawGeneration.begin();
     if(ticket === null) return;
-    this.busy=true; this.ready=false; this.error=''; this.status='chart.loading';
+    this.busy=true; this.ready=false; this.error=null; this.status='chart.loading';
     this.cd.markForCheck();
     try {
       // Capture the request's mode, overlay and skin before awaiting the library.
@@ -222,6 +245,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   async exportPng(): Promise<void> {
     if(!this.ready || this.busy || this.destroyed || this.exporting) return;
+    const exportMode = this.mode;
+    const exportTheme = this.theme;
     this.exporting=true;
     this.busy=true; this.status='exporting'; this.cd.markForCheck();
     try {
@@ -229,10 +254,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       const png=await this.renderer.generaImmagine(natal,transits,synastry,kind,
         this.options(),{x:800,y:800},2);
       if(this.destroyed) return;
-      const link=document.createElement('a');
-      link.href=png;
-      link.download='virgostars-synthetic-'+this.mode+'-'+this.theme+'.png';
-      link.click();
+      // Never turn an unexpected renderer value into an active download URL.
+      const safePng = validatePngDataUrl(png);
+      const safeFilename = syntheticPngFilename(exportMode, exportTheme);
+      requestSyntheticPngDownload(safePng, safeFilename, {
+        createAnchor: () => document.createElement('a'),
+        appendAnchor: anchor => { document.body.appendChild(anchor); },
+      });
+      // Only a download request: browser / OS save success is not asserted.
       this.status='exported';
     } catch(error) { if(!this.destroyed) this.renderError(error); }
     finally { this.exporting=false; if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); } }
@@ -264,7 +293,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private renderError(_error:unknown): void {
     // Do not print private birth records or paths; detailed diagnostics remain
     // available through dev-only tooling during the synthetic renderer spike.
-    this.error=this.t('chart.failed');
+    this.error='chart.failed';
     this.ready=false;
     this.busy=false;
     this.cd.markForCheck();
