@@ -21,9 +21,9 @@ export type PlaceQueryState =
   | Readonly<{kind: 'query_too_short' | 'query_too_long' | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable' | 'stale'; items: readonly []}>;
 
 /**
- * Preflight for Rust's bounded FTS5 query. Unicode letters, numbers and
- * underscores delimit tokens exactly as the native parser does at this layer.
- * Keep the Rust-side checks authoritative for every caller.
+ * Preflight for Rust's bounded FTS5 query. We approximate its Unicode
+ * alphanumeric/underscore token boundaries for immediate UI feedback.
+ * Rust remains the authoritative validator for every caller.
  */
 export function offlinePlaceQueryProblem(query: string): 'query_too_short' | 'query_too_long' | null {
   const characters = [...query];
