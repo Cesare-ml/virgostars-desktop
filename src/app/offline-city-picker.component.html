@@ -36,7 +36,12 @@
       </span>
     </button>
   </div>
-  <p class="city-selected" *ngIf="state.selected">
-    {{t('city.selected')}}: <strong>{{state.selected.name}}</strong>
-  </p>
+  <div class="city-selection" *ngIf="state.selected as place">
+    <div class="city-selection-details">
+      <p class="city-selected">{{t('city.selected')}}: <strong>{{place.name}}</strong></p>
+      <p class="city-secondary" *ngIf="selectedDetail">{{selectedDetail}}</p>
+    </div>
+    <button type="button" class="city-clear" [attr.aria-label]="t('city.clear')"
+      (click)="clearSelected()">{{t('city.clear')}}</button>
+  </div>
 </section>
