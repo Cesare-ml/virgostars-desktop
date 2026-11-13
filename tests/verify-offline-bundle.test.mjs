@@ -26,7 +26,10 @@ function fixture() {
 const run=f=>{const x=fixture();try{f(x);}finally{x.clean();}};
 
 test('verifies a desktop Angular build with exact synthetic assets',()=>run(f=>{
-  assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+  const report=verifyOfflineBundle(f.bundle,f.staging);
+  assert.equal(report.count,1);
+  assert.equal(report.stylesheets,1);
+  assert.equal(report.scripts,1);
 }));
 test('detects tampered image in Angular output',()=>run(f=>{
   writeFileSync(f.img,'bad');
@@ -132,4 +135,23 @@ test('rejects inert document base in HTML comment or template',()=>run(f=>{
   // An irrelevant commented-out base must not invalidate the real one.
   writeFileSync(index,canonical.replace('<base href="/">','<!-- <base href="/wrong/"> --><base href="/">'));
   assert.equal(verifyOfflineBundle(f.bundle,f.staging).count,1);
+}));
+
+
+test('rejects missing Angular main module although base, CSS and asset hashes are valid',()=>run(f=>{
+  rmSync(join(f.bundle,'main-LCL123.js'));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Local desktop script missing/);
+}));
+
+test('rejects an extra inline JavaScript entrypoint despite a valid offline bundle',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  writeFileSync(index,readFileSync(index,'utf8').replace('</body>','<script>alert(1)</script></body>'));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Inline executable scripts/);
+}));
+
+test('rejects duplicated JavaScript main modules',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const marker='<script src="main-LCL123.js" type="module"></script>';
+  writeFileSync(index,readFileSync(index,'utf8').replace(marker,marker+marker));
+  assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/Duplicate desktop script/);
 }));
