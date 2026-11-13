@@ -39,3 +39,9 @@ This does **not** cancel in-flight asynchronous work. Upstream rendering remains
 7. Reconcile accessibility/UI PR #7 before merging.
 
 No installer, deployment, migration, online account or public release is part of this increment. License remains undecided and GitHub Actions remain disabled.
+
+## Language-switch-safe display strings (2026-11-13, isolated draft)
+
+Rendering failures are stored as a typed **message key**, not as localized Italian or English text. The error template resolves the key using the current locale on every change-detection pass; switching language after a failure must immediately update the message without re-rendering a failed chart. The current theme name in Settings also resolves from the current locale. A missing error key resolves to an empty string; no private details are rendered or logged. This does not alter scene cancellation, IPC, offline storage, chart accuracy or chart export.
+
+A pure Node test verifies Italian/English theme labels, error re-localization and the empty-error path; a source-contract assertion guards the component/template bindings. Full Angular/WebView2 validation remains required before merge.
