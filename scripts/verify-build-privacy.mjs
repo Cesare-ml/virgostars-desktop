@@ -35,7 +35,6 @@ function approvedDirectory(relative) {
   return relative === 'assets' || relative === 'assets/img' ||
     APPROVED_IMAGE_DIRECTORY.test(relative);
 }
-
 function approvedFile(relative) {
   return relative === 'index.html' || ROOT_CODE.test(relative) ||
     ROOT_LICENSE.test(relative) || APPROVED_IMAGE.test(relative);
