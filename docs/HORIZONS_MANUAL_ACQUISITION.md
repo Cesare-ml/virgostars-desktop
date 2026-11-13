@@ -88,3 +88,8 @@ The network downloader now uses `writeOwnedFileOnce` to exclusively create and w
 ## D-18 — Live NASA/JPL wire version currently differs from pinned parser
 
 A public metadata-only probe on **2026-11-13** returned `API VERSION: 1.2`, but this acquisition parser is intentionally still pinned to its previously reviewed 1.0 vector envelope. Consequently a genuine 1.2 response might be blocked, and operators should **not** weaken the parser automatically. Before manual ten-target acquisition, run `node scripts/ephemeris/probe-horizons-wire-version.mjs --probe`, review the reported version and follow [HORIZONS_WIRE_VERSION_REVIEW.md](HORIZONS_WIRE_VERSION_REVIEW.md). The probe sends no birth details, date, target, location or astronomical query. It never validates scientific calculations.
+
+
+## D-19 — Inspect a genuine wire-1.2 vector sample without changing acquisition
+
+Current JPL Horizons transport version 1.2 may be rejected by the existing strict 1.0 downloader. To inspect an independently retrieved raw text response, use the **offline** read-only command documented in [HORIZONS_WIRE12_OFFLINE_SAMPLE_REVIEW.md](HORIZONS_WIRE12_OFFLINE_SAMPLE_REVIEW.md). A structurally positive review is still **unauthenticated and not vector-approved**; do not add an automatic 1.2 allowlist until real responses, query metadata and dataset provenance have undergone an independent technical review. No change to experimental chart readiness.
