@@ -17,6 +17,14 @@ still pass because only the opening tag was counted.
 before counting, so a harmless commented example does not cause rejection.
 The canonical Angular `src/index.html` is accepted unchanged.
 
+The verifier also requires the **currently reviewed plain `<body>` tag**
+(with optional whitespace but no attributes). Otherwise, a legitimate
+Angular host inside `<body hidden>`, `<body inert>`, or
+`<body style="display:none">` could pass static verification while the
+whole Windows WebView UI is hidden. This narrow contract intentionally
+rejects any future body attributes until reviewed in a test with the
+actual compiled HTML. Closed comments containing a fake body are ignored.
+
 The validator intentionally remains a narrow, fail-closed contract for the
 generated VirgoStars Desktop entrypoint. It is not a general-purpose HTML
 parser and does not prove Windows WebView2 runtime behavior.
@@ -30,17 +38,18 @@ GitHub verifier/test files and the canonical tracked `src/index.html` ran:
 node --test tests/desktop-app-root.test.mjs
 ```
 
-**16/16 PASS, 0 failed, 0 skipped.** The source and test files in the
+**19/19 PASS, 0 failed, 0 skipped.** The source and test files in the
 isolated run matched the committed Git blob hashes:
 
-- Verifier: `7446bb0caf66e4f5ab36d9ba67366bf3f1c9aa78`
-- Test suite: `fb74beb43d75da3d782a64aa238360c396945a0f`
+- Verifier: `545edd5d38c37de68baa02393e58e470e83694fa`
+- Test suite: `af5f93fe338c67a80e966aa339c1d90d52333af1`
 - Canonical HTML: `a74eb3f05e374f539a1eba5471ea06783b972e51`
 
 The test suite covers a real root, comments, uppercase markup, absent or
 duplicated roots, unexpected attributes, mismatched body elements,
 a closing-tag duplicate after the actual root, an extra closing tag outside
-the body, and a commented-out closing tag.
+the body, a commented-out closing tag, and invisible/inert HTML body
+attributes (including a valid comment before a safe body).
 
 ## Integration/acceptance
 
