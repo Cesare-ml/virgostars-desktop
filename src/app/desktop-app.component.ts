@@ -20,6 +20,7 @@ import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
+import { nextInspectorTab } from './inspector-tab-navigation';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -193,6 +194,19 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setInspectorTab(tab:InspectorTab): void {
     this.inspectorTab = tab;
     this.cd.markForCheck();
+  }
+  /** Tabs auto-activate because their panels are local and switch instantly. */
+  onInspectorTabKeydown(event: KeyboardEvent): void {
+    if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey ||
+        event.metaKey || event.shiftKey) return;
+    const next = nextInspectorTab(this.inspectorTab, event.key);
+    if (next === null) return;
+    event.preventDefault();
+    this.setInspectorTab(next);
+    const tablist = event.currentTarget;
+    if (tablist instanceof HTMLElement) {
+      tablist.querySelector<HTMLButtonElement>(`#tab-${next}`)?.focus();
+    }
   }
   selectPlanet(name:DemoPlanet): void {
     // Inspector-only selection; the upstream renderer does not yet expose a stable
