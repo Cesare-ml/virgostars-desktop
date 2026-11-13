@@ -137,7 +137,9 @@ test('combined Angular wiring preserves scoped lookup, explicit clear and biling
   assert.match(template, /maxlength="160"/);
   assert.match(component, /if \(input\.value !== this\.state\.query\) input\.value = this\.state\.query/);
   assert.equal((strings.match(/"city\.clear":/g)||[]).length, 2);
-  assert.match(shell, /\(locationEdited\)="selectedCity = null"/);
+  const parent = read('src/app/desktop-app.component.ts');
+  assert.match(shell, /\(locationEdited\)="onCityEdited\(\)"/);
+  assert.match(parent, /onCityEdited\(\): void\s*\{\s*this\.selectedCity = null;\s*this\.updateCityClock\(\);/);
   assert.match(state, /\[\.\.\.value\]\.slice\(0, 80\)\.join\(''\)/);
   assert.match(state, /result\.kind === 'stale' \? 'busy'/);
   assert.match(bridge, /if \(items\.length > limit\) return \{kind: 'unavailable', items: \[\]\}/);
