@@ -258,13 +258,46 @@ function snapshotReceipt(input: unknown): Receipt {
 }
 
 /**
+ * Capture a bounded, dense receipt array before inspecting its elements.
+ * Iterating an untrusted array directly can execute a custom iterator or
+ * indexed getter. Only own, enumerable index data descriptors are accepted.
+ * This is a synthetic in-memory contract, not a native transport decoder.
+ */
+function snapshotReceiptBatch(input: unknown): readonly unknown[] {
+  try {
+    if (!Array.isArray(input) || Object.getPrototypeOf(input) !== Array.prototype) throw new Error();
+    // Inspect the intrinsic array length without invoking a potentially
+    // replaced getter/iterator, and cap work to the maximum send batch.
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(input, 'length');
+    const length = lengthDescriptor?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || length > 500) throw new Error();
+    const descriptors = Object.getOwnPropertyDescriptors(input);
+    const keys = Reflect.ownKeys(descriptors);
+    // Exactly the dense numeric indices and the native non-enumerable length.
+    // Reject expando, symbol, hidden, extra and replaced-iterator properties.
+    if (keys.length !== length + 1) throw new Error();
+    const snapshot: unknown[] = [];
+    for (let index = 0; index < length; index++) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+        throw new Error();
+      }
+      snapshot.push(descriptor.value);
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    throw new Error('Invalid sync receipt batch');
+  }
+}
+
+/**
  * Process a server response atomically as a pure transformation. Unknown,
  * duplicated or out-of-order receipts fail closed; retries keep pending writes.
  * A conflict remains available to the user and blocks later edits to that entity.
  */
 export function applySyncReceipts(state: Outbox, receipts: readonly Receipt[]): Outbox {
   const byId = new Map<string, Receipt>();
-  for (const raw of receipts) {
+  for (const raw of snapshotReceiptBatch(receipts)) {
     const receipt = snapshotReceipt(raw);
     if (byId.has(receipt.mutationId)) throw new Error('Duplicated sync receipt');
     if (!state.entries.some((entry) => entry.mutation.mutationId === receipt.mutationId)) {
