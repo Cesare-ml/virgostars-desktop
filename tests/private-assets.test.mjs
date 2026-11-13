@@ -31,7 +31,19 @@ test('stages only approved pinned images and verifies the private bundle',()=>ru
   writeFileSync(join(f.bundle,'index.html'),'<html><head><base href="/"><link rel="stylesheet" href="styles.css"></head><body><vs-desktop-app></vs-desktop-app><script src="main-LOCAL.js" type="module"></script></body></html>');
   writeFileSync(join(f.bundle,'styles.css'),'*{box-sizing:border-box}vs-desktop-app{display:block}');
   writeFileSync(join(f.bundle,'main-LOCAL.js'),'/* private-mode fixture: no account data */');
-  assert.equal(verifyOfflineBundle(f.bundle,f.stage,{privateMode:true,expectedPrivateHash:f.expected}).count,1);
+  const verify = () => verifyOfflineBundle(f.bundle,f.stage,{privateMode:true,expectedPrivateHash:f.expected});
+  assert.equal(verify().count,1);
+  // Private-artwork mode must enforce the same JavaScript and document-base
+  // gates as the synthetic build. A passing image manifest is not enough.
+  rmSync(join(f.bundle,'main-LOCAL.js'));
+  assert.throws(verify,/Local desktop script missing/);
+  writeFileSync(join(f.bundle,'main-LOCAL.js'),'/* private-mode fixture: no account data */');
+  const index=join(f.bundle,'index.html');
+  const original=readFileSync(index,'utf8');
+  writeFileSync(index,original.replace('<base href="/">','<base href="../">'));
+  assert.throws(verify,/DESKTOP BASE HREF/);
+  writeFileSync(index,original);
+  assert.equal(verify().scripts,1);
   writeFileSync(join(f.bundle,'assets/img/example.png'),'changed');
   assert.throws(()=>verifyOfflineBundle(f.bundle,f.stage,{privateMode:true,expectedPrivateHash:f.expected}),/missing or modified asset/);
 }));
