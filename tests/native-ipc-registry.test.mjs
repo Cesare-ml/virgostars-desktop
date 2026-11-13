@@ -64,3 +64,40 @@ test('Tauri capabilities and global API cannot be expanded silently',()=>{
   const g=fixture();g.tauriConfig.app.withGlobalTauri=true;
   assert.throws(()=>auditNativeIpc(g),/Global Tauri bridge/);
 });
+
+test('frontend bootstrap cannot import Tauri directly',()=>{
+  const f=fixture();
+  f.tsFiles['src/main.ts']="import {invoke} from '@tauri-apps/api/core';";
+  assert.throws(()=>auditNativeIpc(f),/Unexpected Tauri import/);
+});
+
+test('frontend dynamic imports are reviewed even outside Angular app directory',()=>{
+  const f=fixture();
+  f.tsFiles['src/features/helper.mjs']="const native = import('@tauri-apps/api/core');";
+  assert.throws(()=>auditNativeIpc(f),/Unexpected Tauri import/);
+});
+
+test('an approved adapter cannot quietly import a privileged Tauri plugin',()=>{
+  const f=fixture();
+  f.tsFiles['src/app/native/runtime.ts'] += "\nimport {open} from '@tauri-apps/plugin-shell';";
+  assert.throws(()=>auditNativeIpc(f),/Unexpected Tauri package or multiple Tauri references/);
+});
+
+test('unreviewed Tauri API exports, namespace imports and aliases are refused',()=>{
+  for(const replacement of [
+    "import {invoke, isTauri, convertFileSrc} from '@tauri-apps/api/core';",
+    "import * as core from '@tauri-apps/api/core';",
+    "import {invoke as execute, isTauri} from '@tauri-apps/api/core';",
+  ]) {
+    const f=fixture();
+    f.tsFiles['src/app/native/runtime.ts']=f.tsFiles['src/app/native/runtime.ts'].replace(
+      "import {invoke, isTauri} from '@tauri-apps/api/core';", replacement);
+    assert.throws(()=>auditNativeIpc(f),/Unreviewed Tauri API import or alias|reviewed named import/);
+  }
+});
+
+test('an approved adapter cannot issue a second direct native command',()=>{
+  const f=fixture();
+  f.tsFiles['src/app/native/runtime.ts'] += "\nconst extra = invoke<unknown>('get_secret');";
+  assert.throws(()=>auditNativeIpc(f),/adapter invoke changed/);
+});
