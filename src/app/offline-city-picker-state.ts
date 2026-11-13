@@ -52,10 +52,21 @@ export class OfflineCityPickerState {
     else {
       this.status = 'typing';
       const ticket = this.seq;
-      this.pending = this.timers.set(() => {
-        this.pending = null;
-        if (ticket === this.seq && !this.disposed) void this.perform(ticket, this.query);
-      }, this.debounceMs);
+      try {
+        const handle = this.timers.set(() => {
+          this.pending = null;
+          if (ticket === this.seq && !this.disposed) void this.perform(ticket, this.query);
+        }, this.debounceMs);
+        if (handle === null || handle === undefined) {
+          // A missing timer cannot transition typing into a live result.
+          this.status = 'unavailable';
+        } else {
+          this.pending = handle;
+        }
+      } catch {
+        // Never expose scheduler errors or leave an endless typing spinner.
+        this.status = 'unavailable';
+      }
     }
     this.changed();
   }
@@ -154,10 +165,14 @@ export class OfflineCityPickerState {
   }
 
   private abortPending(): void {
+    // Invalidate all previous async callbacks before attempting external cleanup.
     this.seq++;
-    if (this.pending !== null) this.timers.clear(this.pending);
+    const handle = this.pending;
     this.pending = null;
-    this.lookup.clear();
+    if (handle !== null) {
+      try { this.timers.clear(handle); } catch { /* Stale callback is generation-guarded. */ }
+    }
+    try { this.lookup.clear(); } catch { /* A misbehaving adapter must not block local clear. */ }
   }
 }
 
