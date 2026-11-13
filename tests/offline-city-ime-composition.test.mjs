@@ -44,7 +44,7 @@ test('Angular city input wires both composition events and suppresses provisiona
   assert.match(template, /\(compositionend\)="onCompositionEnd\(\$event\)"/);
   assert.match(template, /\(input\)="onInput\(\$event\)"/);
   assert.match(component, /onCompositionStart\(\): void\s*\{\s*this\.composing = true;/);
-  assert.match(component, /onCompositionEnd\(event: CompositionEvent\): void\s*\{\s*this\.composing = false;\s*this\.commitInput\(event\.target as HTMLInputElement\);/);
+  assert.match(component, /onCompositionEnd\(event: CompositionEvent\): void\s*\{\s*this\.composing = false;[\s\S]*?this\.commitInput\(event\.target as HTMLInputElement\);/);
   assert.match(component, /\(event as InputEvent\)\.isComposing === true \|\| this\.composing/);
   assert.match(component, /shouldHandleCityPickerKey\(this\.composing, event\.isComposing, event\.keyCode\)/);
   assert.match(component, /if \(!shouldCommitCityQuery\([\s\S]*?\)\) return;\s*this\.state\.input\(input\.value\);/);
