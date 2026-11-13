@@ -54,6 +54,8 @@ call npm.cmd run tauri:build
 if errorlevel 1 goto :failed
 call npm.cmd run doctor:verify
 if errorlevel 1 goto :failed
+node scripts\verify-windows-pe.mjs
+if errorlevel 1 goto :failed
 popd
 echo Build commands completed. This is NOT an installer or verified WebView2 release.
 echo Test offline startup, all chart modes, real PNG export and native IPC on Windows.
