@@ -5,10 +5,13 @@ The default Tauri prototype continues to work without the private catalog.
 This helper checks the catalog/manifest and never changes tracked Tauri config.
 """
 import argparse
+from contextlib import closing
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
+import tempfile
 
 EXPECTED_ROWS = 1_951_599
 
@@ -23,8 +26,13 @@ def sha256_of(file: Path) -> str:
 
 def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
     root = root.resolve()
-    catalog = root / ".local" / "places" / "world-cities.sqlite"
-    manifest_file = root / ".local" / "places" / "world-cities.manifest.json"
+    local_dir = root / ".local"
+    places_dir = local_dir / "places"
+    catalog = places_dir / "world-cities.sqlite"
+    manifest_file = places_dir / "world-cities.manifest.json"
+    # Never package linked resources from outside the owner's local pack area.
+    if local_dir.is_symlink() or places_dir.is_symlink() or catalog.is_symlink() or manifest_file.is_symlink():
+        raise ValueError("City pack paths must not be symbolic links")
     if not catalog.is_file() or not manifest_file.is_file():
         raise FileNotFoundError("Missing catalog or manifest: build the local SQLite pack first")
     info = json.loads(manifest_file.read_text(encoding="utf-8"))
@@ -34,7 +42,7 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
         info.get("bytes") != catalog.stat().st_size or
         info.get("sha256") != sha256_of(catalog)):
         raise ValueError("City pack metadata, size, count or checksum mismatch")
-    with sqlite3.connect(catalog.as_uri() + "?mode=ro", uri=True) as connection:
+    with closing(sqlite3.connect(catalog.as_uri() + "?mode=ro", uri=True)) as connection:
         count = connection.execute("SELECT value FROM catalog_meta WHERE key='rowCount'").fetchone()
         if count is None or count[0] != str(expected):
             raise ValueError("Database row count metadata does not match manifest")
@@ -59,8 +67,25 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
             },
         },
     }
-    out = root / ".local" / "places" / "tauri-places.conf.json"
-    out.write_text(json.dumps(override, indent=2) + "\n", encoding="utf-8")
+    out = places_dir / "tauri-places.conf.json"
+    if out.is_symlink():
+        raise ValueError("Refusing a symbolic-link Tauri city override")
+    # A crash must not truncate the last valid override. Keep the temp file in
+    # the same directory for a same-filesystem replacement; clean up on error.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n", prefix=".tauri-places-",
+            suffix=".tmp", dir=places_dir, delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(json.dumps(override, indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, out)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return out
 
 
