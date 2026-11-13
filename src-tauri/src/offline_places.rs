@@ -53,12 +53,21 @@ impl Drop for QueryPermit {
 
 impl PlaceSearchGate {
     fn try_reserve(&self) -> Option<QueryPermit> {
-        self.active
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
-                (n < MAX_ACTIVE_QUERIES).then_some(n + 1)
-            })
-            .ok()
-            .map(|_| QueryPermit(Arc::clone(&self.active)))
+        // Keep the Rust 1.90 MSRV: try_update() requires a newer toolchain,
+        // while fetch_update() is deprecated on recent compilers.
+        let mut active = self.active.load(Ordering::Acquire);
+        while active < MAX_ACTIVE_QUERIES {
+            match self.active.compare_exchange_weak(
+                active,
+                active + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Some(QueryPermit(Arc::clone(&self.active))),
+                Err(observed) => active = observed,
+            }
+        }
+        None
     }
 }
 
@@ -203,6 +212,39 @@ mod tests {
         drop(first);
         assert!(gate.try_reserve().is_some());
         drop(second);
+    }
+
+    #[test]
+    fn concurrent_threads_never_exceed_active_query_limit() {
+        const THREADS: usize = 16;
+        let gate = Arc::new(PlaceSearchGate::default());
+        let start = Arc::new(std::sync::Barrier::new(THREADS + 1));
+        let release = Arc::new(std::sync::Barrier::new(THREADS + 1));
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let mut workers = Vec::new();
+
+        for _ in 0..THREADS {
+            let gate = Arc::clone(&gate);
+            let start = Arc::clone(&start);
+            let release = Arc::clone(&release);
+            let accepted = Arc::clone(&accepted);
+            workers.push(std::thread::spawn(move || {
+                start.wait();
+                let permit = gate.try_reserve();
+                if permit.is_some() {
+                    accepted.fetch_add(1, Ordering::Relaxed);
+                }
+                release.wait();
+                drop(permit);
+            }));
+        }
+        start.wait();
+        release.wait();
+        for worker in workers {
+            worker.join().expect("query worker should not panic");
+        }
+        assert_eq!(accepted.load(Ordering::Relaxed), MAX_ACTIVE_QUERIES);
+        assert_eq!(gate.active.load(Ordering::Acquire), 0);
     }
 
     #[test]

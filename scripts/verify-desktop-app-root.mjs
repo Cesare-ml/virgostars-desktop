@@ -14,6 +14,9 @@ export function verifyDesktopAppRoot(html) {
   const bodies = [...markup.matchAll(/<body(?:\s[^<>]*)?>/gi)];
   const ends = [...markup.matchAll(/<\/body\s*>/gi)];
   if (bodies.length !== 1 || ends.length !== 1) invalid();
+  // The tracked Angular index has a plain <body>. Attributes can make a
+  // correctly mounted host invisible or inert; require the known-safe shape.
+  if (!/^<body\s*>$/i.test(bodies[0][0])) invalid();
   const begin = bodies[0].index + bodies[0][0].length;
   const finish = ends[0].index;
   if (begin >= finish) invalid();
@@ -23,5 +26,8 @@ export function verifyDesktopAppRoot(html) {
   const body = markup.slice(begin, finish);
   if (!/^\s*<vs-desktop-app\s*>\s*<\/vs-desktop-app\s*>/i.test(body)) invalid();
   if ((markup.match(/<vs-desktop-app(?=[\s/>])/gi) ?? []).length !== 1) invalid();
+  // A second closing tag can follow a valid root and evade the prefix test.
+  // Comments have already been masked, so only live closing tags count.
+  if ((markup.match(/<\/vs-desktop-app\s*>/gi) ?? []).length !== 1) invalid();
   return true;
 }

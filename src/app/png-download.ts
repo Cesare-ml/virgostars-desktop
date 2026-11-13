@@ -10,15 +10,17 @@ export interface SyntheticPngAnchor {
   remove(): void;
 }
 
-export interface SyntheticPngDownloadPort {
-  createAnchor(): SyntheticPngAnchor;
-  appendAnchor(anchor: SyntheticPngAnchor): void;
+// Keep the concrete anchor type across the port boundary: the browser uses
+// HTMLAnchorElement (a DOM Node), while unit tests can supply a minimal stub.
+export interface SyntheticPngDownloadPort<TAnchor extends SyntheticPngAnchor = SyntheticPngAnchor> {
+  createAnchor(): TAnchor;
+  appendAnchor(anchor: TAnchor): void;
 }
 
-export function requestSyntheticPngDownload(
+export function requestSyntheticPngDownload<TAnchor extends SyntheticPngAnchor>(
   validatedDataUrl: string,
   validatedFilename: string,
-  port: SyntheticPngDownloadPort,
+  port: SyntheticPngDownloadPort<TAnchor>,
 ): void {
   const anchor = port.createAnchor();
   try {

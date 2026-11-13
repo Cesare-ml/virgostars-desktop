@@ -25,7 +25,7 @@ test('bootstrap runs native IPC audit after tests and before any native build',(
     ["'run', 'build:ui'","npm.cmd"],
     ["'run', 'verify:css'","npm.cmd"],
     ["'run', 'prepare:icon'","npm.cmd"],
-    ["'test'","cargo"],
+    ["'test', '--locked'","cargo"],
     ["'exec', '--offline', '--', 'tauri', 'build'","npm.cmd"],
     ["'run', 'doctor:verify'","npm.cmd"],
   ];
@@ -63,7 +63,7 @@ test('a missing or misordered native audit fails the acceptance stage contract',
     const items=orderedSteps(source);
     const testIndex=indexOfStep(items,'npm.cmd',"'test'");
     const auditIndex=indexOfStep(items,'npm.cmd',"'run', 'verify:ipc'");
-    const rustIndex=indexOfStep(items,'cargo',"'test'");
+    const rustIndex=indexOfStep(items,'cargo',"'test', '--locked'");
     assert.ok(testIndex>=0 && auditIndex>testIndex && rustIndex>auditIndex);
   };
   expectSequence(bootstrap);
