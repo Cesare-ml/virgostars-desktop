@@ -23,10 +23,10 @@ test('only two explicit suite flags are accepted, no user paths or arbitrary scr
     ['--suite','core','--extra'],['--other','core'],['--suite','none']])
     assert.equal(parseRegressionArgs(value),null);
 });
-test('the all suite includes seven actual repository test files and both core suites',()=>{
+test('the all suite includes eight actual repository test files and both core suites',()=>{
   assert.equal(getRegressionSuites('core').length,2);
-  const all=getRegressionSuites('all');assert.equal(all.length,7);
-  assert.equal(new Set(all).size,7);
+  const all=getRegressionSuites('all');assert.equal(all.length,8);
+  assert.equal(new Set(all).size,8);
   for(const file of getRegressionSuites('core'))assert.ok(all.includes(file));
   assert.equal(getRegressionSuites('arbitrary'),null);
 });
