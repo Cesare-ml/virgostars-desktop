@@ -54,7 +54,7 @@
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
         <span class="fixture-label">{{t('fixture')}}</span>
         <div class="chart-message" *ngIf="busy" role="status">{{t('chart.loading')}}</div>
-        <p class="chart-error" *ngIf="error" role="alert">{{error}}</p>
+        <p class="chart-error" *ngIf="error" role="alert">{{errorText}}</p>
       </section>
       <div class="chart-toolbar" role="toolbar" [attr.aria-label]="t('chart')">
         <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>

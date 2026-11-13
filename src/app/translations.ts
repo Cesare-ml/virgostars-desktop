@@ -56,6 +56,8 @@ export const STRINGS = {
     "settings.help":"Funzioni online e impostazioni persistenti non ancora disponibili.",
     "settings.mode":"Modalità grafico",
     "settings.theme":"Tema",
+    "settings.theme.light":"Chiaro",
+    "settings.theme.dark":"Scuro",
     "settings.session":"Sessione",
     "footer":"Demo locale · nessuna sincronizzazione cloud · nessun dato personale",
     "runtime.checking":"Verifica ambiente…",
@@ -124,6 +126,8 @@ export const STRINGS = {
     "settings.help":"Cloud functions and persistent settings are not available yet.",
     "settings.mode":"Chart mode",
     "settings.theme":"Theme",
+    "settings.theme.light":"Light",
+    "settings.theme.dark":"Dark",
     "settings.session":"Session",
     "footer":"Local demo · no cloud sync · no personal records",
     "runtime.checking":"Checking runtime…",
@@ -140,4 +144,14 @@ export type Locale = keyof typeof STRINGS;
 export type MessageKey = keyof typeof STRINGS['it'];
 export function translate(locale: Locale, key: MessageKey): string {
   return STRINGS[locale][key];
+}
+
+/** Derive labels at display time so changing IT/EN updates the current UI. */
+export function displayThemeLabel(locale: Locale, theme: 'light' | 'dark'): string {
+  return translate(locale, theme === 'light' ? 'settings.theme.light' : 'settings.theme.dark');
+}
+
+/** Persist only a translation key in view state, never a stale localized error. */
+export function displayMessage(locale: Locale, key: MessageKey | null): string {
+  return key === null ? '' : translate(locale, key);
 }
