@@ -65,7 +65,7 @@
         <button type="button" class="toolbar-button csv-export-button" [disabled]="mode !== 'natal'" [attr.title]="t('export.csv.note')" [attr.aria-label]="t('export.csv')" (click)="exportSyntheticCsv()">{{t('export.csv')}}</button>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
       </div>
-      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span *ngIf="csvStatus" role="status"> · {{csvStatusLabel}}</span></footer>
+      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span *ngIf="csvStatus" role="status"> · {{csvStatusLabel}}</span><span class="copyright-attribution"> · © 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</span></footer>
     </main>
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
