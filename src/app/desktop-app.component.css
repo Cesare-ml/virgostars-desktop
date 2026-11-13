@@ -98,7 +98,13 @@
 .status-message { color:var(--vs-text-secondary); font-size:11px; text-align:right; }
 .export-button { background:var(--vs-accent); color:var(--vs-accent-contrast); border:0;
   border-radius:8px; padding:9px 15px; font-size:13px; font-weight:700; white-space:nowrap; }
-footer { min-height:20px; color:var(--vs-text-secondary); text-align:center; font-size:11px; }
+/* The footer is a session attribution notice, not disposable chart space.
+   Let long credits wrap rather than shrinking them below their text height. */
+footer {
+  flex-shrink:0; min-height:20px; padding:4px 0;
+  color:var(--vs-text-secondary); text-align:center;
+  font-size:11px; line-height:1.45; overflow-wrap:anywhere;
+}
 .inspector { min-width:0; min-height:0; display:flex; flex-direction:column; background:var(--vs-surface);
   border-left:1px solid var(--vs-border); box-shadow:-1px 0 4px rgba(0,0,0,.03); }
 .inspector-head { padding:14px 16px 10px; display:flex; align-items:center; justify-content:space-between; min-height:60px; }
