@@ -11,7 +11,7 @@ The public Charts renderer's `GraficoRenderService.generaImmagine()` is expected
 - a PNG signature, an IHDR first chunk of length 13, positive width/height at most 16,384 pixels, spec-permitted color type/bit-depth/compression/filter/interlace values, and the IHDR CRC32;
 - a filename assembled from allowed demonstration modes/themes, always prefixed `virgostars-synthetic-`.
 
-On failure the existing translated generic chart-error UI is shown. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **only the IHDR chunk CRC32**, not the CRCs of later chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
+On export failure, the UI now shows a translated PNG-specific retry message without marking the already-rendered chart unavailable. A chart-rendering failure still has a separate renderer error state. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **only the IHDR chunk CRC32**, not the CRCs of later chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
 
 ## Attached download-anchor lifecycle
 
@@ -19,7 +19,7 @@ The original PNG export used an unattached `document.createElement('a')` followe
 
 `src/app/png-download.ts` now isolates a **testable, synchronous browser download request**. The Angular caller first validates the `data:image/png;base64,` payload with `validatePngDataUrl` and the fixed synthetic filename with `syntheticPngFilename`, then supplies browser `createElement('a')` and `document.body.appendChild` to `requestSyntheticPngDownload`.
 
-The helper sets `href` and `download`, **appends the anchor before calling `click()`**, and removes the temporary element in `finally` regardless of assignment, append or click failures (provided removal itself succeeds). If element creation fails, no element was allocated to remove. The existing generic PNG error UI handles exceptions without logging image bytes. No network, new Tauri command or persistent permission is involved.
+The helper sets `href` and `download`, **appends the anchor before calling `click()`**, and removes the temporary element in `finally` regardless of assignment, append or click failures (provided removal itself succeeds). If element creation fails, no element was allocated to remove. The PNG-specific, translated retry status handles exceptions without logging image bytes and without hiding a valid chart. No network, new Tauri command or persistent permission is involved.
 
 A click returning is *not* proof the OS saved a PNG. Real WebView2 and browser download permission testing remains mandatory. An attached anchor does not imply that all browsers honor programmatic data-URL downloads.
 

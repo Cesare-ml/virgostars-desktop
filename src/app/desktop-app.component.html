@@ -62,7 +62,7 @@
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')">
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
         <span class="fixture-label">{{t('fixture')}}</span>
-        <div class="chart-message" *ngIf="busy" role="status">{{t('chart.loading')}}</div>
+        <div class="chart-message" *ngIf="busy" role="status">{{t(status)}}</div>
         <p class="chart-error" *ngIf="error" role="alert">{{error}}</p>
       </section>
       <div class="chart-toolbar" role="toolbar" [attr.aria-label]="t('chart')">
