@@ -35,3 +35,13 @@ The new 12-test suite uses fictional dates/locations and a mock queue port. It v
 Not executed: full `npm test`, Angular `build:ui`, actual #47 queue/native Rust/Tauri IPC, Windows WebView2, independent JPL comparison, kernel checks or deployment.
 
 No extra npm dependencies, user accounts, keys, storage, network requests, GitHub Actions, new releases, visibility changes or main-branch merge.
+
+## Location snapshot hardening (2026-11-13)
+
+The hand-off now reads each coordinate **once** into local numeric variables before validation. The exact validated values are sent to the queue even when the injected time selector mutates the input location or when an accessor returns different values on subsequent reads. A throwing latitude/longitude getter returns the existing sanitized `location_invalid` status before the selector and queue are called. This does not make arbitrary injected selector/queue implementations trustworthy, and it does not validate the scientific result or certify that the opaque calculation key represents the same input.
+
+Synthetic regression suite: `tests/civil-location-snapshot.test.mjs` (four cases: single getter reads, mutation by selector, throwing getters, invalid first read).
+
+**Actually executed:** Node.js 22.16.0 `node --experimental-strip-types --test tests/civil-location-snapshot.test.mjs`: **4/4 PASS**, using the exact subsequently committed implementation and tests in a minimal local mirror; TypeScript 5.8.3 `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/native/civil-calculation-dispatch.ts`: **PASS** with minimal type-only dependency fixtures. Verified source file's local Git blob SHA equals the committed GitHub blob. The complete repository `npm test`, full dependency graph TypeScript check, Angular build, native Rust/Tauri, Windows WebView2, and real latest-only queue were **not** executed. Review and run these gates before merging.
+
+No account, storage, networking, dependency, licensing, privileged permission, release or runtime astronomy changes. No GitHub Actions.
