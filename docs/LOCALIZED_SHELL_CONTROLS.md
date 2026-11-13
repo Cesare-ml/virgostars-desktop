@@ -1,6 +1,6 @@
 # Localized shell control labels
 
-Status: **Prototype / source-level and isolated Node validation**. Native Windows/WebView2 is not verified.
+Status: **Prototype / isolated Node-tested**. Native Windows/WebView2 is not verified.
 
 ## UX regression addressed
 
@@ -25,7 +25,7 @@ npm test
 npm run build:ui
 ```
 
-The narrow isolated Node/source checks may be executed without the sibling Charts build; full npm and Angular builds need the authorized complete checkout. On Windows 11 WebView2, verify both controls under light/dark mode and language switching, including keyboard focus and screen-reader announcements.
+**Actually verified:** Node.js 22.16.0 ran the 5 committed tests in an isolated scratch directory: **5/5 passed** (0 failures/skips). The copied `translations.ts` and test file have Git blob hashes `1c201bcb2386698a027a6d59b2535badea0c3f4a` and `87e99950a9d2231ee4f6412b5e58a421f237f24b`, matching GitHub. Component/template files in the scratch directory were **minimal source snippets**, not full Angular files; the real GitHub component and template were independently checked for identical getter and attribute wiring. Nine readback/source assertions passed. This is **not** a full-checkout `npm test` or Angular build. Those still need the authorized complete checkout. On Windows 11 WebView2, verify both controls under light/dark mode and language switching, including keyboard focus and screen-reader announcements.
 
 ## Integration
 
