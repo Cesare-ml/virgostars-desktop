@@ -13,8 +13,9 @@ const MAX_PE_OFFSET = 4096;
 const error = code => { throw new Error('WINDOWS_PE_' + code); };
 
 /** Parse only header structure, from synthetic fixtures or a bounded file read. */
-export function inspectWindowsPeHeader(bytes) {
+export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLength ?? 0)) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength < 64) error('TRUNCATED');
+  if (typeof fileBytes !== 'bigint' || fileBytes < BigInt(bytes.byteLength)) error('FILE_LENGTH');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const u16 = offset => view.getUint16(offset, true);
   const u32 = offset => view.getUint32(offset, true);
@@ -23,17 +24,49 @@ export function inspectWindowsPeHeader(bytes) {
   if (peOffset < 64 || peOffset > MAX_PE_OFFSET) error('HEADER_OFFSET');
   if (bytes.byteLength < peOffset + 26) error('TRUNCATED');
   if (u32(peOffset) !== 0x00004550) error('PE_SIGNATURE');
-  const machine = u16(peOffset + 4);
-  if (machine !== 0x8664) error('MACHINE_NOT_AMD64');
+  if (u16(peOffset + 4) !== 0x8664) error('MACHINE_NOT_AMD64');
   const sections = u16(peOffset + 6);
   if (sections < 1 || sections > 96) error('SECTION_COUNT');
   const characteristics = u16(peOffset + 22);
   if ((characteristics & 0x0002) === 0 || (characteristics & 0x2000) !== 0) error('NOT_EXECUTABLE');
   const optionalLength = u16(peOffset + 20);
   if (optionalLength < 112 || optionalLength > 1024) error('OPTIONAL_LENGTH');
-  if (bytes.byteLength < peOffset + 24 + optionalLength + sections * 40) error('TRUNCATED');
-  if (u16(peOffset + 24) !== 0x020b) error('NOT_PE32_PLUS');
-  if (u16(peOffset + 24 + 68) !== 2) error('NOT_GUI_SUBSYSTEM');
+  const optionalStart = peOffset + 24;
+  const tableStart = optionalStart + optionalLength;
+  const tableEnd = tableStart + sections * 40;
+  if (bytes.byteLength < tableEnd) error('TRUNCATED');
+  if (u16(optionalStart) !== 0x020b) error('NOT_PE32_PLUS');
+  if (u16(optionalStart + 68) !== 2) error('NOT_GUI_SUBSYSTEM');
+  const entryPoint = u32(optionalStart + 16);
+  const imageSize = u32(optionalStart + 56);
+  const headersSize = u32(optionalStart + 60);
+  if (headersSize < tableEnd || imageSize < headersSize ||
+      BigInt(headersSize) > fileBytes) error('HEADERS_LAYOUT');
+  if (!entryPoint || entryPoint >= imageSize) error('ENTRYPOINT');
+  let hasRawSection = false;
+  let executableEntry = false;
+  for (let i = 0; i < sections; i++) {
+    const section = tableStart + i * 40;
+    const virtualSize = u32(section + 8);
+    const virtualAddress = u32(section + 12);
+    const rawSize = u32(section + 16);
+    const rawPointer = u32(section + 20);
+    const sectionFlags = u32(section + 36);
+    const mappedSize = Math.max(virtualSize, rawSize);
+    if (!mappedSize || virtualAddress >= imageSize ||
+        virtualAddress + mappedSize > imageSize) error('SECTION_IMAGE_BOUNDS');
+    if (rawSize) {
+      if (rawPointer < headersSize ||
+          BigInt(rawPointer) + BigInt(rawSize) > fileBytes) error('SECTION_RAW_BOUNDS');
+      hasRawSection = true;
+    }
+    if (rawSize && (sectionFlags & 0x20000000) !== 0 &&
+        entryPoint >= virtualAddress && entryPoint < virtualAddress + mappedSize) {
+      executableEntry = true;
+    }
+  }
+  if (!hasRawSection) error('NO_RAW_SECTION');
+  if (!executableEntry) error('ENTRYPOINT_SECTION');
   return Object.freeze({kind: 'windows_x64_gui', machine: 'AMD64', peFormat: 'PE32+', sections});
 }
 
@@ -65,7 +98,7 @@ export function verifyWindowsExecutable(file) {
     if (!identicalFile(opened, after) || !identicalFile(opened, pathAfter) || pathAfter.isSymbolicLink()) {
       error('CHANGED_FILE');
     }
-    return inspectWindowsPeHeader(buffer);
+    return inspectWindowsPeHeader(buffer, opened.size);
   } catch (failure) {
     if (failure instanceof Error && /^WINDOWS_PE_[A-Z0-9_]+$/.test(failure.message)) throw failure;
     // Do not print absolute paths or exception details on a shared diagnostic report.
