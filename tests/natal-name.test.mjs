@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {truncateNatalName,isValidNatalName,NATAL_NAME_INPUT_LIMIT,NATAL_NAME_VALID_LIMIT} from '../src/app/natal-name.ts';
+import {truncateNatalName,isValidNatalName,NATAL_NAME_INPUT_LIMIT,NATAL_NAME_VALID_LIMIT} from '../src/app/natal-draft-state.ts';
 
 test('keeps existing 160-input / 120-valid scalar limits for ordinary Latin names',()=>{
   assert.equal(NATAL_NAME_INPUT_LIMIT,160);
