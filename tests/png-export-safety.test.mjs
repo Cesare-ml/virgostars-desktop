@@ -5,11 +5,23 @@ import {MAX_PNG_DATA_URL_BASE64_LENGTH, validatePngDataUrl, syntheticPngFilename
 const VALID_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9YlxYy8AAAAASUVORK5CYII=';
 const prefix = 'data:image/png;base64,';
 
-const withChangedDimension = (offset, newValue) => {
+// Keep IHDR mutations structurally consistent so each test reaches its target guard.
+function withIhdrMutation(mutate) {
   const data = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
-  data.writeUInt32BE(newValue, offset);
+  mutate(data);
+  let crc = 0xffffffff;
+  for (const byte of data.subarray(12, 29)) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  data.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 29);
   return prefix + data.toString('base64');
-};
+}
+
+const withChangedDimension = (offset, newValue) =>
+  withIhdrMutation(data => data.writeUInt32BE(newValue, offset));
 
 test('accepts a PNG-shaped data URL and returns it byte-for-byte unchanged', () => {
   assert.equal(validatePngDataUrl(VALID_PNG), VALID_PNG);
@@ -53,6 +65,31 @@ test('rejects zero or unreasonably large declared dimensions', () => {
     withChangedDimension(16, 16385), withChangedDimension(20, 16385)]) {
     assert.throws(() => validatePngDataUrl(sample), /Invalid PNG export/);
   }
+});
+
+test('rejects corrupt IHDR CRC without decoding the complete image', () => {
+  const data = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  data[32] ^= 0xff;
+  assert.throws(() => validatePngDataUrl(prefix + data.toString('base64')), /Invalid PNG export/);
+});
+
+test('rejects illegal IHDR color depth, compression, filter and interlace even with valid CRC', () => {
+  for (const [offset, value] of [
+    [24, 3], // illegal bit depth for grayscale + alpha
+    [25, 5], // undefined PNG color type
+    [26, 1], // only compression method 0 is valid
+    [27, 1], // only filter method 0 is valid
+    [28, 2], // interlace must be 0 or 1
+  ]) {
+    const candidate = withIhdrMutation(data => { data[offset] = value; });
+    assert.throws(() => validatePngDataUrl(candidate), /Invalid PNG export/);
+  }
+});
+
+test('accepts another spec-permitted IHDR color mode with a recomputed CRC', () => {
+  const candidate = withIhdrMutation(data => { data[24] = 8; data[25] = 6; });
+  // Only the fixed IHDR is checked: payload/pixel validity remains the browser's job.
+  assert.equal(validatePngDataUrl(candidate), candidate);
 });
 
 test('rejects excessive data URLs before decoding the image body', () => {
