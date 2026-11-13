@@ -108,3 +108,14 @@ test('screen stylesheet without inline event handler remains valid',()=>run(f=>{
   writeFileSync(index,html);
   assert.equal(verifyOfflineBundle(f.bundle,f.staging).stylesheets,1);
 }));
+
+
+test('rejects missing or hijacked HTML base before checking packaged CSS and assets',()=>run(f=>{
+  const index=join(f.bundle,'index.html');
+  const canonical=readFileSync(index,'utf8');
+  for(const bad of ['', '<base href="https://example.invalid/">',
+                    '<base href="/assets/">', '<base href="/"><base href="/">']) {
+    writeFileSync(index, canonical.replace('<base href="/">', bad));
+    assert.throws(()=>verifyOfflineBundle(f.bundle,f.staging),/DESKTOP BASE HREF/);
+  }
+}));
