@@ -11,7 +11,7 @@ The public Charts renderer's `GraficoRenderService.generaImmagine()` is expected
 - a PNG signature, an IHDR first chunk of length 13, positive width/height at most 16,384 pixels, spec-permitted color type/bit-depth/compression/filter/interlace values, and the IHDR CRC32;
 - a filename assembled from allowed demonstration modes/themes, always prefixed `virgostars-synthetic-`.
 
-On failure the existing translated generic chart-error UI is shown. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **only the IHDR chunk CRC32**, not the CRCs of later chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
+On export failure, the UI now shows a translated PNG-specific retry message without marking the already-rendered chart unavailable. A chart-rendering failure still has a separate renderer error state. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **only the IHDR chunk CRC32**, not the CRCs of later chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
 
 ## Attached download-anchor lifecycle
 
