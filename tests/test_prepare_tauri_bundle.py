@@ -120,7 +120,7 @@ class PrepareTauriBundleTests(unittest.TestCase):
                     module.prepare(self.root, expected=2)
 
     def test_rejects_invalid_utf8_and_nonobject_manifest(self):
-        for raw in (b"\\xff", b"[]", b"null"):
+        for raw in (b"\xff", b"[]", b"null"):
             with self.subTest(raw=raw):
                 self.manifest.write_bytes(raw)
                 with self.assertRaises(ValueError):
