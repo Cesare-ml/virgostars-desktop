@@ -1,6 +1,6 @@
 import {CommonModule} from '@angular/common';
 import {ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject} from '@angular/core';
-import {offlinePlaceSearch} from './native/offline-places';
+import {createOfflinePlaceSearch} from './native/offline-places';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {OfflineCityPickerState, type CityPickerStatus} from './offline-city-picker-state';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -25,7 +25,7 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   @Output() readonly locationSelected = new EventEmitter<OfflinePlaceV1>();
   @Output() readonly locationEdited = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);
-  readonly state = new OfflineCityPickerState(offlinePlaceSearch, () => this.cd.markForCheck());
+  readonly state = new OfflineCityPickerState(createOfflinePlaceSearch(), () => this.cd.markForCheck());
 
   ngOnChanges(changes: SimpleChanges): void {
     // Closing/reopening inspector tabs destroys this component, not the parent
@@ -35,10 +35,19 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
 
   t(key: MessageKey): string { return translate(this.locale,key); }
   get message(): string { return this.t(STATUS_KEYS[this.state.status]); }
+  get selectedDetail(): string {
+    const place = this.state.selected;
+    return place ? [place.region, place.countryName, place.timeZone]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+      .join(' · ') : '';
+  }
 
   onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.state.input(input.value);
+    // Browser maxlength counts UTF-16 code units; state caps at 80 code points.
+    // Reflect the normalized query so displayed text always matches IPC input.
+    if (input.value !== this.state.query) input.value = this.state.query;
     this.locationEdited.emit();
   }
 
@@ -56,6 +65,16 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
     } else if (event.key === 'Escape') {
       this.state.dismiss();
     }
+  }
+
+  retry(input: HTMLInputElement): void {
+    if (this.state.retry()) input.focus();
+  }
+
+  clearSelected(): void {
+    if (!this.state.selected) return;
+    this.state.clearSelection();
+    this.locationEdited.emit();
   }
 
   choose(index: number): void {
