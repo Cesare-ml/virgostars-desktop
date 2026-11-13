@@ -60,3 +60,8 @@ The all-suite now also includes `tests/owned-horizons-writes.test.mjs` (9 real-f
 ## D-17 — Full-suite count updated to 86
 
 The descriptor-owned-file test module now contains **11** tests rather than 9: two new canonical-name and foreign-filename rejection cases. The `all` regression gate therefore requires **86 passes**, with zero failures/skips/cancellations. The `core` suite remains 29. Only **53** locally available tests were executed together on Node.js 22.16.0; the `all` gate still correctly returns `INCOMPLETE` in this isolated checkout and must be run on a complete authorized checkout before merge.
+
+
+## D-18 — API transport-version tests added to the full gate
+
+The exact all-suite now includes `tests/probe-horizons-wire-version.test.mjs` with **13 new mocked transport/CLI cases**, bringing the required all-suite total from 86 to **99**. The core suite remains 29. An isolated checkout actually ran **66/66 PASS** (14 rollback, 11 owned-writes, 15 strict headers, 13 manual regression-runner and 13 wire-version probe tests). The complete 99 tests have NOT been run in this environment; `--suite all` still reports `INCOMPLETE` until the full original-response acquisition and offline-bundle suites can execute. See [HORIZONS_WIRE_VERSION_REVIEW.md](HORIZONS_WIRE_VERSION_REVIEW.md).
