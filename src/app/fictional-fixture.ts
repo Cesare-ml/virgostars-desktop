@@ -21,7 +21,7 @@ export function makeFictionalTheme(shift: number): TemaRender {
     planets,
     houses:{ egizia: {
       ascendant:angles.ascendant, mc:angles.mediumCoeli, vertex:angles.vertex,
-      house:angles.houseCusps,
+      house:[...angles.houseCusps],
     } },
     australInversion:false, fasiSinodiche:{},fasiSinodicheLatitudinali:{},
     lunazioniErmetiche:{},astrologiaOraria:{},orePlanetarie:{},partiArabe:{}
