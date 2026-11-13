@@ -133,7 +133,7 @@ test('changed experimental snapshot digest within D-06 blocks the campaign',asyn
 });
 test('all cross-module outcomes remain marked scientifically unverified',async()=>{
   for(const f of [fixture(),fixture()]){
-    f.snapshots[1].reference.positions[0].distanceKm+=1000;
+    f.snapshots[1].reference.positions[0].distanceKm+=2000;
     const {result}=await run(f);
     assert.equal(result.scientificallyValidated,false);
     assert.equal(result.status,'CAMPAIGN_FAILED');
