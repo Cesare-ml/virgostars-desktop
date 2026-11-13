@@ -130,3 +130,34 @@ npm test
 
 Native Windows x64/Tauri build, WebView2 offline smoke and signature/release
 acceptance remain separate outstanding tasks.
+
+## Real Node.js targeted verification (2026-11-14)
+
+On **Node.js 22.16.0**, a local isolated mirror of the **exact GitHub file
+contents**, including the integrated parser, helper, and two test files,
+passed:
+
+```sh
+node --check tests/windows-pe-integrated-boundaries.test.mjs
+node --test tests/pe-entrypoint-bounds.test.mjs tests/windows-pe-integrated-boundaries.test.mjs
+# 14 tests passed, 0 failed, 0 skipped
+```
+
+Exact Git blob identities (verified using `git hash-object` on the
+executed files and `fetch_file` on this branch):
+
+- `scripts/verify-windows-pe.mjs`: `840837a30ca905378527a9b360042b8a35f5c525`
+- `scripts/pe-entrypoint-bounds.mjs`: `b72ce2f149e8cf7f268f9918e24d6e5e112693e2`
+- `tests/pe-entrypoint-bounds.test.mjs`: `08940ac7b3642a168bc4d03d1629c60cc6f8bd61`
+- `tests/windows-pe-integrated-boundaries.test.mjs`: `0c1abfe1c437d4d94ede483a4ba58eda53341021`
+
+The last of the **five** integration tests exercises
+`verifyWindowsExecutable` using a fictional file written to a temporary
+directory: a valid image passes, overlapping virtual sections are rejected,
+and overlapping raw sections are rejected. This adds real Node filesystem
+coverage to the prior V8-only combined-parser evidence.
+
+**Not executed in this Node run:** the full
+`tests/windows-pe-header.test.mjs` suite from #145 (including symlink and
+launcher checks), the entire repository's `npm test`, production executable,
+Windows 11/Tauri or offline WebView2 checks. These remain pre-merge gates.
