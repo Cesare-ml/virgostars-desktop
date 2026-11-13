@@ -23,6 +23,9 @@ A preflight pass requires:
   on-disk file size. A valid-looking PE header with truncated sections fails closed.
   Section metadata is inspected in the initial bounded header read; executable
   section contents are **not** loaded or cryptographically verified.
+- No two sections may overlap in their mapped image extents or in their nonempty
+  raw file ranges. Adjacent non-overlapping sections are allowed. This prevents
+  a malformed section table from passing merely because each range is in bounds.
 
 The inspection reads at most **8 KiB**, performs no writes and sends no telemetry.
 Expected failures use fixed `WINDOWS_PE_...` status strings; local file paths
