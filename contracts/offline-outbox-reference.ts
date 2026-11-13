@@ -130,7 +130,13 @@ function snapshotMutation(change: Mutation, expectedProfile: string): Mutation {
   if (!hasPayload) return Object.freeze(common);
   validateJson(change.payload);
   const json = JSON.stringify(change.payload);
-  if (json.length > 262144) throw new Error('Payload exceeds reference-model limit');
+  // The future IPC/storage boundary is byte-oriented. UTF-16 string.length
+  // undercounts accented characters and astral Unicode in serialized JSON.
+  // Check code units first to avoid encoding clearly oversized payloads.
+  const MAX_PAYLOAD_BYTES = 262144;
+  if (json.length > MAX_PAYLOAD_BYTES || new TextEncoder().encode(json).byteLength > MAX_PAYLOAD_BYTES) {
+    throw new Error('Payload exceeds reference-model limit');
+  }
   const snapshot = freezeDeep(JSON.parse(json) as JsonValue);
   return Object.freeze({ ...common, payload: snapshot });
 }
