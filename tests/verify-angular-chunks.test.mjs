@@ -108,3 +108,47 @@ test('filesystem failures do not disclose user paths in error messages',()=>fixt
     return true;
   });
 }));
+
+test('rejects a missing worker module referenced through import.meta.url',()=>fixture(f=>{
+  f.add(f.main,'new Worker(new URL("./chunk-LOST.js", import.meta.url), {type:"module"});');
+  assert.throws(f.verify,/Imported Angular JavaScript chunk missing/);
+}));
+test('accepts an import.meta.url worker script and checks its transitive imports',()=>fixture(f=>{
+  f.add(f.main,'const worker=new Worker(new URL("./chunk-WORK.js", import.meta.url), {type:"module"});');
+  f.add('chunk-WORK.js','import "./chunk-BASE.js";');
+  f.add('chunk-BASE.js','export const ready=true;');
+  assert.deepEqual(f.verify(),{modules:3,chunks:2,dependencies:2});
+}));
+test('rejects missing worker script referenced by a bare relative string',()=>fixture(f=>{
+  f.add(f.main,'new Worker("./chunk-LOST.js", {type:"module"});');
+  assert.throws(f.verify,/Imported Angular JavaScript chunk missing/);
+}));
+test('accepts a literal SharedWorker script that is present',()=>fixture(f=>{
+  f.add(f.main,'new SharedWorker("./chunk-SHARED.js",{type:"module"});');
+  f.add('chunk-SHARED.js','export const version=1;');
+  assert.deepEqual(f.verify(),{modules:2,chunks:1,dependencies:1});
+}));
+test('rejects nonliteral import.meta.url references without a safe manifest',()=>fixture(f=>{
+  f.add(f.main,'const file="./chunk-X.js";new URL(file, import.meta.url);');
+  assert.throws(f.verify,/Nonliteral module-relative URL/);
+}));
+test('rejects unsafe or external worker URL targets',()=>fixture(f=>{
+  for (const url of ['/chunk-ABS.js','https://example.invalid/chunk-X.js','../chunk-UP.js', './chunk-X.js?debug']) {
+    f.add(f.main,`new Worker(new URL(${JSON.stringify(url)}, import.meta.url),{type:'module'});`);
+    assert.throws(f.verify,/Nonlocal or invalid JavaScript import|Unexpected JavaScript import filename/,url);
+  }
+}));
+test('does not confuse a relative image URL with a JavaScript chunk',()=>fixture(f=>{
+  f.add(f.main,'const picture=new URL("./assets/img/fictional.png",import.meta.url);');
+  assert.deepEqual(f.verify(),{modules:1,chunks:0,dependencies:0});
+}));
+test('rejects unverifiable worker URLs and computed worker constructors',()=>fixture(f=>{
+  for (const js of [
+    'new Worker(new URL("./chunk-X.js", "https://example.invalid/"),{type:"module"})',
+    'new SharedWorker(window.location.href,{type:"module"})',
+    'new Worker(URL.createObjectURL(new Blob(["postMessage(1)"])))'
+  ]) {
+    f.add(f.main,js);
+    assert.throws(f.verify,/Unverifiable JavaScript worker source/,js);
+  }
+}));
