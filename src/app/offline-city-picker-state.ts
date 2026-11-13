@@ -51,10 +51,28 @@ export class OfflineCityPickerState {
     else {
       this.status = 'typing';
       const ticket = this.seq;
-      this.pending = this.timers.set(() => {
-        this.pending = null;
-        if (ticket === this.seq && !this.disposed) void this.perform(ticket, this.query);
-      }, this.debounceMs);
+      // A faulty WebView timer may throw, return no handle or invoke synchronously.
+      // Never leave the UI in "typing" with no cancellable debounce.
+      let fired = false;
+      try {
+        const handle = this.timers.set(() => {
+          if (fired) return; // A broken driver cannot launch a duplicate lookup.
+          fired = true;
+          if (ticket !== this.seq || this.disposed) return;
+          this.pending = null;
+          void this.perform(ticket, this.query);
+        }, this.debounceMs);
+        if (handle === null || handle === undefined) {
+          if (!fired) this.invalidateDebounce(ticket);
+        } else if (fired || ticket !== this.seq || this.disposed) {
+          // Callback already ran or owner changed while set() was in progress.
+          try { this.timers.clear(handle); } catch { /* callback generation is guarded */ }
+        } else {
+          this.pending = handle; // Numeric zero is a valid timer handle.
+        }
+      } catch {
+        if (!fired) this.invalidateDebounce(ticket);
+      }
     }
     this.changed();
   }
@@ -131,10 +149,21 @@ export class OfflineCityPickerState {
     this.activeIndex = -1;
   }
 
+  private invalidateDebounce(ticket: number): void {
+    if (ticket !== this.seq || this.disposed) return;
+    this.seq++;
+    this.pending = null;
+    this.status = 'unavailable';
+    try { this.lookup.clear(); } catch { /* stale lookups are generation guarded */ }
+  }
+
   private abortPending(): void {
     this.seq++;
-    if (this.pending !== null) this.timers.clear(this.pending);
+    const handle = this.pending;
     this.pending = null;
-    this.lookup.clear();
+    if (handle !== null) {
+      try { this.timers.clear(handle); } catch { /* stale callbacks check seq */ }
+    }
+    try { this.lookup.clear(); } catch { /* never block local UI teardown/input */ }
   }
 }
