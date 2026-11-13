@@ -21,13 +21,15 @@ Run in an authorized checkout with Node.js 22+:
 node --experimental-strip-types --test \
   tests/fictional-geometry.test.mjs \
   tests/fictional-fixture-runtime.test.mjs \
+  tests/synthetic-csv-browser-port.test.mjs \
   tests/synthetic-csv-export.test.mjs \
   tests/synthetic-csv-download.test.mjs \
   tests/synthetic-csv-geometry-integration.test.mjs \
   tests/synthetic-csv-ui-contract.test.mjs
 npx tsc --noEmit --strict --target ES2022 --module ESNext \
   --moduleResolution bundler --lib ES2022,DOM \
-  src/app/fictional-geometry.ts src/app/synthetic-csv-export.ts src/app/synthetic-csv-download.ts
+  src/app/fictional-geometry.ts src/app/synthetic-csv-export.ts \
+  src/app/synthetic-csv-download.ts src/app/synthetic-csv-browser-port.ts
 ```
 
 ### Verified in an isolated Node.js 22.16.0 mirror
@@ -49,6 +51,22 @@ The three new tests directly compare the actual `makeFictionalTheme(0)`, `fictio
 **Local, isolated test evidence (Node 22.16.0):** `node --experimental-strip-types --test tests/fictional-fixture-runtime.test.mjs tests/fictional-geometry.test.mjs tests/synthetic-csv-download.test.mjs` completed **17/17 PASS** (new fixture tests 3, geometry tests 9, download tests 5). Standalone strict TypeScript 5.8.3 for the pure geometry/CSV/download modules **PASS**. Executed file contents matched exact GitHub blob hashes: fixture `453d7ad078e168bf8011e5b7e135263a5307993e`, geometry `4cacbba4ee1147a7e59f4175dbf6b3927ee13fff`, new test `6fe896c311671615bb19f94f21a4f53dd85d765f` and test loader `ecde57654208822ab912ac01efd2b1609d25b523`.
 
 The partial test mirror lacked the full Angular component source, so the source-only fourth `synthetic-csv-geometry-integration` test could **not** complete in that mirror; do not interpret its missing-file failure as an application regression or report the complete suite as passing. It must be run in a full checkout. The mocked constructor deliberately cannot establish real `grafici-astrologici` runtime compatibility.
+
+### Browser adapter lifecycle and full error-path checks
+
+The previously inline Angular browser operations were extracted into `src/app/synthetic-csv-browser-port.ts`, a typed, dependency-injected adapter for Blob creation, object URLs, temporary download anchors, and delayed URL cleanup. `desktop-app.component.ts` now supplies native `Blob`, `URL`, `document`, and `window.setTimeout` functions but does not own the anchor lifecycle. It retains the existing fictional-only export guard, fixed filename and status copy.
+
+The adapter removes the temporary anchor in `finally` **even when appending it throws** (after a partial attach). The existing `requestSyntheticCsvDownload` helper revokes a URL immediately if anchor creation, append, click or timer registration throws. A successful click delays URL revocation by 30 seconds so WebView2 has time to begin the browser download; this does **not** prove it was saved.
+
+Added `tests/synthetic-csv-browser-port.test.mjs` with eight focused tests: success plus Blob MIME/content, failures at Blob/URL/anchor/append/click/timer boundaries, and independently deferred cleanup across repeated calls. Updated `tests/synthetic-csv-ui-contract.test.mjs` for the adapter wire-up and its source security constraints; the full UI contract test still needs the complete repository checkout.
+
+**Actually verified in isolated local Node.js 22.16.0 mirror** (the files below matched their GitHub content-blob SHA-1): `node --experimental-strip-types --test tests/synthetic-csv-browser-port.test.mjs tests/synthetic-csv-download.test.mjs tests/fictional-fixture-runtime.test.mjs tests/fictional-geometry.test.mjs` reported **25/25 PASS** (8 + 5 + 3 + 9). `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/synthetic-csv-browser-port.ts src/app/synthetic-csv-download.ts src/app/fictional-geometry.ts src/app/synthetic-csv-export.ts` **PASS** (TypeScript 5.8.3).
+
+- Browser adapter Git blob: `6863961c525460d8dd9a627f69c8d8f89d362374`.
+- Browser adapter tests Git blob: `82d777d2666f230851f82240caa03b6032f422ee`.
+- Existing fixture, geometry and download code were also executed without changes from their verified GitHub blobs.
+
+**Still missing:** Angular template/strict compilation against the installed `astrological-charts` sibling; the entire `npm test` suite (including UI source-contract tests), real browser download permission and save behavior under Windows WebView2, CSP checks, PNG export and full release acceptance. The Node fake DOM port exercises code paths but is not a real WebView.
 
 Then run the complete `npm test` and `npm run build:ui` against the separately built `astrological-charts` package. Test in offline Windows Tauri/WebView2 on a normal and high-DPI display: chart/table agreement, all view modes, genuine PNG/CSV download behavior and Blob URL cleanup. These platform gates remain open.
 
