@@ -107,8 +107,11 @@ export function decodeCalculationReply<T>(
     if (status !== 'ready') return {kind:'invalid_reply',request};
     const providerVersion = raw.providerVersion;
     const snapshot = raw.snapshot;
+    // Keep provider identity safe for UI/log display without enforcing semver.
+    // Unicode controls/formatters can spoof labels or inject terminal lines.
     if (typeof providerVersion !== 'string' || providerVersion.length < 1 ||
-        providerVersion.length > 100 || !validate(snapshot)) {
+        providerVersion.length > 100 || providerVersion.trim().length === 0 ||
+        /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(providerVersion) || !validate(snapshot)) {
       return {kind:'invalid_reply',request};
     }
     return {kind:'ready',request,value:snapshot,providerVersion};

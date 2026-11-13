@@ -384,3 +384,38 @@ test('session constructor enforces ASCII identifier bounds without changing vali
     );
   }
 });
+
+
+test('native provider version rejects control and invisible formatting characters',()=>{
+  const req={...valid(1),protocolVersion:1,sessionId:'session_1',requestSeq:1};
+  let validated=0;
+  const accepts=value=>decodeCalculationReply(
+    {...reply(req),providerVersion:value},req,v=>{validated++;return validate(v);}
+  ).kind;
+  for(const name of [
+    'fake-test-port-v1','VirgoStars-Ephemeris/0.5.2+DE441',
+    'Rust build β.1','v 1.0','v'.repeat(100),
+  ]) assert.equal(accepts(name),'ready',JSON.stringify(name));
+  assert.equal(validated,5);
+  for(const name of [
+    '', '   ', 'v'.repeat(101), 'v1\nready', 'v1\rforged',
+    'v1\u0000', 'v1\u001b[31m', 'v1\u007f', 'v1\u009f',
+    'v1\u200b', 'v1\u00ad', 'v1\u202e', 'v1\u2066',
+    'v1\u2028', 'v1\u2029',
+  ]) assert.equal(accepts(name),'invalid_reply',JSON.stringify(name));
+  assert.equal(validated,5,'invalid labels must fail before snapshot validation');
+});
+
+test('malformed provider version cannot poison the next queued calculation',async()=>{
+  const observed=[];
+  let count=0;
+  const queue=new LatestCalculationQueue('session_1',request=>{
+    count++;
+    return Promise.resolve({...reply(request),providerVersion:count===1?'forged\nstatus':'provider/2.0'});
+  },validate,result=>observed.push(result));
+  queue.submit(valid(1));await settle();
+  queue.submit(valid(2));await settle();
+  assert.deepEqual(observed.map(v=>v.kind),['invalid_reply','ready']);
+  assert.equal(observed[1].providerVersion,'provider/2.0');
+  queue.dispose();
+});
