@@ -1,3 +1,6 @@
+import {offlinePlaceQueryProblem} from './offline-city-query.js';
+export {offlinePlaceQueryProblem} from './offline-city-query.js';
+
 /**
  * Read-only offline city search contract shared with the Rust Tauri command.
  * Only bounded result lists cross IPC. City sources stay on local disk.
@@ -20,19 +23,6 @@ export type PlaceQueryState =
   | Readonly<{kind: 'ready'; items: readonly OfflinePlaceV1[]}>
   | Readonly<{kind: 'query_too_short' | 'query_too_long' | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable' | 'stale'; items: readonly []}>;
 
-/**
- * Preflight for Rust's bounded FTS5 query. We approximate its Unicode
- * alphanumeric/underscore token boundaries for immediate UI feedback.
- * Rust remains the authoritative validator for every caller.
- */
-export function offlinePlaceQueryProblem(query: string): 'query_too_short' | 'query_too_long' | null {
-  const characters = [...query];
-  if (characters.length > 80) return 'query_too_long';
-  const alphanumeric = characters.filter(char => /[\p{L}\p{N}]/u.test(char)).length;
-  if (alphanumeric < 2) return 'query_too_short';
-  const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
-  return terms.length > 5 ? 'query_too_long' : null;
-}
 
 export interface PlaceSearchTransport {
   isNative(): boolean;
