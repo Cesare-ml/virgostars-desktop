@@ -57,6 +57,9 @@ test('rejects undeclared, empty and spoofed alias metadata',()=>{
   reject('node_modules/wrap-ansi-cjs',entry('7.0.0','wrap-ansi'),
     {'node_modules/parent':{dependencies:{'wrap-ansi-cjs':'npm:wrap-ansi@'}}},
     '/wrap-ansi/-/wrap-ansi-7.0.0.tgz');
+  reject('node_modules/wrap-ansi-cjs',entry('7.0.0','wrap-ansi'),
+    {'node_modules/wrap-ansi-cjs':{dependencies:{'wrap-ansi-cjs':'npm:wrap-ansi@^7.0.0'}}},
+    '/wrap-ansi/-/wrap-ansi-7.0.0.tgz');
 });
 
 test('rejects invalid installed keys, injected identities and versions',()=>{
