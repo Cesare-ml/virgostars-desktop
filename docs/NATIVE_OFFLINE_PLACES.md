@@ -38,3 +38,9 @@ The picker limits input to 80 **Unicode scalar values**, not 80 UTF-16 code unit
 
 Run `node --experimental-strip-types --test tests/offline-city-picker-integration.test.mjs` with a complete Node.js 22 checkout. Combined builds must additionally run the existing city-picker, native search and IPC suite, then a manual Windows Tauri/WebView2 test with an authorized installed catalog. The default demo remains entirely synthetic; no birth chart or city coordinate is persisted or used for astronomy.
 
+
+## Explicit retry of temporary native search failures
+
+A transient `busy` or generic `unavailable` response now displays a local, keyboard-accessible **Retry / Riprova** button. Clicking it invokes `OfflineCityPickerState.retry()`, which invalidates the previous request generation and reuses the existing **180 ms debounce**. It does not poll, spin, reissue requests automatically, send telemetry or expose native diagnostics. The input receives keyboard focus before the button is removed by the new status. Permanent `catalog_unavailable` and browser-only `not_native` states intentionally do not show Retry; installing the local resource or running Tauri is necessary.
+
+Synthetic regressions in `tests/offline-city-picker-retry.test.mjs` cover successful recovery, native error recovery, ineligible retry states, stale completion order and disposal; the combined Angular wiring test checks the accessible control, focus restoration and IT/EN translation keys. Run the full Node suite, Angular build and Windows WebView2 keyboard/screen-reader smoke on a complete checkout before merging.
