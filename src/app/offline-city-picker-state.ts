@@ -80,6 +80,9 @@ export class OfflineCityPickerState {
   private async perform(ticket: number, query: string): Promise<void> {
     this.status = 'loading';
     this.changed();
+    // A synchronous view notification may re-enter input() or dispose this
+    // picker. Do not launch the superseded native query after that callback.
+    if (ticket !== this.seq || this.disposed) return;
     try {
       const result = await this.lookup.search(query, 12);
       if (ticket !== this.seq || this.disposed) return;
