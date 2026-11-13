@@ -9,6 +9,8 @@
 
 **Bounded scheduling:** one active request and **one replaceable latest pending request**, regardless of how often the user scrubs year/month/day/hour/minute controls. A newer valid request supersedes older work, aborts the active call via `AbortSignal` when possible and suppresses an obsolete success/error even if a native adapter ignores cancellation. After the active request settles, the queue submits only the latest pending request. The queue owns no timer, cache, worker, WebGL objects or network connection.
 
+**Strict session identity (2026-11-14, stacked draft):** a calculation queue now requires `sessionId` to be an actual primitive string of 1–80 ASCII letters, digits, `_` or `-`. Previously `RegExp.test` could coerce a non-string such as a number, boolean, array or custom object into an apparently valid identifier. The strict type guard rejects these without calling user-defined `toString` methods, and keeps the original ASCII and length bounds. This protects local request/reply correlation only; it is not user authentication, a secret or an authorization token.
+
 **Request contract v1:**
 - `protocolVersion=1`, per-view `sessionId`, increasing `requestSeq`, and caller-provided stable `calculationKey`.
 - `intent=now|scrub|preview|committed|transit`.
