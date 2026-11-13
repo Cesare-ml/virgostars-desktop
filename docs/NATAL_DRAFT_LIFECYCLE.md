@@ -47,3 +47,11 @@ The independent `resolveCivilTime` boundary now rejects a truncated timezone int
 The two explicitly supported **unbounded** end markers are `null` (used by synthetic fixtures) and `Infinity` (used by unpacked moment-timezone data). This preserves legitimate gap/fold handling, including explicit UTC choices for repeated hours. New tests in `tests/timezone-terminal-interval.test.mjs` cover valid markers, missing or noncanonical markers, finite cut-offs and a fictional Rome-like DST transition pair.
 
 This is input completeness validation, **not independent proof of IANA data accuracy**, historical offset correctness, native Rust time standards or a scientifically valid natal chart. Preview-only status, unknown-time semantics, local-only data and the no-save policy are unchanged. Run `node --experimental-strip-types --test tests/timezone-terminal-interval.test.mjs` and the existing timezone suites; a full Angular/Windows WebView2 pass is still required prior to merge.
+
+## Atomic validation of civil-time corrections
+
+`NatalDraftState.applyCivilCorrection()` now validates the **complete** five-field correction before writing any component of the local draft. It rechecks Gregorian year/month/day (including leap dates) and, when birth time is known, hour and minute ranges. Non-string or missing fields are rejected without changing the draft's revision, existing preview, errors or entered text. This is deliberately redundant with `stepCivilCorrection()`: the shared draft is an independent state boundary and should not assume that every future caller uses the same controls.
+
+When birth time is **unknown**, a date-only correction must preserve the existing hour and minute strings *exactly*, even if their retained values are incomplete. It cannot invent an offset, fill a missing hour, or silently switch the birth time to known. On a valid correction all five fields change together, and the old preview/UTC choice is invalidated.
+
+Regression suite: `node --experimental-strip-types --test tests/natal-civil-correction-boundary.test.mjs`. Also run `npm test` and the native Windows Angular/WebView2 acceptance gate before merging the draft PR stack. This is in-memory editor correctness only; it does not store personal details, calculate astronomical positions or certify historical timezone accuracy.
