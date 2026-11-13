@@ -74,3 +74,13 @@ test('country metadata from an explicit v2 lookup survives selection without gue
   assert.equal(chosen.stateId,1);
   assert.equal(h.state.selected.countryName,'Italia');
 });
+
+test('six-token query cancels pending work and shows explicit length limit',()=>{
+ const h=harness();h.state.input('Firenze');assert.equal(h.tasks.size,1);
+ h.state.input('one two three four five six');
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal(h.tasks.size,0);
+ h.flush();assert.equal(h.calls.length,0);
+ h.state.input('one two three four five');
+ assert.equal(h.state.status,'typing');
+});
