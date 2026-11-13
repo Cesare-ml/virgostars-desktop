@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isFileBackedPeEntryPoint} from '../scripts/pe-entrypoint-bounds.mjs';
-import {inspectWindowsPeHeader} from '../scripts/verify-windows-pe.mjs';
+import {inspectWindowsPeHeader, verifyWindowsExecutable} from '../scripts/verify-windows-pe.mjs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 test('PE entry point inside physically backed executable section passes', () => {
   assert.equal(isFileBackedPeEntryPoint(0x1000,0x1000,0x1000,0x200),true);
@@ -69,4 +72,18 @@ test('full PE gate rejects entry point in executable raw alignment padding', () 
     /WINDOWS_PE_ENTRYPOINT_SECTION/);
   assert.equal(inspectWindowsPeHeader(syntheticPe({entryPoint:0x107f,virtualSize:0x80})).kind,
     'windows_x64_gui');
+});
+
+
+test('on-disk PE preflight rejects an entry point in raw padding', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vs-pe-entry-'));
+  const file = join(dir, 'fictional.exe');
+  try {
+    writeFileSync(file, syntheticPe({entryPoint:0x107f,virtualSize:0x80}));
+    assert.equal(verifyWindowsExecutable(file).kind, 'windows_x64_gui');
+    writeFileSync(file, syntheticPe({entryPoint:0x1080,virtualSize:0x80}));
+    assert.throws(() => verifyWindowsExecutable(file), /WINDOWS_PE_ENTRYPOINT_SECTION/);
+  } finally {
+    rmSync(dir, {recursive:true, force:true});
+  }
 });
