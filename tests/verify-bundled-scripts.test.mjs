@@ -31,6 +31,15 @@ test('fails closed when the main script is missing on disk', () => fixture(f => 
   rmSync(join(f.dir, 'main-ABC123.js'));
   assert.throws(() => inspectDesktopScripts(f.dir), /script missing/);
 }));
+test('rejects an existing but zero-byte Angular main module', () => fixture(f => {
+  writeFileSync(join(f.dir, 'main-ABC123.js'), '');
+  assert.throws(() => inspectDesktopScripts(f.dir), /script is empty/);
+}));
+test('rejects zero-byte polyfills even with a nonempty main', () => fixture(f => {
+  writeFileSync(join(f.dir, 'polyfills-A9.js'), '');
+  f.setHtml('<script src="polyfills-A9.js" type="module"></script>' + f.main);
+  assert.throws(() => inspectDesktopScripts(f.dir), /script is empty/);
+}));
 test('fails closed when a script is a symlink', () => fixture(f => {
   writeFileSync(join(f.dir, 'other.js'), '/* fixture */');
   rmSync(join(f.dir, 'main-ABC123.js'));
