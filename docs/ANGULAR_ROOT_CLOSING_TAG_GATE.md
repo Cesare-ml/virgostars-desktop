@@ -44,14 +44,16 @@ the body, and a commented-out closing tag.
 
 ## Integration/acceptance
 
-This change is **stacked on PR #105's branch** and kept in an independent
-draft PR. It does not modify the ready-for-review parent PR or overlap with
-the independent JavaScript chunk-graph work in #111.
+PR #105 was merged into `main` while this correction was under review
+(merge commit `6e96f3e8137dcacd88dc86f1bca00ca12f948d95`). This change
+now targets **`main` directly** in an independent draft PR. It was **not**
+part of the #105 merge and does not overlap with independent JavaScript
+chunk-graph work in #111.
 
 **Not run:** full-repository `npm test`, real Angular `npm run build:ui`,
 approved private-artwork packaging, native Rust/Tauri compilation, Windows
 WebView2 CSS/JS/CSP/network inspection, release or deployment.
 
-Do not merge this stacked draft independently without reviewing the parent
-branch's status and rerunning the complete Windows acceptance path. No
+Do not merge this draft before reviewing its regression evidence and
+rerunning the complete Windows acceptance path. No
 GitHub Actions, license changes, secrets or production changes.
