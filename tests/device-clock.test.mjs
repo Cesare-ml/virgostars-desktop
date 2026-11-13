@@ -134,3 +134,96 @@ test('throwing system time source is contained at construction and on ticks', ()
   assert.equal(formatDeviceClock(clock.timestamp, 'en'), '—');
   clock.dispose();
 });
+
+
+test('scheduler failure is contained and live time becomes unavailable until retry', () => {
+  let now = 5_000;
+  let failSchedule = true;
+  let tick = null;
+  let schedules = 0;
+  const driver = {
+    now: () => now,
+    schedule(fn) {
+      schedules++;
+      if (failSchedule) throw new Error('private timer details');
+      tick = fn;
+      return 0;
+    },
+    cancel(id) { assert.equal(id, 0); tick = null; },
+  };
+  const clock = new DeviceClock(driver);
+  let notifications = 0;
+  assert.doesNotThrow(() => clock.start(() => notifications++));
+  assert.ok(Number.isNaN(clock.timestamp), 'not a frozen plausible clock');
+  assert.equal(formatDeviceClock(clock.timestamp, 'en'), '—');
+  assert.equal(notifications, 1);
+  assert.equal(schedules, 1);
+  now = 6_000;
+  failSchedule = false;
+  clock.start(() => notifications++);
+  assert.equal(clock.timestamp, 6_000);
+  assert.equal(notifications, 2);
+  assert.equal(schedules, 2);
+  clock.start(() => notifications++);
+  assert.equal(schedules, 2, 'successful start is idempotent');
+  now = 7_000;
+  tick();
+  assert.equal(clock.timestamp, 7_000);
+  assert.equal(notifications, 3);
+  clock.dispose();
+});
+
+test('scheduler rejecting an empty handle fails closed and can be retried', () => {
+  let handle = undefined;
+  let schedules = 0;
+  const driver = {
+    now: () => 0,
+    schedule() { schedules++; return handle; },
+    cancel: () => assert.fail('nothing to cancel'),
+  };
+  const clock = new DeviceClock(driver);
+  let notifications = 0;
+  clock.start(() => notifications++);
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(notifications, 1);
+  handle = null;
+  clock.start(() => notifications++);
+  assert.equal(schedules, 2);
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(notifications, 3, 'retry refresh then fails to schedule and hides the time');
+  clock.dispose();
+});
+
+test('cancel failures and late callbacks never prevent destruction', () => {
+  let lateTick;
+  const driver = {
+    now: () => 1000,
+    schedule(fn) { lateTick = fn; return 0; },
+    cancel() { throw new Error('private cancel failure'); },
+  };
+  const clock = new DeviceClock(driver);
+  let changes = 0;
+  clock.start(() => changes++);
+  assert.doesNotThrow(() => clock.dispose());
+  assert.doesNotThrow(() => clock.dispose());
+  assert.doesNotThrow(() => lateTick());
+  assert.equal(changes, 0);
+  clock.start(() => changes++);
+  assert.equal(changes, 0);
+});
+
+test('synchronous disposal inside scheduler cancels returned handle without resurrecting timer', () => {
+  let clock;
+  let cancels = 0;
+  let callback;
+  const driver = {
+    now: () => 1_000,
+    schedule(fn) { callback = fn; clock.dispose(); return 0; },
+    cancel(id) { assert.equal(id, 0); cancels++; },
+  };
+  clock = new DeviceClock(driver);
+  assert.doesNotThrow(() => clock.start(() => assert.fail('unexpected change')));
+  assert.equal(cancels, 1);
+  callback();
+  assert.equal(clock.timestamp, 1_000);
+});
