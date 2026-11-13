@@ -1,5 +1,4 @@
 /** Fail-closed check of synthetic assets emitted by the Angular desktop builder. */
-import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +8,7 @@ import { inspectAngularChunkGraph } from './verify-angular-chunks.mjs';
 import { verifyDesktopBaseHref } from './verify-document-base.mjs';
 import { verifyDesktopAppRoot } from './verify-desktop-app-root.mjs';
 import { PRIVATE_MANIFEST_FILE, validatePrivateManifest } from './prepare-private-assets.mjs';
+import { hashBoundedBuildFile, readBoundedBuildFile } from './verify-bounded-file.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Match the bounded staging pipelines before reading any potentially huge
@@ -41,7 +41,10 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   const manifestStat=safeRegular(manifestFile);
   check(manifestStat.size>0 && manifestStat.size<=MAX_MANIFEST_BYTES,
     'Offline asset manifest exceeds size budget');
-  const raw=readFileSync(manifestFile);
+  let raw;
+  try { raw=readBoundedBuildFile(manifestFile,MAX_MANIFEST_BYTES); }
+  catch { throw new Error('Offline asset manifest exceeds size budget or changed during read'); }
+  check(raw.length>0,'Offline asset manifest exceeds size budget');
   const manifest=privateMode?validatePrivateManifest(raw,options.expectedPrivateHash):JSON.parse(raw.toString('utf8'));
   if(!privateMode) check(manifest.schemaVersion===1 && manifest.source?.repository==='synthetic-local-fixtures' &&
       manifest.source?.commit==='none' && Array.isArray(manifest.files) && manifest.files.length>0,
@@ -88,9 +91,10 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
     }
     check(fileStat.size===f.bytes && fileStat.size<=MAX_ASSET_BYTES,
       'Offline bundle missing or modified asset: ' + f.path);
-    const body=readFileSync(current);
-    check(body.length===f.bytes && createHash('sha256').update(body).digest('hex')===f.sha256,
-      'Offline bundle missing or modified asset: ' + f.path);
+    let digest;
+    try { digest=hashBoundedBuildFile(current,f.bytes,MAX_ASSET_BYTES); }
+    catch { throw new Error('Offline bundle missing or modified asset: ' + f.path); }
+    check(digest===f.sha256,'Offline bundle missing or modified asset: ' + f.path);
     expected.push(f.path);
   }
   const actual=filesIn(assets).sort();expected.sort();
