@@ -83,6 +83,7 @@ test('rejects missing executable section contents and inconsistent PE image layo
     [0x188 + 20, 64, /SECTION_RAW_BOUNDS/], // overlaps header
     [0x188 + 20, 2048, /SECTION_RAW_BOUNDS/], // truncated executable section
     [0x188 + 40 + 12, 0x3f00, /SECTION_IMAGE_BOUNDS/], // section past image
+    [0x188 + 80 + 12, 0x100, /SECTION_HEADER_OVERLAP/], // section aliases PE headers
   ];
   for (const [offset, value, reason] of failures) {
     const bad = pe();
@@ -105,6 +106,18 @@ test('rejects overlapping PE image and raw section ranges, but accepts adjacent 
   assert.equal(inspectWindowsPeHeader(pe()).kind, 'windows_x64_gui');
   const virtualAdjacent = pe({patch:[[0x188 + 40 + 12, 0x1200, 4]]});
   assert.equal(inspectWindowsPeHeader(virtualAdjacent).kind, 'windows_x64_gui');
+});
+
+test('entrypoint must be backed by executable file bytes, not just a virtual tail', () => {
+  const virtualTail = pe({patch:[
+    [0x188 + 8, 0x400, 4], // VirtualSize extends beyond .text raw bytes
+    [0x98 + 16, 0x1200, 4], // First byte beyond its [0x1000, 0x1200) raw backing
+  ]});
+  assert.throws(() => inspectWindowsPeHeader(virtualTail), /ENTRYPOINT_SECTION/);
+  const lastBackedByte = pe({patch:[
+    [0x188 + 8, 0x400, 4], [0x98 + 16, 0x11ff, 4],
+  ]});
+  assert.equal(inspectWindowsPeHeader(lastBackedByte).kind, 'windows_x64_gui');
 });
 
 test('rejects wrong on-disk length while supporting bounded header reads and Uint8Array offsets', () => {
