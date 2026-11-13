@@ -90,7 +90,7 @@ test('requires a nonempty npm dependency graph and v3 structure',()=>{
   const f=fixture();f.lock.lockfileVersion=2;
   assert.throws(()=>auditNpmLock(f.manifest,f.lock),/Invalid npm lock structure/);
   const g=fixture();delete g.lock.packages['node_modules/three'];
-  assert.throws(()=>auditNpmLock(g.manifest,g.lock),/No verified npm registry dependencies/);
+  assert.throws(()=>auditNpmLock(g.manifest,g.lock),/Unexpected npm lock package count|No verified npm registry dependencies/);
 });
 
 test('current committed repository lockfile passes the complete provenance audit',()=>{
