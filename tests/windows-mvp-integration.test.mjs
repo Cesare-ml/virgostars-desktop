@@ -185,3 +185,42 @@ test('both approved Angular build variants inherit the offline chunk graph witho
   assert.match(graph, /import ts from 'typescript'/);
   assert.doesNotMatch(graph, /(?:fetch|https\.request|http\.request)\(/);
 });
+
+test('Windows CMD delegates to one reviewed PowerShell bootstrap and lockfile-pinned native build', () => {
+  const cmd = read('scripts/build-windows.cmd');
+  const ps = read('scripts/build-windows-spike.ps1');
+  assert.match(cmd, /powershell\.exe -NoProfile -NonInteractive -File/);
+  assert.match(cmd, /exit \/b %VS_BUILD_EXIT%/);
+  assert.doesNotMatch(cmd, /npm\.cmd\s+(?:install|ci|run\s+tauri:build)/);
+  const stages = [
+    "@('ci')",
+    "@('run', 'verify:ipc')",
+    "@('run', 'build:ui')",
+    "@('run', 'verify:css')",
+    "@('test', '--locked')",
+    "@('exec', '--offline', '--', 'tauri', 'build')",
+    "@('run', 'doctor:verify')"
+  ].map(value => ps.indexOf(value));
+  assert.ok(stages.every(pos => pos >= 0), 'missing one locked or reviewed step');
+  assert.ok(stages[0] < stages[1] && stages[1] < stages[2] &&
+    stages[2] < stages[3] && stages[3] < stages[4] &&
+    stages[4] < stages[5] && stages[5] < stages[6],
+    'validated Angular output must not be silently rebuilt');
+  assert.doesNotMatch(ps, /@\('run', 'tauri:build'\)/);
+  const tauri = json('src-tauri/tauri.conf.json');
+  assert.equal(tauri.build.frontendDist, '../dist/desktop/browser');
+  assert.ok(!tauri.build.beforeBuildCommand);
+});
+
+test('HTML bundle gate rejects duplicate close tags and invisible body attributes', () => {
+  const root = read('scripts/verify-desktop-app-root.mjs');
+  const cases = read('tests/desktop-app-root.test.mjs');
+  const bundled = read('scripts/verify-offline-bundle.mjs');
+  assert.match(root, /match\(\/<\\\/vs-desktop-app\\s\*\>\/gi\)/);
+  assert.match(root, /\^<body\\s\*>\$/i);
+  assert.match(cases, /rejects an extra closing root tag/);
+  assert.match(cases, /rejects hidden, inert and inline-hidden body attributes/);
+  assert.match(bundled, /verifyDesktopAppRoot\(html\)/);
+  const index = read('src/index.html');
+  assert.match(index, /<body><vs-desktop-app><\/vs-desktop-app><\/body>/);
+});
