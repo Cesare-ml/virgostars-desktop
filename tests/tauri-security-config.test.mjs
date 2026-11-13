@@ -107,6 +107,12 @@ test('development CSP rejects missing, foreign or malformed directives', () => {
   }
 });
 
+test('tauri:dev checks local WebView security before launching the native host', () => {
+  const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts;
+  assert.equal(scripts['tauri:dev'],
+    'node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && tauri dev');
+});
+
 test('development frontend URL and startup hook cannot change silently', () => {
   for (const url of [
     'https://example.invalid', 'http://localhost:4200',
