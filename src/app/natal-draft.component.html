@@ -1,7 +1,7 @@
 <section class="natal-draft" [attr.aria-label]="t('natal.title')">
   <p class="draft-hint">{{t('natal.unsaved')}}</p>
   <label for="draft-subject">{{t('natal.name')}}</label>
-  <input id="draft-subject" type="text" autocomplete="off" maxlength="160"
+  <input id="draft-subject" type="text" autocomplete="off" maxlength="320"
     [value]="draft.name" [attr.placeholder]="t('natal.name.placeholder')"
     (input)="edit('name',$event)">
 
