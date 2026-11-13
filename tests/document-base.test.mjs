@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyDesktopBaseHref } from '../scripts/verify-document-base.mjs';
+import { readFileSync } from 'node:fs';
 
 const html = base => '<!doctype html><html lang="it"><head><meta charset="utf-8">' + base +
   '<link rel="stylesheet" href="styles-TEST.css"></head><body><vs-desktop-app></vs-desktop-app><script src="main-TEST.js"></script></body></html>';
@@ -73,4 +74,24 @@ test('rejects unexpected head elements before base even without CSS links', () =
   for (const before of ['<style></style>', '<div></div>', '<script type="module"></script>']) {
     assert.throws(() => verifyDesktopBaseHref(html(before + '<base href="/">')), /DESKTOP BASE HREF/, before);
   }
+});
+
+test('committed Angular source and Tauri frontend distribution agree on the root base', () => {
+  const index = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
+  const angular = JSON.parse(readFileSync(new URL('../angular.json', import.meta.url), 'utf8'));
+  const tauri = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
+  const build = angular.projects.desktop.architect.build;
+  assert.equal(verifyDesktopBaseHref(index), true);
+  assert.equal(build.options.index, 'src/index.html');
+  assert.equal(build.options.outputPath, 'dist/desktop');
+  assert.equal(tauri.build.frontendDist, '../' + build.options.outputPath + '/browser');
+  assert.match(tauri.app.security.csp, /(?:^|;\s*)base-uri 'self'(?:;|$)/);
+});
+
+test('Angular build keeps active bundled CSS compatible with strict script CSP', () => {
+  const angular = JSON.parse(readFileSync(new URL('../angular.json', import.meta.url), 'utf8'));
+  const opts = angular.projects.desktop.architect.build.options;
+  assert.deepEqual(opts.styles, ['src/styles.css']);
+  assert.equal(opts.optimization.styles.inlineCritical, false);
+  assert.equal(opts.optimization.fonts, false);
 });
