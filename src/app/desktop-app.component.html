@@ -11,7 +11,7 @@
     </div>
     <div class="top-actions">
       <span class="lab-indicator">{{t('lab')}}</span>
-      <button type="button" class="small-control" [attr.aria-label]="t('language')" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button>
+      <button type="button" class="small-control" [attr.aria-label]="languageToggleLabel" [attr.title]="languageToggleLabel" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button>
       <button type="button" class="small-control" [attr.aria-label]="themeToggleLabel" [attr.title]="themeToggleLabel" (click)="toggleTheme()">{{theme === 'light' ? '☾' : '☼'}}</button>
     </div>
   </header>
