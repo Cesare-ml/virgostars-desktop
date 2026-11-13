@@ -1,0 +1,91 @@
+#!/usr/bin/env node
+/**
+ * Read-only structural preflight for the Windows x64 Tauri prototype executable.
+ * This is NOT Authenticode verification, malware analysis or proof it can launch.
+ */
+import {constants, closeSync, fstatSync, lstatSync, openSync, readSync} from 'node:fs';
+import {dirname, join, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const MAX_HEADER_BYTES = 8192;
+const MAX_PE_OFFSET = 4096;
+const error = code => { throw new Error('WINDOWS_PE_' + code); };
+
+/** Parse only header structure, from synthetic fixtures or a bounded file read. */
+export function inspectWindowsPeHeader(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 64) error('TRUNCATED');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u16 = offset => view.getUint16(offset, true);
+  const u32 = offset => view.getUint32(offset, true);
+  if (u16(0) !== 0x5a4d) error('DOS_SIGNATURE');
+  const peOffset = u32(0x3c);
+  if (peOffset < 64 || peOffset > MAX_PE_OFFSET) error('HEADER_OFFSET');
+  if (bytes.byteLength < peOffset + 26) error('TRUNCATED');
+  if (u32(peOffset) !== 0x00004550) error('PE_SIGNATURE');
+  const machine = u16(peOffset + 4);
+  if (machine !== 0x8664) error('MACHINE_NOT_AMD64');
+  const sections = u16(peOffset + 6);
+  if (sections < 1 || sections > 96) error('SECTION_COUNT');
+  const characteristics = u16(peOffset + 22);
+  if ((characteristics & 0x0002) === 0 || (characteristics & 0x2000) !== 0) error('NOT_EXECUTABLE');
+  const optionalLength = u16(peOffset + 20);
+  if (optionalLength < 112 || optionalLength > 1024) error('OPTIONAL_LENGTH');
+  if (bytes.byteLength < peOffset + 24 + optionalLength + sections * 40) error('TRUNCATED');
+  if (u16(peOffset + 24) !== 0x020b) error('NOT_PE32_PLUS');
+  if (u16(peOffset + 24 + 68) !== 2) error('NOT_GUI_SUBSYSTEM');
+  return Object.freeze({kind: 'windows_x64_gui', machine: 'AMD64', peFormat: 'PE32+', sections});
+}
+
+function identicalFile(a, b) {
+  return a.isFile() && b.isFile() && a.dev === b.dev && a.ino === b.ino &&
+    a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+}
+
+/** Fixed-path production CLI, explicit path parameter only for test-fixture use. */
+export function verifyWindowsExecutable(file) {
+  let fd;
+  try {
+    const before = lstatSync(file, {bigint: true});
+    if (before.isSymbolicLink() || !before.isFile()) error('UNSAFE_FILE');
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const opened = fstatSync(fd, {bigint: true});
+    if (!identicalFile(before, opened)) error('CHANGED_FILE');
+    if (opened.size < 64n) error('TRUNCATED');
+    const length = Number(opened.size < BigInt(MAX_HEADER_BYTES) ? opened.size : BigInt(MAX_HEADER_BYTES));
+    const buffer = Buffer.alloc(length);
+    let offset = 0;
+    while (offset < length) {
+      const count = readSync(fd, buffer, offset, length - offset, offset);
+      if (count <= 0) error('TRUNCATED');
+      offset += count;
+    }
+    const after = fstatSync(fd, {bigint: true});
+    const pathAfter = lstatSync(file, {bigint: true});
+    if (!identicalFile(opened, after) || !identicalFile(opened, pathAfter) || pathAfter.isSymbolicLink()) {
+      error('CHANGED_FILE');
+    }
+    return inspectWindowsPeHeader(buffer);
+  } catch (failure) {
+    if (failure instanceof Error && /^WINDOWS_PE_[A-Z0-9_]+$/.test(failure.message)) throw failure;
+    // Do not print absolute paths or exception details on a shared diagnostic report.
+    error('UNREADABLE');
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  if (process.argv.length !== 2) {
+    console.error('Usage: node scripts/verify-windows-pe.mjs');
+    process.exitCode = 2;
+  } else {
+    try {
+      verifyWindowsExecutable(join(ROOT, 'src-tauri', 'target', 'release', 'virgostars-desktop-spike.exe'));
+      console.log('Verified Windows x64 PE32+ GUI header. Native startup, signing and offline behavior remain untested.');
+    } catch (failure) {
+      console.error('WINDOWS_PE_VERIFY_FAILED: ' + failure.message);
+      process.exitCode = 1;
+    }
+  }
+}
