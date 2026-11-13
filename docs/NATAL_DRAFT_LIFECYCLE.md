@@ -55,3 +55,11 @@ This is input completeness validation, **not independent proof of IANA data accu
 When birth time is **unknown**, a date-only correction must preserve the existing hour and minute strings *exactly*, even if their retained values are incomplete. It cannot invent an offset, fill a missing hour, or silently switch the birth time to known. On a valid correction all five fields change together, and the old preview/UTC choice is invalidated.
 
 Regression suite: `node --experimental-strip-types --test tests/natal-civil-correction-boundary.test.mjs`. Also run `npm test` and the native Windows Angular/WebView2 acceptance gate before merging the draft PR stack. This is in-memory editor correctness only; it does not store personal details, calculate astronomical positions or certify historical timezone accuracy.
+
+## Detached immutable anchors for provisional UTC selection
+
+`captureNatalPreviewAnchor` now stores **both** the original preview identity token and a separately copied, frozen snapshot of its scalar data and nested civil/place records. The freshness guard revalidates the current input **and** the actual displayed preview against those captured values.
+
+This closes a second prototype loophole: a direct mutation of `NatalDraftState` **together with** an in-place mutation of `draft.preview` must not make an old local-to-UTC choice appear current merely because the preview and its anchor referred to the same mutable object. A new explicit preview request is necessary after any change. The preview is still provisional and discarded at shell teardown.
+
+`tests/natal-preview-freshness.test.mjs` now includes regression cases for nested preview mutation, simultaneously edited draft/preview fields, copied-object identity and explicit recapture. For verification run `node --experimental-strip-types --test tests/natal-preview-freshness.test.mjs`, then full `npm test`, Angular production build and native Windows UI smoke. This is **accidental stale-UI protection**, not a security boundary against malicious JavaScript, secure memory erasure, independent historical tzdb verification or completed astronomy.

@@ -78,3 +78,60 @@ test('valid unknown birth time preserves unresolved status, never generates UTC'
   assert.equal(a.preview.utcResolution,'unknown_birth_time');
   assert.equal(a.preview.civil.hour,null);
 });
+
+test('the anchor owns a frozen value copy, never the mutable preview objects',()=>{
+  const s=make(),a=captureNatalPreviewAnchor(s);
+  assert.ok(a);
+  assert.notEqual(a.snapshot,s.preview);
+  assert.notEqual(a.snapshot.civil,s.preview.civil);
+  assert.notEqual(a.snapshot.place,s.preview.place);
+  assert.equal(Object.isFrozen(a),true);
+  assert.equal(Object.isFrozen(a.snapshot),true);
+  assert.equal(Object.isFrozen(a.snapshot.civil),true);
+  assert.equal(Object.isFrozen(a.snapshot.place),true);
+  assert.equal(isNatalPreviewCurrent(s,a),true);
+});
+
+test('direct mutation of the displayed preview alone revokes authorization',()=>{
+  for(const mutate of [
+    p=>{p.name='Changed preview';},
+    p=>{p.civil.day=26;},
+    p=>{p.place.timeZone='UTC';},
+    p=>{p.place.lngMicro=11_000_000;},
+  ]){
+    const s=make(),a=captureNatalPreviewAnchor(s);
+    mutate(s.preview);
+    assert.equal(isNatalPreviewCurrent(s,a),false);
+  }
+});
+
+test('coordinated direct edits cannot launder a stale UTC selection',()=>{
+  const cases=[
+    s=>{s.name='Changed';s.preview.name='Changed';},
+    s=>{s.year='2027';s.preview.civil.year=2027;},
+    s=>{s.birthTimeKnown=false;
+      s.preview.civil.birthTimeKnown=false;
+      s.preview.civil.hour=null;s.preview.civil.minute=null;
+      s.preview.utcResolution='unknown_birth_time';},
+    s=>{s.place={...place,timeZone:'UTC'};
+      s.preview.place.timeZone='UTC';},
+    s=>{s.place={...place,latMicro:44_000_000};
+      s.preview.place.latMicro=44_000_000;},
+  ];
+  for(const mutate of cases){
+    const s=make(),a=captureNatalPreviewAnchor(s);
+    assert.equal(isNatalPreviewCurrent(s,a),true);
+    mutate(s);
+    assert.equal(isNatalPreviewCurrent(s,a),false);
+  }
+});
+
+test('a new explicit preview and anchor are needed after a source mutation',()=>{
+  const s=make(),a=captureNatalPreviewAnchor(s);
+  s.name='Changed';s.preview.name='Changed';
+  assert.equal(isNatalPreviewCurrent(s,a),false);
+  assert.equal(s.showPreview(),true);
+  const fresh=captureNatalPreviewAnchor(s);
+  assert.equal(isNatalPreviewCurrent(s,fresh),true);
+  assert.equal(isNatalPreviewCurrent(s,a),false);
+});
