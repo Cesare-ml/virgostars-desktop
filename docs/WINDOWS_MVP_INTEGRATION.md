@@ -161,3 +161,17 @@ Two further contracts were committed in `tests/windows-mvp-integration.test.mjs`
 - **These V8 harness results are *not* a complete Node `--test` execution**, PowerShell test, `npm ci`, `cargo test --locked`, Angular build, native binary run, or WebView2 visual acceptance. No installer or production artifact is claimed.
 
 **Next mandatory work:** run the entire `npm test` on the complete branch with public sibling Charts dependencies, `npm run build:ui`, the exact local offline asset bundle and native Windows bootstrap. Test WebView2 under airplane mode, full CSS and chart sizing, PNG/CSV save behavior, input focus and lifecycle. Do not merge duplicate mainline fixes into main a second time; the current branch is a Draft candidate.
+
+## Bounded fit and synthetic CSV coverage restored (13 Nov 2026)
+
+The integrated Windows candidate already contains `MAX_CHART_SIDE_CSS_PX = 4096` in `src/app/workspace-state.ts` but had not inherited the later cross-module regression added to draft #103 after the #112 integration branch was created. The original **four-case** `tests/chart-fit-shortcuts-integration.test.mjs` has now been imported **byte-identically** (Git blob SHA `1ab6e5df3c2c59f04fdb923d77fbef4be1cc4a07`).
+
+**Actually executed in Node.js 22.16.0:** `node --experimental-strip-types --test tests/chart-fit-shortcuts-integration.test.mjs` → **4/4 passed, 0 failures/skips**, on an isolated mirror with exact Git blob SHA parity for the tested file and all four imported pure dependencies (`workspace-state.ts`, `desktop-shortcuts.ts`, `fictional-geometry.ts`, `synthetic-csv-export.ts`). TypeScript **5.8.3 strict standalone** compilation for those four TS files also passed. The tests cover large yet finite canvas sizes, repeated inspector/sidebar resizing, editable-field shortcut protection and preservation of all 22 fictional CSV coordinates under fit/view actions.
+
+This is **not** `npm test` against the complete Windows candidate or an Angular/Windows visual test. The Chart renderer's WebGL back-buffer size still depends on device pixel ratio and upstream graphics logic.
+
+### Status after source reconciliation
+
+The previous mainline build reconciliation retains the six original mainline Windows bootstrap and HTML root files unchanged. **26/26** original HTML/Windows source-test bodies and **2/2** new cross-feature source checks passed in a V8 harness with exact GitHub file contents; this was **not** the Node test runner. The original 4-case chart-fit suite **was** subsequently run with the actual Node test runner as described above.
+
+The Windows MVP candidate remains **Draft**. It still needs a clean full checkout, `npm ci`, `npm test`, standalone synthetic Charts build, `npm run build:ui`, `npm run verify:bundle`, locked Cargo/Tauri Windows packaging and genuine offline WebView2 screen, styling, keyboard and PNG/CSV-save tests. No main merge, release or production deployment was performed.
