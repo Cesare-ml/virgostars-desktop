@@ -8,7 +8,7 @@ The public Charts renderer's `GraficoRenderService.generaImmagine()` is expected
 
 - the exact PNG data-URL prefix (no remote, blob, HTML or SVG URLs);
 - a bounded base64 payload (maximum 32 MiB of encoded data), with valid alphabet and padding shape;
-- a PNG signature, an IHDR first chunk of length 13, positive width/height at most 16,384 pixels, spec-permitted color type/bit-depth/compression/filter/interlace values, and the IHDR CRC32;
+- a PNG signature, an IHDR first chunk of length 13, positive width/height at most 16,384 pixels **and no more than 16,777,216 total pixels**, spec-permitted color type/bit-depth/compression/filter/interlace values, and the IHDR CRC32;
 - a filename assembled from allowed demonstration modes/themes, always prefixed `virgostars-synthetic-`.
 
 On failure the existing translated generic chart-error UI is shown. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **only the IHDR chunk CRC32**, not the CRCs of later chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
@@ -48,3 +48,11 @@ Synthetic tests deliberately recompute CRC when mutating dimensions and header f
 - **TypeScript v5.8.3:** strict standalone `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM` — **passed**, with a matching minimal `ChartMode`/`UiTheme` type stub.
 - The tested source and test files were verified byte-for-byte against their GitHub blob SHAs: `e2de774777b6e09717f5d0ac468532f7fc80d9be` and `f834bd7a2e276881960691b607a537acd6f19a5f`.
 - **Not executed:** repository-wide `npm test`, Angular bundle/build, Tauri/Rust build, or Windows WebView2 GUI/export smoke.
+
+## Total raster-pixel budget follow-up (2026-11-13)
+
+A PNG can be small in encoded bytes yet declare a huge image that expands during browser decoding. Per-side caps alone accepted a 16,384 × 16,384 image (268,435,456 pixels). The transport guard now also rejects a declared width × height above **16,777,216 pixels** (16 megapixels in binary terms) before permitting the download request. The existing per-side caps and 32 MiB base64 cap remain in force. At 8-bit RGBA, 16,777,216 decoded pixels occupy approximately 64 MiB for the raw pixel buffer alone; actual WebView2 memory use may be higher and varies by encoding and decoder.
+
+Synthetic regression tests recompute the IHDR CRC so pixel-area cases reach the new guard. A 4,096 × 4,096 or 16,384 × 1,024 declared header is accepted by this **header-only** validator, while slightly over-budget and much larger headers are rejected. Such tiny test payloads are intentionally not complete, dimension-matching PNG images; no assertion is made about full decoding or download success.
+
+This threshold is a provisional defensive cap for synthetic preview charts, **not** a proven safe memory guarantee and not a permanent resolution limit for production exports. No real chart calculations, storage, network access, cloud synchronization, private data, license or release settings are changed.
