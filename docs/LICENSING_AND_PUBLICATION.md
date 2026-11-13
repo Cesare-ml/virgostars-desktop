@@ -28,3 +28,17 @@ CPAL permissions are not a trademark license for the VirgoStars name, visual ide
 6. Only after a maintainer accepts [Publication Checklist](PUBLICATION_CHECKLIST.md) should GitHub visibility be changed manually. Changing visibility is not a code-review step or implied by merging this documentation.
 
 This document records an engineering licensing choice, not an individual legal opinion. The complete license governs.
+
+## Local attribution regression gate
+
+Run `npm run verify:attribution` to check the tracked CPAL Exhibit B copyright,
+phrase and URL against `NOTICE` and the literal Desktop GUI session footer.
+The gate rejects missing, comment-only or explicitly hidden footer attribution
+and runs in both normal and private `verify:bundle` commands. The project's
+Node test suite also exercises failure cases and current source files.
+
+This is a **static source check**, not a legal determination or proof of
+on-screen prominence. Before any binary or repository release, manually test
+the actual Windows/WebView2 footer at supported window sizes, verify third-party
+notices and source availability, and clear the protected city catalog release
+blocker separately. No visibility or release status changes automatically.
