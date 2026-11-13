@@ -56,6 +56,20 @@ test('rejects oversized candidate before reading its body',()=>fixture(root=>{
   truncateSync(file,64*1024*1024+1);
   assert.throws(()=>inspectDesktopComponentStyles(root),/exceeds limits/);
 }));
+test('preflights a later symlink even when an earlier main module has matching CSS',()=>fixture(root=>{
+  writeFileSync(join(root,'main-ABC.js'),COMPONENT_CSS);
+  const target=join(root,'main-ABC.js');
+  symlinkSync(target,join(root,'polyfills-ZZZ.js'));
+  assert.throws(()=>inspectDesktopComponentStyles(root),/Unsafe compiled style candidate/);
+}));
+test('preflights a later oversized file even when earlier CSS is complete',()=>fixture(root=>{
+  writeFileSync(join(root,'main-ABC.js'),COMPONENT_CSS);
+  const later=join(root,'polyfills-ZZZ.js');
+  writeFileSync(later,'');
+  truncateSync(later,64*1024*1024+1);
+  assert.throws(()=>inspectDesktopComponentStyles(root),/exceeds limits/);
+}));
+
 test('rejects missing bundle directory and irrelevant filenames',()=>{
   assert.throws(()=>inspectDesktopComponentStyles(''),/Invalid bundle directory/);
   fixture(root=>{
