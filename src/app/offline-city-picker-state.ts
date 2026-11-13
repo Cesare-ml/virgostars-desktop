@@ -41,13 +41,21 @@ export class OfflineCityPickerState {
   input(value: string): void {
     if (this.disposed) return;
     this.abortPending();
-    this.query = value.slice(0, 80);
+    // Retain one extra Unicode scalar as an over-limit sentinel. Never
+    // search a silently truncated prefix or split a UTF-16 surrogate pair.
+    // Stop iterating after 81 scalars even for an enormous pasted input.
+    const chars: string[] = [];
+    for (const char of value) {
+      chars.push(char);
+      if (chars.length > 80) break;
+    }
+    this.query = chars.join('');
     this.selected = null;
     this.results = [];
     this.activeIndex = -1;
     const length = [...this.query.trim()].filter(c => /[\p{L}\p{N}]/u.test(c)).length;
     const problem = offlinePlaceQueryProblem(this.query);
-    if (length === 0) this.status = 'idle';
+    if (length === 0 && problem !== 'query_too_long') this.status = 'idle';
     else if (problem) this.status = problem;
     else {
       this.status = 'typing';
