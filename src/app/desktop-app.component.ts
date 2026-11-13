@@ -18,6 +18,8 @@ import { formatEclipticLongitude } from './format-longitude';
 import { buildSyntheticChartCsv, SYNTHETIC_CSV_FILENAME } from './synthetic-csv-export';
 import { requestSyntheticCsvDownload } from './synthetic-csv-download';
 import { createSyntheticCsvBrowserPort } from './synthetic-csv-browser-port';
+import {validatePngDataUrl, syntheticPngFilename} from './png-export-safety';
+import {requestSyntheticPngDownload} from './png-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -243,6 +245,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   async exportPng(): Promise<void> {
     if(!this.ready || this.busy || this.destroyed || this.exporting) return;
+    const exportMode = this.mode;
+    const exportTheme = this.theme;
     this.exporting=true;
     this.busy=true; this.status='exporting'; this.cd.markForCheck();
     try {
@@ -250,10 +254,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       const png=await this.renderer.generaImmagine(natal,transits,synastry,kind,
         this.options(),{x:800,y:800},2);
       if(this.destroyed) return;
-      const link=document.createElement('a');
-      link.href=png;
-      link.download='virgostars-synthetic-'+this.mode+'-'+this.theme+'.png';
-      link.click();
+      // Never turn an unexpected renderer value into an active download URL.
+      const safePng = validatePngDataUrl(png);
+      const safeFilename = syntheticPngFilename(exportMode, exportTheme);
+      requestSyntheticPngDownload(safePng, safeFilename, {
+        createAnchor: () => document.createElement('a'),
+        appendAnchor: anchor => { document.body.appendChild(anchor); },
+      });
+      // Only a download request: browser / OS save success is not asserted.
       this.status='exported';
     } catch(error) { if(!this.destroyed) this.renderError(error); }
     finally { this.exporting=false; if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); } }
