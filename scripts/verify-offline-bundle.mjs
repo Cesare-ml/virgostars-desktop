@@ -11,10 +11,17 @@ import { verifyDesktopAppRoot } from './verify-desktop-app-root.mjs';
 import { PRIVATE_MANIFEST_FILE, validatePrivateManifest } from './prepare-private-assets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// Match the bounded staging pipelines before reading any potentially huge
+// local file into memory. These are build-resource limits, not a rights check.
+const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
+const MAX_ASSET_FILES = 2000;
+const MAX_ASSET_BYTES = 20_000_000;
+const MAX_ASSET_TOTAL_BYTES = 200_000_000;
 function check(ok, message) { if (!ok) throw new Error(message); }
 function safeRegular(path, dir=false) {
   const s=lstatSync(path);
   check(!s.isSymbolicLink() && (dir?s.isDirectory():s.isFile()), 'Unsafe ' + (dir?'directory':'file') + ': ' + path);
+  return s;
 }
 function filesIn(dir, rel='') {
   const files=[];
@@ -31,13 +38,28 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   safeRegular(bundle,true);safeRegular(staging,true);
   const privateMode=options.privateMode===true;
   const manifestFile=join(staging,privateMode?PRIVATE_MANIFEST_FILE:'synthetic-assets-manifest.json');
-  safeRegular(manifestFile);
+  const manifestStat=safeRegular(manifestFile);
+  check(manifestStat.size>0 && manifestStat.size<=MAX_MANIFEST_BYTES,
+    'Offline asset manifest exceeds size budget');
   const raw=readFileSync(manifestFile);
   const manifest=privateMode?validatePrivateManifest(raw,options.expectedPrivateHash):JSON.parse(raw.toString('utf8'));
   if(!privateMode) check(manifest.schemaVersion===1 && manifest.source?.repository==='synthetic-local-fixtures' &&
       manifest.source?.commit==='none' && Array.isArray(manifest.files) && manifest.files.length>0,
       'Only an approved synthetic staged manifest can be verified');
   const assetFiles=privateMode?manifest.assets:manifest.files;
+  check(Array.isArray(assetFiles) && assetFiles.length>0 && assetFiles.length<=MAX_ASSET_FILES,
+    'Offline asset manifest exceeds file count budget');
+  let declaredTotal=0;
+  // Validate the *entire* manifest budget before reading even the first image.
+  // Hashes remain mandatory: metadata limits cannot establish file integrity.
+  for(const f of assetFiles) {
+    check(typeof f.path==='string' && /^img\/[a-zA-Z0-9_.@ /-]+\.(png|jpg|jpeg|webp)$/.test(f.path) &&
+      !f.path.split('/').some(x=>x==='.'||x==='..') &&
+      Number.isSafeInteger(f.bytes) && f.bytes>=0 && f.bytes<=MAX_ASSET_BYTES &&
+      /^[a-f0-9]{64}$/.test(f.sha256), 'Invalid generated manifest entry');
+    declaredTotal+=f.bytes;
+    check(declaredTotal<=MAX_ASSET_TOTAL_BYTES, 'Offline assets exceed total size budget');
+  }
   const htmlPath=join(bundle,'index.html');safeRegular(htmlPath);
   const html=readFileSync(htmlPath,'utf8');
   check(!/<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["'](?:https?:)?\/\//i.test(html),
@@ -57,12 +79,15 @@ export function verifyOfflineBundle(bundlePath, stagingPath, options={}) {
   const assets=join(bundle,'assets');safeRegular(assets,true);
   const expected=[];
   for(const f of assetFiles) {
-    check(typeof f.path==='string' && /^img\/[a-zA-Z0-9_.@ /-]+\.(png|jpg|jpeg|webp)$/.test(f.path) &&
-      !f.path.split('/').some(x=>x==='.'||x==='..') &&
-      Number.isSafeInteger(f.bytes) && /^[a-f0-9]{64}$/.test(f.sha256), 'Invalid generated manifest entry');
     let current=assets;
     const parts=f.path.split('/');
-    for(let i=0;i<parts.length;i++) { current=join(current,parts[i]);safeRegular(current,i<parts.length-1); }
+    let fileStat;
+    for(let i=0;i<parts.length;i++) {
+      current=join(current,parts[i]);
+      fileStat=safeRegular(current,i<parts.length-1);
+    }
+    check(fileStat.size===f.bytes && fileStat.size<=MAX_ASSET_BYTES,
+      'Offline bundle missing or modified asset: ' + f.path);
     const body=readFileSync(current);
     check(body.length===f.bytes && createHash('sha256').update(body).digest('hex')===f.sha256,
       'Offline bundle missing or modified asset: ' + f.path);
