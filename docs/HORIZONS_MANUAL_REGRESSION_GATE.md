@@ -65,3 +65,8 @@ The descriptor-owned-file test module now contains **11** tests rather than 9: t
 ## D-18 — API transport-version tests added to the full gate
 
 The exact all-suite now includes `tests/probe-horizons-wire-version.test.mjs` with **13 new mocked transport/CLI cases**, bringing the required all-suite total from 86 to **99**. The core suite remains 29. An isolated checkout actually ran **66/66 PASS** (14 rollback, 11 owned-writes, 15 strict headers, 13 manual regression-runner and 13 wire-version probe tests). The complete 99 tests have NOT been run in this environment; `--suite all` still reports `INCOMPLETE` until the full original-response acquisition and offline-bundle suites can execute. See [HORIZONS_WIRE_VERSION_REVIEW.md](HORIZONS_WIRE_VERSION_REVIEW.md).
+
+
+## D-19 — 115-case complete gate with offline 1.2 sample review
+
+Add `tests/review-horizons-wire-sample.test.mjs` (16 test cases) to the previously required 99 tests. The `all` gate now requires exactly **115/115**, zero skips/failures/cancellations, across eight explicitly named test files. The `core` gate remains exactly 29. In the isolated local environment the available test files together passed **82/82**, while `--suite all` still returned `INCOMPLETE` (exit 2). Do not report the 115-case suite as executed. The new reviewer never contacts the network, changes astronomy code, or enables the client.
