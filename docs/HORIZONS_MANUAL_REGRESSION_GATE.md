@@ -1,0 +1,54 @@
+# D-15 — Manual Horizons regression gate (offline)
+
+**Status: locally tested manual operator tool.** This is a test runner, not an astronomical accuracy certificate. It does not access NASA/JPL, start the desktop, enable chart-ready data or make GitHub Actions.
+
+## Why
+
+The JPL/Horizons request planner, downloader, original-response bundle verifier, safe rollback helper and strict header parser were developed as adjacent pieces. A test suite that runs only the available files on a partial checkout can misleadingly look green even if the downloader, plan or verifier were never exercised.
+
+The new entrypoint `scripts/ephemeris/run-horizons-regressions.mjs` uses an **explicit closed list** of tests and exact expected counts. It refuses missing, symlinked, zero-byte or excessively large test files and fails closed if Node's TAP report is missing, truncated, inconsistent or reports any failing, skipped, cancelled or TODO cases. It executes exactly the five selected test files without arbitrary path arguments. Its output consists of fixed status codes and a passing test count; no response bodies, private epochs or local file paths are printed.
+
+## Commands (Node.js 22+)
+
+Use a **complete repository checkout**, including the draft PR branch:
+
+```powershell
+node scripts/ephemeris/run-horizons-regressions.mjs --suite core
+node scripts/ephemeris/run-horizons-regressions.mjs --suite all
+```
+
+- `--suite core`: 29 tests: conservative rollback (14), strict pre-ephemeris headers (15).
+- `--suite all`: **75 tests**: reviewed query plan (10), mocked acquisition (21), offline ten-response audit (15), rollback (14), strict header reader (15).
+
+The count is pinned deliberately. Any added or removed tests must trigger a review and update of this contract. Never lower the expected count to mask failing, skipped or unavailable tests.
+
+Terminal statuses: `HORIZONS_REGRESSION:PASS` (exit 0), `FAILED` (exit 1), `INCOMPLETE` / `INVALID_ARGS` (exit 2), `INTERNAL_ERROR` (exit 3). Failure status is intentionally sanitized. For investigation, manually run an individual synthetic-only test file using Node's native `--test` command in a trusted private checkout; do not copy user records into fixtures or public issue comments.
+
+The runner protects against a nested Node test context by excluding `NODE_TEST_CONTEXT` only from its test child process. Both the runner and the real tests are still executed by the locally installed Node binary. Test output is bounded to 8 MiB and the child has a 120-second limit. No network access is initiated by the runner; the acquisition tests use a mock fetch transport.
+
+## Actual validation
+
+Node.js v22.16.0, isolated local mirror containing the exact two new standalone modules:
+
+```text
+node --test tests/strict-horizons-headers.test.mjs tests/rollback-horizons-directory.test.mjs tests/run-horizons-regressions.test.mjs
+# 42/42 PASS
+
+node scripts/ephemeris/run-horizons-regressions.mjs --suite core
+# HORIZONS_REGRESSION:PASS
+# HORIZONS_TEST_COUNT:29
+
+node scripts/ephemeris/run-horizons-regressions.mjs --suite all
+# HORIZONS_REGRESSION:INCOMPLETE
+# exit 2 — intentional: three additional suites are absent in this isolated mirror
+```
+
+The new runner has 13 tests for strict options, exact TAP summaries, zero skips, missing/symlinked/oversized files, subprocess failures, nested Node test context and actual operator CLI behavior.
+
+Locally executed source and test byte content exactly matches GitHub blob hashes:
+- `scripts/ephemeris/run-horizons-regressions.mjs`: `4e0b47fe0825da6167d66d75f36d8d7f6257cde5`
+- `tests/run-horizons-regressions.test.mjs`: `d928e01bb2f7392b3d6c00f5b9feffc3a7af26c2`
+
+**Not executed:** the complete 75-case suite on a full clone, any real Horizons request, real JPL data, scientific DE441 comparison, Cargo/Rust, Angular/npm, Windows Tauri/WebView2 or releases. A green 75-case result in future would verify these particular simulated integration and security tests only, not source authenticity or astronomical precision.
+
+No GitHub Actions, deploy, main merge or production change.
