@@ -14,6 +14,7 @@ import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, syntheticPngFilename} from './png-export-safety';
+import {requestSyntheticPngDownload} from './png-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -227,10 +228,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if(this.destroyed) return;
       // A renderer failure must never become an arbitrary link/download target.
       const safePng = validatePngDataUrl(png);
-      const link=document.createElement('a');
-      link.href=safePng;
-      link.download=syntheticPngFilename(exportMode,exportTheme);
-      link.click();
+      const safeFilename = syntheticPngFilename(exportMode,exportTheme);
+      requestSyntheticPngDownload(safePng,safeFilename,{
+        createAnchor: () => document.createElement('a'),
+        appendAnchor: anchor => { document.body.appendChild(anchor); },
+      });
       this.status='exported';
     } catch(error) { if(!this.destroyed) this.renderError(error); }
     finally { this.exporting=false; if(!this.destroyed) { this.busy=false; this.cd.markForCheck(); } }
