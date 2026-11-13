@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MAX_PNG_DATA_URL_BASE64_LENGTH, validatePngDataUrl, syntheticPngFilename} from '../src/app/png-export-safety.ts';
+import {MAX_PNG_DATA_URL_BASE64_LENGTH, MAX_PNG_PIXELS, validatePngDataUrl, syntheticPngFilename} from '../src/app/png-export-safety.ts';
 
 const VALID_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9YlxYy8AAAAASUVORK5CYII=';
 const prefix = 'data:image/png;base64,';
@@ -64,6 +64,23 @@ test('rejects zero or unreasonably large declared dimensions', () => {
   for (const sample of [withChangedDimension(16, 0), withChangedDimension(20, 0),
     withChangedDimension(16, 16385), withChangedDimension(20, 16385)]) {
     assert.throws(() => validatePngDataUrl(sample), /Invalid PNG export/);
+  }
+});
+
+test('bounds total declared pixels independently of each dimension and compressed size', () => {
+  assert.equal(MAX_PNG_PIXELS, 16_777_216);
+  const declared = (width, height) => withIhdrMutation(data => {
+    data.writeUInt32BE(width, 16);
+    data.writeUInt32BE(height, 20);
+  });
+  for (const [width, height] of [[4096, 4096], [16384, 1024], [1024, 16384]]) {
+    const candidate = declared(width, height);
+    // This helper validates only a declared IHDR; the tiny pixel body is fictional.
+    assert.equal(validatePngDataUrl(candidate), candidate, 'on-budget header accepted');
+  }
+  for (const [width, height] of [[4097, 4097], [16384, 1025], [8192, 8192]]) {
+    assert.throws(() => validatePngDataUrl(declared(width, height)), /Invalid PNG export/,
+      'oversized raster rejected despite individually bounded dimensions');
   }
 });
 
