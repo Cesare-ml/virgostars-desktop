@@ -53,7 +53,7 @@ test('base-side overlap requires complete reports and never claims merge safety'
     {branch:'b',paths:['other'],behindBy:1,aheadBy:1},
   ]),/Incomplete base-side file comparison/);
   assert.throws(()=>report('main',[
-    {branch:'a',paths:['shared'],behindBy:1,aheadBy:1,baseSidePaths:['\\0']},
+    {branch:'a',paths:['shared'],behindBy:1,aheadBy:1,baseSidePaths:['\0']},
     {branch:'b',paths:[],behindBy:0,aheadBy:1,baseSidePaths:[]},
   ]),/Invalid base-side path/);
   const withoutAudit=report('main',[{branch:'a',paths:[]},{branch:'b',paths:[]}]);
