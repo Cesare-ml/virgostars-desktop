@@ -10,19 +10,21 @@ test('the clock is mounted and disposed with the Angular workstation lifecycle',
   assert.match(app, /private readonly deviceClock = new DeviceClock\(\)/);
   assert.match(app, /this\.deviceClock\.start\(/);
   assert.match(app, /this\.deviceClock\.dispose\(\)/);
-  assert.match(app, /formatDeviceClock\(this\.deviceClock\.timestamp, this\.locale/);
-  assert.match(app, /if \(!this\.destroyed\) this\.cd\.markForCheck\(\)/);
-  const start = app.indexOf('this.deviceClock.start(');
-  const after = app.indexOf('\n    // Read-only capability check', start);
-  assert.ok(after > start);
-  assert.doesNotMatch(app.slice(start, after), /this\.draw\(|this\.renderer\./);
+  assert.match(app, /this\.clockDisplay\.text\(this\.deviceClock\.timestamp, this\.locale/);
+  assert.match(app, /private readonly onClockChanged = \(\): void => \{\s*if \(this\.destroyed\) return;\s*this\.updateCityClock\(\);\s*this\.cd\.markForCheck\(\);/);
+  const begin = app.indexOf('  private readonly onClockChanged =');
+  const end = app.indexOf('  private readonly onVisibilityChange', begin);
+  assert.ok(begin >= 0 && end > begin);
+  assert.doesNotMatch(app.slice(begin, end), /this\.draw\(|this\.renderer\./);
+  assert.match(app, /document\.addEventListener\('visibilitychange', this\.onVisibilityChange\)/);
+  assert.match(app, /document\.removeEventListener\('visibilitychange', this\.onVisibilityChange\)/);
 });
 
 test('clock has a semantic time element and explicitly device-only UI label', () => {
   const html = read('src/app/desktop-app.component.html');
   const css = read('src/app/desktop-app.component.css');
   assert.match(html, /role="group" \[attr\.aria-label\]="t\('clock.label'\)"/);
-  assert.match(html, /<time class="device-clock-reading" \[attr\.datetime\]="clockInstantIso">/);
+  assert.match(html, /<time class="device-clock-reading" \[attr\.datetime\]="clockInstantIso" aria-live="off">/);
   assert.match(html, /\{\{clockText\}\}/);
   assert.match(html, /\{\{clockCompactText\}\}/);
   assert.match(css, /\.clock-compact \{ display:none; \}/);
