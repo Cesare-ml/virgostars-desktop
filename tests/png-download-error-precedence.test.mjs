@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {requestSyntheticPngDownload} from '../src/app/png-download.ts';
 
-const PNG_URL = 'data:image/png;base64,synthetic-placeholder';
+const PNG_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9YlxYy8AAAAASUVORK5CYII=';
 const PNG_NAME = 'virgostars-synthetic-natal-light.png';
 
 function failingPort(failAt) {
