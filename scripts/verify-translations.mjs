@@ -9,6 +9,9 @@ import { resolve } from 'node:path';
 import ts from 'typescript';
 
 const EXPECTED_LOCALES = ['it', 'en'];
+// Dot-separated UI message identifiers only; do not print attacker-controlled keys in diagnostics.
+const SAFE_TRANSLATION_KEY = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)*$/;
+const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const BAD_CONTROLS = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
 
 function unwrap(expression) {
@@ -40,6 +43,10 @@ export function auditTranslationSource(source) {
         continue;
       }
       const key = property.name.text;
+      if (namesAreStrings && (key.length > 80 || !SAFE_TRANSLATION_KEY.test(key) || RESERVED_KEYS.has(key))) {
+        problems.push(`${location}: invalid translation key`);
+        continue;
+      }
       if (result.has(key)) problems.push(`${location}: duplicate key ${JSON.stringify(key)}`);
       else result.set(key, property.initializer);
     }
