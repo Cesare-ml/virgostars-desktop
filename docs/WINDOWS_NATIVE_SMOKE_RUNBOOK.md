@@ -1,0 +1,53 @@
+# Windows native GUI smoke — manual acceptance gate
+
+**Status:** source-level Windows 11 x64 launcher for the experimental Tauri prototype. Does not constitute a release, production readiness, real astronomy, authentication, signing, or successful WebView2 visual acceptance.
+
+## Why
+
+Desktop doctor and post-build gates verify prerequisites, local CSS/JavaScript resources and PE32+ GUI headers. They cannot prove that a GUI process launches and creates a window. The first Windows smoke test observed an initially unstyled synthetic chart. Valid CSS files alone do not prove WebView2 applied those styles.
+
+## Prerequisite
+
+Build the authorized desktop and sibling Charts checkout following [Windows build gate](WINDOWS_BUILD_GATE.md). The new script does not build, repair files, install dependencies, modify execution policy or download anything. It runs on Windows only and uses the exact fixed-path executable:
+
+    src-tauri/target/release/virgostars-desktop-spike.exe
+
+## Fast process/window smoke
+
+Run from the desktop repository root in PowerShell:
+
+    powershell -NoProfile -File .\scripts\smoke-windows-native.ps1
+
+This runs read-only checks, in order: Desktop versions; Tauri security settings; compiled global CSS; compiled component CSS; Windows PE header. If any fails, no executable launches. If they pass, the script starts the fixed-path executable and looks for a nonzero main-window handle for up to 15 seconds, configurable between 2 and 30.
+
+WINDOW_DETECTED means a main GUI window handle was observed. It does NOT confirm that WebView2 styled the app, that the chart renders, that offline works, that the process stays alive, or that the binary has a valid signature. The app remains open for inspection. No local path or raw OS exception is printed.
+
+## Complete manual visual checklist
+
+Stop the development server and disconnect Internet access. Then run:
+
+    powershell -NoProfile -File .\scripts\smoke-windows-native.ps1 -Interactive
+
+A human must affirm all seven checkpoints: visible CSS grid; centered synthetic chart; light/dark themes; four chart modes and zoom/fit; synthetic PNG export; truthful offline city-search state; and operation without Internet/dev server.
+
+Respond y/yes or s/si/sì for a confirmed success. Enter or any other response counts as failure. Any failure returns exit 1 and lists only fixed checklist identifiers. This is a manual observation, not instrumented screenshot, accessibility, GPU, CSP, performance or network-trace verification.
+
+The script creates no reports, scans no birth data, captures no screenshots, invokes no network download, and never automatically closes the app.
+
+## Verify source contract without Windows
+
+    node --test tests/windows-native-gui-smoke.test.mjs
+
+This verifies fixed executable paths, gated launch order, bounded process observation, explicitly manual acceptance, and absence of file-write/network tooling in the source. It is not a native or visual test.
+
+## Troubleshooting
+
+- NATIVE_SMOKE_PREFLIGHT_FAILED_*: rerun the corresponding gate, never disable security/CSS checks as a workaround.
+- NATIVE_SMOKE_LAUNCH_FAILED: Windows could not start the compiled process.
+- NATIVE_SMOKE_EARLY_EXIT: process exited before creating a main window.
+- NATIVE_SMOKE_NO_MAIN_WINDOW: process stayed alive but exposed no main-window handle within the deadline.
+- NATIVE_SMOKE_MANUAL_FAILED: at least one human acceptance checkpoint remains unconfirmed.
+
+For CSS problems inspect the actual WebView2 console and ensure the newly compiled executable was launched. Do not relax Tauri CSP or introduce remote CSS fallbacks.
+
+Scope: synthetic only; no production, cloud accounts, private catalogs, sensitive assets, signing keys, deployment, GitHub Actions, publishing or main merge.
