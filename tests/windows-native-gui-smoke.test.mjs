@@ -15,6 +15,8 @@ test('all read-only gates run in strict order before launching the local binary'
   const expected = [
     "Invoke-ReadOnlyGate 'VERSION' 'scripts/verify-desktop-version.mjs'",
     "Invoke-ReadOnlyGate 'TAURI_SECURITY' 'scripts/verify-tauri-security-config.mjs'",
+    "Invoke-ReadOnlyGate 'NATIVE_IPC' 'scripts/verify-native-ipc.mjs'",
+    "Invoke-ReadOnlyGate 'OFFLINE_BUNDLE' 'scripts/verify-offline-bundle.mjs'",
     "Invoke-ReadOnlyGate 'BUNDLED_CSS' 'scripts/verify-bundled-css.mjs'",
     "Invoke-ReadOnlyGate 'COMPONENT_STYLES' 'scripts/verify-component-styles.mjs'",
     "Invoke-ReadOnlyGate 'WINDOWS_PE' 'scripts/verify-windows-pe.mjs'",
@@ -27,6 +29,7 @@ test('all read-only gates run in strict order before launching the local binary'
     previous = next;
   }
   assert.match(source,/\$LASTEXITCODE -ne 0/);
+  assert.match(source,/& node \\$Path \\*> \\$null/);
   assert.match(source,/throw \('NATIVE_SMOKE_PREFLIGHT_FAILED_' \+ \$Label\)/);
 });
 
