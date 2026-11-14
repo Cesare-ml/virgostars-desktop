@@ -45,7 +45,7 @@ test('rejects each manifest independently when its version drifts', () => {
 });
 test('rejects invalid canonical versions and version coercion', () => {
   for (const version of ['01.2.3','1.2','1.2.3+build','1.2.3-rc..1','1.2.3-01','1.2.3 ', '', 123]) {
-    assert.throws(() => check({'package.json':JSON.stringify({version})}),/Invalid Desktop version/,String(version));
+    assert.throws(() => check({'package.json':JSON.stringify({name:'virgostars-desktop',version})}),/Invalid Desktop version/,String(version));
   }
 });
 test('does not accept malformed JSON or non-object Tauri input', () => {
