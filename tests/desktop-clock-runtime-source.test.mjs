@@ -76,3 +76,28 @@ test('clock readings use a shared per-instant cache without freezing timezone la
   assert.match(clock, /locale !== this\.locale/);
   assert.doesNotMatch(clock, /const STATIC_DEVICE_TIME_ZONE =/);
 });
+
+test('clock and language events cannot mutate a destroyed Desktop view', () => {
+  assert.match(app, /onCitySelected\(place: OfflinePlaceV1\): void \{\s*if \(this\.destroyed\) return;/);
+  assert.match(app, /onCityEdited\(\): void \{\s*if \(this\.destroyed\) return;/);
+  assert.match(app, /toggleLanguage\(\): void \{\s*if \(this\.destroyed\) return;/);
+  const cityHandlers = sourceBetween('  onCitySelected(', '  get clockInstantIso');
+  assert.doesNotMatch(cityHandlers, /this\.draw\(\)|this\.renderer\.|fetch\(/);
+});
+
+test('both civil time elements are passive but retain semantic timestamps', () => {
+  const times = [...template.matchAll(/<time\b[^>]*>/g)].map(match => match[0]);
+  const clockTimes = times.filter(tag => tag.includes('[attr.datetime]="clockInstantIso"'));
+  assert.equal(clockTimes.length, 2);
+  for (const tag of clockTimes) {
+    assert.match(tag, /aria-live="off"/);
+    assert.doesNotMatch(tag, /role="(?:status|alert)"/);
+  }
+  assert.match(clock, /private emitChanged\(changed: \(\) => void\): void/);
+  const updateSegment = clock.slice(
+    clock.indexOf('  private invalidateTime('),
+    clock.indexOf('  /** Suspend the ticking clock'),
+  );
+  assert.equal(occurrences(updateSegment, 'this.emitChanged(changed);'), 2);
+  assert.equal(occurrences(updateSegment, '\n    changed();'), 0);
+});
