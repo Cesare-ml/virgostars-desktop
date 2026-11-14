@@ -131,6 +131,36 @@ export function formatDeviceClock(timestamp: number, locale: Locale, compact = f
   } catch { return '—'; }
 }
 
+/**
+ * The Angular template reads both clock variants on every change-detection pass.
+ * Reuse strings for one timestamp/locale without caching Intl formatters across
+ * system timezone changes. Exactly two values are retained, never user records.
+ */
+export class DeviceClockTextCache {
+  private timestamp = NaN;
+  private locale: Locale | null = null;
+  private full: string | null = null;
+  private compact: string | null = null;
+  private readonly format: (ms: number, locale: Locale, compact: boolean) => string;
+
+  constructor(format: (ms: number, locale: Locale, compact: boolean) => string = formatDeviceClock) {
+    this.format = format;
+  }
+
+  text(ms: number, locale: Locale, compact = false): string {
+    if (!Object.is(ms, this.timestamp) || locale !== this.locale) {
+      this.timestamp = ms;
+      this.locale = locale;
+      this.full = null;
+      this.compact = null;
+    }
+    if (compact) {
+      return this.compact ?? (this.compact = this.format(ms, locale, true));
+    }
+    return this.full ?? (this.full = this.format(ms, locale, false));
+  }
+}
+
 /** Only a civil-time preview; a selected city never changes synthetic chart data. */
 export type SelectedCityClock =
   | Readonly<{kind: 'not_selected'}>
