@@ -76,3 +76,29 @@ test('rejects noncanonical Base64 padding bits before touching the DOM', () => {
     assert.deepEqual(mirror.events, []);
   }
 });
+
+
+test('rejects canonical Base64 with an invalid PNG signature or IHDR before DOM access', () => {
+  const original = Buffer.from(png.split(',')[1], 'base64');
+  const cases = [];
+  const badSignature = Buffer.from(original);
+  badSignature[0] = 0;
+  cases.push(badSignature);
+  const badIhdrLength = Buffer.from(original);
+  badIhdrLength[11] = 12;
+  cases.push(badIhdrLength);
+  const badIhdrType = Buffer.from(original);
+  badIhdrType[12] = 0x49; // I
+  badIhdrType[13] = 0x44; // D
+  badIhdrType[14] = 0x41; // A
+  badIhdrType[15] = 0x54; // T
+  cases.push(badIhdrType);
+  cases.push(Buffer.alloc(64));
+  for (const bytes of cases) {
+    const h = instrument();
+    const invalid = 'data:image/png;base64,' + bytes.toString('base64');
+    assert.throws(() => requestSyntheticPngDownload(invalid, validName, h.port),
+      /Invalid PNG download/);
+    assert.deepEqual(h.events, [], 'invalid PNG header must never allocate DOM anchor');
+  }
+});
