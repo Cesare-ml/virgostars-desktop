@@ -18,3 +18,14 @@
 .city-primary { font-size:13px; font-weight:600; overflow-wrap:anywhere; }
 .city-secondary { font-size:11px; color:var(--vs-text-secondary); overflow-wrap:anywhere; }
 .city-selected { font-size:11px; color:var(--vs-text-secondary); margin:9px 0 0; }
+
+/* City results live in a child Angular component, so selection/focus rules
+   must be scoped here rather than in the parent's emulated stylesheet. */
+@media (forced-colors: active) {
+  .city-option[aria-selected="true"],.city-option.active {
+    outline:2px solid Highlight; outline-offset:-2px;
+  }
+  .city-input:focus-visible,.city-option:focus-visible {
+    outline:3px solid Highlight; outline-offset:-3px;
+  }
+}
