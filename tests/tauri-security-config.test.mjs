@@ -60,6 +60,28 @@ test('packaged windows may not redirect to a website or use a different frontend
   }
 });
 
+test('a second native window or changed main label requires explicit review', () => {
+  for (const change of [
+    config => { config.app.windows.push({...config.app.windows[0], label: 'secondary'}); },
+    config => { config.app.windows[0].label = 'other'; },
+  ]) {
+    const config = copy(); change(config);
+    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed native window configuration/);
+  }
+});
+
+test('unknown Tauri security options fail closed even when set to false', () => {
+  for (const [key, value] of [
+    ['dangerousRemoteDomainIpcAccess', [{domain: 'https://example.invalid'}]],
+    ['dangerousDisableAssetCspModification', false],
+    ['newFutureSecurityOption', false],
+  ]) {
+    const config = copy();
+    config.app.security[key] = value;
+    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed Tauri security option/, key);
+  }
+});
+
 test('permission expansion and enabling installer packaging require review', () => {
   for (const change of [
     config => { config.app.security.capabilities = ['fs:default']; },
