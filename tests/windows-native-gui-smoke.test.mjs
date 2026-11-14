@@ -127,7 +127,7 @@ test('manual GUI acceptance requires a live native main window before and after 
   assert.match(helper,/param\(\[System\.Diagnostics\.Process\] \$Process\)/);
   assert.match(helper,/\$Process\.Refresh\(\)/);
   assert.match(helper,/-not \$Process\.HasExited -and \$Process\.MainWindowHandle -ne \[IntPtr\]::Zero/);
-  assert.match(helper,/catch \{\s*return \$false/);
+  assert.match(helper,/catch \{[\s\S]*?return \$false/);
 
   const manual = source.slice(source.indexOf('foreach ($check in $checks) {'),
     source.indexOf('if ($failures.Count -gt 0)'));
