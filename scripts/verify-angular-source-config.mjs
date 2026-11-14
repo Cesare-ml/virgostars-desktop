@@ -3,7 +3,7 @@
  * An output-only verifier cannot prevent arbitrary inputs running during ng build.
  * Changes to this allowlist require a security/build review.
  */
-import { lstatSync, readFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,19 +65,44 @@ export function verifyAngularSourceConfig(config) {
   return Object.freeze({ project: 'desktop', buildModes: 2 });
 }
 
-/** Inspect only this checkout's config, never following a symlink or logging its path. */
-export function verifyAngularSourceConfigCheckout(root = ROOT) {
+// Keep the OS operations injectable for deterministic, synthetic file-swap tests.
+// The CLI always uses the real filesystem and never accepts a custom IO provider.
+const CHECKOUT_FS = Object.freeze({ lstatSync, openSync, fstatSync, readSync, closeSync });
+
+/** Inspect a single bounded file descriptor, rejecting symlink/race replacements. */
+export function verifyAngularSourceConfigCheckout(root = ROOT, io = CHECKOUT_FS) {
   const filename = join(root, 'angular.json');
-  const stat = lstatSync(filename);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_CONFIG_BYTES) {
+  const before = io.lstatSync(filename);
+  if (!before.isFile() || before.isSymbolicLink() || before.size > MAX_CONFIG_BYTES) {
     throw new Error('ANGULAR SOURCE CONFIG: unsafe configuration file');
   }
-  const bytes = readFileSync(filename);
-  if (bytes.length > MAX_CONFIG_BYTES) {
-    throw new Error('ANGULAR SOURCE CONFIG: oversized configuration file');
+
+  // O_NOFOLLOW prevents a final-component symlink swap where supported.
+  // On other platforms the inode/device comparison still detects replacement.
+  const fd = io.openSync(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const opened = io.fstatSync(fd);
+    if (!opened.isFile() || opened.size > MAX_CONFIG_BYTES ||
+        opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw new Error('ANGULAR SOURCE CONFIG: configuration changed during inspection');
+    }
+
+    // A regular file could grow after fstat; never read unbounded input.
+    const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const count = io.readSync(fd, buffer, length, buffer.length - length, null);
+      if (count === 0) break;
+      length += count;
+    }
+    if (length > MAX_CONFIG_BYTES) {
+      throw new Error('ANGULAR SOURCE CONFIG: oversized configuration file');
+    }
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, length));
+    return verifyAngularSourceConfig(JSON.parse(source));
+  } finally {
+    io.closeSync(fd);
   }
-  const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  return verifyAngularSourceConfig(JSON.parse(source));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
