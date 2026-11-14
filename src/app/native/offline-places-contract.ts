@@ -42,7 +42,7 @@ function optionalInt(x: unknown): x is number | null {
 function dataField(source: object, field: string, error: string, optional = false): unknown {
   const descriptor = Object.getOwnPropertyDescriptor(source, field);
   if (descriptor === undefined && optional) return null;
-  if (!descriptor || !Object.hasOwn(descriptor, 'value')) throw new Error(error);
+  if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) throw new Error(error);
   return descriptor.value;
 }
 
