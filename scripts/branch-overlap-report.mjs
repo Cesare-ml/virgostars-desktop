@@ -10,20 +10,35 @@ export function safeRef(s) {
     !s.endsWith('.') && !s.split('/').some(p => p.endsWith('.lock'));
 }
 
+/**
+ * Decode `git diff --name-status -z` without confusing path bytes with status
+ * tokens. Renames (and any detected copies) include *both* source and target:
+ * a concurrent edit to either path needs review before the branches are merged.
+ */
 export function parsePaths(bytes) {
   if (!Buffer.isBuffer(bytes) || (bytes.length && bytes.at(-1) !== 0))
-    throw new Error('Incomplete Git path list');
+    throw new Error('Incomplete Git change list');
   if (!bytes.length) return [];
   const decode = new TextDecoder('utf-8', {fatal:true});
-  const paths = [];
+  const fields = [];
   let begin = 0;
   for (let i=0; i<bytes.length; i++) {
     if (bytes[i] !== 0) continue;
-    if (begin === i) throw new Error('Empty Git path');
-    paths.push(decode.decode(bytes.subarray(begin,i)));
+    if (begin === i) throw new Error('Empty Git change field');
+    fields.push(decode.decode(bytes.subarray(begin,i)));
     begin = i+1;
   }
-  return [...new Set(paths)];
+  const paths = new Set();
+  for (let i=0; i<fields.length;) {
+    const status = fields[i++];
+    const renameOrCopy = /^[RC](?:100|[0-9]{1,2})$/.test(status);
+    if (!renameOrCopy && !/^[ADMT]$/.test(status))
+      throw new Error('Unexpected Git change status');
+    const n = renameOrCopy ? 2 : 1;
+    if (i + n > fields.length) throw new Error('Incomplete Git change record');
+    for (let j=0; j<n; j++) paths.add(fields[i++]);
+  }
+  return [...paths];
 }
 
 export function report(base, branches) {
@@ -69,7 +84,7 @@ export function run(base,branches) {
   // Validate everything before launching Git, including direct API callers.
   parseArgs([`--base=${base}`,...branches]);
   return report(base, branches.map(branch=>{
-    const r=spawnSync('git',['diff','--name-only','-z','--diff-filter=ACDMRT',
+    const r=spawnSync('git',['diff','--no-ext-diff','--no-textconv','--name-status','-z','--find-renames=50%','--diff-filter=ACDMRT',
       `${base}...${branch}`,'--'],{encoding:null,maxBuffer:2*1024*1024,windowsHide:true});
     if (r.error || r.signal || r.status!==0)
       throw new Error(`Cannot compare ${base} with ${branch}: missing refs or merge base`);
