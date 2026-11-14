@@ -124,3 +124,13 @@ test('offline city HTML search field does not silently cap input or contain attr
  assert.doesNotMatch(template, /<input\\b[^>]*maxlength=/s);
  assert.doesNotMatch(template, /<input\\b[^>]*<!--/s);
 });
+
+test('picker skips one-letter prefixes but accepts accented city names',()=>{
+ const h=harness();
+ h.state.input('a b');h.flush();
+ assert.equal(h.state.status,'query_too_short');
+ assert.equal(h.calls.length,0);
+ h.state.input("L'Aquila");
+ assert.equal(h.state.status,'typing');
+ h.flush();assert.deepEqual(h.calls,[["L'Aquila",12]]);
+});
