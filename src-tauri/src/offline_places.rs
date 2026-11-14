@@ -7,6 +7,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tauri::{path::BaseDirectory, AppHandle, Manager, State};
 
 const MAX_RESULTS: u8 = 30;
@@ -14,6 +15,10 @@ const MAX_ACTIVE_QUERIES: usize = 2;
 const MAX_QUERY_CHARS: usize = 80;
 const MAX_TOKENS: usize = 5;
 const CANDIDATE_LIMIT: i64 = 500;
+// Keep native SQLite work shorter than the planned 5s Angular IPC deadline.
+// This is a cooperative VM-operation bound, not a hard wall-clock watchdog.
+const QUERY_BUDGET: Duration = Duration::from_secs(4);
+const SQLITE_PROGRESS_OPS: i32 = 1_000;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,17 +95,42 @@ fn fts_query(input: &str) -> Option<String> {
     Some(words.join(" "))
 }
 
+/// Interrupt long-running FTS/SQLite VM work so an obsolete native search
+/// eventually releases its concurrency permit, even after the UI times out.
+/// The deadline is per connection; no global or shared cancel state is used.
+fn install_query_deadline(
+    connection: &mut Connection,
+    deadline: Instant,
+) -> Result<(), &'static str> {
+    connection
+        .progress_handler(SQLITE_PROGRESS_OPS, Some(move || Instant::now() >= deadline))
+        .map_err(|_| "PLACE_CATALOG_INVALID")
+}
+
+fn query_error(deadline: Instant) -> &'static str {
+    if Instant::now() >= deadline {
+        "PLACE_QUERY_TIMEOUT"
+    } else {
+        "PLACE_QUERY_FAILED"
+    }
+}
+
 fn search_database(path: &Path, query: &str, limit: u8) -> Result<PlaceSearchV1, &'static str> {
     let fts = fts_query(query).ok_or("PLACE_QUERY_INVALID")?;
     if !(1..=MAX_RESULTS).contains(&limit) {
         return Err("PLACE_LIMIT_INVALID");
     }
     // The path is a Tauri-bundled resource, never supplied by the frontend.
-    let connection = Connection::open_with_flags(
+    let mut connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|_| "PLACE_CATALOG_UNAVAILABLE")?;
+    let deadline = Instant::now() + QUERY_BUDGET;
+    install_query_deadline(&mut connection, deadline)?;
+    // The default SQLite lock wait can outlast the intended query budget.
+    connection.busy_timeout(Duration::from_secs(1))
+        .map_err(|_| "PLACE_CATALOG_INVALID")?;
     connection.pragma_update(None, "query_only", true).map_err(|_| "PLACE_CATALOG_INVALID")?;
     let version: String = connection
         .query_row("SELECT value FROM catalog_meta WHERE key='schemaVersion'", [], |row| row.get(0))
@@ -131,7 +161,7 @@ fn search_database(path: &Path, query: &str, limit: u8) -> Result<PlaceSearchV1,
     };
     let mut statement = connection
         .prepare(sql)
-        .map_err(|_| "PLACE_CATALOG_INVALID")?;
+        .map_err(|_| query_error(deadline))?;
     let rows = statement
         .query_map(params![fts, CANDIDATE_LIMIT, i64::from(limit)], |row| {
             Ok(PlaceMatch {
@@ -148,10 +178,10 @@ fn search_database(path: &Path, query: &str, limit: u8) -> Result<PlaceSearchV1,
                 country_code: row.get(10)?,
             })
         })
-        .map_err(|_| "PLACE_QUERY_FAILED")?;
+        .map_err(|_| query_error(deadline))?;
     let items = rows
         .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|_| "PLACE_QUERY_FAILED")?;
+        .map_err(|_| query_error(deadline))?;
     Ok(PlaceSearchV1 {
         protocol_version: 1,
         items,
@@ -201,6 +231,31 @@ mod tests {
         assert!(fts_query("x").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
         assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
+    }
+
+    #[test]
+    fn sqlite_progress_hook_allows_a_valid_short_query() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_query_deadline(&mut connection, Instant::now() + Duration::from_secs(2)).unwrap();
+        let answer: i32 = connection.query_row("SELECT 42", [], |row| row.get(0)).unwrap();
+        assert_eq!(answer, 42);
+    }
+
+    #[test]
+    fn expired_sqlite_progress_deadline_interrupts_long_running_work() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_query_deadline(&mut connection, Instant::now()).unwrap();
+        // This recursive read-only query cannot complete before the first
+        // progress callback; an expired deadline must interrupt the VM.
+        let result: rusqlite::Result<i64> = connection.query_row(
+            "WITH RECURSIVE seq(n) AS (
+                VALUES(1) UNION ALL SELECT n + 1 FROM seq WHERE n < 10000000
+             ) SELECT max(n) FROM seq",
+            [],
+            |row| row.get(0),
+        );
+        assert!(result.is_err(), "expired deadline must interrupt SQL computation");
+        assert_eq!(query_error(Instant::now()), "PLACE_QUERY_TIMEOUT");
     }
 
     #[test]
