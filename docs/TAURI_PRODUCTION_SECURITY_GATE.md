@@ -16,6 +16,8 @@ The command also runs during **both** npm `verify:bundle` / `build:ui` and `veri
 
 The gate requires:
 
+- The Tauri root keys must match the reviewed schema, product name and application identifier, with no unreviewed global options or plugins. The `build` section permits only `devUrl` and `frontendDist`.
+- The `bundle` section permits only `active` and the existing two local icons, in their reviewed order. Extra resources, external binaries, new packaging knobs or alternate icons require review.
 - The packaged frontend stays at the local `../dist/desktop/browser` path, without an unreviewed Tauri `beforeBuildCommand`.
 - Exactly **one** local native window must retain the reviewed six fields (`label`, `title`, `width`, `height`, `minWidth`, `minHeight`). Unknown or missing keys and extra windows fail the gate. In particular, `additionalBrowserArgs`, `devtools`, `webviewDataDirectory`, and explicit external `url` settings cannot be slipped into the Tauri config without review.
 - Production CSP contains the existing nine directives and their exact allowed source lists; no extra, missing or duplicate directives, remote URLs, `unsafe-eval`, or script `data:` sources are accepted.
@@ -49,3 +51,21 @@ systems or user data are involved.
 ## Reviewed app and security option inventory (2026-11-14)
 
 The packaged and development Tauri config must use only `app.windows` and `app.security`; the security object must contain only `capabilities`, `csp`, and `devCsp`. Unknown options, including explicit `false` flags, are blocked for review. This complements the independently reviewed single-window keyset and preserves the existing production/development CSP and local-only build protections. Adding a legitimate new option requires a documented allowlist update, a negative test, and a native Windows review. The gate is static; it does not attest dynamically created Rust windows or runtime CSP enforcement.
+
+## Tauri source packaging inventory (2026-11-14)
+
+The source preflight now uses an explicit key inventory for the Tauri root,
+`build`, and `bundle` objects, in addition to the independently reviewed
+`app`, native window and security/CSP checks. The reviewed root schema is
+`https://schema.tauri.app/config/2`, the product name is `VirgoStars Desktop Lab`,
+and the application identifier remains `it.virgostars.desktop.rendererlab`.
+The two approved icon references are `icons/icon.png` and `icons/icon.ico`.
+The app version is checked by the existing dedicated version-consistency gate.
+
+An attempt to add a Tauri plugin, build watch-folder, bundled resource,
+sidecar executable, icon or other unknown field must be deliberately reviewed
+before relaxing this allowlist. The existing `bundle.active=false` boundary
+remains in force. This is **configuration-source validation**, not a dependency,
+icon-content, asset-ownership, release-signature or native runtime audit.
+Use the existing `verify:bundle` and `tauri:dev` checks plus the documented
+Windows smoke acceptance before treating any build as suitable for distribution.
