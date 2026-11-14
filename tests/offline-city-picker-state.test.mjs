@@ -74,3 +74,184 @@ test('country metadata from an explicit v2 lookup survives selection without gue
   assert.equal(chosen.stateId,1);
   assert.equal(h.state.selected.countryName,'Italia');
 });
+
+
+test('scheduler failure shows unavailable immediately and permits an explicit retry', async () => {
+  let broken = true;
+  let scheduled;
+  const calls = [];
+  const lookup = {clear() {}, async search(query) {calls.push(query); return {kind:'ready',items:[a]};}};
+  const timers = {
+    set(fn) { if (broken) throw new Error('sensitive scheduler detail'); scheduled = fn; return 0; },
+    clear(id) { assert.equal(id, 0); },
+  };
+  const state = new OfflineCityPickerState(lookup, () => {}, timers);
+  assert.doesNotThrow(() => state.input('Roma'));
+  assert.equal(state.status, 'unavailable');
+  assert.deepEqual(calls, []);
+  broken = false;
+  state.input('Firenze');
+  assert.equal(state.status, 'typing');
+  scheduled();
+  await Promise.resolve();
+  assert.equal(state.status, 'ready');
+  assert.deepEqual(calls, ['Firenze']);
+  state.dispose();
+});
+
+test('missing scheduler handles fail closed even when a callback appears later', async () => {
+  let handle = null;
+  let callback;
+  let searches = 0;
+  const lookup = {clear() {}, async search() {searches++; return {kind:'ready',items:[a]};}};
+  const timers = {
+    set(fn) { callback = fn; return handle; },
+    clear(id) { assert.equal(id, 0); },
+  };
+  const state = new OfflineCityPickerState(lookup, () => {}, timers);
+  state.input('Roma');
+  assert.equal(state.status, 'unavailable');
+  callback();
+  await Promise.resolve();
+  assert.equal(searches, 0, 'unknown timer handle must not launch a later lookup');
+  handle = undefined;
+  state.input('Roma');
+  assert.equal(state.status, 'unavailable');
+  callback();
+  await Promise.resolve();
+  assert.equal(searches, 0);
+  handle = 0;
+  state.input('Firenze');
+  assert.equal(state.status, 'typing', 'zero is a valid cancellable handle');
+  callback();
+  await Promise.resolve();
+  assert.equal(state.status, 'ready');
+  assert.equal(searches, 1);
+  state.dispose();
+});
+
+test('synchronous and duplicated scheduler callbacks cannot resurrect timer state', async () => {
+  let callback;
+  const cleared = [];
+  const searched = [];
+  const lookup = {clear() {}, async search(query) {searched.push(query); return {kind:'ready',items:[a]};}};
+  const timers = {
+    set(fn) { callback = fn; fn(); return 4; },
+    clear(id) { cleared.push(id); },
+  };
+  const state = new OfflineCityPickerState(lookup, () => {}, timers);
+  state.input('Firenze');
+  assert.equal(state.status, 'loading');
+  callback(); // broken scheduler invokes the same callback twice
+  await Promise.resolve();
+  assert.equal(state.status, 'ready');
+  assert.deepEqual(searched, ['Firenze']);
+  state.dispose();
+  assert.deepEqual(cleared, [4], 'only the already-fired handle needs cleanup');
+});
+
+test('reentrant timer setup never overwrites the newer query debounce', async () => {
+  let state;
+  let reentered = false;
+  const callbacks = new Map();
+  const cleared = [];
+  const searched = [];
+  const lookup = {clear() {}, async search(query) {searched.push(query); return {kind:'ready',items:[a]};}};
+  const timers = {
+    set(fn) {
+      if (!reentered) {
+        reentered = true;
+        callbacks.set(1, fn);
+        state.input('Firenze');
+        return 1;
+      }
+      callbacks.set(2, fn);
+      return 2;
+    },
+    clear(id) { cleared.push(id); },
+  };
+  state = new OfflineCityPickerState(lookup, () => {}, timers);
+  state.input('Roma');
+  assert.equal(state.query, 'Firenze');
+  assert.equal(state.status, 'typing');
+  callbacks.get(1)(); // first ticket is obsolete
+  assert.deepEqual(searched, []);
+  callbacks.get(2)();
+  await Promise.resolve();
+  assert.deepEqual(searched, ['Firenze']);
+  state.dispose();
+  assert.deepEqual(cleared, [1], 'first handle is canceled; second has fired');
+});
+
+test('broken clear callbacks cannot break input, invalidation or disposal', async () => {
+  let callback;
+  let searches = 0;
+  const lookup = {clear() {throw new Error('sensitive local path');}, async search() {
+    searches++; return {kind:'ready',items:[a]};
+  }};
+  const timers = {set(fn) { callback = fn; return 3; }, clear() {throw new Error('sensitive timer');}};
+  const state = new OfflineCityPickerState(lookup, () => {}, timers);
+  assert.doesNotThrow(() => state.input('Roma'));
+  const old = callback;
+  assert.doesNotThrow(() => state.input('Firenze'));
+  old();
+  callback();
+  await Promise.resolve();
+  assert.equal(searches, 1);
+  assert.equal(state.status, 'ready');
+  assert.doesNotThrow(() => state.dispose());
+  assert.doesNotThrow(() => callback());
+});
+
+
+test('reentrant UI update skips the obsolete lookup before native invocation', async () => {
+  const scheduled = [];
+  const queries = [];
+  let state;
+  let reentered = false;
+  const lookup = {
+    clear() {},
+    async search(query) { queries.push(query); return {kind:'ready',items:[a]}; },
+  };
+  const timers = {
+    set(fn) { scheduled.push(fn); return scheduled.length; },
+    clear() {},
+  };
+  state = new OfflineCityPickerState(lookup, () => {
+    if (state.status === 'loading' && !reentered) {
+      reentered = true;
+      state.input('Firenze');
+    }
+  }, timers);
+  state.input('Roma');
+  scheduled[0]();
+  await Promise.resolve();
+  assert.deepEqual(queries, [], 'reentrant input must prevent the original native call');
+  assert.equal(state.query, 'Firenze');
+  assert.equal(state.status, 'typing');
+  scheduled[1]();
+  await Promise.resolve();
+  assert.deepEqual(queries, ['Firenze']);
+  assert.equal(state.status, 'ready');
+  state.dispose();
+});
+
+test('disposal inside the loading-state notification does not start native search', async () => {
+  let fire;
+  let calls = 0;
+  let state;
+  const lookup = {
+    clear() {},
+    async search() { calls++; return {kind:'ready',items:[a]}; },
+  };
+  const timers = {set(fn) { fire = fn; return 0; }, clear() {}};
+  state = new OfflineCityPickerState(lookup, () => {
+    if (state.status === 'loading') state.dispose();
+  }, timers);
+  state.input('Roma');
+  assert.doesNotThrow(() => fire());
+  await Promise.resolve();
+  assert.equal(calls, 0);
+  assert.equal(state.results.length, 0);
+  assert.equal(state.choose(0), null);
+});

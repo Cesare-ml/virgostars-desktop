@@ -135,3 +135,26 @@ test('styles in raw style text stay inert with a spaced closing tag', () => with
   '<style>/* <link rel="stylesheet" href="styles-LOCAL123.css"> */</style >',
   dir => assert.throws(() => inspectDesktopStyles(dir), /no linked stylesheet/)
 ));
+
+test('rejects two copies of the same otherwise valid global stylesheet', () => withSyntheticBundle(
+  link() + link(),
+  dir => assert.throws(() => inspectDesktopStyles(dir), /Exactly one Angular global stylesheet/)
+));
+
+test('rejects two different valid local global stylesheets before packaging', () => withSyntheticBundle(
+  link() + '<link rel="stylesheet" href="styles-EXTRA123.css">',
+  dir => {
+    writeFileSync(join(dir, 'styles-EXTRA123.css'), CSS);
+    assert.throws(() => inspectDesktopStyles(dir), /Exactly one Angular global stylesheet/);
+  }
+));
+
+test('ignores a commented-out duplicate stylesheet link', () => withSyntheticBundle(
+  '<!-- ' + link() + ' -->' + link(),
+  dir => assert.deepEqual(inspectDesktopStyles(dir), {stylesheets: 1, files: ['styles-LOCAL123.css']})
+));
+
+test('a local preload alone does not count as a second active global stylesheet', () => withSyntheticBundle(
+  '<link rel="preload" as="style" href="styles-LOCAL123.css">' + link(),
+  dir => assert.deepEqual(inspectDesktopStyles(dir), {stylesheets: 1, files: ['styles-LOCAL123.css']})
+));

@@ -109,6 +109,10 @@ export function inspectDesktopStyles(bundleDir) {
     .map(tag => ({tag, attrs: linkAttributes(tag)}))
     .filter(({attrs}) => (attrs.get('rel') ?? '').toLowerCase().split(/\s+/).includes('stylesheet'));
   if (!stylesheetLinks.length) fail('Angular index.html has no linked stylesheet');
+  // The reviewed Angular desktop build emits exactly one active global CSS
+  // link. More than one changes cascade order and can silently alter WebView2
+  // layout, even if every referenced file is local and individually valid.
+  if (stylesheetLinks.length !== 1) fail('Exactly one Angular global stylesheet is required');
   const names = [];
   for (const {attrs} of stylesheetLinks) {
     // A stylesheet can exist on disk yet be inactive in WebView2. HTML
