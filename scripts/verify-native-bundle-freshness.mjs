@@ -47,6 +47,7 @@ export function verifyNativeBundleFreshness(binaryPath, bundlePath) {
   let files = 0;
   let directories = 0;
   const snapshots = [];
+  const directorySnapshots = [];
   let foundIndex = false;
   let foundScript = false;
   let foundStyle = false;
@@ -55,6 +56,7 @@ export function verifyNativeBundleFreshness(binaryPath, bundlePath) {
     if (depth > MAX_DEPTH) failure('DEPTH_LIMIT');
     if (++directories > MAX_BUNDLE_DIRECTORIES) failure('DIRECTORY_LIMIT');
     const directoryBefore = verifiedStat(directory, 'directory');
+    directorySnapshots.push({ path: directory, stat: directoryBefore });
     let entries;
     try { entries = readdirSync(directory, { withFileTypes: true }); }
     catch { failure('UNREADABLE'); }
@@ -80,9 +82,14 @@ export function verifyNativeBundleFreshness(binaryPath, bundlePath) {
     }
   }
   inspect(root, 0);
-  // Catch replacement or rewriting of previously sampled files, and the
-  // executable changing after we established its timestamp. A post-check
-  // race remains possible until Windows actually launches the binary.
+  // Catch replacement or rewriting of previously sampled files and folders,
+  // including a directory changed after its recursive visit completed.
+  // A post-check race remains possible until Windows actually launches.
+  for (const snapshot of directorySnapshots) {
+    if (!unchanged(snapshot.stat, verifiedStat(snapshot.path, 'directory'))) {
+      failure('CHANGED_DURING_SCAN');
+    }
+  }
   for (const snapshot of snapshots) {
     if (!unchanged(snapshot.stat, verifiedStat(snapshot.path, 'file'))) {
       failure('CHANGED_DURING_SCAN');
