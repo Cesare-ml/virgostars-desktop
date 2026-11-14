@@ -60,6 +60,31 @@ test('packaged windows may not redirect to a website or use a different frontend
   }
 });
 
+test('native window options cannot bypass the reviewed WebView security surface', () => {
+  for (const [field, value] of [
+    ['additionalBrowserArgs', '--disable-web-security'],
+    ['devtools', true],
+    ['webviewDataDirectory', '../external-webview-profile'],
+    ['transparent', true],
+    ['url', 'https://example.invalid'],
+  ]) {
+    const config = copy();
+    config.app.windows[0][field] = value;
+    assert.throws(() => verifyTauriSecurityConfig(config),
+      /unreviewed native window option/, field);
+  }
+});
+
+test('native window schema rejects missing reviewed fields and extra windows', () => {
+  const missing = copy();
+  delete missing.app.windows[0].minHeight;
+  assert.throws(() => verifyTauriSecurityConfig(missing), /unreviewed native window option/);
+
+  const extra = copy();
+  extra.app.windows.push(structuredClone(extra.app.windows[0]));
+  assert.throws(() => verifyTauriSecurityConfig(extra), /number of windows/);
+});
+
 test('permission expansion and enabling installer packaging require review', () => {
   for (const change of [
     config => { config.app.security.capabilities = ['fs:default']; },
