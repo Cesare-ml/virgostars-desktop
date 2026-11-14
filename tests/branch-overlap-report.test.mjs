@@ -4,7 +4,7 @@ import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {safeRef,parsePaths,report,parseArgs} from '../scripts/branch-overlap-report.mjs';
+import {safeRef,parsePaths,report,parseArgs,run} from '../scripts/branch-overlap-report.mjs';
 
 const script=resolve(import.meta.dirname,'../scripts/branch-overlap-report.mjs');
 function git(dir,...args) {
@@ -19,6 +19,8 @@ test('safe refs and arguments reject ambiguous revisions',()=>{
   assert.deepEqual(parseArgs(['--base=main','a','b','--json']),{base:'main',branches:['a','b'],json:true});
   for (const args of [['a'],['a','a'],['a','main'],['--base=main','--base=main','a','b']])
     assert.throws(()=>parseArgs(args));
+  assert.throws(()=>run('--evil',['a','b']),/Invalid|Provide/);
+  assert.throws(()=>run('main',['same','same']),/Invalid|Provide/);
 });
 
 test('NUL-safe file parser and deterministic path overlaps',()=>{
