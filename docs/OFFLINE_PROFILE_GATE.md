@@ -146,6 +146,59 @@ The existing guard is represented by an equivalent standalone local copy,
 not a full checkout. **Not executed:** full npm/Angular suites, Rust/Cargo,
 real native IPC, SQLCipher, real profiles, Windows/WebView2 acceptance.
 
+## Fail-closed deadline for unresponsive status ports
+
+The `LatestOfflineProfileReader` now supports an optional local deadline
+(default **4,000 ms**, accepted explicit range **1–30,000 ms**). Its injectable
+`OfflineProfileReaderTimers` supplies `schedule` and `cancel` for deterministic
+tests. If the port misses this deadline, the reader aborts its `AbortSignal`
+and publishes the supplied **blocked** decision rather than a false status.
+The timer is cleared after a normal completion, a newer request, logout,
+profile change or disposal; a scheduler that throws, fires synchronously
+or returns a missing handle fails closed without invoking the native port.
+
+**Resource-safety distinction:** the timeout does **not** mean a native call
+terminated. The existing `active` slot is deliberately retained until its
+actual returned promise settles. A native adapter ignoring cancellation can
+therefore block a later pending read indefinitely, rather than launching
+unbounded calls. Only a separately reviewed Rust-side cancellation/deadline
+design can guarantee recovery. There is no network retry or automatic re-open
+in this UI helper. `complete()` and the resulting decision are not a security
+authorization, not a cryptographic attestation and not proof of a cloud session.
+
+Example for a **synthetic-only** mock:
+
+```ts
+const reader = new LatestOfflineProfileReader(
+  gate,
+  async signal => fakeTestOnlyStatusRead(signal),
+  decision => renderFutureUiStatus(decision),
+  {timeoutMs: 4000},
+);
+```
+
+Focused verification ran in a standalone local source mirror:
+
+```sh
+node --experimental-strip-types --test tests/offline-profile-timeout.test.mjs
+tsc --noEmit --strict --target ES2022 --module ES2022 \
+  --moduleResolution bundler --lib es2022,dom \
+  src/app/native/offline-profile-reader.ts src/app/native/latest-profile-status.ts
+```
+
+**13/13 actual Node 22.16.0 tests passed** and standalone TypeScript 5.8.3
+strict compilation passed. They exercise deadline expiry, no duplicate native
+calls under a hanging port, 10,000 rapid refreshes, timer cleanup, timeout
+and logout races, invalid timeout values, synchronous/throwing timer adapters
+and failure before native invocation. The exact locally tested new source
+and test files match GitHub Git blob hashes:
+`35f090c4c4b4da0fa9128e61230d1ad72886b7c5` and
+`1c8b6cb01b72728a0edeac69e299af699fdc2ea2`.
+
+**Not executed:** the full repository npm test suite, Angular UI build,
+Rust/Cargo tests, native SQLCipher, actual Tauri IPC, Windows WebView2 or
+any real profile/account test. None of those is implied by this focused check.
+
 ## Threat and lifecycle boundaries
 
 - A disconnected computer cannot learn of a remote revocation that has not yet been delivered. The model denies access when revocation is **known**, but cannot promise immediate remote revocation against an offline device. The eventual product policy must explicitly decide how local unlock and optional offline grace periods behave.
