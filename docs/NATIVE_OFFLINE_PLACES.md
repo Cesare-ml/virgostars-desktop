@@ -9,15 +9,19 @@ offset.
 
 ## Complete-query guard
 
-The native FTS5 parser accepts up to **80 Unicode characters**, at least two
-alphanumeric characters, and at most **five nonempty terms** separated by
-non-alphanumeric characters other than underscores. Terms are quoted as
+The native FTS5 parser accepts up to **80 Unicode scalar values** and at most
+**five meaningful terms** with two or more alphanumeric scalars each, separated
+by non-alphanumeric characters (including underscores). One-character fragments
+such as the L in `L'Aquila` are ignored, protecting FTS5 against expensive
+single-character prefix scans. `a b` is therefore invalid, but `L'Aquila`,
+`Côte d'Azur` and `Rio_de_Janeiro` remain searchable. Terms are quoted as
 prefixes before they reach FTS5; no arbitrary MATCH syntax is accepted.
 
-**Queries with six or more terms are now rejected entirely**, rather than
-silently using only the first five terms. The Angular preflight uses the same
-five-term budget and displays a localized length warning without invoking
-native IPC. The shared JavaScript preflight iterates at most
+**Queries with more than five meaningful terms are rejected entirely**, rather
+than silently using only the first five. Queries containing only one-letter
+fragments are reported as too short before any IPC is invoked. The Angular
+preflight applies the same policy and displays a localized validation message.
+Rust remains the ultimate authority for Unicode edge cases and native IPC. The shared JavaScript preflight iterates at most
 81 Unicode scalars before returning over-limit, so even large pasted inputs
 never allocate an unbounded spread array during validation. Its shared `offline-city-query.js` module is importable by the
 Node 22 test runner without a TypeScript-only extensionless import; the
@@ -26,8 +30,9 @@ an over-limit sentinel: pasted input cannot become a valid-looking truncated
 80-character search, and it cannot be cut halfway through a surrogate pair.
 The HTML search field does not apply a competing UTF-16 code-unit limit.
 Rust remains the authoritative validation boundary for other callers.
-Punctuation and Unicode input receive the same term budget; the search never
-drops an unsearched term and presents a partial match as if it were complete.
+Punctuation and Unicode input receive the same term budget. Only deliberate
+single-letter fragments are omitted; additional meaningful terms are never
+silently dropped or presented as complete matches.
 
 The picker debounces typing, ignores superseded results, and supports
 keyboard selection. A missing native resource or browser-only preview is
@@ -38,8 +43,9 @@ calculation, saved charts and historical time-zone resolution are unavailable.
 ## Verification and packaging
 
 The native `fts_query` unit tests cover five accepted terms and six rejected
-terms (spaces, punctuation and short one-letter tokens). The Node search and
-picker-state tests cover client preflight, zero IPC dispatch and cancellation
+meaningful terms (spaces and punctuation), ignored single-letter fragments,
+and quoted Unicode place names. The Node search and picker-state tests cover
+client preflight, zero IPC dispatch and cancellation
 of already queued requests. Run:
 
 ```sh
