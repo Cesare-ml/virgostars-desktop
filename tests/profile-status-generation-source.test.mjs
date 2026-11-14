@@ -65,6 +65,7 @@ test('Rust unit tests cover concurrency, stale, overflow and poisoned mutex',()=
   ]);
 });
 
+
 test('publishing a UI hint is atomic with consuming its newest generation',()=>{
   const implementation=source.split('#[cfg(test)]')[0];
   const publish=implementation.split('pub(crate) fn publish_hint(')[1].split('pub(crate) fn visible_hint(')[0];
