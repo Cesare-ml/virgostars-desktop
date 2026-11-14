@@ -77,6 +77,28 @@ and Windows native acceptance. The byte length/hash are intentionally frozen
 values: a future licensed catalog release requires reviewing and updating
 both importer and packer together, with explicit tests.
 
+### Focused pinned-release test results (2026-11-14)
+
+The new release-fingerprint tests were also run **in an isolated local mirror**
+with Python **3.13.5**:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_places_pinned_release_contract.py' -v
+# 5/5 PASS, 0 skipped
+python3 -m py_compile scripts/places/prepare_tauri_bundle.py tests/test_places_pinned_release_contract.py
+# PASS
+```
+
+The pinned preparer and its five new tests had **exactly** the same
+`git hash-object` values as the GitHub branch:
+`4d351d8c7f743b2e5f6ca45929dda9a77fdf6752` (preparer) and
+`bbd662afd67089675c8864545f92e481c10c82f7` (tests).
+For this isolated run, `fetch_catalog.py` was replaced by a **minimal stub
+containing only its pinned size, row count and hash constants**; those three
+values were checked separately against the actual GitHub importer. Therefore,
+this validates the committed preparer/test behavior but does **not** constitute
+a full importer test or a complete checkout execution.
+
 ## Merge/release coordination
 
 Review consolidated changes once, reconcile outstanding original draft PRs #196 and #201, run the full checkout tests, confirm real pinned manifest against the authorized pack, and carry out Windows 11 x64 offline packaging smoke before any approval. No `main` merge, CI/GitHub Actions, deployment, protected dataset redistribution, source visibility or release is performed by this work.
