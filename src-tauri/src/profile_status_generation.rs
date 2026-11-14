@@ -203,7 +203,11 @@ mod tests {
                 gate.publish_hint(&ticket, ProfileStatusUiHint::SyntheticReady)
             ));
         }
-        let successful = threads.into_iter().filter(|worker| worker.join().expect("thread")).count();
+        let successful = threads
+            .into_iter()
+            .map(|worker| worker.join().expect("thread"))
+            .filter(|accepted| *accepted)
+            .count();
         assert_eq!(successful, 1);
         assert_eq!(gate.visible_hint(), ProfileStatusUiHint::SyntheticReady);
         gate.invalidate();
