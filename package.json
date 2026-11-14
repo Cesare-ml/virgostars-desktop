@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "verify:version": "node scripts/verify-desktop-version.mjs",
-    "verify:ipc": "node scripts/verify-native-ipc.mjs",
+    "verify:ipc": "node scripts/verify-native-ipc.mjs && node scripts/verify-private-storage-boundary.mjs",
     "check": "npm run test && npm run verify:ipc && npm run build:ui",
     "prepare:frontend": "node scripts/prepare-synthetic-frontend.mjs",
     "prepare:icon": "node scripts/generate-spike-icon.mjs",
