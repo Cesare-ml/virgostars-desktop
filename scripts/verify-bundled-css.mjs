@@ -149,7 +149,11 @@ export function inspectDesktopStyles(bundleDir) {
       fail('Unexpected or nonlocal stylesheet reference');
     }
     const cssFile = join(dir, href.replace(/^\.\//, ''));
-    const stat = lstatSync(cssFile, {throwIfNoEntry:false});
+    // Normalize OS errors here as well as in the bounded reader: do not
+    // include private checkout paths in build diagnostics.
+    let stat;
+    try { stat = lstatSync(cssFile, {throwIfNoEntry:false}); }
+    catch { fail('Local global stylesheet missing or not a regular file'); }
     if (!stat || !stat.isFile() || stat.isSymbolicLink()) {
       fail('Local global stylesheet missing or not a regular file');
     }
