@@ -65,3 +65,14 @@ test('integration does not introduce hidden network fallback or claim astronomy 
   assert.doesNotMatch(runtime, /\bfetch\(|\bXMLHttpRequest\b|\blocalStorage\b/);
   assert.doesNotMatch(app, /\binvoke\(['"]desktop_runtime_info/);
 });
+
+test('clock readings use a shared per-instant cache without freezing timezone labels', () => {
+  assert.match(app, /import \{ DeviceClock, DeviceClockTextCache, selectedCityClockAt/);
+  assert.equal(occurrences(app, 'new DeviceClockTextCache()'), 1);
+  assert.match(app, /get clockText\(\): string \{ return this\.clockDisplay\.text\(this\.deviceClock\.timestamp, this\.locale\); \}/);
+  assert.match(app, /get clockCompactText\(\): string \{ return this\.clockDisplay\.text\(this\.deviceClock\.timestamp, this\.locale, true\); \}/);
+  assert.match(clock, /export class DeviceClockTextCache/);
+  assert.match(clock, /Object\.is\(ms, this\.timestamp\)/);
+  assert.match(clock, /locale !== this\.locale/);
+  assert.doesNotMatch(clock, /const STATIC_DEVICE_TIME_ZONE =/);
+});
