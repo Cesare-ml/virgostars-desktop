@@ -66,3 +66,9 @@ npm run build:ui
 ```
 
 Because #133, #144, #236, #238 and this PR overlap, review and merge **one reconciled set of overlapping changes**. Keep the originals open for provenance until maintainers choose the reviewed integration path. A clean GitHub merge check alone does not prove runtime/browser/Windows acceptance.
+
+### Existing Node contract migration
+
+The baseline `tests/device-clock-wiring.test.mjs` still asserted the obsolete inline clock callback and direct `formatDeviceClock()` UI getter, which are intentionally replaced by a stable visibility callback and the bounded text cache. The old test would fail despite correct current behavior. Its assertions now require the actual `onClockChanged` guard, visibility listener registration/removal, cached clock formatting, and passive semantic device time.
+
+The original test's **three cases passed** under an isolated JavaScript V8 harness using the exact GitHub source files and their existing assertion bodies. The separate eight-case integration source test also passed in the same harness (**11/11 combined**, no failures). These checks are source-contract validation, **not a complete checkout Node test run, Angular compilation or Windows acceptance**.
