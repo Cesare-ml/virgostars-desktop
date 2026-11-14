@@ -15,10 +15,10 @@ The anchor-owning download function now **independently** requires a canonical `
 Focused local Node.js 22.16.0 run:
 
 ```sh
-node --experimental-strip-types --test tests/png-download-boundary.test.mjs
+node --experimental-strip-types --test tests/png-download.test.mjs tests/png-download-boundary.test.mjs
 tsc --noEmit --strict --target ES2022 --module ES2022 --moduleResolution bundler --lib ES2022,DOM src/app/png-download.ts
 ```
 
-4/4 new test groups passed and standalone strict TypeScript check passed against the proposed source before upload. The repository-wide test suite, dependency-based Angular/Charts build, Rust/Tauri compile and Windows WebView2 click/save test were **not** run.
+Both the 8 existing PNG download tests and 4 new boundary test groups passed together (12/12) on the exact source blob committed to this branch; standalone strict TypeScript checking also passed. The repository-wide test suite, dependency-based Angular/Charts build, Rust/Tauri compile and Windows WebView2 click/save test were **not** run.
 
 Before merging, execute `npm test`, `npm run build:ui` and a Windows offline export smoke check; coordinate with the still-open PNG export and UI integration PRs. No new dependencies, external/network requests, native IPC permissions, real charts, accounts, secrets, assets, licenses, releases or GitHub Actions. Keep as draft pending acceptance.
