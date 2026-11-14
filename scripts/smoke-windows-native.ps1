@@ -27,8 +27,15 @@ $exe = Join-Path $root 'src-tauri\target\release\virgostars-desktop-spike.exe'
 
 function Invoke-ReadOnlyGate {
     param([string] $Label, [string] $Path)
-    # Gate output can include checkout paths on failure. Surface only stable labels.
-    & $nodeExe $Path *> $null
+    # Gate output and PowerShell invocation errors may contain checkout paths.
+    # Hide both and always report only the fixed gate label, including when
+    # Node cannot start or stderr redirection fails under Windows PowerShell.
+    try {
+        & $nodeExe $Path *> $null
+    }
+    catch {
+        throw ('NATIVE_SMOKE_PREFLIGHT_FAILED_' + $Label)
+    }
     if ($LASTEXITCODE -ne 0) {
         throw ('NATIVE_SMOKE_PREFLIGHT_FAILED_' + $Label)
     }
