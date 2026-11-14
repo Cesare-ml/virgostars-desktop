@@ -76,3 +76,11 @@ test('both ordinary and private UI builds run source preflight before staging', 
     assert.match(pkg.scripts[script], /^node scripts\/verify-angular-source-config\.mjs && npm run prepare:frontend/);
   }
 });
+
+test('browser and Tauri development commands fail closed on source drift before starting', () => {
+  const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts;
+  assert.equal(scripts.start,
+    'node scripts/verify-angular-source-config.mjs && npm run prepare:frontend && ng serve desktop --host 127.0.0.1 --port 4200');
+  assert.equal(scripts['tauri:dev'],
+    'node scripts/verify-angular-source-config.mjs && node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && tauri dev');
+});
