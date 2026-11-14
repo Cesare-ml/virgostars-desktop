@@ -55,11 +55,13 @@ export class DeviceClock {
           if (generation === this.generation) this.refresh(changed);
         });
       } catch {
-        this.invalidateTime(changed);
+        // The injected scheduler may have paused/disposed the clock before
+        // throwing. A stale start must not invalidate its hidden snapshot.
+        if (generation === this.generation) this.invalidateTime(changed);
         return;
       }
       if (handle === null || handle === undefined) {
-        this.invalidateTime(changed);
+        if (generation === this.generation) this.invalidateTime(changed);
         return;
       }
       // A scheduler or observer may synchronously pause/destroy the clock.
