@@ -101,7 +101,19 @@ export class StageLayoutRefresh {
   }
 
   request(): void {
-    if (this.disposed || this.phase !== 0) return;
+    if (this.disposed) return;
+    if (this.phase !== 0) {
+      // The last sidebar toggle wins. A pending second frame could otherwise
+      // measure the layout before Angular has applied the latest panel change.
+      // Invalidate old callbacks *before* attempting cancellation.
+      this.generation++;
+      this.phase = 0;
+      const pending = this.handle;
+      this.handle = null;
+      if (pending !== null) {
+        try { this.frames.cancel(pending); } catch { /* Late callbacks remain inert. */ }
+      }
+    }
     this.phase = 1;
     this.arm(++this.generation, 1);
   }

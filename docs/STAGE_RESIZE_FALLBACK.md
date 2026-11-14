@@ -30,3 +30,19 @@ Git object IDs from the passing isolated helper/tests match the GitHub branch: h
 **Not executed:** repository-wide `npm test`, Angular `npm run build:ui`, the complete sibling Charts dependency, native Tauri/Rust build, WebView2 browser smoke or actual panel-resize acceptance. Test on Windows with the normal observer path and a simulated failure path; verify initial draw and window-resize responsiveness. The fallback is intended to keep chart initialization alive, not to prove drawing or image exports.
 
 This is a separate draft from pending PNG/clock/sidebar changes. Review small overlapping edits to `DesktopAppComponent` before integrating; do not merge automatically or change publication settings. CPAL and VirgoStars attribution remain unchanged.
+
+## Last-toggle-wins panel refresh (14 November 2026)
+
+A second navigation/inspector click can arrive *between* the two scheduled
+animation frames. In that case the previous coalescer kept the already queued
+second frame, which could measure before Angular had rendered the **last** CSS
+class change. `StageLayoutRefresh.request()` now invalidates the old ticket,
+best-effort cancels its pending frame and starts a fresh pair of frames after
+the most recent click. A failed `cancelAnimationFrame` cannot restore the
+invalidated callback. Rapid toggles still leave at most one live refresh
+request; measurement is postponed until two frames after the latest toggle.
+
+Two focused tests cover a second click between frames and a failed cancellation
+with an already queued stale callback. Real Windows WebView2 timing and full
+Angular build remain to be verified. No native permissions, network, personal
+data or renderer changes are introduced.

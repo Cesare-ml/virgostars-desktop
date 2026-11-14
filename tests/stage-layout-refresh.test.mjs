@@ -43,6 +43,40 @@ test('two frames defer measurement until after the sidebar DOM can render', () =
   layout.dispose();
 });
 
+test('a toggle between frames restarts two measurements after the latest change', () => {
+  const f = frames(); let updates = 0;
+  const layout = new StageLayoutRefresh(() => updates++, f.driver);
+  layout.request();
+  f.flush(); // first animation frame queued the old second one
+  assert.deepEqual([...f.pending.keys()], [2]);
+  layout.request(); // another panel changed before that old second frame
+  assert.deepEqual(f.canceled, [2]);
+  assert.deepEqual([...f.pending.keys()], [3]);
+  f.fire(2); // canceled callback is still inert even if WebView queues it
+  assert.equal(updates, 0);
+  f.flush(); assert.equal(updates, 0, 'latest change still needs a second frame');
+  f.flush(); assert.equal(updates, 1);
+  layout.dispose();
+});
+
+test('restarting a pending frame tolerates failed cancel and excludes stale callbacks', () => {
+  const f = frames(); let updates = 0;
+  const driver = {
+    request: cb => f.driver.request(cb),
+    cancel() { throw Error('WebView cancellation failed'); },
+  };
+  const layout = new StageLayoutRefresh(() => updates++, driver);
+  layout.request();
+  const obsolete = [...f.pending.keys()][0];
+  layout.request(); // must not throw, despite a failed cancel
+  f.fire(obsolete);
+  assert.equal(updates, 0, 'old ticket must not refresh');
+  f.flush(); // both old and new callback may still be queued
+  assert.equal(updates, 0);
+  f.flush(); assert.equal(updates, 1);
+  layout.dispose();
+});
+
 test('a new panel toggle after refresh starts a fresh pair of frames', () => {
   const f = frames(); let refreshes = 0;
   const layout = new StageLayoutRefresh(() => refreshes++, f.driver);
