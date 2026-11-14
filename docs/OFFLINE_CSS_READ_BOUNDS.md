@@ -2,6 +2,46 @@
 
 **Status:** prototype build-artifact hardening. No Tauri/WebView2 run is implied.
 
+## Current verification — lstat-to-open metadata race (2026-11-14)
+
+A reviewed code path previously compared only the device and inode between
+the final-component `lstatSync()` and the freshly opened descriptor's
+`fstatSync()`. A same-inode file rewrite during that short interval could
+therefore be accepted if no further changes occurred during streaming.
+The reader now also compares the byte length and the **mtime/ctime** metadata
+against the original `lstatSync()` snapshot **before the first read**, using
+the existing `hasStableReadMetadata()` helper. Post-read identity and
+metadata validation remains in place. These are best-effort filesystem
+race checks, not atomic snapshots or guarantees against timestamp spoofing.
+
+**Executed in a minimal exact-source mirror with Node.js v22.16.0:**
+
+```powershell
+node --test tests/verify-bounded-ui-text.test.mjs tests/verify-css-imports.test.mjs tests/verify-css-imports-bundle.test.mjs tests/verify-css-resource-functions.test.mjs tests/css-bundle-combined.test.mjs tests/verify-preopen-ui-race.test.mjs
+```
+
+**64/64 PASS, 0 failed, 0 skipped.** All ten source/test modules passed
+`node --check`, and all ten have Git blob hashes identical to GitHub.
+Relevant updated Git blobs:
+
+- `scripts/read-bounded-ui-text.mjs`: `6448adbdaaa684cc408593b5d431fed5b37963c3`
+- `tests/verify-bounded-ui-text.test.mjs`: `f7005af073d493b34ee47083b8ce65705df683cb`
+- `tests/verify-preopen-ui-race.test.mjs`: `3122f08da6775b3cc5f500081a031740eda896f3`
+
+The last file uses an **isolated Node child process** to append to a
+synthetic HTML file immediately after the initial `lstatSync()`, before
+the module opens the descriptor. It verifies the actual reader returns
+`DESKTOP CSS BUNDLE: HTML changed before read`, not merely that the
+pure metadata comparison helper returns false. Two further metadata
+regressions cover same-inode size/time changes and invalid metadata.
+
+The previous 61/61 and earlier reports are historical. A complete
+repository `npm test`, real Angular build, built-bundle verification,
+Tauri/Cargo build, and Windows WebView2 acceptance were **not executed**.
+Do not merge or release on the basis of these focused tests alone.
+
+
+
 ## Current verification — CSS lexical newline safety (2026-11-14)
 
 A bug was reproduced on the previous branch: the CSS resource scanner
