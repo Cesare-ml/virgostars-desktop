@@ -6,6 +6,7 @@ Run manually with: python -m unittest discover -s tests -p test_places_archive_o
 from __future__ import annotations
 
 import hashlib
+from contextlib import closing
 import json
 from pathlib import Path
 import shutil
@@ -57,17 +58,20 @@ class PlacesArchiveOverrideIntegrationTests(unittest.TestCase):
 
     def make_fictional_database(self) -> bytes:
         file = self.root / "fictional.sqlite"
-        with sqlite3.connect(file) as database:
-            database.execute("CREATE TABLE catalog_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-            database.executemany(
-                "INSERT INTO catalog_meta (key, value) VALUES (?, ?)",
-                [("rowCount", "3"), ("schemaVersion", "2")],
-            )
-            database.execute("CREATE TABLE country_lookup (code TEXT PRIMARY KEY)")
-            database.executemany(
-                "INSERT INTO country_lookup (code) VALUES (?)",
-                [(f"FICT{i:03d}",) for i in range(244)],
-            )
+        # An explicit close is required before unlinking temporary SQLite files
+        # on Windows; sqlite3's transaction context alone does not close.
+        with closing(sqlite3.connect(file)) as database:
+            with database:
+                database.execute("CREATE TABLE catalog_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                database.executemany(
+                    "INSERT INTO catalog_meta (key, value) VALUES (?, ?)",
+                    [("rowCount", "3"), ("schemaVersion", "2")],
+                )
+                database.execute("CREATE TABLE country_lookup (code TEXT PRIMARY KEY)")
+                database.executemany(
+                    "INSERT INTO country_lookup (code) VALUES (?)",
+                    [(f"FICT{i:03d}",) for i in range(244)],
+                )
         return file.read_bytes()
 
     def install(self) -> None:
