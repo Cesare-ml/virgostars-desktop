@@ -2,6 +2,39 @@
 
 **Status:** prototype build-artifact hardening. No Tauri/WebView2 run is implied.
 
+## Current verification — CSS lexical newline safety (2026-11-14)
+
+A bug was reproduced on the previous branch: the CSS resource scanner
+accepted an **unescaped form-feed** character inside a CSS quoted string,
+and the `@import` scanner accepted unescaped LF/CR/FF inside CSS strings.
+CSS treats LF, CR and FF as newlines within a string, so a malformed
+string must not be skipped as if it were harmless quoted text.
+
+Both scanners now reject **raw LF/CR/FF in quoted strings**, and reject
+escaped form feed in identifiers where the CSS escape is invalid.
+Valid CSS string continuations using **escaped CRLF** and **escaped FF**
+remain accepted; regular FF whitespace outside strings remains valid.
+
+**Actually executed** in an isolated exact-source mirror, Node.js 22.16.0:
+
+```powershell
+node --test tests/verify-bounded-ui-text.test.mjs tests/verify-css-resource-functions.test.mjs tests/verify-css-imports.test.mjs tests/css-bundle-combined.test.mjs
+```
+
+**57 passed, 0 failed, 0 skipped**, and `node --check` succeeded for the
+eight source/test files. Checked source Git blobs against GitHub:
+
+- `scripts/verify-css-imports.mjs`: `3acc16891395ae47c27fd73165fa3a348e8e0927`
+- `scripts/verify-css-resource-functions.mjs`: `565fb1a2cc93d1ff49c435179f206a442b4a4100`
+- `tests/verify-css-imports.test.mjs`: `8d8492b1975cce8f307def8796ce7f6565a205b7`
+- `tests/verify-css-resource-functions.test.mjs`: `e756acad54a991981eeaa9c8a6a386a45a037de4`
+- `tests/css-bundle-combined.test.mjs`: `26d390fcb21a85f4d55930e1e47d29c1088f0684`
+
+The other three previously tested implementation/test files are unchanged.
+This supersedes historical 38/38 and earlier counts below. It does **not**
+constitute the entire repository `npm test`, Angular/Tauri build, Windows
+WebView2 runtime verification or release acceptance.
+
 ## Scope
 
 The existing `inspectDesktopStyles()` validates Angular's enabled, local
@@ -38,7 +71,7 @@ bounded candidate scanner.
 ## Tests
 
 ```powershell
-node --test tests/verify-bounded-ui-text.test.mjs tests/verify-css-resource-functions.test.mjs tests/css-bundle-combined.test.mjs
+node --test tests/verify-bounded-ui-text.test.mjs tests/verify-css-resource-functions.test.mjs tests/verify-css-imports.test.mjs tests/css-bundle-combined.test.mjs
 npm test
 npm run build:ui
 npm run verify:css
