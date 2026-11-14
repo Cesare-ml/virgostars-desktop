@@ -126,3 +126,30 @@ TypeScript helpers passed strict compilation. Full checkout `npm test`,
 Angular/Charts/Tauri compilation and real Windows 11 native acceptance remain
 unverified. No dependency, native permission, runtime source, or main-branch
 change was made.
+
+
+## Deterministic two-frame scheduler model (14 November 2026)
+
+A new `tests/stage-layout-scheduler-model.test.mjs` regression file exercises
+the **real** `StageLayoutRefresh` helper with a seeded pseudo-random model.
+Its 64 reproducible event traces each cover 96 actions (6,144 steps total),
+interleaving panel requests, individual animation frames and late delivery of
+canceled callbacks. The independent reference model requires **two new frames
+after the most recent toggle**, at most one pending live frame, no orphaned
+frame at completion and no post-disposal publication. A second test explicitly
+disposes the component between the first and second frames. These synthetic
+tests do not depend on timers, a browser, WebView2 or real astrology data.
+
+Verification using the actual **Node 22.16.0 test runner** on exact Git blob
+copies in the isolated mirror:
+```sh
+node --experimental-strip-types --test tests/stage-layout-refresh.test.mjs tests/stage-resize-monitor.test.mjs tests/stage-reentrant-driver.test.mjs tests/stage-layout-diagnostic-integration.test.mjs tests/stage-layout-scheduler-model.test.mjs
+```
+**33 tests passed, 0 failed, 0 skipped**. The new regression source has
+Git blob `450a241506d4fdf85cc18c8c365dee56d5339b93`, identical to the
+locally executed file. The pure helper/previous test files also retain their
+previously verified matching Git blobs. Both unchanged pure TypeScript helpers
+passed strict standalone `tsc --noEmit`. This is not a complete
+repository `npm test`, Angular/Charts compilation, native Tauri/Windows
+build or WebView2 visual acceptance. One older Angular static source contract
+continues to rely on a local fixture in this isolated mirror.
