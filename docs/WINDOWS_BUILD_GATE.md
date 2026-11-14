@@ -184,3 +184,33 @@ read-only and does not fetch tarballs: it verifies only lockfile metadata,
 not actual downloaded bytes, publishers, lifecycle scripts, transitive code
 safety, or dependency vulnerabilities. npm remains responsible for validating
 tarball contents against the pinned integrity digests during installation.
+
+
+## Charts lockfile metadata safety (2026-11-14)
+
+The combined draft Windows preflight in PR #237 checks the sibling public Charts
+`package.json` and `package-lock.json` **before** either `npm ci`. It rejects
+non-regular files (including symlinks and special files) and refuses to read
+oversized metadata using **byte limits** (1 MB manifest, 4 MB lockfile).
+Both UTF-8 inputs are decoded with `TextDecoder('utf-8', {fatal:true})`, so invalid
+sequences cannot be silently replaced with U+FFFD before `JSON.parse`.
+
+```powershell
+node --test tests/charts-npm-lock.test.mjs
+node scripts/verify-charts-npm-lock.mjs
+```
+
+**Verification (Linux, Node 22.16.0):** 11/11 tests passed against the exact
+committed validator and test files using a local synthetic checkout. The
+7 original lockfile-structure tests and 4 additional checkout-read tests cover
+regular metadata, symlinked and directory paths, malformed UTF-8 and oversize
+metadata. The current upstream Astrological Charts `main` manifest/lockfile
+(GitHub blob SHAs `f84a72173400985527403ace887651eaad25b15b` /
+`95251c65fc503cfb6d2199548cd36df3011c95f1`) also passed the pure
+metadata validator for 1,059 registry package entries in an isolated JS check.
+That upstream check used simplified V8 runtime shims, not a full native Node
+checkout or `npm ci`; it does **not** attest downloaded package bytes.
+
+This remains a best-effort read-only source preflight, not a race-free filesystem
+integrity guarantee or substitute for npm integrity enforcement, native Windows
+build, full test suite, WebView2 smoke and maintainer release review.
