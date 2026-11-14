@@ -56,21 +56,41 @@ catch {
 
 $clock = [System.Diagnostics.Stopwatch]::StartNew()
 $foundWindow = $false
+$windowFailure = 'NATIVE_SMOKE_NO_MAIN_WINDOW'
 while ($clock.Elapsed.TotalSeconds -lt $WindowWaitSeconds) {
-    Start-Sleep -Milliseconds 250
-    try { $appProcess.Refresh() }
-    catch { throw 'NATIVE_SMOKE_PROCESS_UNAVAILABLE' }
-    if ($appProcess.HasExited) {
-        throw 'NATIVE_SMOKE_EARLY_EXIT'
+    try {
+        Start-Sleep -Milliseconds 250
+        $appProcess.Refresh()
+        if ($appProcess.HasExited) {
+            $windowFailure = 'NATIVE_SMOKE_EARLY_EXIT'
+            break
+        }
+        if ($appProcess.MainWindowHandle -ne [IntPtr]::Zero) {
+            $foundWindow = $true
+            break
+        }
     }
-    if ($appProcess.MainWindowHandle -ne [IntPtr]::Zero) {
-        $foundWindow = $true
+    catch {
+        # Never expose an OS exception that could contain a private path.
+        $windowFailure = 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'
         break
     }
 }
 
 if (-not $foundWindow) {
-    throw 'NATIVE_SMOKE_NO_MAIN_WINDOW'
+    # Cleanup only the process returned by THIS Start-Process call, not other
+    # VirgoStars instances or arbitrary PIDs. Successful runs remain open.
+    try {
+        $appProcess.Refresh()
+        if (-not $appProcess.HasExited) {
+            $appProcess.Kill()
+            [void]$appProcess.WaitForExit(2000)
+        }
+    }
+    catch {
+        # Best-effort cleanup; preserve the stable startup failure label.
+    }
+    throw $windowFailure
 }
 
 Write-Host 'NATIVE_SMOKE_WINDOW_DETECTED: local Windows GUI process has a main window.'
