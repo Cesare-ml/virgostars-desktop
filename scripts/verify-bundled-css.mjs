@@ -2,10 +2,11 @@
  * Verify the Angular-generated entrypoint references a real local global stylesheet.
  * This is a build-artifact guard, NOT a WebView2 network or CSP runtime test.
  */
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNoCssImports } from './verify-css-imports.mjs';
+import { readBoundedUiText } from './read-bounded-ui-text.mjs';
 
 const fail = (message) => { throw new Error('DESKTOP CSS BUNDLE: ' + message); };
 
@@ -104,7 +105,7 @@ function linkAttributes(tag) {
 
 export function inspectDesktopStyles(bundleDir) {
   const dir = resolve(bundleDir);
-  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  const html = readBoundedUiText(join(dir, 'index.html'), 'HTML');
   const stylesheetLinks = extractLinkTags(html)
     .map(tag => ({tag, attrs: linkAttributes(tag)}))
     .filter(({attrs}) => (attrs.get('rel') ?? '').toLowerCase().split(/\s+/).includes('stylesheet'));
@@ -151,7 +152,7 @@ export function inspectDesktopStyles(bundleDir) {
     if (!stat || !stat.isFile() || stat.isSymbolicLink()) {
       fail('Local global stylesheet missing or not a regular file');
     }
-    const css = readFileSync(cssFile, 'utf8');
+    const css = readBoundedUiText(cssFile, 'CSS');
     // Angular must inline imported CSS before an offline Tauri build.
     assertNoCssImports(css);
     // Both selectors are in the committed global src/styles.css and survive CSS minification.
