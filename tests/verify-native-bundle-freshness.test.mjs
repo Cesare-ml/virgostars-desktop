@@ -124,6 +124,22 @@ test('rechecks every visited directory after recursion and before a success repo
 });
 
 
+test('streams directory entries and closes the directory handle on errors', () => {
+  const source = readFileSync(new URL('../scripts/verify-native-bundle-freshness.mjs', import.meta.url), 'utf8');
+  assert.match(source,/import \{ lstatSync, opendirSync \} from 'node:fs'/);
+  assert.match(source,/handle = opendirSync\(directory\)/);
+  assert.match(source,/entry = handle\.readSync\(\)/);
+  assert.match(source,/if \(entry === null\) break/);
+  assert.match(source,/finally \{[\s\S]*?handle\.closeSync\(\)/);
+  assert.doesNotMatch(source,/readdirSync\(/);
+});
+
+test('rejects more than the file budget in one directory', () => fixture(({exe,dist}) => {
+  for (let i = 0; i < 8193; i++) writeFileSync(join(dist, 'generated-' + i + '.dat'), 'x');
+  assert.throws(() => verifyNativeBundleFreshness(exe, dist), /NATIVE_BUNDLE_FILE_LIMIT/);
+}));
+
+
 test('does not change file timestamps or create reports', () => fixture(({exe,dist,files}) => {
   const before = [...files,exe].map(file=>({file,mtime: lstatSync(file).mtimeMs}));
   verifyNativeBundleFreshness(exe, dist);
