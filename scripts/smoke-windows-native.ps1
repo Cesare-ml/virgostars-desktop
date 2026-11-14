@@ -22,7 +22,8 @@ $exe = Join-Path $root 'src-tauri\target\release\virgostars-desktop-spike.exe'
 
 function Invoke-ReadOnlyGate {
     param([string] $Label, [string] $Path)
-    & node $Path
+    # Gate output can include checkout paths on failure. Surface only stable labels.
+    & node $Path *> $null
     if ($LASTEXITCODE -ne 0) {
         throw ('NATIVE_SMOKE_PREFLIGHT_FAILED_' + $Label)
     }
@@ -34,6 +35,9 @@ try {
     # Verify source configuration and the exact built browser artifacts first.
     Invoke-ReadOnlyGate 'VERSION' 'scripts/verify-desktop-version.mjs'
     Invoke-ReadOnlyGate 'TAURI_SECURITY' 'scripts/verify-tauri-security-config.mjs'
+    Invoke-ReadOnlyGate 'NATIVE_IPC' 'scripts/verify-native-ipc.mjs'
+    # Validate the full synthetic offline package, not only a linked CSS file.
+    Invoke-ReadOnlyGate 'OFFLINE_BUNDLE' 'scripts/verify-offline-bundle.mjs'
     Invoke-ReadOnlyGate 'BUNDLED_CSS' 'scripts/verify-bundled-css.mjs'
     Invoke-ReadOnlyGate 'COMPONENT_STYLES' 'scripts/verify-component-styles.mjs'
     Invoke-ReadOnlyGate 'WINDOWS_PE' 'scripts/verify-windows-pe.mjs'
