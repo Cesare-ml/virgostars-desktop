@@ -30,6 +30,8 @@ export class DeviceClock {
   private timer: unknown | null = null;
   private starting = false;
   private disposed = false;
+  // Reject late callbacks from a stopped interval, even after restarting.
+  private generation = 0;
   private readonly driver: ClockDriver;
 
   constructor(driver: ClockDriver = SYSTEM_CLOCK) {
@@ -43,12 +45,15 @@ export class DeviceClock {
     // refresh() and schedule() may invoke callbacks synchronously. Treat start
     // as in progress until the first handle has been installed or abandoned.
     this.starting = true;
+    const generation = this.generation;
     try {
       this.refresh(changed);
-      if (this.disposed) return;
+      if (this.disposed || generation !== this.generation) return;
       let handle: unknown;
       try {
-        handle = this.driver.schedule(() => this.refresh(changed));
+        handle = this.driver.schedule(() => {
+          if (generation === this.generation) this.refresh(changed);
+        });
       } catch {
         this.invalidateTime(changed);
         return;
@@ -57,8 +62,8 @@ export class DeviceClock {
         this.invalidateTime(changed);
         return;
       }
-      // An injected scheduler may synchronously destroy the owner before returning.
-      if (this.disposed) {
+      // A scheduler or observer may synchronously pause/destroy the clock.
+      if (this.disposed || generation !== this.generation) {
         try { this.driver.cancel(handle); } catch { /* Already disposed; do not leak driver errors. */ }
         return;
       }
@@ -86,9 +91,21 @@ export class DeviceClock {
     changed();
   }
 
+  /** Suspend the ticking clock while the window is hidden; start() resumes it. */
+  pause(): void {
+    if (this.disposed) return;
+    this.generation++;
+    const handle = this.timer;
+    this.timer = null;
+    if (handle !== null) {
+      try { this.driver.cancel(handle); } catch { /* A stopped timer must never block the UI. */ }
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.generation++;
     const handle = this.timer;
     this.timer = null;
     if (handle !== null) {
