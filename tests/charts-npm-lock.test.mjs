@@ -42,6 +42,24 @@ test('rejects changed dependency or peer root declarations', () => {
   rejects(lock => {delete lock.packages[''];}, 'missing root');
 });
 
+test('rejects matching but malformed npm root dependency and engine tables', () => {
+  const invalid = [
+    ['dependencies','tslib'],
+    ['devDependencies',['typescript']],
+    ['peerDependencies',null],
+    ['optionalDependencies',{fictional:''}],
+    ['engines',{node:22}],
+  ];
+  for (const [field, value] of invalid) {
+    const alteredManifest = structuredClone(manifest);
+    alteredManifest[field] = structuredClone(value);
+    const alteredLock = valid();
+    alteredLock.packages[''][field] = structuredClone(value);
+    assert.throws(() => auditChartsNpmLock(alteredManifest, alteredLock),
+      /Invalid Charts npm root metadata table/, field);
+  }
+});
+
 test('rejects alternate registry URLs and unpinned resolved metadata', () => {
   for (const value of [
     'http://registry.npmjs.org/tslib/-/tslib-2.3.0.tgz',
