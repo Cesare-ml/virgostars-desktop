@@ -76,6 +76,16 @@ test('malformed UTF-8 is refused for both HTML and CSS', () => fixture(({dir, ht
   assert.throws(() => inspectDesktopStyles(dir), /CSS invalid UTF-8/);
 }));
 
+test('rejects embedded NUL bytes in otherwise valid Angular HTML', () => fixture(({dir, html}) => {
+  writeFileSync(html, '<!doctype html><head>' + LINK + '</head>\0<vs-desktop-app></vs-desktop-app>');
+  assert.throws(() => inspectDesktopStyles(dir), /HTML contains NUL byte/);
+}));
+
+test('rejects embedded NUL bytes in otherwise valid Angular CSS', () => fixture(({dir, css}) => {
+  writeFileSync(css, CSS + '\0');
+  assert.throws(() => inspectDesktopStyles(dir), /CSS contains NUL byte/);
+}));
+
 test('invalid type and missing file fail without leaking filesystem paths', () => fixture(({dir}) => {
   assert.throws(() => readBoundedUiText(join(dir, 'none.css'), 'CSV'), error => {
     assert.equal(error.message, 'DESKTOP CSS BUNDLE: input unsupported text kind');
