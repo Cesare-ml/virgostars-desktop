@@ -85,6 +85,30 @@ test('native window schema rejects missing reviewed fields and extra windows', (
   assert.throws(() => verifyTauriSecurityConfig(extra), /number of windows/);
 });
 
+test('unknown app-level Tauri options fail closed even when set to false', () => {
+  for (const [key, value] of [
+    ['withGlobalTauri', false],
+    ['trayIcon', {id:'synthetic-tray'}],
+    ['newFutureAppOption', false],
+  ]) {
+    const config = copy();
+    config.app[key] = value;
+    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed Tauri app option/, key);
+  }
+});
+
+test('unknown Tauri security options fail closed even when set to false', () => {
+  for (const [key, value] of [
+    ['dangerousRemoteDomainIpcAccess', [{domain: 'https://example.invalid'}]],
+    ['dangerousDisableAssetCspModification', false],
+    ['newFutureSecurityOption', false],
+  ]) {
+    const config = copy();
+    config.app.security[key] = value;
+    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed Tauri security option/, key);
+  }
+});
+
 test('permission expansion and enabling installer packaging require review', () => {
   for (const change of [
     config => { config.app.security.capabilities = ['fs:default']; },
@@ -135,7 +159,7 @@ test('development CSP rejects missing, foreign or malformed directives', () => {
 test('tauri:dev checks local WebView security before launching the native host', () => {
   const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts;
   assert.equal(scripts['tauri:dev'],
-    'node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && tauri dev');
+    'npm run verify:version && node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && tauri dev');
 });
 
 test('development frontend URL and startup hook cannot change silently', () => {
