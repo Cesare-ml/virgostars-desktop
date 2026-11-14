@@ -54,7 +54,7 @@ test('mutex errors and epoch exhaustion fail closed without unwrap in non-test i
 });
 
 test('Rust unit tests cover concurrency, stale, overflow and poisoned mutex',()=>{
-  const tests=[...source.matchAll(/#\[test\]\s*fn\s+([a-z_]+)\(/g)].map(x=>x[1]);
+  const tests=[...source.matchAll(/#\[test\]\s*fn\s+([a-z_][a-z_0-9]*)\(/g)].map(x=>x[1]);
   assert.deepEqual(tests,[
     'latest_only_and_single_use','lock_revokes_pending_status',
     'separate_profiles_cannot_exchange_equal_revision_tickets',
