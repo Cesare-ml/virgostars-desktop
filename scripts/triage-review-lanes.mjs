@@ -16,6 +16,21 @@ function exactSet(values, expected) {
     values.every(value => expected.has(value));
 }
 
+function optionalAuditRows(audit, countKey, rowsKey) {
+  const countPresent = Object.hasOwn(audit, countKey);
+  const rowsPresent = Object.hasOwn(audit, rowsKey);
+  if (countPresent !== rowsPresent) throw new Error('Incomplete optional audit');
+  if (!countPresent) return [];
+  const rows = audit[rowsKey];
+  if (!validCount(audit[countKey]) || !Array.isArray(rows) ||
+      rows.length !== audit[countKey])
+    throw new Error('Invalid optional audit');
+  return rows;
+}
+
+const nestedUnder = (parent, child) => child.startsWith(parent + '/');
+const windowsCaseKey = path => path.normalize('NFC').toLowerCase();
+
 /**
  * Color the shared-path graph greedily into deterministic parallel review lanes.
  * A lane contains no KNOWN shared-file pair, but semantic conflicts, base drift,
@@ -47,6 +62,13 @@ export function planReviewLanes(audit) {
     .filter(item => item.behindBy > 0).map(item => item.branch));
   if (!exactSet(audit.staleBranches, stale))
     throw new Error('Inconsistent branch freshness');
+
+  // Newer audit branches can provide Windows-case and file/directory signals.
+  // All-or-nothing count/list pairs prevent silently dropping partial risk data.
+  const prefixRows = optionalAuditRows(audit, 'prefixOverlapFiles', 'prefixOverlaps');
+  const basePrefixRows = optionalAuditRows(audit, 'basePrefixOverlapFiles', 'basePrefixOverlaps');
+  const caseRows = optionalAuditRows(audit, 'windowsCaseVariantPairs', 'windowsCaseVariants');
+  const baseCaseRows = optionalAuditRows(audit, 'windowsBaseCaseVariantPairs', 'windowsBaseCaseVariants');
 
   const links = new Map([...branches.keys()].map(branch => [branch, new Set()]));
   const touched = new Map([...branches.keys()].map(branch => [branch, new Set()]));
@@ -80,6 +102,79 @@ export function planReviewLanes(audit) {
       throw new Error('Contradictory base-side audit');
   }
 
+  const basePrefixBranches = new Set();
+  const baseCaseBranches = new Set();
+  const uniquePrefixes = new Set();
+  for (const item of prefixRows) {
+    if (!item || !validPath(item.ancestorPath) || !validPath(item.nestedPath) ||
+        !nestedUnder(item.ancestorPath, item.nestedPath) ||
+        !Array.isArray(item.ancestorBranches) || !item.ancestorBranches.length ||
+        !Array.isArray(item.nestedBranches) || !item.nestedBranches.length ||
+        !exactSet(item.ancestorBranches, new Set(item.ancestorBranches)) ||
+        !exactSet(item.nestedBranches, new Set(item.nestedBranches)) ||
+        [...item.ancestorBranches,...item.nestedBranches].some(b => !branches.has(b)))
+      throw new Error('Invalid file-directory collision audit');
+    const key = item.ancestorPath + '\0' + item.nestedPath;
+    if (uniquePrefixes.has(key)) throw new Error('Duplicate file-directory collision');
+    uniquePrefixes.add(key);
+    let crossBranch = false;
+    for (const a of item.ancestorBranches) {
+      touched.get(a).add(item.ancestorPath);
+      for (const b of item.nestedBranches) {
+        touched.get(b).add(item.nestedPath);
+        if (a !== b) {
+          crossBranch = true;
+          links.get(a).add(b);
+          links.get(b).add(a);
+        }
+      }
+    }
+    if (!crossBranch) throw new Error('Invalid same-branch collision audit');
+  }
+  const uniqueBasePrefixes = new Set();
+  for (const item of basePrefixRows) {
+    if (!item || !branches.has(item.branch) || !validPath(item.basePath) ||
+        !validPath(item.branchPath) ||
+        !(nestedUnder(item.basePath, item.branchPath) ||
+          nestedUnder(item.branchPath, item.basePath)) ||
+        branches.get(item.branch).behindBy === 0)
+      throw new Error('Invalid base file-directory collision audit');
+    const key = item.branch + '\0' + item.basePath + '\0' + item.branchPath;
+    if (uniqueBasePrefixes.has(key)) throw new Error('Duplicate base file-directory collision');
+    uniqueBasePrefixes.add(key);
+    touched.get(item.branch).add(item.branchPath);
+    basePrefixBranches.add(item.branch);
+  }
+  const uniqueCases = new Set();
+  for (const item of caseRows) {
+    if (!item || !branches.has(item.branchA) || !branches.has(item.branchB) ||
+        item.branchA === item.branchB || !validPath(item.pathA) || !validPath(item.pathB) ||
+        item.pathA === item.pathB ||
+        windowsCaseKey(item.pathA) !== windowsCaseKey(item.pathB))
+      throw new Error('Invalid Windows-case collision audit');
+    const key = item.branchA + '\0' + item.pathA + '\0' +
+      item.branchB + '\0' + item.pathB;
+    if (uniqueCases.has(key)) throw new Error('Duplicate Windows-case collision');
+    uniqueCases.add(key);
+    links.get(item.branchA).add(item.branchB);
+    links.get(item.branchB).add(item.branchA);
+    touched.get(item.branchA).add(item.pathA);
+    touched.get(item.branchB).add(item.pathB);
+  }
+  const uniqueBaseCases = new Set();
+  for (const item of baseCaseRows) {
+    if (!item || !branches.has(item.branch) || !validPath(item.branchPath) ||
+        !validPath(item.basePath) || item.branchPath === item.basePath ||
+        windowsCaseKey(item.branchPath) !== windowsCaseKey(item.basePath) ||
+        branches.get(item.branch).behindBy === 0)
+      throw new Error('Invalid base Windows-case collision audit');
+    const key = item.branch + '\0' + item.branchPath + '\0' + item.basePath;
+    if (uniqueBaseCases.has(key)) throw new Error('Duplicate base Windows-case collision');
+    uniqueBaseCases.add(key);
+    touched.get(item.branch).add(item.branchPath);
+    baseCaseBranches.add(item.branch);
+  }
+
   for (const [branch, paths] of touched) {
     if (paths.size > branches.get(branch).changedFiles)
       throw new Error('Contradictory changed-file counts');
@@ -100,15 +195,19 @@ export function planReviewLanes(audit) {
     base: audit.base,
     branchCount: branches.size,
     sharedPathCount: overlapPaths.size,
+    fileDirectoryCollisionCount: prefixRows.length,
+    windowsCaseCollisionCount: caseRows.length,
     lanes: lanes.map(members => {
       members.sort(compare);
       return {
         branches: members,
         requiresBaseRefresh: members.filter(branch => stale.has(branch)),
         baseOverlapBranches: members.filter(branch => baseCollisionBranches.has(branch)),
+        basePrefixOverlapBranches: members.filter(branch => basePrefixBranches.has(branch)),
+        windowsBaseCaseVariantBranches: members.filter(branch => baseCaseBranches.has(branch)),
       };
     }),
-    note: 'Review scheduling only. Local refs may be stale. No lane implies merge safety, compatible dependencies, or approval.',
+    note: 'Review scheduling only. Local refs may be stale. Optional cross-branch Windows-case/file-directory candidates are separated when present; no lane implies merge safety, compatible dependencies, or approval.',
   };
 }
 
