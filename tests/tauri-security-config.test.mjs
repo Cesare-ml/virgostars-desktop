@@ -60,6 +60,47 @@ test('packaged windows may not redirect to a website or use a different frontend
   }
 });
 
+test('unreviewed top-level Tauri options and changed application identity fail closed', () => {
+  for (const change of [
+    config => { config.plugins = {updater: {active: true}}; },
+    config => { config.newFutureOption = false; },
+    config => { config['$schema'] = 'https://example.invalid/config'; },
+    config => { config.productName = 'Other Desktop'; },
+    config => { config.identifier = 'com.example.other'; },
+    config => { delete config.identifier; },
+  ]) {
+    const config = copy(); change(config);
+    assert.throws(() => verifyTauriSecurityConfig(config),
+      /unreviewed Tauri root option or application identity/);
+  }
+});
+
+test('unreviewed build keys cannot silently change local Desktop packaging', () => {
+  for (const change of [
+    config => { config.build.additionalWatchFolders = ['../private']; },
+    config => { config.build.newFutureOption = false; },
+    config => { config.build.additionalWatchFolders = []; },
+  ]) {
+    const config = copy(); change(config);
+    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed Tauri build option/);
+  }
+});
+
+test('unreviewed bundle resources, sidecars and icon mutations fail closed', () => {
+  for (const change of [
+    config => { config.bundle.resources = ['../private']; },
+    config => { config.bundle.externalBin = ['bin/tool']; },
+    config => { config.bundle.newFutureOption = false; },
+    config => { config.bundle.icon = ['icons/icon.png']; },
+    config => { config.bundle.icon[1] = 'icons/other.ico'; },
+    config => { config.bundle.icon.push('icons/extra.png'); },
+    config => { delete config.bundle.icon; },
+  ]) {
+    const config = copy(); change(config);
+    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed Tauri bundle option or icon/);
+  }
+});
+
 test('native window options cannot bypass the reviewed WebView security surface', () => {
   for (const [field, value] of [
     ['additionalBrowserArgs', '--disable-web-security'],

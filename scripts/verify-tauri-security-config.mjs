@@ -31,6 +31,10 @@ const EXPECTED_DEV_CSP = Object.freeze({
   'frame-src': ["'none'"],
 });
 
+const REVIEWED_ROOT_FIELDS = Object.freeze(['$schema', 'productName', 'version', 'identifier', 'build', 'app', 'bundle']);
+const REVIEWED_BUILD_FIELDS = Object.freeze(['devUrl', 'frontendDist']);
+const REVIEWED_BUNDLE_FIELDS = Object.freeze(['active', 'icon']);
+const REVIEWED_BUNDLE_ICONS = Object.freeze(['icons/icon.png', 'icons/icon.ico']);
 const REVIEWED_WINDOW_FIELDS = Object.freeze(['label', 'title', 'width', 'height', 'minWidth', 'minHeight']);
 const REVIEWED_APP_FIELDS = Object.freeze(['windows', 'security']);
 const REVIEWED_SECURITY_FIELDS = Object.freeze(['capabilities', 'csp', 'devCsp']);
@@ -40,6 +44,10 @@ function assertSafe(ok, reason) {
 }
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function hasExactOwnKeys(value, expected) {
+  return isObject(value) && Object.keys(value).length === expected.length &&
+    expected.every(field => Object.hasOwn(value, field));
 }
 
 /** Pin every directive exactly. Development has narrow loopback-only allowances. */
@@ -75,13 +83,28 @@ export function verifyDevelopmentCsp(csp) {
 export function verifyTauriSecurityConfig(config) {
   assertSafe(isObject(config) && isObject(config.build) && isObject(config.app) &&
     isObject(config.app.security) && isObject(config.bundle), 'invalid Tauri config');
+  // Restrict source packaging knobs independently from the WebView CSP.
+  // Unknown top-level/build/bundle fields can add plugins, local resources,
+  // executable sidecars, pre-build commands or unexpected distribution output.
+  assertSafe(hasExactOwnKeys(config, REVIEWED_ROOT_FIELDS) &&
+    config['$schema'] === 'https://schema.tauri.app/config/2' &&
+    config.productName === 'VirgoStars Desktop Lab' &&
+    config.identifier === 'it.virgostars.desktop.rendererlab',
+    'unreviewed Tauri root option or application identity');
   assertSafe(config.build.frontendDist === '../dist/desktop/browser' &&
     !Object.hasOwn(config.build, 'beforeBuildCommand'),
     'packaged frontend path or build hook changed');
   assertSafe(config.build.devUrl === 'http://127.0.0.1:4200' &&
     !Object.hasOwn(config.build, 'beforeDevCommand'),
     'development frontend must remain on reviewed loopback origin');
+  assertSafe(hasExactOwnKeys(config.build, REVIEWED_BUILD_FIELDS),
+    'unreviewed Tauri build option');
   assertSafe(config.bundle.active === false, 'installer packaging requires separate review');
+  assertSafe(hasExactOwnKeys(config.bundle, REVIEWED_BUNDLE_FIELDS) &&
+    Array.isArray(config.bundle.icon) &&
+    config.bundle.icon.length === REVIEWED_BUNDLE_ICONS.length &&
+    REVIEWED_BUNDLE_ICONS.every((icon, index) => config.bundle.icon[index] === icon),
+    'unreviewed Tauri bundle option or icon');
   // Only the reviewed single local window is allowed. Tauri accepts extra
   // window keys such as additionalBrowserArgs/devtools that can alter WebView
   // behavior without changing the pinned CSP or explicit window URL.
