@@ -30,6 +30,7 @@ try {
     Invoke-Step 'Check tracked Git names are portable to Windows' 'node' @('scripts/verify-windows-tracked-paths.mjs')
     Invoke-Step 'Read-only Windows setup preflight' 'node' @('scripts/desktop-doctor.mjs', '--stage=setup', '--strict')
     Invoke-Step 'Audit committed npm lockfile origins before dependency install' 'node' @('scripts/verify-npm-lock.mjs')
+    Invoke-Step 'Audit sibling Charts npm lockfile before dependency install' 'node' @('scripts/verify-charts-npm-lock.mjs')
     Invoke-Step 'Verify matching Desktop versions before dependency install' 'node' @('scripts/verify-desktop-version.mjs')
     Invoke-Step 'Audit Angular source configuration before dependency install' 'node' @('scripts/verify-angular-source-config.mjs')
 }

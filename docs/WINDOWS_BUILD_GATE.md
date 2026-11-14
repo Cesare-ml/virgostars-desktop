@@ -53,6 +53,18 @@ The bootstrap first runs `node scripts/verify-desktop-version.mjs` before instal
 
 The same `verify:version` gate is now the **first step** in every npm Tauri entrypoint (`tauri:dev`, `tauri:build`, `tauri:build:private`, and both `tauri:build:places:*` variants). This prevents development or alternate Windows packaging commands from bypassing the version check. The manual bootstrap invokes the gate directly because it deliberately runs Tauri through `npm.cmd exec --offline`, not through those scripts. Run `node --test tests/desktop-version-entrypoints.test.mjs` to check the wrappers. Running the gate alone is not a signed-update or release-integrity guarantee.
 
+Before either `npm ci`, the bootstrap also runs `node
+scripts/verify-charts-npm-lock.mjs` from Desktop. It checks the **sibling
+astrological-charts** `package.json` and lockfile v3 together, rejects
+unreviewed `file:` links, alternate registries, tarball name/version
+substitution, malformed SHA-512 SRI and symlinked checkout metadata paths.
+The current reviewed Charts lock uses registry tarballs only (no local links).
+This is a structural lockfile provenance check, **not** a download checksum,
+package-signature audit, network check or dependency vulnerability scanner.
+Run it manually with `npm.cmd run verify:charts-lock`; if Charts changes its
+legitimate dependency layout, review the new lockfile contract rather than
+weakening the gate. It does not install anything or read accounts.
+
 The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, **audits the committed Desktop npm lockfile before invoking any package installer**, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies **using the reviewed npm lockfile (`npm ci`)**, runs Node tests, audits the reviewed native IPC command registry and Tauri capabilities, builds Angular with exact asset verification, checks that the bundled stylesheet exists, runs Rust unit tests with `cargo test --locked`, compiles Tauri **from that same already-audited Angular output** and checks expected output files. It stops at the first failed command.
 
 The bootstrap invokes the locally installed Tauri CLI using `npm.cmd exec --offline -- tauri build` rather than `npm.cmd run tauri:build`: the general-purpose npm script rebuilds Angular and would invalidate the independent CSS check. The current `tauri.conf.json` has no `beforeBuildCommand`; adding one requires reviewing this gate again. The separate `npm run tauri:build` command remains available for ordinary standalone builds.
