@@ -13,7 +13,7 @@ The Desktop component subscribes to `document.visibilitychange` exactly once dur
 - **Visible again:** restart with a fresh wall-time sample. An OS sleep or clock adjustment cannot be misinterpreted as elapsed intervals.
 - **Destroyed:** cancel the interval, detach the document listener and ignore callbacks.
 
-`DeviceClock.pause()` uses a generation counter, so a callback queued before the timer was cancelled cannot update the view, including **after** a new interval is registered. A scheduler that synchronously pauses during registration must have its returned handle cancelled. Exceptions from timer cancellation remain contained; clock readings remain non-sensitive and are never logged.
+`DeviceClock.pause()` uses a generation counter, so a callback queued before the timer was cancelled cannot update the view, including **after** a new interval is registered. A scheduler that synchronously pauses during registration must have its returned handle cancelled. If that scheduler then throws or returns no timer handle, the obsolete start must **not** replace the paused clock's last displayed time with an unavailable value. Exceptions from timer cancellation remain contained; clock readings remain non-sensitive and are never logged.
 
 This is a **best-effort power-saving** feature: whether a minimized Tauri/WebView2 window emits `visibilitychange` is host-dependent. If it does not, the existing one-second interval remains the fallback, and its sampled wall time remains correct. A separate native window-focus event may be considered after actual Windows and macOS acceptance testing.
 
@@ -22,7 +22,7 @@ This is a **best-effort power-saving** feature: whether a minimized Tauri/WebVie
 Run from the desktop repository with Node.js 22.12+ (or Node 24+):
 
 ```sh
-node --experimental-strip-types --test tests/device-clock.test.mjs tests/device-clock-visibility.test.mjs
+node --experimental-strip-types --test tests/device-clock.test.mjs tests/device-clock-visibility.test.mjs tests/device-clock-paused-scheduler.test.mjs
 npm test
 ```
 
