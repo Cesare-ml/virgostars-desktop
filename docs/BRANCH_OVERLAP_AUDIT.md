@@ -39,6 +39,26 @@ fetch from GitHub, so run `git fetch` manually if you need current remote
 information. Neither a zero behind count nor a clean file-overlap report
 proves that a PR is safe to merge.
 
+## Branch versus main file conflicts (read-only candidates)
+
+In addition to comparing feature branches with one another, the script now
+inspects both sides of each branch's merge base:
+
+- `git diff --name-status -z main...feature` finds feature-side changes.
+- `git diff --name-status -z feature...main` finds `main`-side changes
+  since their common ancestor. The second query is skipped only when that
+  branch's `behindBy` is exactly zero.
+- `baseOverlaps` lists `{branch,path}` where **both sides changed the same
+  path** (including original and destination names of detected renames).
+  `baseOverlapFiles` is the number of branch/path pairs, not the number of
+  guaranteed textual conflicts; `baseFilesChecked` distinguishes a complete
+  native read-only audit from a pure report lacking that check.
+
+A branch may have `behindBy > 0` and `baseOverlapFiles = 0`; it still needs
+integration review and tests. Two-sided file comparisons are not a substitute
+for a merge, semantic review or upstream dependency validation. Neither
+direction performs checkout, merge, fetch or writes to the working tree.
+
 ## Important limitations
 
 - Shared files **may merge cleanly**. Different files **may still conflict
@@ -72,7 +92,8 @@ untouched. Focused Node.js 22.16.0 / Git 2.47.3 check on 2026-11-14:
 **4/4 passing test cases**; the complete Desktop checkout, Angular build and
 Windows WebView2 acceptance are still required before integration.
 
-A follow-up adds strict parsing of `rev-list` counts and a fifth synthetic
-scenario: both branches diverge from `main`, which advances independently.
-For local verification run the focused Node test command above; do not infer
-production readiness from these fixture checks.
+Additional regressions cover strict parsing of `rev-list` counts,
+incomplete base-side results, and a local synthetic Git fixture in which `main`
+and only one feature branch change the same file after diverging. Run the
+focused Node test command above on a complete checkout; fixture tests alone
+do not certify merge safety or Windows/Desktop readiness.
