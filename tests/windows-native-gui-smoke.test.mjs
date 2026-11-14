@@ -38,12 +38,12 @@ test('all read-only gates run in strict order before launching the local binary'
 });
 
 test('preflight uses an application node.exe, not a PowerShell alias or script', () => {
-  assert.match(source,/Get-Command -Name 'node\\.exe' -CommandType Application -ErrorAction SilentlyContinue/);
-  assert.match(source,/\\$nodeExe = \\$nodeCommand\\.Source/);
-  assert.match(source,/\\[System\\.IO\\.Path\\]::IsPathRooted\\(\\$nodeCommand\\.Source\\)/);
+  assert.match(source,/Get-Command -Name 'node\.exe' -CommandType Application -ErrorAction SilentlyContinue/);
+  assert.match(source,/\$nodeExe = \$nodeCommand\.Source/);
+  assert.match(source,/\[System\.IO\.Path\]::IsPathRooted\(\$nodeCommand\.Source\)/);
   assert.match(source,/throw 'NATIVE_SMOKE_NODE_REQUIRED'/);
-  assert.match(source,/& \\$nodeExe \\$Path \\*> \\$null/);
-  assert.doesNotMatch(source,/& node \\$Path/);
+  assert.match(source,/& \$nodeExe \$Path \*> \$null/);
+  assert.doesNotMatch(source,/& node \$Path/);
 });
 
 test('process observation distinguishes a native GUI window from a merely present executable', () => {
