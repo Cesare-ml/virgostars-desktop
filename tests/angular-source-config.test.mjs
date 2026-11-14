@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync, rmSync } from 'node:fs';
+import { appendFileSync, closeSync, fstatSync, lstatSync, mkdtempSync, openSync, readFileSync, readSync, renameSync, symlinkSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -107,4 +107,55 @@ test('manual Windows bootstrap checks Angular inputs before package installation
   const firstInstall = script.indexOf("'npm.cmd' @('ci')");
   assert.ok(versionGate > 0 && angularGate > versionGate && firstInstall > angularGate);
   assert.equal((script.match(/'node' @\('scripts\/verify-angular-source-config\.mjs'\)/g) ?? []).length, 1);
+});
+
+test('file swaps between lstat and open fail closed even with identical JSON content', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'desktop-angular-swap-'));
+  try {
+    const filename = join(dir, 'angular.json');
+    writeFileSync(filename, JSON.stringify(original));
+    let closed = 0;
+    const io = {
+      lstatSync(file) {
+        const before = lstatSync(file);
+        renameSync(file, join(dir, 'original.json'));
+        writeFileSync(file, JSON.stringify(original));
+        return before;
+      },
+      openSync, fstatSync, readSync,
+      closeSync(fd) { closed++; closeSync(fd); },
+    };
+    assert.throws(() => verifyAngularSourceConfigCheckout(dir, io), /configuration changed during inspection/);
+    assert.equal(closed, 1, 'file descriptor closed on rejected replacement');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('file growth after metadata inspection has a bounded read and closes the descriptor', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'desktop-angular-growth-'));
+  try {
+    const filename = join(dir, 'angular.json');
+    writeFileSync(filename, JSON.stringify(original));
+    let closed = 0;
+    const io = {
+      lstatSync, openSync, readSync,
+      fstatSync(fd) {
+        const stat = fstatSync(fd);
+        appendFileSync(filename, ' '.repeat(65537));
+        return stat;
+      },
+      closeSync(fd) { closed++; closeSync(fd); },
+    };
+    assert.throws(() => verifyAngularSourceConfigCheckout(dir, io), /oversized configuration file/);
+    assert.equal(closed, 1);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('invalid UTF-8 fails closed without retaining an open descriptor', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'desktop-angular-utf8-'));
+  try {
+    writeFileSync(join(dir, 'angular.json'), Buffer.from([0xff, 0xfe, 0x00]));
+    assert.throws(() => verifyAngularSourceConfigCheckout(dir), /encoded data|valid for encoding/i);
+    writeFileSync(join(dir, 'angular.json'), JSON.stringify(original));
+    assert.deepEqual(verifyAngularSourceConfigCheckout(dir), { project: 'desktop', buildModes: 2 });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
