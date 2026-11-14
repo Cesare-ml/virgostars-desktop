@@ -1,5 +1,11 @@
 # Consolidated offline Angular bundle gate
 
+## Current merged build chain (2026-11-13)
+
+After PR #127, **both** `verify:bundle` and `verify:bundle:private` execute three fail-fast stages, in order: `verify-offline-bundle.mjs` → `verify:privacy` → `verify-tauri-security-config.mjs`. The security stage pins the reviewed Tauri production configuration; it must not be skipped in synthetic or approved-private packaging. The source-level npm-chain assertions in `tests/desktop-packaging-integration.test.mjs` and `tests/windows-places-packaging-contract.test.mjs` reflect this merged sequence. Earlier passages below document the historical two-stage integration candidate and are not the current exhaustive package-script contract.
+
+This alignment is a test/documentation repair, **not** a native build validation, WebView2 CSP runtime proof, or production/release approval.
+
 **Status:** draft integration candidate; static source checks and isolated Node helper checks passed. Not a Windows/WebView2 release acceptance.
 
 ## Why consolidate?
