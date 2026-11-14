@@ -17,7 +17,7 @@ The command also runs during **both** npm `verify:bundle` / `build:ui` and `veri
 The gate requires:
 
 - The packaged frontend stays at the local `../dist/desktop/browser` path, without an unreviewed Tauri `beforeBuildCommand`.
-- Every configured native window uses its bundled default URL (no explicit `url`), and at least one window exists.
+- Exactly **one** local native window must retain the reviewed six fields (`label`, `title`, `width`, `height`, `minWidth`, `minHeight`). Unknown or missing keys and extra windows fail the gate. In particular, `additionalBrowserArgs`, `devtools`, `webviewDataDirectory`, and explicit external `url` settings cannot be slipped into the Tauri config without review.
 - Production CSP contains the existing nine directives and their exact allowed source lists; no extra, missing or duplicate directives, remote URLs, `unsafe-eval`, or script `data:` sources are accepted.
 - The native capability list stays empty, the global Tauri bridge stays disabled, asset CSP rewriting is not explicitly disabled, and an unreviewed asset protocol is absent.
 - `bundle.active` remains false. A signed installer is a separate release task requiring review and authorization.
@@ -30,3 +30,22 @@ The production CSP intentionally retains `style-src 'unsafe-inline'` for the cur
 This is a **static source configuration audit of packaged and development settings**, not a CSP runtime test, proof that development requests are local, full secret scanner, permission proof, asset provenance verification, or signed-binary verification. The Tauri development preflight blocks unreviewed source configuration only when launched via the documented npm script; it cannot restrict arbitrary commands an authorized developer runs directly. Other build gates still handle implicit Tauri capability files, native IPC review, bundle completeness, private assets and Windows PE validation. Dynamic Rust windows, dependency behavior, WebView2 policy delivery and actual offline operation still need native QA.
 
 To add a legitimate new production source, capability, asset protocol, build hook or installer: update the explicit allowlist **in a separate reviewed change**, add focused negative tests and document the security justification. Do not bypass the gate to unblock a build. Do not change production, user data, repository visibility, updates or releases from this check.
+
+## Native window option allowlist (2026-11-14)
+
+The earlier check rejected explicit `url` keys but permitted additional Tauri
+window options. Some options can influence native WebView behavior independently
+of the inspected CSP. The synthetic preflight now requires the exact **keyset**
+of the reviewed single window, not specific display dimensions or labels. Any
+legitimate additional window, WebView option or renamed field requires an
+explicit security review and a matching test update before packaging. This
+is a static config check: it does not examine windows created dynamically by
+Rust code or certify the WebView2 runtime. Run
+`node --test tests/tauri-security-config.test.mjs`, followed by `npm test`
+and the Windows native smoke checklist. No installer, new permissions, production
+systems or user data are involved.
+
+
+## Reviewed app and security option inventory (2026-11-14)
+
+The packaged and development Tauri config must use only `app.windows` and `app.security`; the security object must contain only `capabilities`, `csp`, and `devCsp`. Unknown options, including explicit `false` flags, are blocked for review. This complements the independently reviewed single-window keyset and preserves the existing production/development CSP and local-only build protections. Adding a legitimate new option requires a documented allowlist update, a negative test, and a native Windows review. The gate is static; it does not attest dynamically created Rust windows or runtime CSP enforcement.
