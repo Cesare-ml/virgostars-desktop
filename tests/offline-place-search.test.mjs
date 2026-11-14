@@ -194,3 +194,17 @@ test('query preflight preserves all terms or fails before native IPC',async()=>{
   assert.equal((await search.search('🙂🙂')).kind,'query_too_short');
   assert.equal(called,0);
 });
+
+test('single-letter FTS prefixes are suppressed before any native city call', async()=>{
+  let called=0;
+  const search=new OfflinePlaceSearch({
+    isNative:()=>true,
+    invoke:async()=>{called++;return response;},
+  });
+  assert.equal((await search.search('a b')).kind,'query_too_short');
+  assert.equal((await search.search('α β γ δ ε')).kind,'query_too_short');
+  assert.equal((await search.search('one two three four five six')).kind,'query_too_long');
+  assert.equal(called,0);
+  assert.equal((await search.search("L'Aquila")).kind,'ready');
+  assert.equal(called,1);
+});
