@@ -38,39 +38,68 @@ function optionalInt(x: unknown): x is number | null {
   return x === null || int(x);
 }
 
-export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1[] {
-  if (!object(raw) || raw['protocolVersion'] !== 1 || !Array.isArray(raw['items']) ||
-      raw['items'].length > 30) {
+/** Read only ordinary own data properties of the native JSON reply. */
+function ownData(value: object, key: string, optional = false): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor) {
+    if (optional) return null;
     throw new Error('Invalid offline place protocol');
   }
-  const ids = new Set<number>();
-  return raw['items'].map((input: unknown) => {
-    if (!object(input)) throw new Error('Invalid offline place record');
-    // v1 packs do not include the optional country lookup.
-    const countryName = input['countryName'] ?? null;
-    const countryCode = input['countryCode'] ?? null;
-    if (
-        !int(input['id']) || input['id'] <= 0 || ids.has(input['id']) ||
-        typeof input['name'] !== 'string' || !input['name'].trim() || input['name'].length > 255 ||
-        !optionalString(input['italianName']) ||
-        !int(input['latMicro']) || Math.abs(input['latMicro']) > 90_000_000 ||
-        !int(input['lngMicro']) || Math.abs(input['lngMicro']) > 180_000_000 ||
-        !optionalInt(input['population']) || (input['population'] !== null && input['population'] < 0) ||
-        !optionalInt(input['stateId']) || (input['stateId'] !== null && input['stateId'] < 0) ||
-        !optionalString(input['region']) || !optionalString(input['timeZone']) ||
-        !optionalString(countryName) ||
-        !(countryCode === null || (typeof countryCode === 'string' && /^[A-Z]{2}$/.test(countryCode)))) {
-      throw new Error('Invalid offline place record');
+  if (!('value' in descriptor)) throw new Error('Invalid offline place protocol');
+  return optional ? descriptor.value ?? null : descriptor.value;
+}
+
+export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1[] {
+  try {
+    if (!object(raw)) throw new Error('Invalid offline place protocol');
+    const version = ownData(raw, 'protocolVersion');
+    const items = ownData(raw, 'items');
+    if (version !== 1 || !Array.isArray(items) || items.length > 30) {
+      throw new Error('Invalid offline place protocol');
     }
-    ids.add(input['id']);
-    return {
-      id: input['id'], name: input['name'], italianName: input['italianName'],
-      latMicro: input['latMicro'], lngMicro: input['lngMicro'],
-      population: input['population'], stateId: input['stateId'],
-      region: input['region'], timeZone: input['timeZone'],
-      countryName, countryCode,
-    };
-  });
+    const ids = new Set<number>();
+    const result: OfflinePlaceV1[] = [];
+    // Never use Array.map: sparse arrays skip holes and can return a fake "ready" result.
+    for (let i = 0; i < items.length; i++) {
+      const input = ownData(items, String(i));
+      if (!object(input)) throw new Error('Invalid offline place protocol');
+      const id = ownData(input, 'id');
+      const name = ownData(input, 'name');
+      const italianName = ownData(input, 'italianName');
+      const latMicro = ownData(input, 'latMicro');
+      const lngMicro = ownData(input, 'lngMicro');
+      const population = ownData(input, 'population');
+      const stateId = ownData(input, 'stateId');
+      const region = ownData(input, 'region');
+      const timeZone = ownData(input, 'timeZone');
+      // v1 packs do not include these v2 country-lookup fields.
+      const countryName = ownData(input, 'countryName', true);
+      const countryCode = ownData(input, 'countryCode', true);
+      if (
+          !int(id) || id <= 0 || ids.has(id) ||
+          typeof name !== 'string' || !name.trim() || name.length > 255 ||
+          !optionalString(italianName) ||
+          !int(latMicro) || Math.abs(latMicro) > 90_000_000 ||
+          !int(lngMicro) || Math.abs(lngMicro) > 180_000_000 ||
+          !optionalInt(population) || (population !== null && population < 0) ||
+          !optionalInt(stateId) || (stateId !== null && stateId < 0) ||
+          !optionalString(region) || !optionalString(timeZone) ||
+          !optionalString(countryName) ||
+          !(countryCode === null ||
+            (typeof countryCode === 'string' && /^[A-Z]{2}$/.test(countryCode)))) {
+        throw new Error('Invalid offline place protocol');
+      }
+      ids.add(id);
+      result.push({
+        id, name, italianName, latMicro, lngMicro, population, stateId,
+        region, timeZone, countryName, countryCode,
+      });
+    }
+    return result;
+  } catch {
+    // Never expose unexpected accessor/proxy errors, local paths or IPC details.
+    throw new Error('Invalid offline place protocol');
+  }
 }
 
 /**
