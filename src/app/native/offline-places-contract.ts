@@ -1,3 +1,6 @@
+import {offlinePlaceQueryProblem} from './offline-city-query.js';
+export {offlinePlaceQueryProblem} from './offline-city-query.js';
+
 /**
  * Read-only offline city search contract shared with the Rust Tauri command.
  * Only bounded result lists cross IPC. City sources stay on local disk.
@@ -18,7 +21,8 @@ export interface OfflinePlaceV1 {
 
 export type PlaceQueryState =
   | Readonly<{kind: 'ready'; items: readonly OfflinePlaceV1[]}>
-  | Readonly<{kind: 'query_too_short' | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable' | 'stale'; items: readonly []}>;
+  | Readonly<{kind: 'query_too_short' | 'query_too_long' | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable' | 'stale'; items: readonly []}>;
+
 
 export interface PlaceSearchTransport {
   isNative(): boolean;
@@ -91,9 +95,8 @@ export class OfflinePlaceSearch {
     if (!Number.isInteger(limit) || limit < 1 || limit > 30) {
       return {kind: 'unavailable', items: []};
     }
-    if (query.trim().length < 2 || [...query].length > 80) {
-      return {kind: 'query_too_short', items: []};
-    }
+    const problem = offlinePlaceQueryProblem(query);
+    if (problem) return {kind: problem, items: []};
     try {
       if (!this.transport.isNative()) return {kind: 'not_native', items: []};
       const raw = await this.transport.invoke('search_offline_places', {query, limit});

@@ -2,6 +2,7 @@
   <label class="city-title" for="offline-city-query">{{t('city.title')}}</label>
   <p class="city-note">{{t('city.note')}}</p>
   <p class="city-note">{{t('city.demoNote')}}</p>
+  <!-- Preserve over-limit input for validation rather than browser-truncating it. -->
   <input
     id="offline-city-query"
     type="search"
@@ -9,7 +10,6 @@
     role="combobox"
     autocomplete="off"
     spellcheck="false"
-    maxlength="80"
     [attr.placeholder]="t('city.placeholder')"
     [attr.aria-label]="t('city.title')"
     [attr.aria-autocomplete]="'list'"

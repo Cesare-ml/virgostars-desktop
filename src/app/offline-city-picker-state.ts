@@ -1,7 +1,8 @@
+import {offlinePlaceQueryProblem} from './native/offline-city-query.js';
 import type {OfflinePlaceV1, PlaceQueryState} from './native/offline-places-contract';
 
 export type CityPickerStatus =
-  | 'idle' | 'query_too_short' | 'typing' | 'loading' | 'ready' | 'empty' | 'selected'
+  | 'idle' | 'query_too_short' | 'query_too_long' | 'typing' | 'loading' | 'ready' | 'empty' | 'selected'
   | 'not_native' | 'busy' | 'catalog_unavailable' | 'unavailable';
 
 export interface CityLookupPort {
@@ -41,13 +42,21 @@ export class OfflineCityPickerState {
   input(value: string): void {
     if (this.disposed) return;
     this.abortPending();
-    this.query = value.slice(0, 80);
+    // Retain one over-limit Unicode scalar without splitting surrogate pairs.
+    // Oversized pasted text cannot turn into a seemingly valid prefix search.
+    const chars: string[] = [];
+    for (const char of value) {
+      chars.push(char);
+      if (chars.length > 80) break;
+    }
+    this.query = chars.join('');
     this.selected = null;
     this.results = [];
     this.activeIndex = -1;
     const length = [...this.query.trim()].filter(c => /[\p{L}\p{N}]/u.test(c)).length;
-    if (length === 0) this.status = 'idle';
-    else if (length < 2) this.status = 'query_too_short';
+    const problem = offlinePlaceQueryProblem(this.query);
+    if (length === 0 && problem !== 'query_too_long') this.status = 'idle';
+    else if (problem) this.status = problem;
     else {
       this.status = 'typing';
       const ticket = this.seq;

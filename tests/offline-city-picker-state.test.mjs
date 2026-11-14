@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {OfflineCityPickerState} from '../src/app/offline-city-picker-state.ts';
 
 const a = Object.freeze({id:1,name:'Firenze',italianName:'Florence',latMicro:43769560,lngMicro:11255810,population:360000,stateId:1,region:'Toscana',timeZone:'Europe/Rome'});
@@ -254,4 +255,63 @@ test('disposal inside the loading-state notification does not start native searc
   assert.equal(calls, 0);
   assert.equal(state.results.length, 0);
   assert.equal(state.choose(0), null);
+});
+
+test('six-token query cancels pending work and shows explicit length limit',()=>{
+ const h=harness();h.state.input('Firenze');assert.equal(h.tasks.size,1);
+ h.state.input('one two three four five six');
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal(h.tasks.size,0);
+ h.flush();assert.equal(h.calls.length,0);
+ h.state.input('one two three four five');
+ assert.equal(h.state.status,'typing');
+});
+
+test('overlength pasted city input is never searched as an accepted prefix',()=>{
+ const h=harness();
+ h.state.input('Firenze');
+ assert.equal(h.tasks.size,1);
+ h.state.input('Firenze' + 'x'.repeat(1000));
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal([...h.state.query].length,81);
+ assert.equal(h.tasks.size,0);
+ h.flush();assert.equal(h.calls.length,0);
+ h.state.input('Firenze');
+ assert.equal(h.state.status,'typing');
+ h.flush();assert.deepEqual(h.calls,[['Firenze',12]]);
+});
+
+test('emoji input length counts Unicode scalars without broken surrogate pairs',()=>{
+ const h=harness();
+ h.state.input('🙂'.repeat(80) + 'Fi');
+ assert.equal([...h.state.query].length,81);
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal(h.state.query,'🙂'.repeat(80)+'F');
+ assert.equal(h.tasks.size,0);
+ h.state.input('🙂'.repeat(41) + 'Fi');
+ assert.equal(h.state.status,'typing');
+ h.flush();assert.equal(h.calls.length,1);
+});
+
+test('overlong whitespace still reports limit and never searches a prefix',()=>{
+ const h=harness();h.state.input(' '.repeat(90));
+ assert.equal(h.state.status,'query_too_long');
+ assert.equal([...h.state.query].length,81);
+ h.flush();assert.equal(h.calls.length,0);
+});
+
+test('offline city HTML search field does not silently cap input or contain attribute comments',()=>{
+ const template=readFileSync(new URL('../src/app/offline-city-picker.component.html',import.meta.url),'utf8');
+ assert.doesNotMatch(template, /<input\\b[^>]*maxlength=/s);
+ assert.doesNotMatch(template, /<input\\b[^>]*<!--/s);
+});
+
+test('picker skips one-letter prefixes but accepts accented city names',()=>{
+ const h=harness();
+ h.state.input('a b');h.flush();
+ assert.equal(h.state.status,'query_too_short');
+ assert.equal(h.calls.length,0);
+ h.state.input("L'Aquila");
+ assert.equal(h.state.status,'typing');
+ h.flush();assert.deepEqual(h.calls,[["L'Aquila",12]]);
 });
