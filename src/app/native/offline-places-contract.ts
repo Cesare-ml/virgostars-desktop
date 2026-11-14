@@ -38,39 +38,78 @@ function optionalInt(x: unknown): x is number | null {
   return x === null || int(x);
 }
 
+/** Read a single own *data* property, never a getter or inherited value. */
+function dataField(source: object, field: string, error: string, optional = false): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(source, field);
+  if (descriptor === undefined && optional) return null;
+  if (!descriptor || !Object.hasOwn(descriptor, 'value')) throw new Error(error);
+  return descriptor.value;
+}
+
+/**
+ * Return detached, frozen values from a single bounded native IPC response.
+ * JSON from Tauri is ordinary objects/arrays; sparse arrays, class instances,
+ * getters and inherited fields are never valid wire data.
+ */
 export function decodeOfflinePlaceResults(raw: unknown): readonly OfflinePlaceV1[] {
-  if (!object(raw) || raw['protocolVersion'] !== 1 || !Array.isArray(raw['items']) ||
-      raw['items'].length > 30) {
-    throw new Error('Invalid offline place protocol');
+  const protocolError = 'Invalid offline place protocol';
+  const recordError = 'Invalid offline place record';
+  if (!object(raw) ||
+      (Object.getPrototypeOf(raw) !== Object.prototype && Object.getPrototypeOf(raw) !== null)) {
+    throw new Error(protocolError);
   }
+  const version = dataField(raw, 'protocolVersion', protocolError);
+  const items = dataField(raw, 'items', protocolError);
+  if (version !== 1 || !Array.isArray(items) || Object.getPrototypeOf(items) !== Array.prototype ||
+      items.length > 30 || Reflect.ownKeys(items).length !== items.length + 1) {
+    throw new Error(protocolError);
+  }
+
   const ids = new Set<number>();
-  return raw['items'].map((input: unknown) => {
-    if (!object(input)) throw new Error('Invalid offline place record');
-    // v1 packs do not include the optional country lookup.
-    const countryName = input['countryName'] ?? null;
-    const countryCode = input['countryCode'] ?? null;
+  const results: OfflinePlaceV1[] = [];
+  for (let i = 0; i < items.length; i++) {
+    // Array.map() skips holes, leaving an undefined slot in the "validated"
+    // result. A dense own data index is required for every native record.
+    const input: unknown = dataField(items, String(i), recordError);
+    if (!object(input) ||
+        (Object.getPrototypeOf(input) !== Object.prototype && Object.getPrototypeOf(input) !== null)) {
+      throw new Error(recordError);
+    }
+
+    // Snapshot exactly once: subsequent validation and output use local
+    // primitives, not second reads from an accessor-backed IPC object.
+    const id = dataField(input, 'id', recordError);
+    const name = dataField(input, 'name', recordError);
+    const italianName = dataField(input, 'italianName', recordError);
+    const latMicro = dataField(input, 'latMicro', recordError);
+    const lngMicro = dataField(input, 'lngMicro', recordError);
+    const population = dataField(input, 'population', recordError);
+    const stateId = dataField(input, 'stateId', recordError);
+    const region = dataField(input, 'region', recordError);
+    const timeZone = dataField(input, 'timeZone', recordError);
+    // v1 city packs omit country lookup fields; only these two are optional.
+    const countryName = dataField(input, 'countryName', recordError, true);
+    const countryCode = dataField(input, 'countryCode', recordError, true);
     if (
-        !int(input['id']) || input['id'] <= 0 || ids.has(input['id']) ||
-        typeof input['name'] !== 'string' || !input['name'].trim() || input['name'].length > 255 ||
-        !optionalString(input['italianName']) ||
-        !int(input['latMicro']) || Math.abs(input['latMicro']) > 90_000_000 ||
-        !int(input['lngMicro']) || Math.abs(input['lngMicro']) > 180_000_000 ||
-        !optionalInt(input['population']) || (input['population'] !== null && input['population'] < 0) ||
-        !optionalInt(input['stateId']) || (input['stateId'] !== null && input['stateId'] < 0) ||
-        !optionalString(input['region']) || !optionalString(input['timeZone']) ||
+        !int(id) || id <= 0 || ids.has(id) ||
+        typeof name !== 'string' || !name.trim() || name.length > 255 ||
+        !optionalString(italianName) ||
+        !int(latMicro) || Math.abs(latMicro) > 90_000_000 ||
+        !int(lngMicro) || Math.abs(lngMicro) > 180_000_000 ||
+        !optionalInt(population) || (population !== null && population < 0) ||
+        !optionalInt(stateId) || (stateId !== null && stateId < 0) ||
+        !optionalString(region) || !optionalString(timeZone) ||
         !optionalString(countryName) ||
         !(countryCode === null || (typeof countryCode === 'string' && /^[A-Z]{2}$/.test(countryCode)))) {
-      throw new Error('Invalid offline place record');
+      throw new Error(recordError);
     }
-    ids.add(input['id']);
-    return {
-      id: input['id'], name: input['name'], italianName: input['italianName'],
-      latMicro: input['latMicro'], lngMicro: input['lngMicro'],
-      population: input['population'], stateId: input['stateId'],
-      region: input['region'], timeZone: input['timeZone'],
-      countryName, countryCode,
-    };
-  });
+    ids.add(id);
+    results.push(Object.freeze({
+      id, name, italianName, latMicro, lngMicro, population, stateId, region,
+      timeZone, countryName, countryCode,
+    }));
+  }
+  return Object.freeze(results);
 }
 
 /**
