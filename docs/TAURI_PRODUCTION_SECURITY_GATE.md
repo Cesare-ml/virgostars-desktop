@@ -44,3 +44,8 @@ Rust code or certify the WebView2 runtime. Run
 `node --test tests/tauri-security-config.test.mjs`, followed by `npm test`
 and the Windows native smoke checklist. No installer, new permissions, production
 systems or user data are involved.
+
+
+## Reviewed app and security option inventory (2026-11-14)
+
+The packaged and development Tauri config must use only `app.windows` and `app.security`; the security object must contain only `capabilities`, `csp`, and `devCsp`. Unknown options, including explicit `false` flags, are blocked for review. This complements the independently reviewed single-window keyset and preserves the existing production/development CSP and local-only build protections. Adding a legitimate new option requires a documented allowlist update, a negative test, and a native Windows review. The gate is static; it does not attest dynamically created Rust windows or runtime CSP enforcement.
