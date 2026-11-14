@@ -9,6 +9,17 @@ const validCount = n => Number.isSafeInteger(n) && n >= 0;
 const validPath = p => typeof p === 'string' && p.length > 0 &&
   p.length <= 16384 && !p.includes('\0');
 const compare = (a,b) => a < b ? -1 : a > b ? 1 : 0;
+// Never silently ignore a future reporter's new risk category. New audit
+// fields must be reviewed here before claiming any parallel review lanes.
+const KNOWN_AUDIT_KEYS = new Set([
+  'base','branches','freshnessChecked','staleBranches',
+  'baseFilesChecked','baseOverlapFiles','baseOverlaps',
+  'overlapFiles','overlaps','note',
+  'prefixOverlapFiles','prefixOverlaps',
+  'basePrefixOverlapFiles','basePrefixOverlaps',
+  'windowsCaseVariantPairs','windowsCaseVariants',
+  'windowsBaseCaseVariantPairs','windowsBaseCaseVariants',
+]);
 
 function exactSet(values, expected) {
   return Array.isArray(values) && values.length === expected.size &&
@@ -20,7 +31,7 @@ function optionalAuditRows(audit, countKey, rowsKey) {
   const countPresent = Object.hasOwn(audit, countKey);
   const rowsPresent = Object.hasOwn(audit, rowsKey);
   if (countPresent !== rowsPresent) throw new Error('Incomplete optional audit');
-  if (!countPresent) return [];
+  if (!countPresent) return null;
   const rows = audit[rowsKey];
   if (!validCount(audit[countKey]) || !Array.isArray(rows) ||
       rows.length !== audit[countKey])
@@ -48,6 +59,8 @@ export function planReviewLanes(audit) {
       audit.overlapFiles !== audit.overlaps.length ||
       audit.baseOverlapFiles !== audit.baseOverlaps.length)
     throw new Error('Incomplete local branch audit');
+  if (Object.keys(audit).some(key => !KNOWN_AUDIT_KEYS.has(key)))
+    throw new Error('Unknown audit schema: review required');
 
   const branches = new Map();
   for (const item of audit.branches) {
@@ -105,7 +118,7 @@ export function planReviewLanes(audit) {
   const basePrefixBranches = new Set();
   const baseCaseBranches = new Set();
   const uniquePrefixes = new Set();
-  for (const item of prefixRows) {
+  for (const item of prefixRows ?? []) {
     if (!item || !validPath(item.ancestorPath) || !validPath(item.nestedPath) ||
         !nestedUnder(item.ancestorPath, item.nestedPath) ||
         !Array.isArray(item.ancestorBranches) || !item.ancestorBranches.length ||
@@ -132,7 +145,7 @@ export function planReviewLanes(audit) {
     if (!crossBranch) throw new Error('Invalid same-branch collision audit');
   }
   const uniqueBasePrefixes = new Set();
-  for (const item of basePrefixRows) {
+  for (const item of basePrefixRows ?? []) {
     if (!item || !branches.has(item.branch) || !validPath(item.basePath) ||
         !validPath(item.branchPath) ||
         !(nestedUnder(item.basePath, item.branchPath) ||
@@ -146,7 +159,7 @@ export function planReviewLanes(audit) {
     basePrefixBranches.add(item.branch);
   }
   const uniqueCases = new Set();
-  for (const item of caseRows) {
+  for (const item of caseRows ?? []) {
     if (!item || !branches.has(item.branchA) || !branches.has(item.branchB) ||
         item.branchA === item.branchB || !validPath(item.pathA) || !validPath(item.pathB) ||
         item.pathA === item.pathB ||
@@ -162,7 +175,7 @@ export function planReviewLanes(audit) {
     touched.get(item.branchB).add(item.pathB);
   }
   const uniqueBaseCases = new Set();
-  for (const item of baseCaseRows) {
+  for (const item of baseCaseRows ?? []) {
     if (!item || !branches.has(item.branch) || !validPath(item.branchPath) ||
         !validPath(item.basePath) || item.branchPath === item.basePath ||
         windowsCaseKey(item.branchPath) !== windowsCaseKey(item.basePath) ||
@@ -195,8 +208,17 @@ export function planReviewLanes(audit) {
     base: audit.base,
     branchCount: branches.size,
     sharedPathCount: overlapPaths.size,
-    fileDirectoryCollisionCount: prefixRows.length,
-    windowsCaseCollisionCount: caseRows.length,
+    // null means the older reporter never ran this check; 0 means checked
+    // and found none. Do not disguise absent coverage as an all-clear.
+    fileDirectoryCollisionCount: prefixRows?.length ?? null,
+    windowsCaseCollisionCount: caseRows?.length ?? null,
+    checks: {
+      exactPath: true, baseSide: true, localBranchFreshness: true,
+      fileDirectory: prefixRows !== null,
+      baseFileDirectory: basePrefixRows !== null,
+      windowsCase: caseRows !== null,
+      windowsBaseCase: baseCaseRows !== null,
+    },
     lanes: lanes.map(members => {
       members.sort(compare);
       return {
@@ -207,7 +229,7 @@ export function planReviewLanes(audit) {
         windowsBaseCaseVariantBranches: members.filter(branch => baseCaseBranches.has(branch)),
       };
     }),
-    note: 'Review scheduling only. Local refs may be stale. Optional cross-branch Windows-case/file-directory candidates are separated when present; no lane implies merge safety, compatible dependencies, or approval.',
+    note: 'Review scheduling only. Local refs may be stale. Unchecked Windows-case/file-directory audits cannot be treated as clean. No lane implies merge safety, compatible dependencies, or approval.',
   };
 }
 
