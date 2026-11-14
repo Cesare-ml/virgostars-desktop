@@ -110,9 +110,8 @@ test('bounded output accepts exactly the candidate cap and rejects any further a
 });
 
 test('combined base-side and cross-branch aliases share one overflow budget',()=>{
-  const baseSidePaths=caseVariants(32,64);
   const data=report('main',[
-    {branch:'a',paths:caseVariants(32),baseSidePaths,behindBy:1,aheadBy:1},
+    {branch:'a',paths:caseVariants(32),baseSidePaths:['src/unrelated.ts'],behindBy:1,aheadBy:1},
     {branch:'b',paths:caseVariants(32,32),baseSidePaths:[],behindBy:0,aheadBy:1},
   ]);
   assert.equal(data.windowsCaseVariantPairs,MAX_WINDOWS_CASE_VARIANT_PAIRS);
