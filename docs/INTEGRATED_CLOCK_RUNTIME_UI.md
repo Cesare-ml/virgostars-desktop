@@ -6,6 +6,7 @@ Status: **synthetic prototype integration**, not a Windows release. This branch 
 
 - The Angular Desktop component has **both** the clock `visibilitychange` listener and manual `checkRuntime()` Settings control.
 - The hidden-window clock cancels its one-second interval; resuming samples actual wall time. Stale timer callbacks cannot alter the new generation.
+- The device-clock text has a **two-entry, per-timestamp/locale cache** to avoid constructing repeated Intl formatters during unrelated Angular change-detection passes. City zone text remains independently refreshed by the wall-time ticker; no time zone is cached indefinitely.
 - The read-only native probe accepts at most one pending manual request and prevents late IPC completions from updating a destroyed view.
 - Component teardown disposes both resources and removes the visibility listener; neither service can revive the destroyed component.
 - The Settings button is labeled in IT/EN and disabled while its single probe is pending.
@@ -20,6 +21,8 @@ All capabilities remain synthetic. No account login, cloud sync, new native IPC,
 2. Closing the view while timer and IPC callbacks are still outstanding.
 3. Failed native probe recovery without interrupting the live civil clock.
 
+**Clock formatting cache test:** 4 new isolated Node cases exercise repeated reads, locale/time invalidation, invalid clock recovery and stable formatting. **4/4 passed** locally with Node 22.16.0; the fetched GitHub source/test Git blob SHAs matched the files executed. The clock module and runtime controller passed an isolated `tsc --noEmit --strict` check with local type-only interface stubs. The full Angular build and Windows host remain unverified.
+
 **Integration source contract:** `tests/desktop-clock-runtime-source.test.mjs` adds five dependency-free tests checking both lifecycles in the same Angular component: single registration, paired teardown, visibility pause/resume, bilingual disabled recheck and synthetic-only read-only status. Its assertions were inspected against the current GitHub source: **10/10 targeted static checks matched**. The committed new Node test itself has **not yet been executed in a full checkout**, so this is not a claim of five additional passing tests.
 
 **Isolated local test evidence (Node 22.16.0):** **12/12** executable pure tests passed (3 clock scheduler regressions, 3 combined integration cases, 6 runtime controller behavior cases). The 2 new clock regressions **failed against the prior code and passed after** guarding the scheduler error/null-handle paths against reentrant `pause()`. Source and test Git blob SHA-1 identities were checked against GitHub. Standalone TypeScript compilation of the runtime controller + protocol passed with `tsc 5.8.3`. The separate UI-source contract test requires additional Angular files absent from the isolated mirror and was **not executed**; neither were the complete checkout, Angular/Tauri builds or Windows GUI smoke.
@@ -29,7 +32,7 @@ All capabilities remain synthetic. No account login, cloud sync, new native IPC,
 From a checkout of this integration branch, with the public sibling `astrological-charts` library built as documented in README:
 
 ```sh
-node --experimental-strip-types --test tests/desktop-clock-runtime-integration.test.mjs tests/desktop-clock-runtime-source.test.mjs tests/device-clock-visibility.test.mjs tests/device-clock-paused-scheduler.test.mjs tests/runtime-check-controller.test.mjs
+node --experimental-strip-types --test tests/desktop-clock-runtime-integration.test.mjs tests/desktop-clock-runtime-source.test.mjs tests/device-clock-visibility.test.mjs tests/device-clock-paused-scheduler.test.mjs tests/device-clock-text-cache.test.mjs tests/runtime-check-controller.test.mjs
 npm test
 npm run build:ui
 ```
