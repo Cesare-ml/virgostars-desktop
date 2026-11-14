@@ -60,6 +60,7 @@ test('missing, contradictory and duplicated evidence fails closed',()=>{
     data=>{data.baseFilesChecked=false;},
     data=>{data.staleBranches=[];},
     data=>{data.branches[0].behindBy=-1;},
+    data=>{data.branches[1].changedFiles=1;},
     data=>{data.branches[1].branch='a';},
     data=>{data.overlapFiles=1;},
     data=>{data.overlaps[0].branches=['a','a'];},
