@@ -65,6 +65,12 @@ test('inherited fields and non-plain IPC records fail closed', () => {
   assert.equal(decodeOfflinePlaceResults({protocolVersion: 1, items: [nullPrototype]})[0].id, 17);
 });
 
+test('non-enumerable fields do not masquerade as valid JSON data', () => {
+  const hidden = {...city};
+  Object.defineProperty(hidden, 'name', {value:'Hidden', enumerable:false});
+  assert.throws(() => decodeOfflinePlaceResults({protocolVersion: 1, items:[hidden]}));
+});
+
 test('missing required record fields and malicious optional country field fail', () => {
   const missingZone = {...city};
   delete missingZone.timeZone;
