@@ -69,6 +69,44 @@ export function verifyAngularSourceConfig(config) {
 // The CLI always uses the real filesystem and never accepts a custom IO provider.
 const CHECKOUT_FS = Object.freeze({ lstatSync, openSync, fstatSync, readSync, closeSync });
 
+/** Reject duplicate JSON object keys, including Unicode-escaped spellings.
+ * JSON.parse keeps only the last duplicate while tooling may differ; the
+ * already-parsed JSON grammar makes it safe to scan only string keys here.
+ */
+export function parseUniqueConfigJson(source) {
+  const config = JSON.parse(source);
+  const scopes = [];
+  for (let i = 0; i < source.length;) {
+    const char = source[i];
+    if (char === '"') {
+      const start = i++;
+      let escaped = false;
+      while (i < source.length) {
+        const part = source[i++];
+        if (escaped) { escaped = false; continue; }
+        if (part === '\\') { escaped = true; continue; }
+        if (part === '"') break;
+      }
+      let colon = i;
+      while (colon < source.length && /\s/.test(source[colon])) colon++;
+      const scope = scopes.at(-1);
+      if (source[colon] === ':' && scope?.type === 'object') {
+        const key = JSON.parse(source.slice(start, i));
+        if (scope.keys.has(key)) {
+          throw new Error('ANGULAR SOURCE CONFIG: duplicate JSON object key');
+        }
+        scope.keys.add(key);
+      }
+    } else {
+      if (char === '{') scopes.push({type: 'object', keys: new Set()});
+      else if (char === '[') scopes.push({type: 'array'});
+      else if (char === '}' || char === ']') scopes.pop();
+      i++;
+    }
+  }
+  return config;
+}
+
 /** Inspect a single bounded file descriptor, rejecting symlink/race replacements. */
 export function verifyAngularSourceConfigCheckout(root = ROOT, io = CHECKOUT_FS) {
   const filename = join(root, 'angular.json');
@@ -99,7 +137,7 @@ export function verifyAngularSourceConfigCheckout(root = ROOT, io = CHECKOUT_FS)
       throw new Error('ANGULAR SOURCE CONFIG: oversized configuration file');
     }
     const source = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, length));
-    return verifyAngularSourceConfig(JSON.parse(source));
+    return verifyAngularSourceConfig(parseUniqueConfigJson(source));
   } finally {
     io.closeSync(fd);
   }
