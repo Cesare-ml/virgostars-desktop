@@ -31,6 +31,8 @@ const EXPECTED_DEV_CSP = Object.freeze({
   'frame-src': ["'none'"],
 });
 
+const REVIEWED_WINDOW_FIELDS = Object.freeze(['label', 'title', 'width', 'height', 'minWidth', 'minHeight']);
+
 function assertSafe(ok, reason) {
   if (!ok) throw new Error('TAURI SECURITY CONFIG: ' + reason);
 }
@@ -78,9 +80,14 @@ export function verifyTauriSecurityConfig(config) {
     !Object.hasOwn(config.build, 'beforeDevCommand'),
     'development frontend must remain on reviewed loopback origin');
   assertSafe(config.bundle.active === false, 'installer packaging requires separate review');
-  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length > 0 &&
-    config.app.windows.every(window => isObject(window) && !Object.hasOwn(window, 'url')),
-    'external or missing native window configuration');
+  // Only the reviewed single local window is allowed. Tauri accepts extra
+  // window keys such as additionalBrowserArgs/devtools that can alter WebView
+  // behavior without changing the pinned CSP or explicit window URL.
+  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length === 1 &&
+    config.app.windows.every(window => isObject(window) &&
+      Object.keys(window).length === REVIEWED_WINDOW_FIELDS.length &&
+      REVIEWED_WINDOW_FIELDS.every(field => Object.hasOwn(window, field))),
+    'unreviewed native window option or number of windows');
   const security = config.app.security;
   assertSafe(Array.isArray(security.capabilities) && security.capabilities.length === 0,
     'native capability list changed');
