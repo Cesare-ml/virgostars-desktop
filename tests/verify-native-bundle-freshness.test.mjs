@@ -101,7 +101,7 @@ test('checks sampled file and executable identity again before reporting success
   const scan = source.indexOf('inspect(root, 0);');
   const fileCheck = source.indexOf('for (const snapshot of snapshots)');
   const binaryCheck = source.indexOf('unchanged(executable, verifiedStat(executablePath');
-  const success = source.indexOf("status: 'plausibly_current'");
+  const success = source.indexOf("return Object.freeze({ files, status: 'plausibly_current' });");
   assert.ok(scan > 0 && fileCheck > scan && binaryCheck > fileCheck && success > binaryCheck);
   assert.match(source,/failure\('CHANGED_DURING_SCAN'\)/);
 });
