@@ -44,6 +44,22 @@ test('process observation distinguishes a native GUI window from a merely presen
   assert.match(source,/NATIVE_SMOKE_WINDOW_DETECTED/);
 });
 
+test('a transient window handle must survive a second observation before success', () => {
+  const first = source.indexOf('if ($appProcess.MainWindowHandle -ne [IntPtr]::Zero)');
+  const second = source.indexOf('if ($foundWindow) {', first);
+  const cleanup = source.indexOf('if (-not $foundWindow) {', second);
+  const success = source.indexOf("Write-Host 'NATIVE_SMOKE_WINDOW_DETECTED");
+  assert.ok(first > 0 && second > first && cleanup > second && success > cleanup);
+  const recheck = source.slice(second, cleanup);
+  assert.match(recheck,/Start-Sleep -Milliseconds 250/);
+  assert.match(recheck,/\$appProcess\.Refresh\(\)/);
+  assert.match(recheck,/if \(\$appProcess\.HasExited\)/);
+  assert.match(recheck,/elseif \(\$appProcess\.MainWindowHandle -eq \[IntPtr\]::Zero\)/);
+  assert.match(recheck,/\$windowFailure = 'NATIVE_SMOKE_WINDOW_DISAPPEARED'/);
+  assert.match(recheck,/\$foundWindow = \$false/);
+  assert.match(recheck,/NATIVE_SMOKE_PROCESS_UNAVAILABLE/);
+});
+
 test('failed native window detection stops only its own launched process', () => {
   // A startup failure must not leave an unresponsive experimental process
   // running, but a successful GUI remains available for manual inspection.
