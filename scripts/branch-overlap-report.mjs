@@ -66,6 +66,8 @@ export function parseArgs(args) {
 }
 
 export function run(base,branches) {
+  // Validate everything before launching Git, including direct API callers.
+  parseArgs([`--base=${base}`,...branches]);
   return report(base, branches.map(branch=>{
     const r=spawnSync('git',['diff','--name-only','-z','--diff-filter=ACDMRT',
       `${base}...${branch}`,'--'],{encoding:null,maxBuffer:2*1024*1024,windowsHide:true});
