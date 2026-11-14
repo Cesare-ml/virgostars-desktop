@@ -23,29 +23,55 @@ export interface RuntimeProbeTransport {
   readonly invoke: (command: 'desktop_runtime_info') => Promise<unknown>;
 }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+const RUNTIME_FIELDS = [
+  'protocolVersion', 'product', 'applicationVersion', 'platform',
+  'fixtureKind', 'accountConnected', 'cloudSyncAvailable', 'ephemerisReady',
+] as const;
+
+/** Snapshot the v1 JSON payload without invoking property getters or accepting
+ * inherited/missing fields. Unknown keys are ignored, never forwarded to UI.
+ */
+function snapshotRuntimeFields(value: unknown): Record<string, unknown> | null {
+  try {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const fields: Record<string, unknown> = Object.create(null);
+    for (const key of RUNTIME_FIELDS) {
+      const property = Object.getOwnPropertyDescriptor(value, key);
+      if (!property || !property.enumerable || !Object.hasOwn(property, 'value')) return null;
+      fields[key] = property.value;
+    }
+    return fields;
+  } catch {
+    // Revoked proxies, descriptor traps and other malformed data fail closed.
+    return null;
+  }
 }
 
+const MAX_APPLICATION_VERSION_LENGTH = 64;
+
 export function decodeDesktopRuntimeInfo(payload: unknown): DesktopRuntimeInfoV1 {
-  if (!record(payload) || payload['protocolVersion'] !== 1 ||
-      payload['product'] !== 'VirgoStars Desktop' ||
-      typeof payload['applicationVersion'] !== 'string' ||
-      !/^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.+-]+)?$/.test(payload['applicationVersion']) ||
-      (payload['platform'] !== 'windows' &&
-       payload['platform'] !== 'macos' &&
-       payload['platform'] !== 'linux') ||
-      payload['fixtureKind'] !== 'synthetic_demo' ||
-      payload['accountConnected'] !== false ||
-      payload['cloudSyncAvailable'] !== false ||
-      payload['ephemerisReady'] !== false) {
+  const fields = snapshotRuntimeFields(payload);
+  const applicationVersion = fields?.['applicationVersion'];
+  const platform = fields?.['platform'];
+  if (!fields || fields['protocolVersion'] !== 1 ||
+      fields['product'] !== 'VirgoStars Desktop' ||
+      typeof applicationVersion !== 'string' ||
+      applicationVersion.length > MAX_APPLICATION_VERSION_LENGTH ||
+      !/^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.+-]+)?$/.test(applicationVersion) ||
+      (platform !== 'windows' && platform !== 'macos' && platform !== 'linux') ||
+      fields['fixtureKind'] !== 'synthetic_demo' ||
+      fields['accountConnected'] !== false ||
+      fields['cloudSyncAvailable'] !== false ||
+      fields['ephemerisReady'] !== false) {
     throw new Error('Unsupported or invalid desktop runtime protocol');
   }
   return {
     protocolVersion: 1,
     product: 'VirgoStars Desktop',
-    applicationVersion: payload['applicationVersion'],
-    platform: payload['platform'],
+    applicationVersion,
+    platform,
     fixtureKind: 'synthetic_demo',
     accountConnected: false,
     cloudSyncAvailable: false,
