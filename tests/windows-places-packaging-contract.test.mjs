@@ -29,8 +29,17 @@ test('both city builds inherit offline HTML/CSS/JS and privacy checks via UI bui
   assert.equal(scripts['verify:ipc'], 'node scripts/verify-native-ipc.mjs');
   assert.equal(scripts['verify:places-override'], 'node scripts/verify-places-tauri-override.mjs');
   assert.equal(scripts['verify:privacy'], 'node scripts/verify-build-privacy.mjs');
-  assert.equal(scripts['verify:bundle'], 'node scripts/verify-offline-bundle.mjs && npm run verify:privacy');
-  assert.equal(scripts['verify:bundle:private'], 'node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy');
+  const securityGate = 'node scripts/verify-tauri-security-config.mjs';
+  assert.deepEqual(scripts['verify:bundle'].split(' && '), [
+    'node scripts/verify-offline-bundle.mjs',
+    'npm run verify:privacy',
+    securityGate,
+  ]);
+  assert.deepEqual(scripts['verify:bundle:private'].split(' && '), [
+    'node scripts/verify-offline-bundle.mjs --private',
+    'npm run verify:privacy',
+    securityGate,
+  ]);
   assert.match(scripts['build:ui'], /ng build desktop && npm run verify:bundle$/);
   assert.match(scripts['build:ui:private'], /ng build desktop --configuration private-artwork && npm run verify:bundle:private$/);
 });
