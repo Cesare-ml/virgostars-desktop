@@ -20,18 +20,18 @@ read sites. It enforces:
   changed descriptor identity. Apply `O_NOFOLLOW` where supported.
 - Read through one descriptor in chunks of up to **64 KiB**, checking one
   sentinel byte beyond the limit to detect growth. Check the descriptor's
-  descriptor identity, byte count, size, modification time and ctime again after reading.
+  identity, byte count, size, modification time and ctime again after reading.
   Checking ctime catches some same-length rewrites even if mtime is restored.
-- Reject NUL bytes while streaming, and reject malformed UTF-8 using a fatal decoder. Return stable errors without
-  OS exception strings or local absolute filesystem paths.
+- Reject NUL bytes while streaming, and reject malformed UTF-8 using a fatal
+  decoder. Return stable errors without OS exception strings or local absolute paths.
 
 Both the existing static HTML-link rules and CSS import/resource checks remain
 in control of what is safe to package. This is **not** a filesystem sandbox
 or cross-platform proof against races through ancestor directories, timestamp
 granularity, network filesystems or adversarial concurrent writes. On Windows,
 ctime can have creation-time semantics and must not be treated as a universal
-rewrite detector. The separate
-component-CSS verifier still has its own bounded candidate scanner.
+rewrite detector. The separate component-CSS verifier still has its own
+bounded candidate scanner.
 
 ## Tests
 
@@ -44,27 +44,38 @@ npm run verify:bundle
 ```
 
 Focused synthetic test coverage includes valid HTML/CSS, multibyte UTF-8,
-oversized sparse HTML and CSS files, embedded NUL bytes, symlink rejection when supported,
+oversized sparse HTML and CSS files, embedded NUL bytes, symlink rejection
+when supported,
 invalid UTF-8, unsupported helper types and redacted missing-file errors.
 Two additional pure metadata-regression groups cover restored mtime with
 changed ctime, descriptor-identity drift, invalid stat metadata and short reads.
 
-**Executed in the authoring environment (Node 22.16.0):** 12/12 focused
-checks of the new helper in a temporary isolated mirror. The mirrored helper
-has the identical Git blob SHA `e878aaac45af0edba84b1e460a16d2ef8d977012`
-as the committed source. These are **not** the entire committed integration
-test file: that file additionally exercises the real `inspectDesktopStyles`
-gate and remains unexecuted in the authoring environment.
+**Executed in a minimal local source mirror (Node.js v22.16.0):**
+`node --test tests/verify-bounded-ui-text.test.mjs` — **16/16 PASS**,
+zero failures and zero skips. This is the complete committed focused test file,
+including actual integration through `inspectDesktopStyles()` and
+`assertNoCssImports()`; it is not a full repository `npm test` run.
 
-**Additional static verification:** 19/19 assertions passed in a V8 harness
-executing the `hasStableReadMetadata` function extracted from the **exact**
-GitHub source blob `bb8f00cc15ccb2f72cac6a073fbf8596749f9d94`.
-This is a focused pure-function test, **not** the complete Node test suite.
+The source mirror contained **four exact GitHub file blobs**, verified with
+`git hash-object` before and after the test:
 
-The original CSS inspector integration, full repo tests, production Angular
-bundle, Rust/Tauri compilation and native Windows 11 WebView2 visual check
-**remain unverified**. Run them on a complete approved source checkout before
-merge.
+| File | Git blob SHA |
+| --- | --- |
+| `scripts/read-bounded-ui-text.mjs` | `bb8f00cc15ccb2f72cac6a073fbf8596749f9d94` |
+| `scripts/verify-bundled-css.mjs` | `81bf813490eaad54bbc788a250c434537ff96fbf` |
+| `scripts/verify-css-imports.mjs` | `116cf963bc2dcd54f023932ae033b412e5cb7b32` |
+| `tests/verify-bounded-ui-text.test.mjs` | `5516708905e2e1dd4e0bd6ab6b2d6bf9ff17ffc4` |
+
+Four new regression cases test an HTML payload exactly at the byte limit,
+a NUL in the second read chunk, a valid UTF-8 codepoint split across
+64 KiB chunks, and an invalid sequence split at the same boundary.
+An earlier independent 19/19 pure-function check covered metadata validation.
+
+**Not executed:** repository-wide `npm test`, Angular output compilation,
+`npm run verify:css` on real generated artifacts, complete synthetic/private
+bundle gates, Rust/Tauri compilation, or native Windows 11 WebView2 visual
+verification. The mirror uses synthetic temporary files only. Perform
+full-workspace and Windows acceptance before merging this draft PR.
 
 ## Constraints and follow-ups
 
