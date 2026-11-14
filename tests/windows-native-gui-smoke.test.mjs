@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
+const layoutProbe = readFileSync(new URL('../src/app/desktop-layout-probe.ts', import.meta.url), 'utf8');
+const template = readFileSync(new URL('../src/app/desktop-app.component.html', import.meta.url), 'utf8');
+
 const source = readFileSync(new URL('../scripts/smoke-windows-native.ps1', import.meta.url), 'utf8');
 
 test('GUI smoke is explicit, Windows-only and cannot accept an arbitrary executable path', () => {
@@ -84,13 +87,25 @@ test('manual visual acceptance cannot be inferred from detecting only a window h
   assert.match(source,/NOT YET VERIFIED: visible UI/);
   assert.match(source,/if \(-not \$Interactive\)/);
   assert.match(source,/For a manual visual checklist, rerun with -Interactive/);
-  for (const key of ['styles','chart','themes','modes','export','places','offline']) {
+  for (const key of ['styles','layout','chart','themes','modes','export','places','offline']) {
     assert.match(source,new RegExp("Key = '" + key + "'"));
   }
   assert.match(source,/Read-Host/);
   assert.match(source,/if \(\$failures\.Count -gt 0\)/);
   assert.match(source,/NATIVE_SMOKE_MANUAL_FAILED/);
   assert.match(source,/NATIVE_SMOKE_MANUAL_PASSED/);
+});
+
+test('manual CSS checkpoint is connected to the live computed-layout probe', () => {
+  const line = source.split(/\r?\n/).find(line => line.includes("Key = 'layout'"));
+  assert.ok(line, 'explicit layout checkpoint required');
+  assert.match(line,/Layout diagnostics \/ Diagnostica layout/);
+  assert.match(line,/Recheck styles \/ Ricontrolla stili/);
+  assert.match(line,/Interface grid detected \/ Griglia dell.interfaccia rilevata/);
+  assert.match(layoutProbe,/export type DesktopLayoutStatus = 'active' \| 'missing' \| 'hidden' \| 'collapsed' \| 'unavailable'/);
+  assert.match(template,/\{\{t\(styleStatusKey\)\}\}/);
+  assert.match(template,/\(click\)="checkStyles\(\)"/);
+  assert.match(source,/all eight visual observations confirmed/);
 });
 
 test('smoke script leaves the app available for inspection and records no personal reports', () => {
