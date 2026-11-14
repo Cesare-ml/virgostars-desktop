@@ -38,3 +38,32 @@ test('light and dark tokens exist, and the chart has a central flex stage',()=>{
   assert.match(css,/\.workspace\.nav-collapsed/);
   assert.match(css,/\.workspace\.inspector-collapsed/);
 });
+
+
+test('PNG export failure keeps an already rendered chart available to retry',()=> {
+  const app=read('src/app/desktop-app.component.ts');
+  const start=app.indexOf('async exportPng(): Promise<void>');
+  const end=app.indexOf('private renderError(', start);
+  assert.ok(start >= 0 && end > start, 'locate the export-specific completion path');
+  const exportMethod=app.slice(start,end);
+  assert.match(exportMethod,/if\(!this\.ready \|\| this\.busy \|\| this\.destroyed \|\| this\.exporting\) return/);
+  assert.match(exportMethod,/this\.error='';/, 'clear any previous export error on retry');
+  assert.match(exportMethod,/this\.status='exporting'/);
+  assert.match(exportMethod,/this\.status='export\.failed'/);
+  assert.match(exportMethod,/this\.error=this\.t\('export\.failed'\)/);
+  assert.doesNotMatch(exportMethod,/this\.renderError\(/, 'export failure must not destroy chart readiness');
+  assert.doesNotMatch(exportMethod,/this\.ready\s*=\s*false/, 'keep a valid chart ready for retry');
+  assert.match(exportMethod,/finally\s*\{\s*this\.exporting=false;/);
+  assert.match(exportMethod,/this\.busy=false/);
+});
+
+test('chart rendering and PNG exporting report their distinct bilingual status',()=> {
+  const app=read('src/app/desktop-app.component.ts');
+  const template=read('src/app/desktop-app.component.html');
+  const translations=read('src/app/translations.ts');
+  assert.match(app,/private renderError\([\s\S]*?this\.status='status\.error';/);
+  assert.match(template,/<div class="chart-message" \*ngIf="busy" role="status">\{\{t\(status\)\}\}<\/div>/);
+  assert.equal((translations.match(/"export\.failed":/g) ?? []).length, 2);
+  assert.match(translations,/"export\.failed":"Esportazione PNG non riuscita\. Riprova\."/);
+  assert.match(translations,/"export\.failed":"PNG export failed\. Please try again\."/);
+});
