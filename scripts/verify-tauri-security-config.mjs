@@ -31,6 +31,7 @@ const EXPECTED_DEV_CSP = Object.freeze({
   'frame-src': ["'none'"],
 });
 
+const REVIEWED_APP_FIELDS = Object.freeze(['windows', 'security']);
 const REVIEWED_SECURITY_FIELDS = Object.freeze(['capabilities', 'csp', 'devCsp']);
 
 function assertSafe(ok, reason) {
@@ -80,10 +81,13 @@ export function verifyTauriSecurityConfig(config) {
     !Object.hasOwn(config.build, 'beforeDevCommand'),
     'development frontend must remain on reviewed loopback origin');
   assertSafe(config.bundle.active === false, 'installer packaging requires separate review');
-  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length === 1 &&
-    config.app.windows.every(window => isObject(window) && window.label === 'main' &&
-      !Object.hasOwn(window, 'url')),
-    'unreviewed native window configuration');
+  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length > 0 &&
+    config.app.windows.every(window => isObject(window) && !Object.hasOwn(window, 'url')),
+    'external or missing native window configuration');
+  // Tauri allows further app-level fields that may modify host/WebView
+  // behavior; require explicit review rather than accepting changed defaults.
+  assertSafe(Object.keys(config.app).every(field => REVIEWED_APP_FIELDS.includes(field)),
+    'unreviewed Tauri app option');
   const security = config.app.security;
   // Explicitly reject new Tauri security knobs, including options introduced by
   // future Tauri versions: an innocuous-looking default must be reviewed first.
