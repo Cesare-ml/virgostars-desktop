@@ -39,7 +39,7 @@ test('deterministic disjoint review lanes retain base risks',()=>{
     {branches:['a','c'],requiresBaseRefresh:[],baseOverlapBranches:[],
       basePrefixOverlapBranches:[],windowsBaseCaseVariantBranches:[]},
   ]);
-  assert.match(result.note,/No lane implies merge safety/);
+  assert.match(result.note,/no lane implies merge safety/i);
   const reversed=fixture();
   reversed.branches.reverse();
   reversed.overlaps.reverse();
