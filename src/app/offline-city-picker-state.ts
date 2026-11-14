@@ -42,9 +42,8 @@ export class OfflineCityPickerState {
   input(value: string): void {
     if (this.disposed) return;
     this.abortPending();
-    // Retain one extra Unicode scalar as an over-limit sentinel. Never
-    // search a silently truncated prefix or split a UTF-16 surrogate pair.
-    // Stop iterating after 81 scalars even for an enormous pasted input.
+    // Retain one over-limit Unicode scalar without splitting surrogate pairs.
+    // Oversized pasted text cannot turn into a seemingly valid prefix search.
     const chars: string[] = [];
     for (const char of value) {
       chars.push(char);
@@ -61,10 +60,28 @@ export class OfflineCityPickerState {
     else {
       this.status = 'typing';
       const ticket = this.seq;
-      this.pending = this.timers.set(() => {
-        this.pending = null;
-        if (ticket === this.seq && !this.disposed) void this.perform(ticket, this.query);
-      }, this.debounceMs);
+      // A faulty WebView timer may throw, return no handle or invoke synchronously.
+      // Never leave the UI in "typing" with no cancellable debounce.
+      let fired = false;
+      try {
+        const handle = this.timers.set(() => {
+          if (fired) return; // A broken driver cannot launch a duplicate lookup.
+          fired = true;
+          if (ticket !== this.seq || this.disposed) return;
+          this.pending = null;
+          void this.perform(ticket, this.query);
+        }, this.debounceMs);
+        if (handle === null || handle === undefined) {
+          if (!fired) this.invalidateDebounce(ticket);
+        } else if (fired || ticket !== this.seq || this.disposed) {
+          // Callback already ran or owner changed while set() was in progress.
+          try { this.timers.clear(handle); } catch { /* callback generation is guarded */ }
+        } else {
+          this.pending = handle; // Numeric zero is a valid timer handle.
+        }
+      } catch {
+        if (!fired) this.invalidateDebounce(ticket);
+      }
     }
     this.changed();
   }
@@ -72,6 +89,9 @@ export class OfflineCityPickerState {
   private async perform(ticket: number, query: string): Promise<void> {
     this.status = 'loading';
     this.changed();
+    // A synchronous view notification may re-enter input() or dispose this
+    // picker. Do not launch the superseded native query after that callback.
+    if (ticket !== this.seq || this.disposed) return;
     try {
       const result = await this.lookup.search(query, 12);
       if (ticket !== this.seq || this.disposed) return;
@@ -141,10 +161,21 @@ export class OfflineCityPickerState {
     this.activeIndex = -1;
   }
 
+  private invalidateDebounce(ticket: number): void {
+    if (ticket !== this.seq || this.disposed) return;
+    this.seq++;
+    this.pending = null;
+    this.status = 'unavailable';
+    try { this.lookup.clear(); } catch { /* stale lookups are generation guarded */ }
+  }
+
   private abortPending(): void {
     this.seq++;
-    if (this.pending !== null) this.timers.clear(this.pending);
+    const handle = this.pending;
     this.pending = null;
-    this.lookup.clear();
+    if (handle !== null) {
+      try { this.timers.clear(handle); } catch { /* stale callbacks check seq */ }
+    }
+    try { this.lookup.clear(); } catch { /* never block local UI teardown/input */ }
   }
 }

@@ -19,6 +19,22 @@ const EXPECTED_CSP = Object.freeze({
   'base-uri': ["'self'"],
 });
 
+
+const EXPECTED_DEV_CSP = Object.freeze({
+  'default-src': ["'self'"],
+  'script-src': ["'self'", "'unsafe-eval'"],
+  'style-src': ["'self'", "'unsafe-inline'"],
+  'img-src': ["'self'", 'data:', 'blob:', 'http://127.0.0.1:4177'],
+  'font-src': ["'self'", 'data:'],
+  'connect-src': ["'self'", 'ws://127.0.0.1:4200', 'http://127.0.0.1:4177'],
+  'object-src': ["'none'"],
+  'frame-src': ["'none'"],
+});
+
+const REVIEWED_WINDOW_FIELDS = Object.freeze(['label', 'title', 'width', 'height', 'minWidth', 'minHeight']);
+const REVIEWED_APP_FIELDS = Object.freeze(['windows', 'security']);
+const REVIEWED_SECURITY_FIELDS = Object.freeze(['capabilities', 'csp', 'devCsp']);
+
 function assertSafe(ok, reason) {
   if (!ok) throw new Error('TAURI SECURITY CONFIG: ' + reason);
 }
@@ -26,39 +42,61 @@ function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Deliberately pin the allowed production directives; any expansion needs review. */
-export function verifyProductionCsp(csp) {
+/** Pin every directive exactly. Development has narrow loopback-only allowances. */
+function verifyPinnedCsp(csp, expected, mode) {
   assertSafe(typeof csp === 'string' && csp.length > 0 && csp.length <= 2048,
-    'missing or invalid production CSP');
+    'missing or invalid ' + mode + ' CSP');
   const directives = new Map();
   for (const part of csp.split(';')) {
     const trimmed = part.trim();
     if (!trimmed) continue;
     const [name, ...sources] = trimmed.split(/\s+/);
-    assertSafe(Object.hasOwn(EXPECTED_CSP, name), 'unreviewed CSP directive');
+    assertSafe(Object.hasOwn(expected, name), 'unreviewed CSP directive');
     assertSafe(!directives.has(name), 'duplicate CSP directive');
-    assertSafe(sources.length === EXPECTED_CSP[name].length &&
-      [...sources].sort().every((source, index) => source === [...EXPECTED_CSP[name]].sort()[index]),
+    assertSafe(sources.length === expected[name].length &&
+      [...sources].sort().every((source, index) => source === [...expected[name]].sort()[index]),
       'CSP source list changed');
     directives.set(name, sources);
   }
-  assertSafe(directives.size === Object.keys(EXPECTED_CSP).length,
-    'missing production CSP directive');
+  assertSafe(directives.size === Object.keys(expected).length,
+    'missing ' + mode + ' CSP directive');
   return Object.freeze({ directives: directives.size });
 }
 
-/** Does not inspect devCsp: development has intentionally distinct allowances. */
+export function verifyProductionCsp(csp) {
+  return verifyPinnedCsp(csp, EXPECTED_CSP, 'production');
+}
+
+export function verifyDevelopmentCsp(csp) {
+  return verifyPinnedCsp(csp, EXPECTED_DEV_CSP, 'development');
+}
+
+/** Inspect both packaged and development Tauri WebView boundaries. */
 export function verifyTauriSecurityConfig(config) {
   assertSafe(isObject(config) && isObject(config.build) && isObject(config.app) &&
     isObject(config.app.security) && isObject(config.bundle), 'invalid Tauri config');
   assertSafe(config.build.frontendDist === '../dist/desktop/browser' &&
     !Object.hasOwn(config.build, 'beforeBuildCommand'),
     'packaged frontend path or build hook changed');
+  assertSafe(config.build.devUrl === 'http://127.0.0.1:4200' &&
+    !Object.hasOwn(config.build, 'beforeDevCommand'),
+    'development frontend must remain on reviewed loopback origin');
   assertSafe(config.bundle.active === false, 'installer packaging requires separate review');
-  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length > 0 &&
-    config.app.windows.every(window => isObject(window) && !Object.hasOwn(window, 'url')),
-    'external or missing native window configuration');
+  // Only the reviewed single local window is allowed. Tauri accepts extra
+  // window keys such as additionalBrowserArgs/devtools that can alter WebView
+  // behavior without changing the pinned CSP or explicit window URL.
+  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length === 1 &&
+    config.app.windows.every(window => isObject(window) &&
+      Object.keys(window).length === REVIEWED_WINDOW_FIELDS.length &&
+      REVIEWED_WINDOW_FIELDS.every(field => Object.hasOwn(window, field))),
+    'unreviewed native window option or number of windows');
+  // Restrict every application option, not just the native window shape.
+  // Future Tauri options (even when set to false) require source review.
+  assertSafe(Object.keys(config.app).every(field => REVIEWED_APP_FIELDS.includes(field)),
+    'unreviewed Tauri app option');
   const security = config.app.security;
+  assertSafe(Object.keys(security).every(field => REVIEWED_SECURITY_FIELDS.includes(field)),
+    'unreviewed Tauri security option');
   assertSafe(Array.isArray(security.capabilities) && security.capabilities.length === 0,
     'native capability list changed');
   assertSafe(config.app.withGlobalTauri !== true &&
@@ -66,6 +104,7 @@ export function verifyTauriSecurityConfig(config) {
     !Object.hasOwn(security, 'assetProtocol'),
     'native/WebView security boundary changed');
   verifyProductionCsp(security.csp);
+  verifyDevelopmentCsp(security.devCsp);
   return Object.freeze({ windows: config.app.windows.length });
 }
 

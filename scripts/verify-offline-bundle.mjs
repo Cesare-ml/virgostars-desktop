@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspectDesktopStyles } from './verify-bundled-css.mjs';
 import { inspectDesktopScripts } from './verify-bundled-scripts.mjs';
+import { inspectDesktopComponentStyles } from './verify-component-styles.mjs';
 import { inspectAngularChunkGraph } from './verify-angular-chunks.mjs';
 import { verifyDesktopBaseHref } from './verify-document-base.mjs';
 import { verifyDesktopAppRoot } from './verify-desktop-app-root.mjs';
@@ -79,6 +80,9 @@ if(process.argv[1] && resolve(process.argv[1])===resolve(fileURLToPath(import.me
     const privateMode=process.argv[2]==='--private';
     const out=verifyOfflineBundle(resolve(ROOT,'dist/desktop/browser'),
       resolve(ROOT,privateMode?'.local/frontend-private':'.local/frontend'),{privateMode});
+    // The library verifier supports minimal fixtures; the actual CLI packaging
+    // gate additionally checks Angular's emitted component layout rules.
+    inspectDesktopComponentStyles(resolve(ROOT,'dist/desktop/browser'));
     console.log('Verified '+out.count+(privateMode?' approved private':' synthetic')+
       ' files, '+out.stylesheets+' local CSS link(s), '+out.scripts+' JS entrypoint(s), '+
       out.chunks+' imported chunk(s). No demo bootstrap.');

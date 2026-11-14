@@ -31,6 +31,15 @@ test('fails closed when the main script is missing on disk', () => fixture(f => 
   rmSync(join(f.dir, 'main-ABC123.js'));
   assert.throws(() => inspectDesktopScripts(f.dir), /script missing/);
 }));
+test('rejects an existing but zero-byte Angular main module', () => fixture(f => {
+  writeFileSync(join(f.dir, 'main-ABC123.js'), '');
+  assert.throws(() => inspectDesktopScripts(f.dir), /script is empty/);
+}));
+test('rejects zero-byte polyfills even with a nonempty main', () => fixture(f => {
+  writeFileSync(join(f.dir, 'polyfills-A9.js'), '');
+  f.setHtml('<script src="polyfills-A9.js" type="module"></script>' + f.main);
+  assert.throws(() => inspectDesktopScripts(f.dir), /script is empty/);
+}));
 test('fails closed when a script is a symlink', () => fixture(f => {
   writeFileSync(join(f.dir, 'other.js'), '/* fixture */');
   rmSync(join(f.dir, 'main-ABC123.js'));
@@ -119,4 +128,27 @@ test('fails closed on unfinished HTML comments', () => fixture(f => {
 test('quoted greater-than characters in unrelated elements do not hide real scripts', () => fixture(f => {
   f.setHtml('<div title="1 > 0">test</div>' + f.main);
   assert.equal(inspectDesktopScripts(f.dir).scripts, 1);
+}));
+
+test('rejects unreviewed module script flags that can alter startup order or loading', () => fixture(f => {
+  for (const attr of [
+    'async', 'defer', 'nomodule', 'nonce="untrusted"',
+    'integrity="sha256-unverified"', 'crossorigin="anonymous"',
+    'referrerpolicy="no-referrer"', 'fetchpriority="high"',
+    'data-script="extra"', 'id="main-script"',
+  ]) {
+    f.setHtml('<script src="main-ABC123.js" type="module" ' + attr + '></script>');
+    assert.throws(() => inspectDesktopScripts(f.dir), /Unreviewed Angular script attribute/, attr);
+  }
+}));
+
+test('retains reviewed script attributes and does not mistake attribute-value text for names', () => fixture(f => {
+  f.setHtml('<script title="docs async=1 nonce=2" src="main-ABC123.js" type="module"></script>');
+  assert.deepEqual(inspectDesktopScripts(f.dir), {scripts: 1, files: ['main-ABC123.js']});
+}));
+
+test('rejects extra script attributes on polyfills as well as main', () => fixture(f => {
+  writeFileSync(join(f.dir, 'polyfills-A9.js'), '/* fixture */');
+  f.setHtml('<script src="polyfills-A9.js" type="module" async></script>' + f.main);
+  assert.throws(() => inspectDesktopScripts(f.dir), /Unreviewed Angular script attribute/);
 }));

@@ -5,6 +5,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { inspectDesktopStyles } from './verify-bundled-css.mjs';
+import { inspectDesktopScripts } from './verify-bundled-scripts.mjs';
 import { verifyWindowsExecutable } from './verify-windows-pe.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +43,8 @@ export function supportsRustVersion(versionOutput) {
 export function diagnoseEnvironment({
   root = ROOT, charts = resolve(ROOT, '../astrological-charts'),
   stage = 'setup', platform = process.platform, nodeVersion = process.version,
-  nodeArch = process.arch, cssInspector = inspectDesktopStyles, peInspector = verifyWindowsExecutable,
+  nodeArch = process.arch, cssInspector = inspectDesktopStyles,
+  jsInspector = inspectDesktopScripts, peInspector = verifyWindowsExecutable,
   exists = existsSync, json = safeJson, command = commandOutput,
 } = {}) {
   if (!STAGES.has(stage)) throw new Error('stage must be setup, build, or verify');
@@ -147,6 +149,22 @@ export function diagnoseEnvironment({
     add('angular-css', cssReady ? STATUS.pass : STATUS.blocked,
       cssReady ? 'Local Angular CSS artifacts verified' : 'Missing or invalid offline Angular CSS artifacts',
       'Run npm run verify:css after npm run build:ui; do not weaken Tauri CSP.');
+    // CSS alone cannot establish that Angular has a usable local main module.
+    // Reuse the dependency-free ESM entrypoint gate; setup/build remain usable
+    // before npm ci, when the deeper TypeScript chunk graph parser is absent.
+    let jsReady = false;
+    if (exists(indexFile)) {
+      try {
+        const checked = jsInspector(bundleDir);
+        jsReady = Number.isSafeInteger(checked?.scripts) &&
+          checked.scripts >= 1 && checked.scripts <= 2 &&
+          Array.isArray(checked.files) && checked.files.length === checked.scripts;
+      } catch { jsReady = false; }
+    }
+    add('angular-js', jsReady ? STATUS.pass : STATUS.blocked,
+      jsReady ? 'Local Angular JavaScript entrypoints verified' :
+        'Missing or invalid offline Angular JavaScript entrypoints',
+      'Run npm run verify:bundle after npm run build:ui; do not allow external or inline scripts.');
     if (platform === 'win32') {
       const executableFile = join(root, 'src-tauri', 'target', 'release', 'virgostars-desktop-spike.exe');
       checkedFile('windows-executable', executableFile, true,

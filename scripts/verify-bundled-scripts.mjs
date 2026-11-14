@@ -116,6 +116,14 @@ export function inspectDesktopScripts(bundleDir) {
     if ([...attrs.keys()].some(name => /^on[a-z]+$/.test(name))) {
       fail('Inline script event handler is forbidden by desktop CSP');
     }
+    // The reviewed Angular builder emits src/type; title is a harmless
+    // description already accepted by the contract tests. Unreviewed flags
+    // such as async can reorder module execution, while crossorigin, nonce,
+    // integrity or nomodule can change how WebView2 loads a bundled script.
+    // Require an explicit build-gate review rather than trusting new attrs.
+    if ([...attrs.keys()].some(name => !['src', 'type', 'title'].includes(name))) {
+      fail('Unreviewed Angular script attribute');
+    }
     if (!attrs.has('src')) fail('Script must have exactly one src attribute');
     if (attrs.get('type') !== 'module') fail('Desktop script must declare type="module" exactly once');
     const src = attrs.get('src');
@@ -129,6 +137,8 @@ export function inspectDesktopScripts(bundleDir) {
     if (!stat || !stat.isFile() || stat.isSymbolicLink()) {
       fail('Local desktop script missing or not a regular file');
     }
+    // A zero-byte main or polyfills script cannot bootstrap an Angular app.
+    if (stat.size === 0) fail('Local desktop script is empty');
     names.push(filename);
   }
   if (mainCount !== 1) fail('Exactly one Angular main module is required');

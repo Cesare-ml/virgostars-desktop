@@ -3,6 +3,7 @@
 import {readFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {assertNpmTarballIdentity} from './verify-npm-tarball.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const LOCAL_TARGET='../astrological-charts/dist/grafici-astrologici';
@@ -54,6 +55,7 @@ export function auditNpmLock(manifest,lock) {
       url.port==='' && url.username==='' && url.password==='' &&
       url.search==='' && url.hash==='' && url.pathname.endsWith('.tgz'),
       'Unreviewed npm package registry origin');
+    assertNpmTarballIdentity(name, entry, lock.packages, url);
     registryPackages++;
   }
   assert(registryPackages>0, 'No verified npm registry dependencies');
