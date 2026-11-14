@@ -127,6 +127,8 @@ if (-not $Interactive) {
 # export: each visual observation must come from the maintainer.
 $checks = @(
     @{ Key = 'styles'; Prompt = 'Sidebar, central chart and inspector visibly use the intended CSS grid?' },
+    # Check the live WebView2 computed-style/geometry probe, not just packaged CSS.
+    @{ Key = 'layout'; Prompt = 'Settings > Layout diagnostics / Diagnostica layout > Recheck styles / Ricontrolla stili reports Interface grid detected / Griglia dell’interfaccia rilevata?' },
     @{ Key = 'chart'; Prompt = 'Synthetic chart appears centered at normal size without WebGL errors?' },
     @{ Key = 'themes'; Prompt = 'Light and dark themes both render correctly?' },
     @{ Key = 'modes'; Prompt = 'Four synthetic chart modes and zoom/fit controls work?' },
@@ -147,6 +149,6 @@ if ($failures.Count -gt 0) {
     Write-Host ('NATIVE_SMOKE_MANUAL_FAILED: ' + ($failures -join ', '))
     exit 1
 }
-Write-Host 'NATIVE_SMOKE_MANUAL_PASSED: all seven visual observations confirmed by maintainer.'
+Write-Host 'NATIVE_SMOKE_MANUAL_PASSED: all eight visual observations confirmed by maintainer.'
 Write-Host 'This does not validate installer signing, astronomical precision, cloud accounts or publication readiness.'
 exit 0
