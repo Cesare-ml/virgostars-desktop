@@ -48,6 +48,8 @@ export function readBoundedUiText(path, kind) {
       if (n === 0) break;
       total += n;
       if (total > limit) reject(kind, 'exceeds byte limit');
+      // A generated HTML/CSS artifact must never contain binary NUL bytes.
+      if (scratch.subarray(0, n).includes(0)) reject(kind, 'contains NUL byte');
       chunks.push(Buffer.from(scratch.subarray(0, n)));
     }
 
