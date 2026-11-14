@@ -85,7 +85,8 @@ test('smoke script leaves the app available for inspection and records no person
 
 test('both successful and failing paths avoid exposing native OS exception details', () => {
   assert.match(source,/throw 'NATIVE_SMOKE_LAUNCH_FAILED'/);
-  assert.match(source,/throw 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'/);
+  assert.match(source,/\$windowFailure = 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'/);
+  assert.match(source,/throw \$windowFailure/);
   assert.match(source,/NATIVE_SMOKE_WINDOWS_ONLY/);
   assert.doesNotMatch(source,/Write-(?:Host|Error|Output)[^\n]*\$_\.Exception/);
 });
