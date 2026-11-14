@@ -89,3 +89,40 @@ a small static source fixture for the existing one-file wiring contract test,
 with actual GitHub Angular wiring previously checked independently.
 Not a full checkout's `npm test`, Angular build, native Windows test, or
 WebView2/GPU acceptance.
+
+
+## Integrated CSS diagnosis + WebView2 resize fallback regression (14 November 2026)
+
+The focused Node integration suite now exercises the **unchanged actual** WebView
+resize monitor and main-branch `probeDesktopLayout` helper together. Synthetic
+DOM styles and dimensions, an injected missing-`ResizeObserver` environment,
+and deterministic two-frame scheduler cover:
+
+1. A healthy CSS probe followed by a collapsed chart stage and a recovered stage.
+2. A rapid panel change between frames where late obsolete notifications cannot
+   publish an intermediate result.
+3. A canvas backing-buffer collapse and recovery via fallback notifications,
+   including no further events after listener disposal.
+
+It runs without a browser, native executable, network, licensed city pack,
+private birth data or actual WebGL renderer. The tests do **not** establish
+that Windows WebView2 applies CSS or draws pixels.
+
+Exact GitHub blob parity was confirmed in a local isolated mirror:
+`src/app/stage-resize-monitor.ts` `b72a4035747f1edd62ea3ce4daf0aef9e6ad7a70`,
+`src/app/desktop-layout-probe.ts` `6058c8026ec67a76b511ead499e920451b56c4fc`,
+and new `tests/stage-layout-diagnostic-integration.test.mjs`
+`e44bdb2a6c19fb1d89dfb5879d1b68efdc2edb9c`.
+
+```sh
+node --experimental-strip-types --test tests/stage-layout-refresh.test.mjs tests/stage-resize-monitor.test.mjs tests/stage-reentrant-driver.test.mjs tests/stage-layout-diagnostic-integration.test.mjs
+tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/stage-resize-monitor.ts src/app/desktop-layout-probe.ts
+```
+
+**Result:** 31/31 Node 22.16.0 tests passed, with the pre-existing Angular
+source-contract test running against a limited synthetic fixture in the
+isolated mirror rather than the full Angular component. Both actual pure
+TypeScript helpers passed strict compilation. Full checkout `npm test`,
+Angular/Charts/Tauri compilation and real Windows 11 native acceptance remain
+unverified. No dependency, native permission, runtime source, or main-branch
+change was made.
