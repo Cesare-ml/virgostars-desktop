@@ -59,6 +59,38 @@ integration review and tests. Two-sided file comparisons are not a substitute
 for a merge, semantic review or upstream dependency validation. Neither
 direction performs checkout, merge, fetch or writes to the working tree.
 
+## Windows case-alias candidates (review only)
+
+The JSON report also includes `windowsCaseVariants` and
+`windowsCaseVariantPairs` for paths changed by different branches
+whose spellings are distinct but become equal after Unicode NFC
+normalization and JavaScript lowercase folding. The plain report prints
+`WINDOWS CASE REVIEW` lines. The same check compares feature-side and
+base-side paths after a common ancestor; those findings appear in
+`windowsBaseCaseVariants`, `windowsBaseCaseVariantPairs` and
+`WINDOWS BASE CASE REVIEW` lines.
+
+This catches common `src/Panel.ts` versus `src/panel.ts` accidents on
+case-insensitive Windows workspaces. An **identical path** still appears
+only in the existing exact-overlap fields, and two variant spellings
+changed **within one branch** do not count as a cross-branch overlap.
+Output is deterministic, uses only locally supplied Git refs, and does
+not change or check out files.
+
+**Important:** NFC plus JavaScript lowercase is a *conservative review
+heuristic*, **not an NTFS or macOS filesystem equivalence oracle**.
+Windows per-directory case sensitivity, locale-specific casing, Unicode
+folding and filesystem behavior can differ. A flagged pair needs human
+review but does not prove that Git would conflict; an unflagged pair does
+not prove that the branch combination is safe. A native Windows checkout
+and tests remain required.
+
+Run the focused regression tests:
+
+```sh
+node --test tests/branch-overlap-report.test.mjs tests/branch-overlap-windows-case.test.mjs
+```
+
 ## Important limitations
 
 - Shared files **may merge cleanly**. Different files **may still conflict
