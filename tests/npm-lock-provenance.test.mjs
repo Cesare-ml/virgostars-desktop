@@ -114,6 +114,29 @@ test('requires a nonempty npm dependency graph and v3 structure',()=>{
   assert.throws(()=>auditNpmLock(g.manifest,g.lock),/Unexpected npm lock package count|No verified npm registry dependencies/);
 });
 
+test('registry tarball identity is checked after allowed HTTPS origin and SHA-512 SRI',()=>{
+  for(const incorrectUrl of [
+    'https://registry.npmjs.org/not-three/-/not-three-0.170.0.tgz',
+    'https://registry.npmjs.org/three/-/three-0.171.0.tgz',
+    'https://registry.npmjs.org/three/-/unknown-0.170.0.tgz',
+  ]){
+    const f=fixture();
+    f.lock.packages['node_modules/three'].resolved=incorrectUrl;
+    assert.throws(()=>auditNpmLock(f.manifest,f.lock),/tarball URL differs/,incorrectUrl);
+  }
+});
+
+test('declared npm alias remains valid without weakening tarball identity',()=>{
+  const f=fixture();
+  f.lock.packages['node_modules/three'].dependencies={'three-compat':'npm:three@^0.170.0'};
+  f.lock.packages['node_modules/three-compat']={
+    ...f.lock.packages['node_modules/three'],name:'three'
+  };
+  assert.equal(auditNpmLock(f.manifest,f.lock).registryPackages,2);
+  delete f.lock.packages['node_modules/three'].dependencies;
+  assert.throws(()=>auditNpmLock(f.manifest,f.lock),/Undeclared npm package alias/);
+});
+
 test('current committed repository lockfile passes the complete provenance audit',()=>{
   const result=auditNpmLockCheckout();
   assert.ok(result.registryPackages>0);
