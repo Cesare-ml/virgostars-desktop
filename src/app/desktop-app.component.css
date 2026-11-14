@@ -140,3 +140,23 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
   .status-message { display:none; }
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+
+/* Windows contrast themes must win over both the light and dark custom palette.
+   Keep forced-color-adjust at its default: native system colors remain authoritative. */
+@media (forced-colors: active) {
+  .desktop-app, .desktop-app[data-theme="dark"] {
+    --vs-bg:Canvas; --vs-surface:Canvas; --vs-surface-muted:ButtonFace;
+    --vs-text:CanvasText; --vs-text-secondary:CanvasText; --vs-border:ButtonBorder;
+    --vs-accent:Highlight; --vs-accent-contrast:HighlightText;
+    --vs-sidebar:Canvas; --vs-focus:Highlight;
+    --vs-nav-text:CanvasText; --vs-nav-muted:CanvasText;
+  }
+  /* Translucent selected backgrounds can vanish when the OS forces colors. */
+  .nav-item.selected,
+  .inspector-tabs button[aria-selected="true"],
+  .data-line.active { outline:2px solid Highlight; outline-offset:-2px; }
+  .sidebar-toggle:focus-visible,.nav-item:focus-visible {
+    outline:3px solid Highlight; outline-offset:-3px;
+  }
+  .export-button { border:1px solid ButtonText; }
+}
