@@ -54,3 +54,25 @@ test('enforces a bounded, canonical base64 transport even with a safe filename',
     assert.deepEqual(h.events,[]);
   }
 });
+
+test('rejects noncanonical Base64 padding bits before touching the DOM', () => {
+  const body = png.split(',')[1];
+  assert.equal(body.endsWith('='), true);
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const beforePadding = body.length - 2;
+  const previous = alphabet.indexOf(body[beforePadding]);
+  assert.equal(previous % 4, 0, 'fixture has canonical single-byte padding');
+  const mutated = body.slice(0, beforePadding) + alphabet[previous + 1] + '=';
+  assert.deepEqual(Buffer.from(body, 'base64'), Buffer.from(mutated, 'base64'),
+    'a decoder sees the same bytes despite distinct input strings');
+  const h = instrument();
+  assert.throws(() => requestSyntheticPngDownload('data:image/png;base64,' + mutated, validName, h.port),
+    /Invalid PNG download/);
+  assert.deepEqual(h.events, []);
+  for (const suffix of ['AB==', 'AAB=']) {
+    const bad = 'data:image/png;base64,' + 'A'.repeat(60) + suffix;
+    const mirror = instrument();
+    assert.throws(() => requestSyntheticPngDownload(bad, validName, mirror.port), /Invalid PNG download/);
+    assert.deepEqual(mirror.events, []);
+  }
+});
