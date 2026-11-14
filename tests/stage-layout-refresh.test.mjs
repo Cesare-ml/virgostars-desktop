@@ -77,6 +77,61 @@ test('restarting a pending frame tolerates failed cancel and excludes stale call
   layout.dispose();
 });
 
+test('disposing inside cancellation never creates another pending frame', () => {
+  const f = frames(); let layout;
+  const driver = {
+    request: cb => f.driver.request(cb),
+    cancel(id) { f.driver.cancel(id); layout.dispose(); },
+  };
+  layout = new StageLayoutRefresh(() => assert.fail('disposed'), driver);
+  layout.request();
+  layout.request(); // cancel() synchronously destroys the host component
+  assert.equal(f.pending.size, 0);
+  assert.deepEqual(f.canceled, [1]);
+  layout.request(); // disposed requests remain inert
+  assert.equal(f.pending.size, 0);
+});
+
+test('nested panel request during cancellation wins without orphan frames', () => {
+  const f = frames(); let layout; let nested = false; let refreshes = 0;
+  const driver = {
+    request: cb => f.driver.request(cb),
+    cancel(id) {
+      f.driver.cancel(id);
+      if (!nested) {
+        nested = true;
+        layout.request();
+      }
+    },
+  };
+  layout = new StageLayoutRefresh(() => refreshes++, driver);
+  layout.request();
+  layout.request(); // cancel() synchronously invokes an even newer request
+  assert.deepEqual([...f.pending.keys()], [2]);
+  f.flush(); f.flush();
+  assert.equal(refreshes, 1);
+  assert.equal(f.pending.size, 0);
+  layout.dispose();
+});
+
+test('disposal while the frame driver registers cancels the returned stale handle', () => {
+  const f = frames(); let layout;
+  const driver = {
+    request(callback) {
+      const handle = f.driver.request(callback);
+      layout.dispose(); // reentrant teardown before request() returns
+      return handle;
+    },
+    cancel: id => f.driver.cancel(id),
+  };
+  layout = new StageLayoutRefresh(() => assert.fail('disposed'), driver);
+  layout.request();
+  assert.deepEqual(f.canceled, [1]);
+  assert.equal(f.pending.size, 0);
+  f.fire(1); // callbacks already delivered by the host remain inert
+  assert.doesNotThrow(() => layout.dispose());
+});
+
 test('a new panel toggle after refresh starts a fresh pair of frames', () => {
   const f = frames(); let refreshes = 0;
   const layout = new StageLayoutRefresh(() => refreshes++, f.driver);

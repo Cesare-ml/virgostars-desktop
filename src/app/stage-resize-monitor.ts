@@ -114,6 +114,9 @@ export class StageLayoutRefresh {
         try { this.frames.cancel(pending); } catch { /* Late callbacks remain inert. */ }
       }
     }
+    // Cancellation can synchronously trigger teardown or a nested panel event.
+    // Do not rearm a disposed instance or overwrite a newer refresh request.
+    if (this.disposed || this.phase !== 0) return;
     this.phase = 1;
     this.arm(++this.generation, 1);
   }
@@ -135,6 +138,13 @@ export class StageLayoutRefresh {
       if (!Number.isSafeInteger(handle) || handle < 0) {
         this.generation++;
         this.phase = 0;
+        return;
+      }
+      // An injected host can synchronously dispose, replace the request, or
+      // invoke the callback before returning its handle. Never retain a stale
+      // handle or let a queued callback outlive its owner.
+      if (this.disposed || ticket !== this.generation || this.phase !== phase) {
+        try { this.frames.cancel(handle); } catch { /* Ticket is already inert. */ }
         return;
       }
       this.handle = handle;

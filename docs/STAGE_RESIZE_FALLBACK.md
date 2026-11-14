@@ -46,3 +46,21 @@ Two focused tests cover a second click between frames and a failed cancellation
 with an already queued stale callback. Real Windows WebView2 timing and full
 Angular build remain to be verified. No native permissions, network, personal
 data or renderer changes are introduced.
+
+## Reentrant cancellation and teardown (14 November 2026)
+
+A WebView animation driver or test adapter can synchronously invoke component
+teardown or another panel refresh from `cancelAnimationFrame` or frame registration.
+Previously `StageLayoutRefresh.request()` could schedule a new frame *after*
+its owner had been disposed, and an outer reentrant request could overwrite a
+more recent inner request. The scheduler now checks ownership again after
+cancellation and after registering each frame. Any valid returned frame handle
+that is already stale is best-effort cancelled; late callbacks remain gated by
+generation and disposal state even when cancellation fails.
+
+Three focused regression tests cover disposal during cancellation, nested
+request during cancellation, and disposal during frame registration. This is
+defensive browser/host lifecycle hardening, not evidence of a Windows crash.
+It does not change CSS calculation, native IPC, network, persistence or
+renderer internals. Run the focused Node tests and the full Windows GUI suite
+before merging.
