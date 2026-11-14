@@ -242,7 +242,27 @@ node --test tests/charts-npm-lock.test.mjs
 reader, plus 4/4 standalone synthetic checkout smoke cases invoking the
 updated Charts verifier (9/9 total). The exact committed source blob hashes
 for the bounded helper and Charts verifier were matched to those tested.
-The preexisting 11-case Charts suite still needs a fresh full checkout run
-after this change; the historical 11/11 result above predates the descriptor
-reader. None of these tests validates Windows PowerShell, npm downloads,
-Cargo, Tauri packaging, or WebView2.
+The full committed Charts test suite has now been rerun after the bounded
+reader integration and an additional strict root-table validation update.
+**Current targeted synthetic test result: 45/45 PASS** with
+`node --test tests/*.test.mjs` inside a minimal Linux Node/Git fixture:
+12 Charts npm provenance/checkout tests, 5 bounded reader tests, and
+28 Git Windows tracked-path/bootstrap-order tests. All tested module files,
+test files, and build entrypoint scripts were matched by Git blob SHA to the
+feature branch. The fixture's `package.json` was deliberately minimal and
+contains the required `verify:charts-lock` script, rather than the full
+Desktop manifest; it is not the project's complete `npm test`.
+
+New validation of root `dependencies`, `devDependencies`,
+`peerDependencies`, `optionalDependencies`, and `engines` requires
+absent or non-array objects whose values are nonempty strings. This rejects
+manifest and lockfile pairs that contain the same **malformed** tables; matching
+bad inputs are no longer sufficient. Rechecking the published
+Astrological Charts `main` manifest and lock in an isolated V8 metadata
+validator still accepted **1,059 pinned registry package records**. That
+metadata-only check uses stand-ins for Node URL/base64 decoding and does not
+fetch or authenticate archive bytes.
+
+None of these tests validates Windows PowerShell, the full Desktop npm
+dependency graph, Cargo, Tauri packaging, or WebView2. The existing 11/11
+result in the previous section is historical and precedes the current code.
