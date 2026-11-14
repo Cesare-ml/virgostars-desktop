@@ -214,3 +214,35 @@ checkout or `npm ci`; it does **not** attest downloaded package bytes.
 This remains a best-effort read-only source preflight, not a race-free filesystem
 integrity guarantee or substitute for npm integrity enforcement, native Windows
 build, full test suite, WebView2 smoke and maintainer release review.
+
+
+## Bounded Charts metadata file-descriptor reads (2026-11-14)
+
+The draft pre-install verifier now uses `scripts/read-bounded-metadata.mjs` rather
+than a size check followed by unrestricted `readFileSync`. The helper opens
+the verified regular file **read-only**, checks the open descriptor's identity
+and byte size against the initial `lstat`, and reads no more than the
+preverified size **plus one byte**. A short read, newly appended data, or
+different file metadata causes a closed-failure result. On POSIX it also uses
+`O_NOFOLLOW` and `O_NONBLOCK` when supported to reduce symlink-swap and
+named-pipe hazards. On Windows it uses `O_RDONLY` and compares the opened
+descriptor against the original metadata.
+
+This bounds memory consumption during the read even if another process grows
+a file between validation and reading. Filesystem identity and timestamp
+checks are **best effort, not an atomic snapshot guarantee**. The caller's CLI
+continues to hide absolute paths and file contents in error messages.
+
+```powershell
+node --test tests/read-bounded-metadata.test.mjs
+node --test tests/charts-npm-lock.test.mjs
+```
+
+**Executed on Linux with Node.js 22.16.0:** 5/5 tests for the new bounded
+reader, plus 4/4 standalone synthetic checkout smoke cases invoking the
+updated Charts verifier (9/9 total). The exact committed source blob hashes
+for the bounded helper and Charts verifier were matched to those tested.
+The preexisting 11-case Charts suite still needs a fresh full checkout run
+after this change; the historical 11/11 result above predates the descriptor
+reader. None of these tests validates Windows PowerShell, npm downloads,
+Cargo, Tauri packaging, or WebView2.
