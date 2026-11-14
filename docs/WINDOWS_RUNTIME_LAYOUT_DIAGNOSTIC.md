@@ -186,3 +186,17 @@ sized drawing buffer after startup, resize, theme changes and zoom.
   Angular/Charts build, Rust/Tauri binary, Windows/WebView2 visuals
   and actual GPU buffer/render output. A nonzero canvas buffer alone
   never proves that Three.js drew the chart.
+
+## Stage-resize fallback dependency (14 November 2026)
+
+Desktop runtime layout diagnostic refreshes after stage geometry measurements.
+The accompanying `watchChartStageResize` helper now attempts the normal
+`ResizeObserver` but falls back to a window-resize listener if WebView2
+cannot construct/attach an observer. Sidebar and inspector toggles request
+one coalesced two-frame measurement, so the fallback still checks layout
+when an internal panel changes size. Teardown invalidates queued callbacks.
+This section supersedes older references to a direct `new ResizeObserver`
+in the Desktop Angular component. See `STAGE_RESIZE_FALLBACK.md`.
+
+Source-level tests and static integration checks are not a substitute for
+Windows WebView2 startup, offline, high-DPI and panel-toggle acceptance.
