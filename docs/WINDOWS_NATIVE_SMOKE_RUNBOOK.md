@@ -34,7 +34,9 @@ Stop the development server and disconnect Internet access. Then run:
 
     powershell -NoProfile -File .\scripts\smoke-windows-native.ps1 -Interactive
 
-A human must affirm all seven checkpoints: visible CSS grid; centered synthetic chart; light/dark themes; four chart modes and zoom/fit; synthetic PNG export; truthful offline city-search state; and operation without Internet/dev server.
+A human must affirm all eight checkpoints: visible CSS grid; **live CSS/geometry probe = active**; centered synthetic chart; light/dark themes; four chart modes and zoom/fit; synthetic PNG export; truthful offline city-search state; and operation without Internet/dev server.
+
+For the new **layout** checkpoint, open **Settings → Layout diagnostics / Diagnostica layout** in the running desktop window and select **Recheck styles / Ricontrolla stili**. Confirm **Interface grid detected / Griglia dell’interfaccia rilevata**, which represents the runtime `active` state from `src/app/desktop-layout-probe.ts`. Answer **No** for missing CSS, hidden canvas, collapsed chart area or unavailable probe. The separate **styles** checkpoint still requires an actual visual inspection: even `active` only verifies sampled computed styles and geometry, **not** pixel-perfect WebView2 rendering.
 
 Respond y/yes or s/si/sì for a confirmed success. Enter or any other response counts as failure. Any failure returns exit 1 and lists only fixed checklist identifiers. This is a manual observation, not instrumented screenshot, accessibility, GPU, CSP, performance or network-trace verification.
 
