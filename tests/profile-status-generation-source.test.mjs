@@ -34,7 +34,10 @@ test('ticket is opaque and scoped to a specific Rust fence instance',()=>{
 
 test('old, duplicated and after-logout callbacks are rejected in native code',()=>{
   assert.match(source,/fn begin\(&self\)/);
-  assert.match(source,/fn complete\(&self, ticket: &ProfileStatusTicket\)/);
+  assert.match(source,/fn publish_hint\(/);
+  assert.match(source,/fn visible_hint\(&self\)/);
+  assert.doesNotMatch(source,/fn complete\(/);
+  assert.doesNotMatch(source,/fn is_current\(/);
   assert.match(source,/fn invalidate\(&self\)/);
   assert.match(source,/state\.revision != ticket\.revision/);
   assert.match(source,/state\.pending = false;/);
@@ -44,7 +47,7 @@ test('old, duplicated and after-logout callbacks are rejected in native code',()
 test('mutex errors and epoch exhaustion fail closed without unwrap in non-test implementation',()=>{
   const implementation=source.split('#[cfg(test)]')[0];
   assert.match(implementation,/self\.state\.lock\(\)\.ok\(\)\?/);
-  assert.match(implementation,/Err\(_\) => false/);
+  assert.match(implementation,/Err\(_\) => return false/);
   assert.match(implementation,/state\.exhausted = true/);
   assert.doesNotMatch(implementation,/\.unwrap\(/);
   assert.doesNotMatch(implementation,/\.expect\(/);
@@ -60,4 +63,35 @@ test('Rust unit tests cover concurrency, stale, overflow and poisoned mutex',()=
     'generation_exhaustion_permanently_fails_closed',
     'poisoned_generation_cannot_publish_or_restart',
   ]);
+});
+
+test('publishing a UI hint is atomic with consuming its newest generation',()=>{
+  const implementation=source.split('#[cfg(test)]')[0];
+  const publish=implementation.split('pub(crate) fn publish_hint(')[1].split('pub(crate) fn visible_hint(')[0];
+  assert.ok(publish);
+  assert.match(publish,/let mut state = match self\.state\.lock\(\)/);
+  assert.match(publish,/state\.revision != ticket\.revision/);
+  assert.match(publish,/state\.pending = false;\s*state\.visible = hint;\s*true/s);
+  assert.doesNotMatch(publish,/\b(?:std::fs|tauri|SQLCipher|login)\b/);
+});
+
+test('begin, revoke and poisoned state all reset UI hint to blocked',()=>{
+  const implementation=source.split('#[cfg(test)]')[0];
+  const begin=implementation.split('pub(crate) fn begin(&self)')[1].split('pub(crate) fn publish_hint(')[0];
+  const revoke=implementation.split('pub(crate) fn invalidate(&self)')[1];
+  assert.match(begin,/state\.pending = false;\s*state\.visible = ProfileStatusUiHint::Blocked;/s);
+  assert.equal((revoke.match(/state\.visible = ProfileStatusUiHint::Blocked/g)||[]).length,2);
+  assert.match(implementation,/pub\(crate\) enum ProfileStatusUiHint/);
+  assert.match(implementation,/#\[default\]\s*Blocked/);
+  assert.match(implementation,/Err\(_\) => return false/);
+  assert.match(implementation,/_ => ProfileStatusUiHint::Blocked/);
+});
+
+test('race test forces simultaneous native publication and logout',()=>{
+  const race=source.split('fn competing_completions_accept_exactly_one()')[1]
+    .split('fn generation_exhaustion_permanently_fails_closed()')[0];
+  assert.match(race,/Barrier::new\(3\)/);
+  assert.match(race,/publish_gate\.publish_hint/);
+  assert.match(race,/lock_gate\.invalidate\(\)/);
+  assert.match(race,/assert_eq!\(gate\.visible_hint\(\), ProfileStatusUiHint::Blocked\)/);
 });
