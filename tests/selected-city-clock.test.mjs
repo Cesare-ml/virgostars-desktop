@@ -52,3 +52,40 @@ test('UTC is a valid explicit city timezone and both languages format', () => {
     assert.match(state.text, /16:14:15/);
   }
 });
+
+test('untrusted city timezone access never aborts live clock rendering', () => {
+  const timestamp = Date.parse('2026-11-12T17:02:03Z');
+  const getterThrows = Object.defineProperty({}, 'timeZone', {
+    get() { throw new Error('private local data must not escape'); },
+  });
+  const proxyThrows = new Proxy({}, {get() { throw new Error('untrusted proxy'); }});
+  const revoked = Proxy.revocable({timeZone: 'Europe/Rome'}, {});
+  revoked.revoke();
+  for (const unexpected of [undefined, getterThrows, proxyThrows, revoked.proxy]) {
+    assert.doesNotThrow(() => selectedCityClockAt(timestamp, unexpected, 'it'));
+    assert.deepEqual(selectedCityClockAt(timestamp, unexpected, 'it'), {kind: 'unavailable'});
+  }
+});
+
+test('selected city timezone is captured once, including when accessors mutate', () => {
+  const timestamp = Date.parse('2026-11-12T17:02:03Z');
+  let reads = 0;
+  const cityWithChangingGetter = {
+    get timeZone() {
+      reads++;
+      return reads === 1 ? 'Europe/Rome' : 'America/New_York';
+    },
+  };
+  const state = selectedCityClockAt(timestamp, cityWithChangingGetter, 'en');
+  assert.equal(state.kind, 'ready');
+  assert.equal(state.timeZone, 'Europe/Rome');
+  assert.match(state.text, /18:02:03/);
+  assert.equal(reads, 1, 'the zone used for formatting must match the returned zone');
+});
+
+test('malformed city input cannot borrow the device timezone', () => {
+  const timestamp = Date.parse('2026-11-12T17:02:03Z');
+  for (const unexpected of [false, 0, 'Europe/Rome', Object.create(null)]) {
+    assert.deepEqual(selectedCityClockAt(timestamp, unexpected, 'en'), {kind: 'unavailable'});
+  }
+});

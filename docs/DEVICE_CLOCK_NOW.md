@@ -105,3 +105,18 @@ network, persistence, Tauri IPC, extra dependencies, or new release capability.
 Verify with `node --experimental-strip-types --test tests/device-clock.test.mjs`
 and then the normal complete Windows/WebView2 acceptance gates. Do not infer
 native UI acceptance from a source-only review.
+
+## Selected-city timezone input safety (2026-11-14)
+
+The selected city's displayed timezone is now captured exactly once inside a
+guarded read. If temporary frontend state has a missing city, a throwing or
+revoked accessor/proxy, or a non-string timezone, the city clock displays the
+existing **unavailable** state instead of interrupting Angular change detection
+or falling back to the device clock. The identical captured zone is used for
+both formatting and the returned `ready.timeZone`, even if a getter is mutable.
+
+This is a display-boundary hardening only. It neither changes Rust/SQLite
+catalog results nor grants access to a city pack, network service or personal
+data. Three synthetic Node tests were added to
+`tests/selected-city-clock.test.mjs`. Full repository tests, strict Angular
+build and a Windows WebView2 smoke remain required before integration.

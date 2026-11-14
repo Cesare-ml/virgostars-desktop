@@ -125,7 +125,15 @@ export function selectedCityClockAt(
   locale: Locale,
 ): SelectedCityClock {
   if (city === null) return {kind: 'not_selected'};
-  const zone = city.timeZone;
+  // The city normally comes from the decoded IPC result, but keep this
+  // presentation boundary safe for malformed/transient frontend state too.
+  // Capture exactly once: an accessor may throw or change values between reads.
+  let zone: unknown;
+  try {
+    zone = city?.timeZone;
+  } catch {
+    return {kind: 'unavailable'};
+  }
   if (typeof zone !== 'string' || zone.length === 0 || zone.length > 80 ||
       !/^[A-Za-z0-9_+\/-]+$/.test(zone)) return {kind: 'unavailable'};
   const text = formatDeviceClock(timestamp, locale, false, zone);
