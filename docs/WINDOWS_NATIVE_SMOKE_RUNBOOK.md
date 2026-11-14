@@ -42,6 +42,8 @@ A human must affirm all eight checkpoints: visible CSS grid; **live CSS/geometry
 
 For the new **layout** checkpoint, open **Settings → Layout diagnostics / Diagnostica layout** in the running desktop window and select **Recheck styles / Ricontrolla stili**. Confirm **Interface grid detected / Griglia dell’interfaccia rilevata**, which represents the runtime `active` state from `src/app/desktop-layout-probe.ts`. Answer **No** for missing CSS, hidden canvas, collapsed chart area or unavailable probe. The separate **styles** checkpoint still requires an actual visual inspection: even `active` only verifies sampled computed styles and geometry, **not** pixel-perfect WebView2 rendering.
 
+While walking through the checklist, the script now rechecks the exact native process/window handle it launched **before and after each human answer**. A closed process, missing main window or unreadable process yields `NATIVE_SMOKE_MANUAL_WINDOW_LOST` and exit 1 rather than a misleading pass. An exception while reading a console answer yields `NATIVE_SMOKE_MANUAL_INPUT_UNAVAILABLE` and exit 1, without exposing an OS exception. Neither failure scans or closes unrelated app instances, and the successful app remains open for inspection.
+
 Respond y/yes or s/si/sì for a confirmed success. Enter or any other response counts as failure. For compatibility with **Windows PowerShell 5.1**, the `.ps1` source uses only ASCII characters (no UTF-8 BOM requirement); the Italian curly apostrophe displayed in the live layout prompt and the accented `sì` reply are reconstructed from Unicode code points at runtime. This does not change the accepted answers or the Italian interface message. Any failure returns exit 1 and lists only fixed checklist identifiers. This is a manual observation, not instrumented screenshot, accessibility, GPU, CSP, performance or network-trace verification.
 
 The script creates no reports, scans no birth data, captures no screenshots, invokes no network download, and never automatically closes the app.
@@ -62,6 +64,8 @@ This verifies fixed executable paths, gated launch order, bounded process observ
 - NATIVE_SMOKE_EARLY_EXIT: process exited before creating a main window.
 - NATIVE_SMOKE_NO_MAIN_WINDOW: process stayed alive but exposed no main-window handle within the deadline.
 - NATIVE_SMOKE_MANUAL_FAILED: at least one human acceptance checkpoint remains unconfirmed.
+- NATIVE_SMOKE_MANUAL_WINDOW_LOST: the exact app window launched by this smoke is no longer observable during the human checklist; rerun the smoke and investigate the native process exit or lost window.
+- NATIVE_SMOKE_MANUAL_INPUT_UNAVAILABLE: PowerShell could not read a manual confirmation; rerun from an interactive console.
 
 For CSS problems inspect the actual WebView2 console and ensure the newly compiled executable was launched. Do not relax Tauri CSP or introduce remote CSS fallbacks.
 
