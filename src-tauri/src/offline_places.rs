@@ -77,19 +77,16 @@ fn fts_query(input: &str) -> Option<String> {
     if input.chars().count() > MAX_QUERY_CHARS {
         return None;
     }
-    // Reject rather than silently discard a sixth term: otherwise the UI can
-    // present matches that do not satisfy the user's complete search query.
-    // Read at most MAX_TOKENS + 1 terms even for punctuation-heavy input.
+    // Treat punctuation and underscores as separators, as in FTS5 unicode61.
+    // Ignore single-character fragments (e.g. L in L'Aquila), which otherwise
+    // force expensive one-letter prefix posting-list scans.
     let words: Vec<&str> = input
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .filter(|word| !word.is_empty())
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| word.chars().count() >= 2)
         .take(MAX_TOKENS + 1)
         .collect();
-    // One-letter prefixes over two million localities can produce very large posting lists.
-    if words.is_empty()
-        || words.len() > MAX_TOKENS
-        || input.chars().filter(|c| c.is_alphanumeric()).count() < 2
-    {
+    // Reject rather than silently discard any sixth searchable term.
+    if words.is_empty() || words.len() > MAX_TOKENS {
         return None;
     }
     Some(words.into_iter().map(|word| format!("\"{}\"*", word)).collect::<Vec<_>>().join(" "))
@@ -205,7 +202,7 @@ mod tests {
         assert!(fts_query(" ").is_none());
         assert!(fts_query("x").is_none());
         assert!(fts_query(&"x".repeat(81)).is_none());
-        assert_eq!(fts_query("a\" OR 1=1"), Some("\"a\"* \"OR\"* \"1\"* \"1\"*".into()));
+        assert_eq!(fts_query("a\" OR 1=1"), Some("\"OR\"*".into()));
         assert_eq!(
             fts_query("one two three four five"),
             Some("\"one\"* \"two\"* \"three\"* \"four\"* \"five\"*".into())
@@ -213,6 +210,14 @@ mod tests {
         assert!(fts_query("one two three four five six").is_none());
         assert!(fts_query("one/two/three/four/five/six").is_none());
         assert!(fts_query("a b c d e f").is_none());
+        assert!(fts_query("a b").is_none());
+        assert!(fts_query("L'").is_none());
+        assert_eq!(fts_query("L'Aquila"), Some("\"Aquila\"*".into()));
+        assert_eq!(fts_query("Côte d'Azur"), Some("\"Côte\"* \"Azur\"*".into()));
+        assert_eq!(fts_query("Rio_de_Janeiro"), Some("\"Rio\"* \"de\"* \"Janeiro\"*".into()));
+        assert_eq!(fts_query("a San José"), Some("\"San\"* \"José\"*".into()));
+        assert_eq!(fts_query("a one two three four five"), Some("\"one\"* \"two\"* \"three\"* \"four\"* \"five\"*".into()));
+        assert!(fts_query("a one two three four five six").is_none());
     }
 
     #[test]
