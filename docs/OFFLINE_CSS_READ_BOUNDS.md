@@ -105,24 +105,30 @@ remain valid. In this prototype, there is deliberately **no global CSS
 resource allowlist**: real local images/fonts require separate asset/rights
 review and a documented change to the policy.
 
-**Combined focused integration verification, 2026-11-14:**
+**Combined focused integration verification, updated 2026-11-14:**
 `node --test tests/css-bundle-combined.test.mjs tests/verify-bounded-ui-text.test.mjs tests/verify-css-resource-functions.test.mjs`
-ran with Node.js **v22.16.0** on an exact-source local mirror: **36 passed,
-0 failed, 0 skipped** (30 prior cases + 6 new cross-gate regressions).
+ran with Node.js **v22.16.0** on an exact-source local mirror: **38 passed,
+0 failed, 0 skipped** (30 original cases + 8 cross-gate regressions).
 The local copies of all five existing source/test modules were checked
 with `git hash-object` and matched GitHub blob hashes; the new
 `tests/css-bundle-combined.test.mjs` also matched the committed GitHub
-blob `cd919408232e8b76f72480a70d3e841bc32b24a2`.
+blob `b15f5c4661ba26dfeab0baf65e464ba3dd29100c`.
 The integrated inspector blob tested was
-`2155a2282329dcc870c58ff327b8c1f1de5aa067`.
+`f480c81c6018893115905ccfc6c1e735bf8a2adf`.
 
 The new tests cover harmless URL-like text, escaped resource function
 identifiers, `@import` precedence, invalid UTF-8 and forbidden control-byte
-precedence, and a resource function following a 64 KiB read boundary.
+precedence, a resource function following a 64 KiB read boundary,
+and safe redacted errors for missing/symlinked stylesheet files.
 This is the **entire current 3-file focused combined suite**, not the
 repository-wide `npm test` or a real Angular/Tauri build. An earlier
 independent V8 source harness also passed 21/21 scanner probes and
 8/8 wiring checks, superseded by the real Node integration tests.
+
+The additional `lstatSync` guard now catches filesystem exceptions and
+reports a stable, path-free error instead of printing an OS-specific
+exception that may reveal the local checkout path. Existing missing-file
+wording is preserved for compatibility with offline-bundle tests.
 
 The alternative PR #154 proposes permitting certain local `url()`
 references. Do not merge both policies blindly: the stricter no-resource
