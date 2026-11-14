@@ -20,6 +20,7 @@ import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
+import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -38,6 +39,8 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
   styleUrls:['./desktop-app.component.css']
 })
 export class DesktopAppComponent implements AfterViewInit, OnDestroy {
+  @ViewChild('shell', {static:true}) readonly shell!: ElementRef<HTMLElement>;
+  @ViewChild('workspace', {static:true}) readonly workspace!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
 
@@ -73,9 +76,26 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ready = false;
   status: MessageKey = 'chart.loading';
   runtimeStatus: MessageKey = 'runtime.checking';
+  styleStatus: DesktopLayoutStatus = 'unavailable';
   error = '';
 
   t(key:MessageKey): string { return translate(this.locale,key); }
+  get styleStatusKey(): MessageKey {
+    return this.styleStatus === 'active' ? 'styles.active' :
+      this.styleStatus === 'missing' ? 'styles.missing' :
+      this.styleStatus === 'hidden' ? 'styles.hidden' :
+      this.styleStatus === 'collapsed' ? 'styles.collapsed' : 'styles.unavailable';
+  }
+  checkStyles(): void {
+    if (this.destroyed) return;
+    this.styleStatus = probeDesktopLayout({
+      shell: this.shell.nativeElement,
+      workspace: this.workspace.nativeElement,
+      stage: this.stage.nativeElement,
+      canvas: this.canvas.nativeElement,
+    });
+    this.cd.markForCheck();
+  }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
@@ -108,6 +128,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     document.documentElement.lang = this.locale;
+    // Inspect applied WebView CSS after Angular's initial view check.
+    queueMicrotask(() => this.checkStyles());
     // Local clock is independent of renderer success, astronomy and account auth.
     this.deviceClock.start(() => {
       if (this.destroyed) return;
@@ -148,17 +170,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
 
   private fitStage(): void {
+    if (this.destroyed) return;
     const bounds = this.stage.nativeElement.getBoundingClientRect();
     const diameter = chartSide(bounds.width,bounds.height,24);
-    if(diameter < 32) return;
-    const surface = this.canvas.nativeElement;
-    const css = diameter + 'px';
-    if(surface.style.width === css && surface.style.height === css) return;
-    surface.style.width = css;
-    surface.style.height = css;
-    // Existing renderer owns its resize listener. A ResizeObserver is needed here
-    // because side panels can change the canvas size without a window resize.
-    if(this.initialized) window.dispatchEvent(new Event('resize'));
+    if (diameter >= 32) {
+      const surface = this.canvas.nativeElement;
+      const css = diameter + 'px';
+      if (surface.style.width !== css || surface.style.height !== css) {
+        surface.style.width = css;
+        surface.style.height = css;
+        // Only notify the chart renderer when CSS geometry actually changed.
+        if (this.initialized) window.dispatchEvent(new Event('resize'));
+      }
+    }
+    // Also invalidate a stale healthy diagnosis when the chart stage collapses.
+    if (this.initialized && !this.destroyed) this.checkStyles();
   }
 
   toggleNavigation(): void {
