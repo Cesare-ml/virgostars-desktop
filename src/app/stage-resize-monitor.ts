@@ -136,8 +136,12 @@ export class StageLayoutRefresh {
       });
       // requestAnimationFrame returns a numeric ID; refuse malformed drivers.
       if (!Number.isSafeInteger(handle) || handle < 0) {
-        this.generation++;
-        this.phase = 0;
+        // A reentrant panel request may already have replaced this ticket.
+        // A bad handle from the old request must not revoke newer work.
+        if (!this.disposed && ticket === this.generation && this.phase === phase) {
+          this.generation++;
+          this.phase = 0;
+        }
         return;
       }
       // An injected host can synchronously dispose, replace the request, or
@@ -149,9 +153,13 @@ export class StageLayoutRefresh {
       }
       this.handle = handle;
     } catch {
-      this.generation++;
-      this.phase = 0;
-      this.handle = null;
+      // A host may schedule a newer request synchronously, then throw from
+      // the abandoned registration. Preserve that newer request and handle.
+      if (!this.disposed && ticket === this.generation && this.phase === phase) {
+        this.generation++;
+        this.phase = 0;
+        this.handle = null;
+      }
     }
   }
 

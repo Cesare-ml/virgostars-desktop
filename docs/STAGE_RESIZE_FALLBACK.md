@@ -64,3 +64,28 @@ defensive browser/host lifecycle hardening, not evidence of a Windows crash.
 It does not change CSS calculation, native IPC, network, persistence or
 renderer internals. Run the focused Node tests and the full Windows GUI suite
 before merging.
+
+## Stale frame registration failures must not overwrite newer requests
+
+A frame driver can synchronously trigger a second panel refresh during the first
+`requestAnimationFrame` call and subsequently return an invalid handle or
+throw. Previously the older outer registration's failure handler reset the
+shared generation/phase unconditionally, invalidating the newer pending frame.
+A real Node regression test reproduces both failure variants, with both cases
+failing on the prior exact GitHub helper blob.
+
+The `arm()` failure branches now reset scheduler state **only when their own
+ticket and phase still own it**. A more recent nested request retains its
+valid handle and completes both deferred layout frames. Errors remain scoped,
+callbacks remain inert after teardown, and the public Angular API does not
+change.
+
+Locally validated in an isolated mirror using Node 22.16.0:
+`node --experimental-strip-types --test tests/stage-layout-refresh.test.mjs tests/stage-resize-monitor.test.mjs tests/stage-reentrant-driver.test.mjs`
+(**28/28 tests pass**). The module also passed standalone TypeScript strict
+no-emit checking. The local source and existing two test files matched their
+GitHub blob SHA-1 exactly; the original Angular component was represented by
+a small static source fixture for the existing one-file wiring contract test,
+with actual GitHub Angular wiring previously checked independently.
+Not a full checkout's `npm test`, Angular build, native Windows test, or
+WebView2/GPU acceptance.
