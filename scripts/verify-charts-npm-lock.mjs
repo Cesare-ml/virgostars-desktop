@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /** Offline, read-only provenance preflight for the sibling Charts npm ci. */
-import {lstatSync, readFileSync} from 'node:fs';
+import {lstatSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {assertNpmTarballIdentity} from './verify-npm-tarball.mjs';
+import {readBoundedMetadata} from './read-bounded-metadata.mjs';
 
 const DESKTOP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CHARTS = resolve(DESKTOP, '../astrological-charts');
@@ -53,23 +54,13 @@ export function auditChartsNpmLock(manifest, lock) {
 export function auditChartsCheckout(charts = CHARTS) {
   const manifestPath = join(charts, 'package.json');
   const lockPath = join(charts, 'package-lock.json');
-  // Fail before reading symlinks, special files or oversized checkout metadata.
-  // Enforce byte limits, not UTF-16 string lengths, and reject malformed UTF-8.
-  for (const [path, directory, limit] of [
-    [charts, true, 0], [manifestPath, false, 1000000],
-    [lockPath, false, 4000000],
-  ]) {
-    const stat = lstatSync(path);
-    requireThat(!stat.isSymbolicLink() &&
-      (directory ? stat.isDirectory() : stat.isFile()),
+  // Bound every metadata read by a verified regular file descriptor. Stat
+  // checks alone are vulnerable to a last-moment replacement before readFile.
+  const checkout = lstatSync(charts);
+  requireThat(checkout.isDirectory() && !checkout.isSymbolicLink(),
     'Charts lockfile path is not a regular checkout entry');
-    if (!directory) requireThat(stat.size < limit,
-      'Charts npm manifest or lockfile exceeds audit size limits');
-  }
-  const manifestBytes = readFileSync(manifestPath);
-  const lockBytes = readFileSync(lockPath);
-  requireThat(manifestBytes.length < 1000000 && lockBytes.length < 4000000,
-    'Charts npm manifest or lockfile exceeds audit size limits');
+  const manifestBytes = readBoundedMetadata(manifestPath, 1000000);
+  const lockBytes = readBoundedMetadata(lockPath, 4000000);
   const decode = bytes => new TextDecoder('utf-8', {fatal:true}).decode(bytes);
   return auditChartsNpmLock(JSON.parse(decode(manifestBytes)), JSON.parse(decode(lockBytes)));
 }
