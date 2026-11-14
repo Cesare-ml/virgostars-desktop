@@ -65,8 +65,12 @@ export function report(base, branches) {
   if (haveDrift && branches.some(b=>!Number.isSafeInteger(b.behindBy) ||
        b.behindBy<0 || !Number.isSafeInteger(b.aheadBy) || b.aheadBy<0))
     throw new Error('Incomplete Git revision counts');
+  const baseFilesChecked = branches.some(b=>b.baseSidePaths!==undefined);
+  if (baseFilesChecked && (!haveDrift || branches.some(b=>!Array.isArray(b.baseSidePaths))))
+    throw new Error('Incomplete base-side file comparison');
   const files=new Map();
   const stats=[];
+  const baseOverlaps=[];
   for (const {branch,paths} of branches) {
     const unique=new Set(paths);
     const drift = branches.find(b=>b.branch===branch);
@@ -77,14 +81,25 @@ export function report(base, branches) {
       if (!files.has(path)) files.set(path,[]);
       files.get(path).push(branch);
     }
+    if (baseFilesChecked) {
+      const otherSide = new Set(drift.baseSidePaths);
+      for (const path of otherSide) {
+        if (typeof path!=='string' || !path || path.includes('\0'))
+          throw new Error('Invalid base-side path');
+        if (unique.has(path)) baseOverlaps.push({branch,path});
+      }
+    }
   }
+  baseOverlaps.sort((a,b)=>a.branch<b.branch?-1:a.branch>b.branch?1:
+    a.path<b.path?-1:a.path>b.path?1:0);
   const overlaps=[...files].filter(([,owners])=>owners.length>1)
     .map(([path,owners])=>({path,branches:owners.sort()}))
     .sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
   const staleBranches=haveDrift ? stats.filter(s=>s.behindBy>0).map(s=>s.branch) : [];
   return {base,branches:stats,freshnessChecked:haveDrift,staleBranches,
+    baseFilesChecked,baseOverlapFiles:baseOverlaps.length,baseOverlaps,
     overlapFiles:overlaps.length,overlaps,
-    note:'Shared paths and stale refs require review; neither proves a merge conflict.'};
+    note:'Shared paths, base-side overlaps and stale refs require review; none proves a merge conflict.'};
 }
 
 export function parseArgs(args) {
@@ -103,20 +118,32 @@ export function parseArgs(args) {
   return {base,branches,json};
 }
 
+/**
+ * A three-dot diff selects the changes made on the right side since the
+ * merge base. Reverse it to inspect changes made on main since divergence.
+ */
+function changedPathsSinceMergeBase(left,right) {
+  const r=spawnSync('git',['diff','--no-ext-diff','--no-textconv','--name-status','-z',
+    '--find-renames=50%','--diff-filter=ACDMRT',`${left}...${right}`,'--'],
+    {encoding:null,maxBuffer:2*1024*1024,windowsHide:true});
+  if (r.error || r.signal || r.status!==0)
+    throw new Error(`Cannot compare ${left} with ${right}: missing refs or merge base`);
+  return parsePaths(r.stdout);
+}
+
 export function run(base,branches) {
   // Validate everything before launching Git, including direct API callers.
   parseArgs([`--base=${base}`,...branches]);
   return report(base, branches.map(branch=>{
-    const r=spawnSync('git',['diff','--no-ext-diff','--no-textconv','--name-status','-z','--find-renames=50%','--diff-filter=ACDMRT',
-      `${base}...${branch}`,'--'],{encoding:null,maxBuffer:2*1024*1024,windowsHide:true});
-    if (r.error || r.signal || r.status!==0)
-      throw new Error(`Cannot compare ${base} with ${branch}: missing refs or merge base`);
-    const paths=parsePaths(r.stdout);
+    const paths=changedPathsSinceMergeBase(base,branch);
     const drift=spawnSync('git',['rev-list','--left-right','--count',
       `${base}...${branch}`,'--'],{encoding:null,maxBuffer:4096,windowsHide:true});
     if (drift.error || drift.signal || drift.status!==0)
       throw new Error(`Cannot count revisions between ${base} and ${branch}`);
-    return {branch,paths,...parseCommitDrift(drift.stdout)};
+    const counts=parseCommitDrift(drift.stdout);
+    // Zero behind means no base-only commits, hence no base-side changed paths.
+    const baseSidePaths=counts.behindBy ? changedPathsSinceMergeBase(branch,base) : [];
+    return {branch,paths,...counts,baseSidePaths};
   }));
 }
 
@@ -128,6 +155,8 @@ if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
     else {
       console.log(`${result.overlapFiles} shared paths among ${branches.length} branches (base ${base})`);
       for (const row of result.overlaps) console.log(`${JSON.stringify(row.path)}: ${row.branches.join(', ')}`);
+      for (const row of result.baseOverlaps)
+        console.log(`BASE REVIEW: ${row.branch} and ${base} both changed ${JSON.stringify(row.path)}`);
       for (const row of result.branches)
         console.log(`${row.branch}: ${row.behindBy} behind, ${row.aheadBy} ahead of ${base}`);
       if (result.staleBranches.length)
