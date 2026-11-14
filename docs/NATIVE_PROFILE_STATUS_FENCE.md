@@ -11,7 +11,7 @@ keychain, server sync engine or Tauri IPC command.
   `ProfileStatusGenerationFence` with opaque `ProfileStatusTicket`.
 - `src-tauri/src/lib.rs`: compiles the internal module without registering
   a Tauri handler or modifying the existing two-command IPC allowlist.
-- `tests/profile-status-generation-source.test.mjs`: seven read-only Node
+- `tests/profile-status-generation-source.test.mjs`: source-only Node
   source-contract checks covering native IPC isolation, opaque instance-bound
   tickets, checked epoch advance, poison/overflow handling, and coverage of
   Rust regression scenarios.
@@ -20,17 +20,22 @@ The fence provides three lifecycle operations:
 
 1. `begin()` invalidates any older status read and returns a token for the
    newest generation, or `None` on poisoned/overflowed state.
-2. `complete(&ticket)` consumes **only** one reply for the current generation.
-   Copies and old replies return `false`. Ticket instances are distinguished by
-   `Arc::ptr_eq`; equal numeric generations from separate fences never match.
-3. `invalidate()` revokes pending replies synchronously on a future lock,
-   logout, profile switch or teardown.
+2. `publish_hint(&ticket, hint)` atomically **consumes the newest ticket
+   and saves a synthetic UI presentation hint under the same Mutex lock**.
+   Copies and old replies return `false`. Ticket instances are distinguished
+   by `Arc::ptr_eq`; equal numeric generations from separate fences never match.
+3. `visible_hint()` reads the current presentation-only value, or `Blocked`
+   on poisoned/invalidated state; a new `begin()` immediately resets it.
+4. `invalidate()` revokes pending replies and clears the visible hint
+   synchronously on a future lock, logout, profile switch or teardown.
 
-`is_current()` is a non-consuming freshness hint; it must **not** be used to
-authorize data reads through a check-then-use sequence. The fence uses a
-`Mutex` and no unsafe code. If a generation overflows it fails closed; if
-the state mutex is poisoned, new reads cannot begin and old replies are
-rejected. It contains no profile ID, actual account state, keys or privileges.
+The old check-only `is_current()` and separate `complete()` APIs were
+**removed**, so callers cannot perform a check-then-publish sequence that
+races a simultaneous logout. The only nonblocked value is explicitly called
+`SyntheticReady` and is not permission to read data. The fence uses a
+`Mutex` and no unsafe code. If the generation overflows, it fails closed;
+if the state mutex is poisoned, new reads cannot begin and hints stay blocked.
+It contains no profile ID, actual account state, keys or privileges.
 
 ## Critical security separation
 
@@ -50,9 +55,10 @@ independent keychain/SQLCipher and authorization gates are reviewed.
 ## Verification
 
 The actual GitHub committed new files match the locally checked Git object
-hashes: Rust module `e33b6bbde06e4b41e45fb46cf53896d1bf70a22a`,
+hashes as of the latest atomic-publication change: Rust module
+`8be7697980bc1f79fc82c20bc4378ff6dbdacdae`,
 native module registration `c0f00c5496d5b615f67a468f1279d32abbbb61c2`
-and source audit `f8eafb03020c4f2a5d8df61b312f2e3fda998582`.
+and source audit `8999c74b04270ad3a1d916b037c048607c6cc0bd`.
 
 **Executed in a local mirror, Node.js 22.16.0:**
 
@@ -176,6 +182,47 @@ The source-only mirror is not a full checkout. Still pending: real
 `rustc` execution, locked Cargo tests, full repository `npm test`,
 Angular/Tauri build, SQLCipher/OS keychain validation and Windows smoke.
 No GitHub Actions, production data, release or merge involved.
+
+## Atomic native status publication and lock race (2026-11-14)
+
+The initial prototype could confirm that a ticket was fresh and leave
+publication to a subsequent call. Between that check and any visible update,
+another thread could lock/logout and invalidate the profile. The revised
+pure-std Rust fence removes those separate methods and stores an internal
+`ProfileStatusUiHint` under the same lock that validates and consumes its
+generation. A new observation, local lock, logout or account change resets
+the hint to `Blocked`, including the poisoned-mutex recovery branch.
+
+All seven existing Rust test functions were updated to use the atomic API.
+The concurrency test additionally tries **32 synthetic publish-vs-logout
+thread interleavings** using a barrier; after both threads finish, the
+stored hint must always be `Blocked`. It also fixes an uncompiled
+`JoinHandle` use in the old test: joining threads now happens in
+`.map(|worker| worker.join())` before filtering boolean results,
+rather than trying to consume a borrowed handle inside `filter`.
+
+**Verification executed here:** from a local mirror of the exact committed
+files, `node --experimental-strip-types --test tests/*.test.mjs`
+passed **39/39 focused Node tests** (including four added source-contract
+checks), and TypeScript 5.8.3 strict compilation of the status reader
+passed. The exact locally tested Rust file and source audit have the same Git
+blob SHA-1s as the GitHub branch:
+`8be7697980bc1f79fc82c20bc4378ff6dbdacdae` and
+`8999c74b04270ad3a1d916b037c048607c6cc0bd`.
+
+**The seven Rust unit tests remain unexecuted.** Running the real gate
+`node scripts/test-profile-status-rust.mjs` returned
+`RUST_FENCE_COMPILER_UNAVAILABLE` (exit 1); this environment has no
+`rustc`/`cargo`. Static source checks and reasoning do not prove a
+successful native compilation. Full `cargo test --locked`, project npm
+tests, Angular/Tauri build, WebView2, keychain, SQLCipher, actual profiles,
+identity and authorization all require separate review and execution.
+
+`SyntheticReady` is **only an internal test/UI hint**. No native command
+was added, no actual profile was unlocked, and the UI still cannot authorize
+local database reads. Any later status adapter must enforce all real
+security boundaries independently, and the frontend must also suppress
+late UI callbacks after logout.
 
 ## Next gates
 
