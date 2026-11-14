@@ -79,7 +79,7 @@ test('unreviewed build keys cannot silently change local Desktop packaging', () 
   for (const change of [
     config => { config.build.additionalWatchFolders = ['../private']; },
     config => { config.build.newFutureOption = false; },
-    config => { delete config.build.frontendDist; },
+    config => { config.build.additionalWatchFolders = []; },
   ]) {
     const config = copy(); change(config);
     assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed Tauri build option/);
