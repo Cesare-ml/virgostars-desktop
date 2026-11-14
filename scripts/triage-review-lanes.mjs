@@ -49,6 +49,7 @@ export function planReviewLanes(audit) {
     throw new Error('Inconsistent branch freshness');
 
   const links = new Map([...branches.keys()].map(branch => [branch, new Set()]));
+  const touched = new Map([...branches.keys()].map(branch => [branch, new Set()]));
   const overlapPaths = new Set();
   for (const item of audit.overlaps) {
     if (!item || !validPath(item.path) || overlapPaths.has(item.path) ||
@@ -58,6 +59,7 @@ export function planReviewLanes(audit) {
       throw new Error('Invalid shared-path audit');
     overlapPaths.add(item.path);
     for (const left of item.branches) {
+      touched.get(left).add(item.path);
       for (const right of item.branches) {
         if (left !== right) links.get(left).add(right);
       }
@@ -73,8 +75,14 @@ export function planReviewLanes(audit) {
     if (basePairs.has(pair)) throw new Error('Duplicate base-side audit');
     basePairs.add(pair);
     baseCollisionBranches.add(item.branch);
+    touched.get(item.branch).add(item.path);
     if (branches.get(item.branch).behindBy === 0)
       throw new Error('Contradictory base-side audit');
+  }
+
+  for (const [branch, paths] of touched) {
+    if (paths.size > branches.get(branch).changedFiles)
+      throw new Error('Contradictory changed-file counts');
   }
 
   // Stable greedy grouping: high-degree branches first, then ASCII ref order.
