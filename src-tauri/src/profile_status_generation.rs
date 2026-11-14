@@ -9,11 +9,21 @@
 
 use std::sync::{Arc, Mutex};
 
+/// Presentation-only hint. `SyntheticReady` never grants profile access,
+/// decrypts a record, authenticates a user or enables cloud synchronization.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ProfileStatusUiHint {
+    #[default]
+    Blocked,
+    SyntheticReady,
+}
+
 #[derive(Default)]
 struct GenerationState {
     revision: u64,
     pending: bool,
     exhausted: bool,
+    visible: ProfileStatusUiHint,
 }
 
 /// An instance-bound, opaque status reply generation. Not serializable and not
@@ -38,6 +48,7 @@ impl ProfileStatusGenerationFence {
     pub(crate) fn begin(&self) -> Option<ProfileStatusTicket> {
         let mut state = self.state.lock().ok()?;
         state.pending = false;
+        state.visible = ProfileStatusUiHint::Blocked;
         if state.exhausted {
             return None;
         }
@@ -56,21 +67,14 @@ impl ProfileStatusGenerationFence {
         })
     }
 
-    /// Check a reply generation without consuming it. A true result is only a
-    /// freshness hint, NOT authorization. Never check-then-read private data.
-    pub(crate) fn is_current(&self, ticket: &ProfileStatusTicket) -> bool {
-        if !Arc::ptr_eq(&self.instance, &ticket.instance) {
-            return false;
-        }
-        match self.state.lock() {
-            Ok(state) => !state.exhausted && state.pending && state.revision == ticket.revision,
-            Err(_) => false,
-        }
-    }
-
-    /// Accept the newest status reply *once*. The returned bool means only
-    /// "fresh", not "valid", "unlocked", "synced" or "authenticated".
-    pub(crate) fn complete(&self, ticket: &ProfileStatusTicket) -> bool {
+    /// Atomically commit a status-only UI hint for the newest pending reply.
+    /// This consumes the ticket; no separate check-then-publish is exposed.
+    /// This is NOT an authorization decision, a native DB read, or an IPC reply.
+    pub(crate) fn publish_hint(
+        &self,
+        ticket: &ProfileStatusTicket,
+        hint: ProfileStatusUiHint,
+    ) -> bool {
         if !Arc::ptr_eq(&self.instance, &ticket.instance) {
             return false;
         }
@@ -82,7 +86,17 @@ impl ProfileStatusGenerationFence {
             return false;
         }
         state.pending = false;
+        state.visible = hint;
         true
+    }
+
+    /// Read the last committed UI hint. An invalidation always clears it,
+    /// and a poisoned mutex always maps to the blocked state.
+    pub(crate) fn visible_hint(&self) -> ProfileStatusUiHint {
+        match self.state.lock() {
+            Ok(state) if !state.exhausted => state.visible,
+            _ => ProfileStatusUiHint::Blocked,
+        }
     }
 
     /// Synchronous native-side invalidation on logout, account switch, local
@@ -91,6 +105,7 @@ impl ProfileStatusGenerationFence {
         match self.state.lock() {
             Ok(mut state) => {
                 state.pending = false;
+                state.visible = ProfileStatusUiHint::Blocked;
                 if !state.exhausted {
                     if let Some(next) = state.revision.checked_add(1) {
                         state.revision = next;
@@ -104,6 +119,7 @@ impl ProfileStatusGenerationFence {
                 // future status reply to be published from this fence.
                 let mut state = poisoned.into_inner();
                 state.pending = false;
+                state.visible = ProfileStatusUiHint::Blocked;
                 state.exhausted = true;
             }
         }
@@ -120,12 +136,14 @@ mod tests {
         let gate = ProfileStatusGenerationFence::default();
         let older = gate.begin().expect("first synthetic status");
         let newest = gate.begin().expect("second synthetic status");
-        assert!(!gate.is_current(&older));
-        assert!(!gate.complete(&older));
-        assert!(gate.is_current(&newest));
-        assert!(gate.complete(&newest));
-        assert!(!gate.complete(&newest));
-        assert!(!gate.is_current(&newest));
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+        assert!(!gate.publish_hint(&older, ProfileStatusUiHint::SyntheticReady));
+        assert!(gate.publish_hint(&newest, ProfileStatusUiHint::SyntheticReady));
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::SyntheticReady);
+        assert!(!gate.publish_hint(&newest, ProfileStatusUiHint::SyntheticReady));
+        let next = gate.begin().expect("subsequent synthetic status");
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+        assert!(gate.publish_hint(&next, ProfileStatusUiHint::Blocked));
     }
 
     #[test]
@@ -133,9 +151,14 @@ mod tests {
         let gate = ProfileStatusGenerationFence::default();
         let pending = gate.begin().expect("synthetic read");
         gate.invalidate();
-        assert!(!gate.is_current(&pending));
-        assert!(!gate.complete(&pending));
-        assert!(gate.complete(&gate.begin().expect("new synthetic read")));
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+        assert!(!gate.publish_hint(&pending, ProfileStatusUiHint::SyntheticReady));
+        let fresh = gate.begin().expect("new synthetic read");
+        assert!(gate.publish_hint(&fresh, ProfileStatusUiHint::SyntheticReady));
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::SyntheticReady);
+        gate.invalidate();
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+        assert!(!gate.publish_hint(&fresh, ProfileStatusUiHint::SyntheticReady));
     }
 
     #[test]
@@ -144,10 +167,14 @@ mod tests {
         let b = ProfileStatusGenerationFence::default();
         let a_token = a.begin().expect("a");
         let b_token = b.begin().expect("b");
-        assert!(!a.complete(&b_token));
-        assert!(!b.complete(&a_token));
-        assert!(a.complete(&a_token));
-        assert!(b.complete(&b_token));
+        assert!(!a.publish_hint(&b_token, ProfileStatusUiHint::SyntheticReady));
+        assert!(!b.publish_hint(&a_token, ProfileStatusUiHint::SyntheticReady));
+        assert_eq!(a.visible_hint(), ProfileStatusUiHint::Blocked);
+        assert_eq!(b.visible_hint(), ProfileStatusUiHint::Blocked);
+        assert!(a.publish_hint(&a_token, ProfileStatusUiHint::SyntheticReady));
+        assert!(b.publish_hint(&b_token, ProfileStatusUiHint::Blocked));
+        assert_eq!(a.visible_hint(), ProfileStatusUiHint::SyntheticReady);
+        assert_eq!(b.visible_hint(), ProfileStatusUiHint::Blocked);
     }
 
     #[test]
@@ -158,9 +185,10 @@ mod tests {
             tokens.push(gate.begin().expect("synthetic refresh"));
         }
         for token in &tokens[..tokens.len() - 1] {
-            assert!(!gate.complete(token));
+            assert!(!gate.publish_hint(token, ProfileStatusUiHint::SyntheticReady));
         }
-        assert!(gate.complete(tokens.last().expect("latest")));
+        assert!(gate.publish_hint(tokens.last().expect("latest"), ProfileStatusUiHint::SyntheticReady));
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::SyntheticReady);
     }
 
     #[test]
@@ -171,10 +199,40 @@ mod tests {
         for _ in 0..16 {
             let gate = Arc::clone(&gate);
             let ticket = ticket.clone();
-            threads.push(thread::spawn(move || gate.complete(&ticket)));
+            threads.push(thread::spawn(move ||
+                gate.publish_hint(&ticket, ProfileStatusUiHint::SyntheticReady)
+            ));
         }
         let successful = threads.into_iter().filter(|worker| worker.join().expect("thread")).count();
         assert_eq!(successful, 1);
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::SyntheticReady);
+        gate.invalidate();
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+
+        // Deterministic final-state invariant across both lock-first and
+        // publish-first interleavings: after invalidate returns, the native
+        // presentation hint cannot remain ready.
+        for _ in 0..32 {
+            let gate = Arc::new(ProfileStatusGenerationFence::default());
+            let ticket = gate.begin().expect("synthetic race");
+            let barrier = Arc::new(std::sync::Barrier::new(3));
+            let publish_gate = Arc::clone(&gate);
+            let publish_barrier = Arc::clone(&barrier);
+            let publisher = thread::spawn(move || {
+                publish_barrier.wait();
+                publish_gate.publish_hint(&ticket, ProfileStatusUiHint::SyntheticReady)
+            });
+            let lock_gate = Arc::clone(&gate);
+            let lock_barrier = Arc::clone(&barrier);
+            let locker = thread::spawn(move || {
+                lock_barrier.wait();
+                lock_gate.invalidate();
+            });
+            barrier.wait();
+            let _ = publisher.join().expect("publisher");
+            locker.join().expect("locker");
+            assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+        }
     }
 
     #[test]
@@ -185,8 +243,10 @@ mod tests {
             state.revision = u64::MAX;
         }
         assert!(gate.begin().is_none());
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
         gate.invalidate();
         assert!(gate.begin().is_none());
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
     }
 
     #[test]
@@ -199,10 +259,11 @@ mod tests {
             panic!("synthetic poison");
         });
         assert!(failed.join().is_err());
-        assert!(!gate.complete(&ticket));
-        assert!(!gate.is_current(&ticket));
+        assert!(!gate.publish_hint(&ticket, ProfileStatusUiHint::SyntheticReady));
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
         assert!(gate.begin().is_none());
         gate.invalidate();
         assert!(gate.begin().is_none());
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
     }
 }
