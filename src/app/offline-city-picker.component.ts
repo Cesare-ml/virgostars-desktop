@@ -3,6 +3,7 @@ import {ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy,
 import {offlinePlaceSearch} from './native/offline-places';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {OfflineCityPickerState, type CityPickerStatus} from './offline-city-picker-state';
+import {cityPickerKeyAction} from './offline-city-keyboard';
 import {translate, type Locale, type MessageKey} from './translations';
 
 const STATUS_KEYS: Record<CityPickerStatus, MessageKey> = {
@@ -43,18 +44,23 @@ export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   }
 
   onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      if (this.state.results.length) {
+    const action = cityPickerKeyAction(event.key, this.state.results.length, this.state.activeIndex);
+    switch (action) {
+      case 'next':
+      case 'previous':
         event.preventDefault();
-        this.state.move(event.key === 'ArrowDown' ? 1 : -1);
-      }
-      return;
-    }
-    if (event.key === 'Enter' && this.state.activeIndex >= 0) {
-      event.preventDefault();
-      this.choose(this.state.activeIndex);
-    } else if (event.key === 'Escape') {
-      this.state.dismiss();
+        this.state.move(action === 'next' ? 1 : -1);
+        break;
+      case 'choose':
+        event.preventDefault();
+        this.choose(this.state.activeIndex);
+        break;
+      case 'dismiss':
+        // With visible options, stop Escape from also clearing the typed query.
+        // Tab must NOT be prevented: focus should leave the combobox naturally.
+        if (event.key === 'Escape' && this.state.results.length > 0) event.preventDefault();
+        this.state.dismiss();
+        break;
     }
   }
 
