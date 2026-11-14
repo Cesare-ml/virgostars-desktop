@@ -41,16 +41,37 @@ export function parsePaths(bytes) {
   return [...paths];
 }
 
+/** Parse Git's exact ASCII "behind<TAB>ahead" rev-list counts; no coercion or rounding. */
+export function parseCommitDrift(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > 64)
+    throw new Error('Invalid Git revision counts');
+  const match = /^([0-9]+)\t([0-9]+)\r?\n?$/.exec(bytes.toString('utf8'));
+  if (!match) throw new Error('Invalid Git revision counts');
+  const behindBy = Number(match[1]);
+  const aheadBy = Number(match[2]);
+  if (!Number.isSafeInteger(behindBy) || !Number.isSafeInteger(aheadBy))
+    throw new Error('Invalid Git revision counts');
+  return {behindBy,aheadBy};
+}
+
 export function report(base, branches) {
   if (!safeRef(base) || branches.length<2 || branches.length>100 ||
-    branches.some(b=>!safeRef(b.branch) || !Array.isArray(b.paths)) ||
+    branches.some(b=>!b || !safeRef(b.branch) || !Array.isArray(b.paths)) ||
     new Set(branches.map(b=>b.branch)).size!==branches.length ||
     branches.some(b=>b.branch===base)) throw new Error('Invalid branch list');
+  // Pure callers may omit drift entirely; do not quietly claim an incomplete
+  // report is fresh when a single branch's counts are missing or malformed.
+  const haveDrift = branches.some(b=>b.behindBy!==undefined || b.aheadBy!==undefined);
+  if (haveDrift && branches.some(b=>!Number.isSafeInteger(b.behindBy) ||
+       b.behindBy<0 || !Number.isSafeInteger(b.aheadBy) || b.aheadBy<0))
+    throw new Error('Incomplete Git revision counts');
   const files=new Map();
   const stats=[];
   for (const {branch,paths} of branches) {
     const unique=new Set(paths);
-    stats.push({branch,changedFiles:unique.size});
+    const drift = branches.find(b=>b.branch===branch);
+    stats.push({branch,changedFiles:unique.size,
+      ...(haveDrift ? {behindBy:drift.behindBy,aheadBy:drift.aheadBy} : {})});
     for (const path of unique) {
       if (typeof path!=='string' || !path || path.includes('\0')) throw new Error('Invalid path');
       if (!files.has(path)) files.set(path,[]);
@@ -60,8 +81,10 @@ export function report(base, branches) {
   const overlaps=[...files].filter(([,owners])=>owners.length>1)
     .map(([path,owners])=>({path,branches:owners.sort()}))
     .sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
-  return {base,branches:stats,overlapFiles:overlaps.length,overlaps,
-    note:'Shared paths require review; they are not confirmed merge conflicts.'};
+  const staleBranches=haveDrift ? stats.filter(s=>s.behindBy>0).map(s=>s.branch) : [];
+  return {base,branches:stats,freshnessChecked:haveDrift,staleBranches,
+    overlapFiles:overlaps.length,overlaps,
+    note:'Shared paths and stale refs require review; neither proves a merge conflict.'};
 }
 
 export function parseArgs(args) {
@@ -88,7 +111,12 @@ export function run(base,branches) {
       `${base}...${branch}`,'--'],{encoding:null,maxBuffer:2*1024*1024,windowsHide:true});
     if (r.error || r.signal || r.status!==0)
       throw new Error(`Cannot compare ${base} with ${branch}: missing refs or merge base`);
-    return {branch,paths:parsePaths(r.stdout)};
+    const paths=parsePaths(r.stdout);
+    const drift=spawnSync('git',['rev-list','--left-right','--count',
+      `${base}...${branch}`,'--'],{encoding:null,maxBuffer:4096,windowsHide:true});
+    if (drift.error || drift.signal || drift.status!==0)
+      throw new Error(`Cannot count revisions between ${base} and ${branch}`);
+    return {branch,paths,...parseCommitDrift(drift.stdout)};
   }));
 }
 
@@ -100,6 +128,10 @@ if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
     else {
       console.log(`${result.overlapFiles} shared paths among ${branches.length} branches (base ${base})`);
       for (const row of result.overlaps) console.log(`${JSON.stringify(row.path)}: ${row.branches.join(', ')}`);
+      for (const row of result.branches)
+        console.log(`${row.branch}: ${row.behindBy} behind, ${row.aheadBy} ahead of ${base}`);
+      if (result.staleBranches.length)
+        console.log(`REVIEW: ${result.staleBranches.length} branch(es) behind ${base}; refresh before merging.`);
       console.log(result.note);
     }
   } catch (e) {
