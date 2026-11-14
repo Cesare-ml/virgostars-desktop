@@ -104,3 +104,24 @@ test('the checked-in Angular templates contain only known literal translation ke
   assert.equal(result.ok, true);
   assert.ok(result.referenceCount > 0);
 });
+
+
+test('rejects invisible format controls, malformed surrogates and line separators', () => {
+  for (const marker of ['\u200b', '\u200e', '\u200f', '\u061c', '\ufeff', '\u2028', '\ud800']) {
+    hasProblem(fixture(`"a":"Good${marker}", "b":"Ready"`), 'unsafe control characters');
+  }
+  assert.equal(auditTranslationSource(fixture('"a":"Città italiana", "b":"Pronto"')).ok, true);
+});
+
+test('rejects oversized or non-string dictionary and template inputs before parsing', () => {
+  assert.equal(auditTranslationSource(null).ok, false);
+  assert.equal(auditTranslationSource('x'.repeat(256 * 1024 + 1)).ok, false);
+  assert.equal(auditTranslationTemplates(fixture(), ['x'.repeat(256 * 1024 + 1), '']).ok, false);
+});
+
+test('templates cannot pass the gate solely through comments or dynamic translations', () => {
+  const onlyComments = auditTranslationTemplates(fixture(), [`<!-- {{t('a')}} -->`, `{{t('b')}}`]);
+  assert.equal(onlyComments.ok, false);
+  assert.match(onlyComments.problems[0], /Template 1: no literal translation references/);
+  assert.equal(auditTranslationTemplates(fixture(), [`{{t(key)}}`, `{{t('b')}}`]).ok, false);
+});
