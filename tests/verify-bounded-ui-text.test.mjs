@@ -119,3 +119,27 @@ test('invalid type and missing file fail without leaking filesystem paths', () =
     return true;
   });
 }));
+
+test('accepts exactly the HTML byte limit without reading beyond EOF', () => fixture(({html}) => {
+  writeFileSync(html, Buffer.alloc(MAX_BUNDLED_HTML_BYTES, 0x61));
+  const contents = readBoundedUiText(html, 'HTML');
+  assert.equal(contents.length, MAX_BUNDLED_HTML_BYTES);
+  assert.equal(contents.slice(0, 4), 'aaaa');
+}));
+
+test('rejects a NUL byte immediately after the 64 KiB read boundary', () => fixture(({html}) => {
+  writeFileSync(html, Buffer.concat([Buffer.alloc(64 * 1024, 0x61), Buffer.from([0])]));
+  assert.throws(() => readBoundedUiText(html, 'HTML'), /HTML contains NUL byte/);
+}));
+
+test('preserves UTF-8 code points split between read chunks', () => fixture(({html}) => {
+  writeFileSync(html, Buffer.concat([Buffer.alloc(64 * 1024 - 1, 0x61), Buffer.from('☼')]));
+  const contents = readBoundedUiText(html, 'HTML');
+  assert.equal(contents.length, 64 * 1024);
+  assert.equal(contents.slice(-2), 'a☼');
+}));
+
+test('rejects invalid UTF-8 split between read chunks', () => fixture(({html}) => {
+  writeFileSync(html, Buffer.concat([Buffer.alloc(64 * 1024 - 1, 0x61), Buffer.from([0xc3, 0x28])]));
+  assert.throws(() => readBoundedUiText(html, 'HTML'), /HTML invalid UTF-8/);
+}));
