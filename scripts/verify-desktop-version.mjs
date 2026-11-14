@@ -73,17 +73,31 @@ export function verifyDesktopVersions({
     catch { throw new Error('Cannot read ' + label + ' version manifest'); }
   };
   const npm = parseJson(load('package.json', 'npm'), 'npm package');
+  // Both npm lock v3 root identities are authoritative inputs to npm ci.
+  // The standalone Tauri entrypoints run this gate without the deeper npm audit.
+  const npmLockText = load('package-lock.json', 'npm lock');
+  if (typeof npmLockText !== 'string' || npmLockText.length > 4_000_000) {
+    throw new Error('Invalid npm lock size');
+  }
+  const npmLock = parseJson(npmLockText, 'npm lock');
+  const npmRoot = npmLock.packages?.[''];
+  if (npmLock.lockfileVersion !== 3 ||
+      !npmRoot || typeof npmRoot !== 'object' || Array.isArray(npmRoot) ||
+      typeof npm.name !== 'string' || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(npm.name) ||
+      npmLock.name !== npm.name || npmRoot.name !== npm.name) {
+    throw new Error('Invalid npm lock package identity');
+  }
   const tauri = parseJson(load('src-tauri/tauri.conf.json', 'Tauri'), 'Tauri');
   const cargo = cargoManifestPackage(load('src-tauri/Cargo.toml', 'Cargo'));
   const locked = lockedCargoVersion(load('src-tauri/Cargo.lock', 'Cargo.lock'), cargo.name);
-  const versions = [npm.version, tauri.version, cargo.version, locked];
+  const versions = [npm.version, npmLock.version, npmRoot.version, tauri.version, cargo.version, locked];
   if (!versions.every(v => typeof v === 'string' && v.length <= 80 && VERSION.test(v))) {
     throw new Error('Invalid Desktop version: expected canonical SemVer without build metadata');
   }
   if (!versions.every(v => v === versions[0])) {
-    throw new Error('Desktop version mismatch across npm, Tauri, Cargo.toml and Cargo.lock');
+    throw new Error('Desktop version mismatch across npm, npm lock, Tauri, Cargo.toml and Cargo.lock');
   }
-  return Object.freeze({version: versions[0], checkedManifests: 4});
+  return Object.freeze({version: versions[0], checkedManifests: 5});
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
