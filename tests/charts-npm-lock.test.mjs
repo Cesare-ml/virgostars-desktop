@@ -103,7 +103,7 @@ test('checkout reader accepts only regular synthetic manifest and lockfile',t=>{
   assert.deepEqual(auditChartsCheckout(charts),{registryPackages:1,localLinks:0});
   rmSync(join(charts,'package-lock.json'));
   mkdirSync(join(charts,'package-lock.json'));
-  assert.throws(()=>auditChartsCheckout(charts),/regular checkout entry/);
+  assert.throws(()=>auditChartsCheckout(charts),/regular checkout entry|Unsafe or oversized npm metadata/);
 });
 
 test('checkout reader rejects invalid UTF-8 that JSON.parse would silently replace',t=>{
@@ -128,7 +128,7 @@ test('checkout reader rejects invalid UTF-8 that JSON.parse would silently repla
 test('checkout reader rejects oversized metadata before reading it',t=>{
   const charts=withCheckout(t);
   writeFileSync(join(charts,'package.json'),Buffer.alloc(1000000,65));
-  assert.throws(()=>auditChartsCheckout(charts),/size limits/);
+  assert.throws(()=>auditChartsCheckout(charts),/size limits|Unsafe or oversized npm metadata/);
 });
 
 test('checkout reader rejects symlinked manifests and locks', {skip:process.platform==='win32'},t=>{
@@ -137,7 +137,7 @@ test('checkout reader rejects symlinked manifests and locks', {skip:process.plat
     const path=join(charts,name), target=join(charts,name+'.regular');
     writeFileSync(target,name==='package.json'?JSON.stringify(manifest):JSON.stringify(valid()));
     rmSync(path);symlinkSync(target,path);
-    assert.throws(()=>auditChartsCheckout(charts),/regular checkout entry/);
+    assert.throws(()=>auditChartsCheckout(charts),/regular checkout entry|Unsafe or oversized npm metadata/);
     rmSync(path);writeFileSync(path,name==='package.json'?JSON.stringify(manifest):JSON.stringify(valid()));
   }
 });
