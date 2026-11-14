@@ -23,7 +23,7 @@ function skipString(css, start) {
       i += css[i + 1] === '\r' && css[i + 2] === '\n' ? 3 : 2;
     } else if (css[i] === quote) {
       return i + 1;
-    } else if (css[i] === '\n' || css[i] === '\r') {
+    } else if (css[i] === '\n' || css[i] === '\r' || css[i] === '\f') {
       fail('Unterminated CSS string');
     } else {
       i++;
@@ -41,7 +41,7 @@ function readIdent(css, start) {
       i++;
     } else if (ch === '\\') {
       i++;
-      if (i >= css.length || css[i] === '\r' || css[i] === '\n') fail('Invalid CSS identifier escape');
+      if (i >= css.length || css[i] === '\r' || css[i] === '\n' || css[i] === '\f') fail('Invalid CSS identifier escape');
       if (hexChar(css[i])) {
         let hex = '';
         while (hex.length < 6 && hexChar(css[i])) hex += css[i++];
