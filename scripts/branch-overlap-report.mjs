@@ -11,6 +11,17 @@ export function safeRef(s) {
 }
 
 /**
+ * Conservative Windows-path grouping for review only: Unicode NFC plus
+ * lowercase catches common case-only/canonically equivalent names. This is
+ * not an exact emulation of NTFS or a promise of merge conflicts.
+ */
+export function windowsCaseKey(path) {
+  if (typeof path !== 'string' || !path || path.includes('\0'))
+    throw new Error('Invalid path');
+  return path.normalize('NFC').toLowerCase();
+}
+
+/**
  * Decode `git diff --name-status -z` without confusing path bytes with status
  * tokens. Renames (and any detected copies) include *both* source and target:
  * a concurrent edit to either path needs review before the branches are merged.
@@ -69,10 +80,13 @@ export function report(base, branches) {
   if (baseFilesChecked && (!haveDrift || branches.some(b=>!Array.isArray(b.baseSidePaths))))
     throw new Error('Incomplete base-side file comparison');
   const files=new Map();
+  const windowsCandidates=new Map();
+  const windowsBaseCaseVariants=[];
   const stats=[];
   const baseOverlaps=[];
   for (const {branch,paths} of branches) {
     const unique=new Set(paths);
+    const ownWindowsPaths=new Map();
     const drift = branches.find(b=>b.branch===branch);
     stats.push({branch,changedFiles:unique.size,
       ...(haveDrift ? {behindBy:drift.behindBy,aheadBy:drift.aheadBy} : {})});
@@ -80,6 +94,11 @@ export function report(base, branches) {
       if (typeof path!=='string' || !path || path.includes('\0')) throw new Error('Invalid path');
       if (!files.has(path)) files.set(path,[]);
       files.get(path).push(branch);
+      const key=windowsCaseKey(path);
+      if (!windowsCandidates.has(key)) windowsCandidates.set(key,[]);
+      windowsCandidates.get(key).push({branch,path});
+      if (!ownWindowsPaths.has(key)) ownWindowsPaths.set(key,[]);
+      ownWindowsPaths.get(key).push(path);
     }
     if (baseFilesChecked) {
       const otherSide = new Set(drift.baseSidePaths);
@@ -87,9 +106,33 @@ export function report(base, branches) {
         if (typeof path!=='string' || !path || path.includes('\0'))
           throw new Error('Invalid base-side path');
         if (unique.has(path)) baseOverlaps.push({branch,path});
+        // Exact shared names are already recorded in baseOverlaps. Report
+        // only different spellings that can alias on a Windows checkout.
+        for (const branchPath of ownWindowsPaths.get(windowsCaseKey(path)) ?? []) {
+          if (branchPath !== path)
+            windowsBaseCaseVariants.push({branch,branchPath,basePath:path});
+        }
       }
     }
   }
+  const windowsCaseVariants=[];
+  for (const entries of windowsCandidates.values()) {
+    for (let i=0;i<entries.length;i++) {
+      for (let j=i+1;j<entries.length;j++) {
+        if (entries[i].branch===entries[j].branch || entries[i].path===entries[j].path) continue;
+        const [a,b]=entries[i].branch<entries[j].branch
+          ? [entries[i],entries[j]] : [entries[j],entries[i]];
+        windowsCaseVariants.push({
+          branchA:a.branch,pathA:a.path,branchB:b.branch,pathB:b.path,
+        });
+      }
+    }
+  }
+  const compare=(a,b)=>a<b?-1:a>b?1:0;
+  windowsCaseVariants.sort((a,b)=>compare(a.branchA,b.branchA) ||
+    compare(a.branchB,b.branchB) || compare(a.pathA,b.pathA) || compare(a.pathB,b.pathB));
+  windowsBaseCaseVariants.sort((a,b)=>compare(a.branch,b.branch) ||
+    compare(a.branchPath,b.branchPath) || compare(a.basePath,b.basePath));
   baseOverlaps.sort((a,b)=>a.branch<b.branch?-1:a.branch>b.branch?1:
     a.path<b.path?-1:a.path>b.path?1:0);
   const overlaps=[...files].filter(([,owners])=>owners.length>1)
@@ -99,7 +142,9 @@ export function report(base, branches) {
   return {base,branches:stats,freshnessChecked:haveDrift,staleBranches,
     baseFilesChecked,baseOverlapFiles:baseOverlaps.length,baseOverlaps,
     overlapFiles:overlaps.length,overlaps,
-    note:'Shared paths, base-side overlaps and stale refs require review; none proves a merge conflict.'};
+    windowsCaseVariantPairs:windowsCaseVariants.length,windowsCaseVariants,
+    windowsBaseCaseVariantPairs:windowsBaseCaseVariants.length,windowsBaseCaseVariants,
+    note:'Shared paths, possible Windows case aliases, base-side overlaps and stale refs require review; none proves a merge conflict.'};
 }
 
 export function parseArgs(args) {
@@ -157,6 +202,10 @@ if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
       for (const row of result.overlaps) console.log(`${JSON.stringify(row.path)}: ${row.branches.join(', ')}`);
       for (const row of result.baseOverlaps)
         console.log(`BASE REVIEW: ${row.branch} and ${base} both changed ${JSON.stringify(row.path)}`);
+      for (const row of result.windowsCaseVariants)
+        console.log(`WINDOWS CASE REVIEW: ${row.branchA}:${JSON.stringify(row.pathA)} / ${row.branchB}:${JSON.stringify(row.pathB)}`);
+      for (const row of result.windowsBaseCaseVariants)
+        console.log(`WINDOWS BASE CASE REVIEW: ${row.branch}:${JSON.stringify(row.branchPath)} / ${base}:${JSON.stringify(row.basePath)}`);
       for (const row of result.branches)
         console.log(`${row.branch}: ${row.behindBy} behind, ${row.aheadBy} ahead of ${base}`);
       if (result.staleBranches.length)
