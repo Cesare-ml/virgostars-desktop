@@ -95,3 +95,35 @@ Reconcile those changes deliberately before merging. In particular:
 
 No integration between these draft branches was executed here. These are
 coordination notes, not an approval to merge any of them.
+
+
+## HTML meta directive guard (2026-11-14, reviewable draft)
+
+The generated offline `index.html` must not contain `<meta http-equiv=...>`
+directives. In particular, a `refresh` directive could request navigation
+away from the packaged Angular page even while `<base href="/">` is correct.
+The build gate now scans complete `<meta>` tags, accounting for quoted
+`>` characters, **after masking closed HTML comments**. This detects
+case-insensitive and unquoted `http-equiv` attributes anywhere in the
+document. A future legitimate HTTP-equiv directive requires explicit review
+rather than silently expanding this strict build contract.
+
+The existing charset and viewport metadata remain permitted. The check is
+called by `verifyOfflineBundle()` in both synthetic and approved-private
+build modes. The gate validates a reviewed build artifact, **not general
+HTML**, and is not a replacement for Tauri CSP navigation restrictions.
+
+The focused behavioral verification evaluated the exact GitHub-committed
+validator in a standalone JavaScript harness and covered seven valid/invalid
+metadata scenarios. The full committed Node test runner, complete npm suite,
+Angular build and native Windows WebView2 navigation smoke are still required:
+
+```powershell
+node --test tests/document-base.test.mjs
+npm test
+npm run build:ui
+```
+
+No new dependency, native IPC, production account, network call, private
+asset, license change, GitHub Actions, source publication, release or merge
+to `main` is part of this draft.
