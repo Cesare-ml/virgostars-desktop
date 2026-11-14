@@ -29,7 +29,7 @@ test('all read-only gates run in strict order before launching the local binary'
     previous = next;
   }
   assert.match(source,/\$LASTEXITCODE -ne 0/);
-  assert.match(source,/& node \\$Path \\*> \\$null/);
+  assert.match(source,/& node \$Path \*> \$null/);
   assert.match(source,/throw \('NATIVE_SMOKE_PREFLIGHT_FAILED_' \+ \$Label\)/);
 });
 
