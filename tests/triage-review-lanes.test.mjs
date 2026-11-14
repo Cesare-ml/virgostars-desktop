@@ -165,6 +165,39 @@ test('partial and invalid newer audit fields fail closed without unsafe grouping
   }
 });
 
+test('unchecked collision categories stay unknown, not zero',()=>{
+  const legacy=planReviewLanes(fixture());
+  assert.equal(legacy.fileDirectoryCollisionCount,null);
+  assert.equal(legacy.windowsCaseCollisionCount,null);
+  assert.deepEqual(legacy.checks,{
+    exactPath:true,baseSide:true,localBranchFreshness:true,
+    fileDirectory:false,baseFileDirectory:false,
+    windowsCase:false,windowsBaseCase:false,
+  });
+  assert.match(legacy.note,/Unchecked Windows-case/i);
+  const fullyChecked=fixture();
+  fullyChecked.prefixOverlapFiles=0; fullyChecked.prefixOverlaps=[];
+  fullyChecked.basePrefixOverlapFiles=0; fullyChecked.basePrefixOverlaps=[];
+  fullyChecked.windowsCaseVariantPairs=0; fullyChecked.windowsCaseVariants=[];
+  fullyChecked.windowsBaseCaseVariantPairs=0; fullyChecked.windowsBaseCaseVariants=[];
+  const report=planReviewLanes(fullyChecked);
+  assert.equal(report.fileDirectoryCollisionCount,0);
+  assert.equal(report.windowsCaseCollisionCount,0);
+  assert.ok(Object.values(report.checks).every(Boolean));
+  assert.deepEqual(report.lanes,legacy.lanes,'zero-reported collisions preserve grouping');
+});
+
+test('unknown future reporter risk fields never silently become an all-clear',()=>{
+  const data=fixture();
+  data.newSecurityRiskPairs=1;
+  data.newSecurityRisks=[{branchA:'a',branchB:'d'}];
+  assert.throws(()=>planReviewLanes(data),/Unknown audit schema/);
+  const empty=fixture();
+  empty.newSecurityRiskPairs=0;
+  empty.newSecurityRisks=[];
+  assert.throws(()=>planReviewLanes(empty),/Unknown audit schema/);
+});
+
 test('CLI accepts only bounded complete JSON over standard input',()=>{
   const good=spawnSync(process.execPath,[script],{
     input:JSON.stringify(fixture()),encoding:'utf8'
