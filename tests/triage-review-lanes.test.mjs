@@ -87,7 +87,7 @@ test('CLI accepts only bounded complete JSON over standard input',()=>{
     assert.equal(bad.status,2);
     assert.equal(bad.stdout,'');
     assert.match(bad.stderr,/Invalid or incomplete/);
-    assert.ok(!bad.stderr.includes(input.slice(0,100)));
+    if (input.length) assert.ok(!bad.stderr.includes(input.slice(0,100)));
   }
   const flags=spawnSync(process.execPath,[script,'--auto-merge'],{
     input:JSON.stringify(fixture()),encoding:'utf8'
