@@ -69,6 +69,8 @@
         <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
         <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>
         <button type="button" class="toolbar-button fit-button" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
+        <button type="button" class="toolbar-button fit-button" *ngIf="canRetryChart"
+          [attr.aria-label]="t('chart.retry')" (click)="retryChart()">{{t('chart.retry')}}</button>
         <div class="toolbar-spacer"></div>
         <span class="status-message" role="status">{{t(status)}}</span>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
