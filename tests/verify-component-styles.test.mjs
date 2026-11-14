@@ -122,3 +122,36 @@ test('requires the desktop app shell grid as well as both inner layout grids',()
   assert.equal(hasDesktopComponentLayout(noShell),false);
   assert.equal(hasDesktopComponentLayout(COMPONENT_CSS),true);
 });
+
+
+test('blocks zero-width and zero-height desktop root layout overrides',()=>{
+  for(const collapse of [
+    '.chart-stage{height:0}',
+    '.chart-stage{max-width:0rem}',
+    '.workspace{width:0%}',
+    '.desktop-app{max-height:0px!important}',
+    '@media(max-width:760px){.workspace{height:0.00em}}',
+  ]) {
+    assert.equal(hasDesktopLayoutOverride(COMPONENT_CSS+collapse),true,collapse);
+    assert.equal(hasDesktopComponentLayout(COMPONENT_CSS+collapse),false,collapse);
+  }
+});
+
+test('keeps legitimate min-width/min-height zero and descendant-only rules',()=>{
+  for(const legitimate of [
+    '.workspace{min-width:0;min-height:0}',
+    '.chart-stage{min-height:0;max-width:100%}',
+    '.workspace .nav-label{width:0}',
+    '.chart-stage .fixture-label{height:0}',
+    '@media(max-width:760px){.workspace{display:grid;grid-template-columns:60px 1fr}}',
+  ]) {
+    assert.equal(hasDesktopLayoutOverride(COMPONENT_CSS+legitimate),false,legitimate);
+    assert.equal(hasDesktopComponentLayout(COMPONENT_CSS+legitimate),true,legitimate);
+  }
+});
+
+test('rejects a later compiled chunk that collapses chart geometry',()=>fixture(root=>{
+  writeFileSync(join(root,'main-ABC.js'),'const styles='+JSON.stringify(COMPONENT_CSS));
+  writeFileSync(join(root,'chunk-ZERO.js'),'const hidden=".chart-stage{height:0px}";');
+  assert.throws(()=>inspectDesktopComponentStyles(root),/layout overridden/);
+}));
