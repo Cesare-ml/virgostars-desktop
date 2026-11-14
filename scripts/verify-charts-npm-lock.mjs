@@ -53,15 +53,25 @@ export function auditChartsNpmLock(manifest, lock) {
 export function auditChartsCheckout(charts = CHARTS) {
   const manifestPath = join(charts, 'package.json');
   const lockPath = join(charts, 'package-lock.json');
-  // Do not follow symlinks when auditing another checkout's package metadata.
-  for (const path of [charts, manifestPath, lockPath]) {
-    requireThat(!lstatSync(path).isSymbolicLink(), 'Charts lockfile path may not be a symlink');
+  // Fail before reading symlinks, special files or oversized checkout metadata.
+  // Enforce byte limits, not UTF-16 string lengths, and reject malformed UTF-8.
+  for (const [path, directory, limit] of [
+    [charts, true, 0], [manifestPath, false, 1000000],
+    [lockPath, false, 4000000],
+  ]) {
+    const stat = lstatSync(path);
+    requireThat(!stat.isSymbolicLink() &&
+      (directory ? stat.isDirectory() : stat.isFile()),
+    'Charts lockfile path is not a regular checkout entry');
+    if (!directory) requireThat(stat.size < limit,
+      'Charts npm manifest or lockfile exceeds audit size limits');
   }
-  const manifestBytes = readFileSync(manifestPath, 'utf8');
-  const lockBytes = readFileSync(lockPath, 'utf8');
+  const manifestBytes = readFileSync(manifestPath);
+  const lockBytes = readFileSync(lockPath);
   requireThat(manifestBytes.length < 1000000 && lockBytes.length < 4000000,
     'Charts npm manifest or lockfile exceeds audit size limits');
-  return auditChartsNpmLock(JSON.parse(manifestBytes), JSON.parse(lockBytes));
+  const decode = bytes => new TextDecoder('utf-8', {fatal:true}).decode(bytes);
+  return auditChartsNpmLock(JSON.parse(decode(manifestBytes)), JSON.parse(decode(lockBytes)));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
