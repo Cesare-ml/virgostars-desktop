@@ -66,8 +66,15 @@ export function readBoundedUiText(path, kind) {
       if (n === 0) break;
       total += n;
       if (total > limit) reject(kind, 'exceeds byte limit');
-      // A generated HTML/CSS artifact must never contain binary NUL bytes.
-      if (scratch.subarray(0, n).includes(0)) reject(kind, 'contains NUL byte');
+      // Angular's generated HTML/CSS is text, not a binary payload.
+      // Preserve HTML/CSS ASCII whitespace (TAB, LF, FF, CR); fail closed
+      // on NUL, other C0 control bytes and DEL before UTF-8 decoding.
+      for (let i = 0; i < n; i++) {
+        const byte = scratch[i];
+        if ((byte < 0x20 && ![0x09, 0x0a, 0x0c, 0x0d].includes(byte)) || byte === 0x7f) {
+          reject(kind, byte === 0 ? 'contains NUL byte' : 'contains forbidden control byte');
+        }
+      }
       chunks.push(Buffer.from(scratch.subarray(0, n)));
     }
 
