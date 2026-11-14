@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const layoutProbe = readFileSync(new URL('../src/app/desktop-layout-probe.ts', import.meta.url), 'utf8');
 const template = readFileSync(new URL('../src/app/desktop-app.component.html', import.meta.url), 'utf8');
+const translations = readFileSync(new URL('../src/app/translations.ts', import.meta.url), 'utf8');
 
 const source = readFileSync(new URL('../scripts/smoke-windows-native.ps1', import.meta.url), 'utf8');
 
@@ -105,6 +106,10 @@ test('manual CSS checkpoint is connected to the live computed-layout probe', () 
   assert.match(layoutProbe,/export type DesktopLayoutStatus = 'active' \| 'missing' \| 'hidden' \| 'collapsed' \| 'unavailable'/);
   assert.match(template,/\{\{t\(styleStatusKey\)\}\}/);
   assert.match(template,/\(click\)="checkStyles\(\)"/);
+  assert.match(translations,/"styles\.active":"Griglia dell.interfaccia rilevata"/);
+  assert.match(translations,/"styles\.active":"Interface grid detected"/);
+  assert.match(translations,/"styles\.retry":"Ricontrolla stili"/);
+  assert.match(translations,/"styles\.retry":"Recheck styles"/);
   assert.match(source,/all eight visual observations confirmed/);
 });
 
