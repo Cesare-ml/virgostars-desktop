@@ -11,6 +11,11 @@ const CHARTS = resolve(DESKTOP, '../astrological-charts');
 const isRecord = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const requireThat = (ok, message) => { if (!ok) throw new Error(message); };
 const canonical = x => JSON.stringify(Object.entries(x ?? {}).sort(([a], [b]) => a.localeCompare(b)));
+const rootTables = ['dependencies', 'devDependencies', 'peerDependencies',
+  'optionalDependencies', 'engines'];
+const validRootTable = x => x === undefined ||
+  (isRecord(x) && Object.entries(x).every(([name, spec]) =>
+    name.length > 0 && typeof spec === 'string' && spec.trim().length > 0));
 
 function canonicalSha512(value) {
   if (typeof value !== 'string' || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(value)) return false;
@@ -27,9 +32,11 @@ export function auditChartsNpmLock(manifest, lock) {
     isRecord(lock.packages) && isRecord(lock.packages['']),
     'Invalid Charts npm lockfile root');
   const root = lock.packages[''];
+  requireThat(rootTables.every(key =>
+    validRootTable(manifest[key]) && validRootTable(root[key])),
+    'Invalid Charts npm root metadata table');
   requireThat(root.name === manifest.name && root.version === manifest.version &&
-    ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'engines']
-      .every(key => canonical(root[key]) === canonical(manifest[key])),
+    rootTables.every(key => canonical(root[key]) === canonical(manifest[key])),
     'Charts lockfile differs from its package.json');
   const packages = Object.entries(lock.packages).filter(([name]) => name !== '');
   requireThat(packages.length >= 1 && packages.length <= 15000,
