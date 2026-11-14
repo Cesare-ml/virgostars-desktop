@@ -42,3 +42,27 @@ Then verify on Windows WebView2 in `npm run tauri:dev`: opening Settings, clicki
 ## Merge coordination
 
 This is an **alternative combined integration candidate**, not an automatically approved merge. Review changes against related open PRs that touch `desktop-app.component.ts` (especially UI retry/clock accessibility PRs). Prefer merging **either** the two source PRs with a reviewed conflict resolution **or** this combined candidate, not all three unconditionally. Main and releases remain untouched until explicit maintainer approval.
+
+## Observer isolation and passive civil clocks (2026-11-14)
+
+This integration also reconciles the independent observer-safety proposal [#133](https://github.com/Cesare-ml/virgostars-desktop/pull/133) and Angular-accessibility proposal [#144](https://github.com/Cesare-ml/virgostars-desktop/pull/144), without replacing their separate review history:
+
+- `DeviceClock.emitChanged()` isolates errors from the UI observer after timestamp updates. A throwing callback cannot prevent interval registration, suppress invalid-time transitions or break future resume/ticks.
+- Angular ignores `onCitySelected`, `onCityEdited`, and `toggleLanguage` events after component destruction; no dead-view change detection or city updates are scheduled.
+- Both device and selected-city semantic `<time>` elements retain `clockInstantIso` and use `aria-live="off"`. They should not announce every second to assistive technology, but remain readable on demand.
+
+### Isolated verification
+
+The exact GitHub clock module was mirrored locally and verified by its Git blob SHA `1e5fb7b5e7cf54f4a3f0bfd3c66207a524934eaa`. The newly committed observer/lifecycle Node test blob is `48200e744fda86b85755a07af8e091cbb4ddf0e7`. On Node.js 22.16.0, **21/21** pure tests passed: 5 observer failure tests, 4 cache tests, 3 pause/start failure tests, 3 clock/runtime integration tests, and 6 runtime controller behavior tests (all in a synthetic local mirror). An isolated `tsc --noEmit --strict` check also passed for the clock, runtime controller and runtime protocol.
+
+The integration's Angular source-contract file now has **8 cases**, including the disposed-event/accessibility rules. **10/10 GitHub read-back structural checks passed**, but the Angular source-contract Node file itself was **not executed in the local test mirror**; no full `npm test`, Angular/Charts build, Rust/Tauri compilation or Windows WebView2/screen-reader smoke test was run.
+
+Run these checks from an authorized full checkout:
+
+```sh
+node --experimental-strip-types --test tests/device-clock-observer-lifecycle.test.mjs tests/device-clock.test.mjs tests/desktop-clock-runtime-source.test.mjs
+npm test
+npm run build:ui
+```
+
+Because #133, #144, #236, #238 and this PR overlap, review and merge **one reconciled set of overlapping changes**. Keep the originals open for provenance until maintainers choose the reviewed integration path. A clean GitHub merge check alone does not prove runtime/browser/Windows acceptance.
