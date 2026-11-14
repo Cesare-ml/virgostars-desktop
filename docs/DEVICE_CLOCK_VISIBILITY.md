@@ -38,3 +38,9 @@ A UI render/notification callback may throw while the clock samples a new wall t
 `tests/device-clock-observer-lifecycle.test.mjs` adds five pure Node regressions: throwing startup callback, invalid-time recovery, throwing callback during scheduler retry, disposal during first refresh, and hidden-window pause/resume with a throwing observer. **5/5 passed locally on Node 22.16.0**, along with the other **16/16** isolated clock/runtime checks when tested together. The published module and test Git blob SHAs match the executed local mirror. Full-checkout `npm test`, Angular build and Windows WebView2 verification remain outstanding.
 
 No account/sync/astronomy capabilities, native permissions, network calls, storage or new dependencies are introduced. Do not merge the overlapping clock changes from #236 and #239 twice.
+
+## Late Angular events and passive time semantics (2026-11-14)
+
+The visibility-aware Angular component now ignores late selected-city and locale events after `ngOnDestroy`; the `destroyed` flag is set before the timer and listener are disposed. Both civil `<time>` elements keep their real `datetime` value but use `aria-live="off"` to avoid one announcement per second in screen readers. These changes reconcile the independent Angular clock-accessibility draft #144.
+
+`tests/device-clock-wiring.test.mjs` was updated to check the **stable** `onClockChanged` callback and `DeviceClockTextCache`, rather than obsolete inline callback/`formatDeviceClock` expressions. **3/3** contract tests passed in a JavaScript V8 source-test harness using the exact GitHub source files. Together with the clock and runtime pure tests, this still requires full-checkout Node, Angular, Windows WebView2 and assistive-technology acceptance.
