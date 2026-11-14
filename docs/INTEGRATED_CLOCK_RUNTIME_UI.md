@@ -20,14 +20,14 @@ All capabilities remain synthetic. No account login, cloud sync, new native IPC,
 2. Closing the view while timer and IPC callbacks are still outstanding.
 3. Failed native probe recovery without interrupting the live civil clock.
 
-**Isolated local test evidence (Node 22.16.0):** all **3/3** integration cases passed on a local mirror of the relevant source modules; **6/6** runtime-controller behavior cases passed separately. The complete repo and Angular/Tauri GUI were not available in that environment, so this is **not** a full-checkout build or native smoke test.
+**Isolated local test evidence (Node 22.16.0):** **12/12** executable pure tests passed (3 clock scheduler regressions, 3 combined integration cases, 6 runtime controller behavior cases). The 2 new clock regressions **failed against the prior code and passed after** guarding the scheduler error/null-handle paths against reentrant `pause()`. Source and test Git blob SHA-1 identities were checked against GitHub. Standalone TypeScript compilation of the runtime controller + protocol passed with `tsc 5.8.3`. The separate UI-source contract test requires additional Angular files absent from the isolated mirror and was **not executed**; neither were the complete checkout, Angular/Tauri builds or Windows GUI smoke.
 
 ## Reviewer acceptance sequence
 
 From a checkout of this integration branch, with the public sibling `astrological-charts` library built as documented in README:
 
 ```sh
-node --experimental-strip-types --test tests/desktop-clock-runtime-integration.test.mjs tests/device-clock-visibility.test.mjs tests/runtime-check-controller.test.mjs
+node --experimental-strip-types --test tests/desktop-clock-runtime-integration.test.mjs tests/device-clock-visibility.test.mjs tests/device-clock-paused-scheduler.test.mjs tests/runtime-check-controller.test.mjs
 npm test
 npm run build:ui
 ```
