@@ -19,7 +19,7 @@ import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
-import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
+import { DeviceClock, DeviceClockTextCache, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
@@ -57,6 +57,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
+  private readonly clockDisplay = new DeviceClockTextCache();
   private readonly onClockChanged = (): void => {
     if (this.destroyed) return;
     this.updateCityClock();
@@ -115,9 +116,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.t(this.theme === 'light' ? 'theme.current.light' : 'theme.current.dark'); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
-  get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
+  get clockText(): string { return this.clockDisplay.text(this.deviceClock.timestamp, this.locale); }
   get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
-  get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
+  get clockCompactText(): string { return this.clockDisplay.text(this.deviceClock.timestamp, this.locale, true); }
   private updateCityClock(): void {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
   }
