@@ -32,11 +32,23 @@ function assertSafeDownloadTarget(url: unknown, filename: unknown): asserts url 
       typeof filename !== 'string' || !SYNTHETIC_FILENAMES.has(filename)) {
     throw new Error('Invalid PNG download');
   }
-  const body = url.slice(PNG_PREFIX.length);
-  if (body.length < 64 || body.length > MAX_PNG_BASE64_LENGTH ||
-      body.length % 4 !== 0 || !BASE64_BODY.test(body) ||
-      /[\r\n\u2028\u2029]/u.test(body)) {
+  // Reject oversize inputs before copying a potentially huge encoded payload.
+  const encodedLength = url.length - PNG_PREFIX.length;
+  if (encodedLength < 64 || encodedLength > MAX_PNG_BASE64_LENGTH ||
+      encodedLength % 4 !== 0) {
     throw new Error('Invalid PNG download');
+  }
+  const body = url.slice(PNG_PREFIX.length);
+  if (!BASE64_BODY.test(body)) throw new Error('Invalid PNG download');
+  // Nonzero unused padding bits allow multiple strings for the same PNG bytes.
+  // Accept only canonical RFC 4648 Base64, without decoding or duplicating the PNG.
+  const padding = body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0;
+  if (padding !== 0) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const finalSextet = alphabet.indexOf(body.charAt(body.length - padding - 1));
+    if (finalSextet < 0 || (finalSextet & (padding === 2 ? 15 : 3)) !== 0) {
+      throw new Error('Invalid PNG download');
+    }
   }
 }
 
