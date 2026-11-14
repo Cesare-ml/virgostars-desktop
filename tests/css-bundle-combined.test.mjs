@@ -1,7 +1,7 @@
 /** Regression coverage of the combined bounded-file and offline-resource gates. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {inspectDesktopStyles} from '../scripts/verify-bundled-css.mjs';
@@ -65,5 +65,39 @@ test('combined verifier blocks active CSS resource function across 64 KiB chunk 
   fixture(BASE + '/*' + ' '.repeat(paddingLength) + '*/' +
     'p{background:url(https://example.invalid/x.png)}', dir => {
     assert.throws(() => inspectDesktopStyles(dir), /DESKTOP CSS RESOURCES:/);
+  });
+});
+
+
+test('combined verifier redacts linked CSS file path when file is missing', () => {
+  fixture(BASE, dir => {
+    rmSync(join(dir, 'styles-TEST.css'));
+    assert.throws(() => inspectDesktopStyles(dir), error => {
+      assert.match(error.message, /Local global stylesheet missing or not a regular file/);
+      assert.equal(error.message.includes(dir), false);
+      return true;
+    });
+  });
+});
+
+test('combined verifier refuses symlinked linked CSS without revealing paths', t => {
+  fixture(BASE, dir => {
+    const css = join(dir, 'styles-TEST.css');
+    const target = join(dir, 'synthetic.css');
+    writeFileSync(target, BASE);
+    rmSync(css);
+    try { symlinkSync(target, css); }
+    catch (error) {
+      if (['EPERM', 'EACCES', 'ENOSYS'].includes(error?.code)) {
+        t.skip('unprivileged symlinks unavailable');
+        return;
+      }
+      throw error;
+    }
+    assert.throws(() => inspectDesktopStyles(dir), error => {
+      assert.match(error.message, /Local global stylesheet missing or not a regular file/);
+      assert.equal(error.message.includes(dir), false);
+      return true;
+    });
   });
 });
