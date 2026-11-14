@@ -73,3 +73,19 @@ test('actual bundled CSS verification still rejects un-inlined CSS imports', () 
   withSyntheticStylesheet('@import "./missing.css";' + safe, dir =>
     assert.throws(() => inspectDesktopStyles(dir), /CSS @import must be inlined/));
 });
+
+
+test('rejects raw form feed in CSS strings and escaped identifiers', () => {
+  for (const css of [
+    'p{content:"prefix\furl(https://example.invalid/x.png)"}',
+    'p{background:u\\\frl("./local.png")}',
+  ]) {
+    assert.throws(() => assertNoCssResourceFunctions(css), /DESKTOP CSS RESOURCES:/);
+  }
+});
+
+test('keeps standard form feed whitespace and escaped CSS string continuation', () => {
+  assert.equal(assertNoCssResourceFunctions('p{\f color:red}'), true);
+  assert.equal(assertNoCssResourceFunctions('p{content:"prefix\\\fsuffix"}'), true);
+  assert.equal(assertNoCssResourceFunctions('p{content:"prefix\\\r\nsuffix"}'), true);
+});
