@@ -38,7 +38,7 @@ bounded candidate scanner.
 ## Tests
 
 ```powershell
-node --test tests/verify-bounded-ui-text.test.mjs
+node --test tests/verify-bounded-ui-text.test.mjs tests/verify-css-resource-functions.test.mjs tests/css-bundle-combined.test.mjs
 npm test
 npm run build:ui
 npm run verify:css
@@ -105,14 +105,24 @@ remain valid. In this prototype, there is deliberately **no global CSS
 resource allowlist**: real local images/fonts require separate asset/rights
 review and a documented change to the policy.
 
-Focused verification in an isolated V8 source harness: **21/21**
-scanner scenarios passed on the exact GitHub source, including the
-committed `src/styles.css` and inert/active resource examples.
-**8/8** GitHub source integration assertions passed for the CSS
-inspector's imports, ordering and bounded reads. These checks do not
-replace running the newly integrated 10-case Node test file. The existing
-20-case bounded-reader suite was run earlier before this integration; a
-**combined full Node suite has not been executed** in this turn.
+**Combined focused integration verification, 2026-11-14:**
+`node --test tests/css-bundle-combined.test.mjs tests/verify-bounded-ui-text.test.mjs tests/verify-css-resource-functions.test.mjs`
+ran with Node.js **v22.16.0** on an exact-source local mirror: **36 passed,
+0 failed, 0 skipped** (30 prior cases + 6 new cross-gate regressions).
+The local copies of all five existing source/test modules were checked
+with `git hash-object` and matched GitHub blob hashes; the new
+`tests/css-bundle-combined.test.mjs` also matched the committed GitHub
+blob `cd919408232e8b76f72480a70d3e841bc32b24a2`.
+The integrated inspector blob tested was
+`2155a2282329dcc870c58ff327b8c1f1de5aa067`.
+
+The new tests cover harmless URL-like text, escaped resource function
+identifiers, `@import` precedence, invalid UTF-8 and forbidden control-byte
+precedence, and a resource function following a 64 KiB read boundary.
+This is the **entire current 3-file focused combined suite**, not the
+repository-wide `npm test` or a real Angular/Tauri build. An earlier
+independent V8 source harness also passed 21/21 scanner probes and
+8/8 wiring checks, superseded by the real Node integration tests.
 
 The alternative PR #154 proposes permitting certain local `url()`
 references. Do not merge both policies blindly: the stricter no-resource
