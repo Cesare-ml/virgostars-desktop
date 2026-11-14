@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_BUNDLE_FILES = 8192;
+const MAX_BUNDLE_DIRECTORIES = 1024;
 const MAX_DEPTH = 16;
 const TIMESTAMP_SLOP_MS = 1000;
 
@@ -25,23 +26,35 @@ function verifiedStat(path, kind) {
   return stat;
 }
 
+/** Compare metadata before/after the bounded scan; no content or personal paths are logged. */
+function unchanged(before, after) {
+  return before.dev === after.dev && before.ino === after.ino &&
+    before.size === after.size && before.mtimeMs === after.mtimeMs &&
+    before.ctimeMs === after.ctimeMs;
+}
+
 /**
  * @param {string} binaryPath exact compiled .exe path
  * @param {string} bundlePath exact Angular browser output directory
  * @returns {{ files: number, status: 'plausibly_current' }}
  */
 export function verifyNativeBundleFreshness(binaryPath, bundlePath) {
-  const executable = verifiedStat(resolve(binaryPath), 'file');
+  const executablePath = resolve(binaryPath);
+  const executable = verifiedStat(executablePath, 'file');
   const root = resolve(bundlePath);
   verifiedStat(root, 'directory');
   const limit = executable.mtimeMs + TIMESTAMP_SLOP_MS;
   let files = 0;
+  let directories = 0;
+  const snapshots = [];
   let foundIndex = false;
   let foundScript = false;
   let foundStyle = false;
 
   function inspect(directory, depth) {
     if (depth > MAX_DEPTH) failure('DEPTH_LIMIT');
+    if (++directories > MAX_BUNDLE_DIRECTORIES) failure('DIRECTORY_LIMIT');
+    const directoryBefore = verifiedStat(directory, 'directory');
     let entries;
     try { entries = readdirSync(directory, { withFileTypes: true }); }
     catch { failure('UNREADABLE'); }
@@ -53,6 +66,7 @@ export function verifyNativeBundleFreshness(binaryPath, bundlePath) {
         inspect(path, depth + 1);
       } else if (entry.isFile()) {
         const stat = verifiedStat(path, 'file');
+        snapshots.push({ path, stat });
         files++;
         if (files > MAX_BUNDLE_FILES) failure('FILE_LIMIT');
         if (stat.mtimeMs > limit) failure('STALE_EXECUTABLE');
@@ -61,8 +75,22 @@ export function verifyNativeBundleFreshness(binaryPath, bundlePath) {
         if (depth === 0 && /\.css$/i.test(entry.name)) foundStyle = true;
       } else failure('UNSAFE_PATH');
     }
+    if (!unchanged(directoryBefore, verifiedStat(directory, 'directory'))) {
+      failure('CHANGED_DURING_SCAN');
+    }
   }
   inspect(root, 0);
+  // Catch replacement or rewriting of previously sampled files, and the
+  // executable changing after we established its timestamp. A post-check
+  // race remains possible until Windows actually launches the binary.
+  for (const snapshot of snapshots) {
+    if (!unchanged(snapshot.stat, verifiedStat(snapshot.path, 'file'))) {
+      failure('CHANGED_DURING_SCAN');
+    }
+  }
+  if (!unchanged(executable, verifiedStat(executablePath, 'file'))) {
+    failure('CHANGED_DURING_SCAN');
+  }
   if (!foundIndex || !foundScript || !foundStyle) failure('INCOMPLETE_BUNDLE');
   return Object.freeze({ files, status: 'plausibly_current' });
 }
