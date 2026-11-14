@@ -60,6 +60,8 @@ test('Rust unit tests cover concurrency, stale, overflow and poisoned mutex',()=
     'separate_profiles_cannot_exchange_equal_revision_tickets',
     'many_rapid_refreshes_do_not_resurrect_previous_status',
     'competing_completions_accept_exactly_one',
+    'retired_profile_stays_closed_after_10000_retry_attempts',
+    'profile_switch_uses_independent_new_fence',
     'generation_exhaustion_permanently_fails_closed',
     'poisoned_generation_cannot_publish_or_restart',
   ]);
@@ -84,6 +86,9 @@ test('begin, revoke and poisoned state all reset UI hint to blocked',()=>{
   assert.equal((revoke.match(/state\.visible = ProfileStatusUiHint::Blocked/g)||[]).length,2);
   assert.match(implementation,/pub\(crate\) enum ProfileStatusUiHint/);
   assert.match(implementation,/#\[default\]\s*Blocked/);
+  assert.match(implementation,/retired: bool/);
+  assert.match(implementation,/state\.exhausted \|\| state\.retired/);
+  assert.match(implementation,/state\.exhausted \|\| state\.retired \|\| !state\.pending/);
   assert.match(implementation,/Err\(_\) => return false/);
   assert.match(implementation,/_ => ProfileStatusUiHint::Blocked/);
 });
@@ -102,4 +107,24 @@ test('Rust concurrent joins consume each JoinHandle before filtering results',()
     .split('fn generation_exhaustion_permanently_fails_closed()')[0];
   assert.match(race,/\.into_iter\(\)\s*\.map\(\|worker\| worker\.join\(\)/s);
   assert.doesNotMatch(race,/\.filter\(\|worker\| worker\.join\(\)/s);
+});
+
+test('logout retires a native profile fence permanently, including poisoned state',()=>{
+  const implementation=source.split('#[cfg(test)]')[0];
+  const begin=implementation.split('pub(crate) fn begin(&self)')[1].split('pub(crate) fn publish_hint(')[0];
+  const logout=implementation.split('pub(crate) fn invalidate(&self)')[1];
+  assert.match(begin,/state\.exhausted \|\| state\.retired/);
+  assert.equal((logout.match(/state\.retired = true;/g)||[]).length,2);
+  assert.match(implementation,/if state\.exhausted \|\| state\.retired \|\| !state\.pending/);
+  assert.match(implementation,/Ok\(state\) if !state\.exhausted && !state\.retired/);
+});
+
+test('a new profile receives a new fence, never reuses the retired fence',()=>{
+  const switched=source.split('fn profile_switch_uses_independent_new_fence()')[1]
+    .split('fn generation_exhaustion_permanently_fails_closed()')[0];
+  assert.match(switched,/let new_profile = ProfileStatusGenerationFence::default\(\)/);
+  assert.match(switched,/old\.invalidate\(\)/);
+  assert.match(switched,/assert!\(old\.begin\(\)\.is_none\(\)\)/);
+  assert.match(switched,/assert!\(!new_profile\.publish_hint\(&old_ticket,/);
+  assert.match(switched,/assert!\(!old\.publish_hint\(&new_ticket,/);
 });
