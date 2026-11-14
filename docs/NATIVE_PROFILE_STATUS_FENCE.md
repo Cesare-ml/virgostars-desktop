@@ -132,6 +132,51 @@ process-runner tests are **not evidence** that Rust code compiles, and this
 gate does not enable local authentication, encrypted profile storage, or
 account access.
 
+## Rust test runner artifact validation (2026-11-14 follow-up)
+
+The standalone `scripts/test-profile-status-rust.mjs` runner now rejects a
+compiler that reports exit 0 **without writing a real executable**. Before
+attempting execution, it checks that the generated file exists inside its
+fresh temporary directory, is a regular file rather than a symbolic link,
+and has a nontrivial size (at least 128 bytes). Failures produce the
+generic diagnostic `RUST_FENCE_BINARY_INVALID`, with no source path or
+compiler output leaked to the user.
+
+It also requires **exactly one complete libtest summary** containing the
+expected number of passing tests and zero failed, ignored, measured and
+filtered-out tests. An exit code of 0 plus partial or missing output, or a
+summary reporting skipped tests, cannot count as complete verification.
+This is a test-runner consistency check, not a cryptographic validation of
+the compiler or binary; Rust/Cargo and OS-level trust remain separate.
+
+### Local verification
+
+Using exact source files that match the committed GitHub Git blob hashes:
+
+```sh
+node --test tests/profile-status-rust-runner.test.mjs
+node --experimental-strip-types --test tests/*.test.mjs
+node scripts/test-profile-status-rust.mjs
+```
+
+The test runner unit suite passed **10/10** (three new cases for missing,
+undersized or symlinked compiler output). The locally mirrored source corpus
+passed **35/35 Node tests**. The direct native command returned
+`RUST_FENCE_COMPILER_UNAVAILABLE` (exit 1), because no `rustc` compiler
+is installed in this authoring environment. Therefore **the seven Rust unit
+tests were not executed** and no Rust binary was produced.
+
+Verified GitHub source hashes match the locally executed versions:
+`scripts/test-profile-status-rust.mjs`:
+`6d9f95b9005cfae2869582b1d3e44d27796a67a0`.
+`tests/profile-status-rust-runner.test.mjs`:
+`c0bc9a22d0d6aeef0616c8fbeaffee258920717b`.
+
+The source-only mirror is not a full checkout. Still pending: real
+`rustc` execution, locked Cargo tests, full repository `npm test`,
+Angular/Tauri build, SQLCipher/OS keychain validation and Windows smoke.
+No GitHub Actions, production data, release or merge involved.
+
 ## Next gates
 
 1. Review native Rust semantics and run all Cargo unit tests in an authorized
