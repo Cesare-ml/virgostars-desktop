@@ -44,6 +44,26 @@ test('process observation distinguishes a native GUI window from a merely presen
   assert.match(source,/NATIVE_SMOKE_WINDOW_DETECTED/);
 });
 
+test('failed native window detection stops only its own launched process', () => {
+  // A startup failure must not leave an unresponsive experimental process
+  // running, but a successful GUI remains available for manual inspection.
+  const failedWindow = source.indexOf('if (-not $foundWindow) {');
+  const reportedSuccess = source.indexOf("Write-Host 'NATIVE_SMOKE_WINDOW_DETECTED");
+  assert.ok(failedWindow > source.indexOf('Start-Process -FilePath $exe'));
+  assert.ok(reportedSuccess > failedWindow);
+  const failureBlock = source.slice(failedWindow, reportedSuccess);
+  assert.match(failureBlock,/\$appProcess\.Refresh\(\)/);
+  assert.match(failureBlock,/if \(-not \$appProcess\.HasExited\)/);
+  assert.match(failureBlock,/\$appProcess\.Kill\(\)/);
+  assert.match(failureBlock,/\[void\]\$appProcess\.WaitForExit\(2000\)/);
+  assert.match(failureBlock,/throw \$windowFailure/);
+  assert.match(source,/\$windowFailure = 'NATIVE_SMOKE_NO_MAIN_WINDOW'/);
+  assert.match(source,/\$windowFailure = 'NATIVE_SMOKE_EARLY_EXIT'/);
+  assert.match(source,/\$windowFailure = 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'/);
+  assert.doesNotMatch(source,/Stop-Process|Get-Process|taskkill(?:\.exe)?/i,
+    'no unscoped process lookup or kill by name');
+});
+
 test('manual visual acceptance cannot be inferred from detecting only a window handle', () => {
   assert.match(source,/NOT YET VERIFIED: visible UI/);
   assert.match(source,/if \(-not \$Interactive\)/);
