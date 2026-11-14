@@ -21,6 +21,7 @@ import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
+import { StageLayoutRefresh, watchChartStageResize } from './stage-resize-monitor';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -49,7 +50,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly natal: TemaRender = makeFictionalTheme(0);
   private readonly transit: TemaRender = makeFictionalTheme(23);
   private readonly synastry: TemaRender = makeFictionalTheme(58);
-  private resizeObserver?: ResizeObserver;
+  private stopStageResize?: () => void;
+  private readonly panelLayoutRefresh = new StageLayoutRefresh(() => this.fitStage());
   private initialized = false;
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
@@ -144,8 +146,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
       this.initialized = true;
-      this.resizeObserver = new ResizeObserver(() => this.fitStage());
-      this.resizeObserver.observe(this.stage.nativeElement);
+      // A missing or broken ResizeObserver must not prevent first chart render.
+      this.stopStageResize = watchChartStageResize(this.stage.nativeElement, () => this.fitStage());
       void this.draw();
     } catch (error) {
       this.renderError(error);
@@ -165,7 +167,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.destroyed = true;
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
-    this.resizeObserver?.disconnect();
+    this.stopStageResize?.();
+    this.panelLayoutRefresh.dispose();
     this.renderer.ngOnDestroy();
   }
 
@@ -188,12 +191,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
 
   toggleNavigation(): void {
+    if (this.destroyed) return;
     this.navCollapsed = !this.navCollapsed;
     this.cd.markForCheck();
+    if (this.initialized) this.panelLayoutRefresh.request();
   }
   toggleInspector(): void {
+    if (this.destroyed) return;
     this.inspectorCollapsed = !this.inspectorCollapsed;
     this.cd.markForCheck();
+    if (this.initialized) this.panelLayoutRefresh.request();
   }
   toggleLanguage(): void {
     this.locale = this.locale === 'it' ? 'en' : 'it';

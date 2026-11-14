@@ -162,7 +162,9 @@ test('both localizations contain matching non-empty layout status keys', () => {
 
 test('existing ResizeObserver updates layout health even for collapsed or unchanged chart sizing', () => {
   const app = read('src/app/desktop-app.component.ts');
-  assert.match(app, /new ResizeObserver\(\(\) => this\.fitStage\(\)\)/);
+  assert.match(app, /watchChartStageResize\(this\.stage\.nativeElement, \(\) => this\.fitStage\(\)\)/);
+  assert.doesNotMatch(app, /new ResizeObserver\(/);
+  assert.match(app, /this\.panelLayoutRefresh\.request\(\)/);
   const fit = app.match(/private fitStage\(\): void \{([\s\S]*?)\n  \}/)?.[1];
   assert.ok(fit, 'fitStage should remain the central resize handler');
   assert.match(fit, /if \(this\.destroyed\) return;/);
