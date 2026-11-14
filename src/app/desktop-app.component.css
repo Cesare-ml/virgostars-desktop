@@ -143,3 +143,8 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
   .status-message { display:none; }
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+
+/* Read-only WebView2 computed-layout diagnostic; never conceal a failed check. */
+.layout-probe-controls { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:8px; text-align:right; }
+.layout-probe-controls strong { font-size:12px; font-weight:600; }
+.layout-warning { font-weight:650; text-decoration:underline; }

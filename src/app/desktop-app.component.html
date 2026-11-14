@@ -1,4 +1,4 @@
-<div class="desktop-app" [attr.data-theme]="theme">
+<div class="desktop-app" #shell [attr.data-theme]="theme">
   <header class="topbar">
     <div class="brand" aria-label="VirgoStars Desktop">
       <span class="brand-symbol" aria-hidden="true">✦</span>
@@ -16,7 +16,7 @@
     </div>
   </header>
 
-  <div class="workspace" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed">
+  <div class="workspace" #workspace [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed">
     <nav class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
         <span class="sidebar-label">{{t('navigation')}}</span>
@@ -73,7 +73,7 @@
         <span class="status-message" role="status">{{t(status)}}</span>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
       </div>
-      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span class="copyright-attribution"> · © 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</span></footer>
+      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span *ngIf="styleStatus !== 'active'" class="layout-warning" role="status"> · {{t(styleStatusKey)}}</span><span class="copyright-attribution"> · © 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</span></footer>
     </main>
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
@@ -114,6 +114,13 @@
               <strong>{{selectedCity.name}}</strong>
               <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')">{{cityClockText}}</time>
               <span *ngIf="cityClock.kind !== 'ready'" class="city-clock-unavailable">{{t('clock.city.unavailable')}}</span>
+            </div>
+          </div>
+          <div class="setting-line">
+            <span>{{t('styles.label')}}</span>
+            <div class="layout-probe-controls">
+              <strong role="status">{{t(styleStatusKey)}}</strong>
+              <button type="button" class="small-control" [attr.aria-label]="t('styles.retry')" (click)="checkStyles()">{{t('styles.retry')}}</button>
             </div>
           </div>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
