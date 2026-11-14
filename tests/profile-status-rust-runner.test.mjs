@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, mkdtempSync, readdirSync, rmSync} from 'node:fs';
+import {existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {testProfileStatusRust} from '../scripts/test-profile-status-rust.mjs';
@@ -13,8 +13,14 @@ function fakeCompiler({build={},testRun={}}={}) {
   const calls = [];
   function run(cmd,args,options) {
     calls.push({cmd,args,options});
-    if(calls.length===1) return {status:0, stdout:'', ...build};
-    return {status:0, stdout:'test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out', ...testRun};
+    if(calls.length===1) {
+      // A normal successful compiler must create a real output artifact.
+      if(build.status === undefined || build.status === 0) {
+        writeFileSync(args[4],Buffer.alloc(256));
+      }
+      return {status:0, stdout:'', ...build};
+    }
+    return {status:0, stdout:'test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s', ...testRun};
   }
   return {calls,run};
 }
@@ -56,7 +62,11 @@ test('Rust test execution failure returns a generic error and leaves no artifact
 
 test('zero or incomplete Rust test output is rejected even with exit code zero',()=>isolated(base=>{
   for(const stdout of ['', 'test result: ok. 0 passed; 0 failed;', 'test result: ok. 6 passed; 0 failed;',
-    'test result: ok. 7 passed; 1 failed;', 'test result: ok. 7 passed; 0 failed;\ntest result: ok. 7 passed; 0 failed;']) {
+    'test result: ok. 7 passed; 1 failed;', 'test result: ok. 7 passed; 0 failed;\ntest result: ok. 7 passed; 0 failed;',
+    'test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out',
+    'test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out',
+    'test result: ok. 7 passed; 0 failed; 0 ignored; 1 measured; 0 filtered out',
+    'test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\ntest result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out']) {
     const f=fakeCompiler({testRun:{stdout}});
     assert.throws(()=>testProfileStatusRust({tempBase:base,run:f.run}),/RUST_FENCE_TEST_COUNT_MISMATCH/);
   }
@@ -81,3 +91,39 @@ test('runner never injects remote install/download commands or user paths',()=>{
     assert.doesNotMatch(JSON.stringify([call.cmd,call.args]),/curl|npm|cargo|powershell|http[s]?:|sh -c/);
   }
 });
+
+test('compiler success without any output binary fails before test execution',()=>isolated(base=>{
+  let calls=0;
+  const run=()=>{calls++;return {status:0,stdout:'ok'};};
+  assert.throws(()=>testProfileStatusRust({run,tempBase:base}),/RUST_FENCE_BINARY_INVALID/);
+  assert.equal(calls,1);
+  assert.deepEqual(readdirSync(base),[]);
+}));
+
+test('compiler emitting an empty or very small binary fails closed',()=>isolated(base=>{
+  for(const bytes of [0,1,127]){
+    let calls=0;
+    const run=(_cmd,args)=>{
+      calls++;
+      writeFileSync(args[4],Buffer.alloc(bytes));
+      return {status:0,stdout:''};
+    };
+    assert.throws(()=>testProfileStatusRust({run,tempBase:base}),/RUST_FENCE_BINARY_INVALID/);
+    assert.equal(calls,1);
+  }
+  assert.deepEqual(readdirSync(base),[]);
+}));
+
+test('compiler output symlink is never executed as a Rust test binary',()=>isolated(base=>{
+  let calls=0;
+  const run=(_cmd,args)=>{
+    calls++;
+    const existing=join(base,'fake-file');
+    writeFileSync(existing,Buffer.alloc(256));
+    symlinkSync(existing,args[4]);
+    return {status:0,stdout:''};
+  };
+  assert.throws(()=>testProfileStatusRust({run,tempBase:base}),/RUST_FENCE_BINARY_INVALID/);
+  assert.equal(calls,1);
+  assert.deepEqual(readdirSync(base),['fake-file']);
+}));
