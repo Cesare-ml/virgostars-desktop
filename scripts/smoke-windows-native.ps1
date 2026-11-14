@@ -142,7 +142,7 @@ if (-not $Interactive) {
 $checks = @(
     @{ Key = 'styles'; Prompt = 'Sidebar, central chart and inspector visibly use the intended CSS grid?' },
     # Check the live WebView2 computed-style/geometry probe, not just packaged CSS.
-    @{ Key = 'layout'; Prompt = 'Settings > Layout diagnostics / Diagnostica layout > Recheck styles / Ricontrolla stili reports Interface grid detected / Griglia dell’interfaccia rilevata?' },
+    @{ Key = 'layout'; Prompt = ('Settings > Layout diagnostics / Diagnostica layout > Recheck styles / Ricontrolla stili reports Interface grid detected / Griglia dell{0}interfaccia rilevata?' -f [char]0x2019) },
     @{ Key = 'chart'; Prompt = 'Synthetic chart appears centered at normal size without WebGL errors?' },
     @{ Key = 'themes'; Prompt = 'Light and dark themes both render correctly?' },
     @{ Key = 'modes'; Prompt = 'Four synthetic chart modes and zoom/fit controls work?' },
@@ -154,7 +154,7 @@ $checks = @(
 $failures = @()
 foreach ($check in $checks) {
     $reply = Read-Host ($check.Prompt + ' [y/N]')
-    if ($reply -notin @('y', 'yes', 's', 'si', 'sì')) {
+    if ($reply -notin @('y', 'yes', 's', 'si', ('s' + [char]0x00EC))) {
         $failures += $check.Key
     }
 }
