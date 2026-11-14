@@ -25,6 +25,60 @@ Even `ready_online` is **not an authentication result**. The `canReadLocal` and 
 
 `canAttemptSync` is *not* confirmation of synchronization. It requires a reported online network hint, a valid session **and** `syncTransportReady=true`. The experimental Desktop currently has no such transport. Pending mutations are shown only from a native-unlocked profile; for locked/invalid states `knownPendingMutations=null`, which means **unknown**, not zero or synchronized. Even a known zero is not a server ACK.
 
+## Stale asynchronous status reads (UI-only lifecycle)
+
+`src/app/native/latest-profile-status.ts` adds `LatestProfileStatus<TDecision>`,
+an opaque-token **latest-only publication guard** for a future UI status request.
+It is deliberately independent of the network/native transport, does not
+schedule requests and does not grant access itself. Callers should combine it
+with the v1 validator:
+
+```ts
+import {assessOfflineProfileAccess} from './offline-profile-gate';
+import {LatestProfileStatus} from './latest-profile-status';
+
+const guard = new LatestProfileStatus(
+  assessOfflineProfileAccess,
+  assessOfflineProfileAccess(null), // always-blocked fallback
+);
+const ticket = guard.begin(); // immediately blocks a previous ready state
+// The caller may eventually await a *separately reviewed* native status source.
+// If that future status read resolves: guard.complete(ticket, rawStatus);
+// If it rejects: guard.complete(ticket, null) -> invalid_evidence.
+// On lock/logout/account change: guard.invalidate() *synchronously*.
+// On view destruction: guard.dispose().
+```
+
+`begin()` returns a unique symbol token, including across separate view
+instances. Only its **single newest** unconsumed token may publish a decision.
+Late, duplicate, wrong-view or post-logout replies are ignored. An assessor
+exception yields the supplied blocked decision without logging private details.
+Reentrant `begin()`/`invalidate()`/`dispose()` during assessment cannot
+publish an obsolete ready status. The return value of `complete()` only
+indicates that a completion was consumed, **not** that the evidence passed
+validation, authentication or encryption checks.
+
+**Security caveat:** This guard owns no I/O, cancellation, timeout, per-account
+authorization or concurrency limit for already-running native calls. It prevents
+obsolete **UI presentation** only. Future native/Rust storage code must
+independently close old profiles and revoke keys on account switches, even
+if the WebView receives an obsolete status callback. A new `begin()` must
+not be invoked to enable reads without real native authorization.
+
+### Executed focused checks (Node.js 22.16.0 / TypeScript 5.8.3)
+
+```sh
+node --experimental-strip-types --test tests/latest-profile-status.test.mjs
+tsc --noEmit --strict --target ES2022 --module ES2022 --moduleResolution bundler --lib es2022,dom src/app/native/latest-profile-status.ts
+```
+
+**10/10 Node tests passed**, including 10,000 rapid refreshes, two out-of-order
+promise completions, cross-instance token isolation, logout, reentrant invalidation,
+throwing assessments and disposal. Standalone TypeScript strict compilation passed.
+Exact committed source and test blob SHA-1s were confirmed against the local
+Node-tested copy. These checks **do not** validate Tauri, SQLCipher, Angular,
+native cancellation, session revocation or full npm suite.
+
 ## Threat and lifecycle boundaries
 
 - A disconnected computer cannot learn of a remote revocation that has not yet been delivered. The model denies access when revocation is **known**, but cannot promise immediate remote revocation against an offline device. The eventual product policy must explicitly decide how local unlock and optional offline grace periods behave.
