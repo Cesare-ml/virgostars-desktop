@@ -167,3 +167,31 @@ test('rejects non-NUL control byte at the start of the second read chunk', () =>
   writeFileSync(html, Buffer.concat([Buffer.alloc(64 * 1024, 0x61), Buffer.from([0x1b])]));
   assert.throws(() => readBoundedUiText(html, 'HTML'), /HTML contains forbidden control byte/);
 }));
+
+
+test('pre-open lstat and descriptor snapshots must agree beyond inode identity', () => {
+  const prior = {dev: 12, ino: 34, size: 240, mtimeMs: 900, ctimeMs: 901};
+  assert.equal(hasStableReadMetadata(prior, {...prior}, prior.size), true);
+  for (const opened of [
+    {...prior, size: 241},
+    {...prior, mtimeMs: 902},
+    {...prior, ctimeMs: 902},
+    {...prior, dev: 13},
+    {...prior, ino: 35},
+  ]) {
+    assert.equal(hasStableReadMetadata(prior, opened, prior.size), false);
+  }
+});
+
+test('pre-open snapshot comparison fails closed on unsafe or absent timestamps', () => {
+  const prior = {dev: 12, ino: 34, size: 240, mtimeMs: 900, ctimeMs: 901};
+  for (const opened of [
+    {...prior, ctimeMs: undefined},
+    {...prior, mtimeMs: NaN},
+    {...prior, ctimeMs: Infinity},
+    {...prior, size: Number.MAX_SAFE_INTEGER + 1},
+  ]) {
+    assert.equal(hasStableReadMetadata(prior, opened, prior.size), false);
+  }
+  assert.equal(hasStableReadMetadata(prior, {...prior}, prior.size - 1), false);
+});
