@@ -52,3 +52,38 @@ test('UTC is a valid explicit city timezone and both languages format', () => {
     assert.match(state.text, /16:14:15/);
   }
 });
+
+
+test('malformed city runtime values fail closed without throwing or device-zone fallback', () => {
+  const instant = Date.parse('2026-11-12T17:02:03.000Z');
+  for (const invalidCity of [undefined, false, 42, 'Europe/Rome', [], Object.create(null)]) {
+    assert.deepEqual(selectedCityClockAt(instant, invalidCity, 'it'), {kind: 'unavailable'});
+  }
+  assert.deepEqual(selectedCityClockAt(instant, null, 'it'), {kind: 'not_selected'});
+});
+
+test('city timezone access is snapshotted once; hostile accessors cannot crash the clock', () => {
+  const instant = Date.parse('2026-11-12T17:02:03.000Z');
+  let reads = 0;
+  const changing = {
+    get timeZone() {
+      reads++;
+      if (reads > 1) throw new Error('private accessor details');
+      return 'Europe/Rome';
+    },
+  };
+  const result = selectedCityClockAt(instant, changing, 'it');
+  assert.equal(reads, 1);
+  assert.equal(result.kind, 'ready');
+  assert.equal(result.timeZone, 'Europe/Rome');
+  assert.match(result.text, /18:02:03/);
+
+  const broken = {
+    get timeZone() { throw new Error('private location details must not escape'); },
+  };
+  assert.deepEqual(selectedCityClockAt(instant, broken, 'en'), {kind: 'unavailable'});
+
+  const revoked = Proxy.revocable({timeZone: 'Europe/Rome'}, {});
+  revoked.revoke();
+  assert.deepEqual(selectedCityClockAt(instant, revoked.proxy, 'en'), {kind: 'unavailable'});
+});
