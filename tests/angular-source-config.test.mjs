@@ -4,7 +4,7 @@ import { appendFileSync, closeSync, fstatSync, lstatSync, mkdtempSync, openSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  verifyAngularSourceConfig, verifyAngularSourceConfigCheckout,
+  parseUniqueConfigJson, verifyAngularSourceConfig, verifyAngularSourceConfigCheckout,
 } from '../scripts/verify-angular-source-config.mjs';
 
 const configPath = new URL('../angular.json', import.meta.url);
@@ -158,5 +158,41 @@ test('invalid UTF-8 fails closed without retaining an open descriptor', () => {
     assert.throws(() => verifyAngularSourceConfigCheckout(dir), /encoded data|valid for encoding/i);
     writeFileSync(join(dir, 'angular.json'), JSON.stringify(original));
     assert.deepEqual(verifyAngularSourceConfigCheckout(dir), { project: 'desktop', buildModes: 2 });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('duplicate JSON object keys fail closed, including escaped aliases', () => {
+  const fixtures = [
+    '{"projects":{},"projects":{}}',
+    '{"projects":{},"pro\\u006aects":{}}',
+    '{"a":{"key":0,"key":1}}',
+    '[{"x":1,"x":1}]',
+  ];
+  for (const source of fixtures) {
+    assert.throws(() => parseUniqueConfigJson(source), /duplicate JSON object key/, source);
+  }
+});
+
+test('duplicate-key scan respects string delimiters and independent object scopes', () => {
+  const source = JSON.stringify({a:{key:'a string with \"quoted\" : { braces }', next:1},b:{key:2}});
+  assert.deepEqual(parseUniqueConfigJson(source), JSON.parse(source));
+  const compact = JSON.stringify(original);
+  const formatted = JSON.stringify(original, null, 4) + '\n';
+  assert.deepEqual(verifyAngularSourceConfig(parseUniqueConfigJson(compact)),
+    { project: 'desktop', buildModes: 2 });
+  assert.deepEqual(verifyAngularSourceConfig(parseUniqueConfigJson(formatted)),
+    { project: 'desktop', buildModes: 2 });
+});
+
+test('checkout rejects duplicate keys even when final parsed config matches review', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'desktop-angular-duplicates-'));
+  try {
+    const file = join(dir, 'angular.json');
+    const source = JSON.stringify(original);
+    const duplicate = source.replace('"version":1', '"version":123,"version":1');
+    assert.notEqual(duplicate, source);
+    assert.deepEqual(JSON.parse(duplicate), JSON.parse(source));
+    writeFileSync(file, duplicate);
+    assert.throws(() => verifyAngularSourceConfigCheckout(dir), /duplicate JSON object key/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
