@@ -14,6 +14,24 @@ function reject(kind, reason) {
 }
 
 /**
+ * Check one descriptor's identity, bytes and change metadata after streaming.
+ * A restored mtime alone must not hide a same-length rewrite where ctime
+ * changes (some filesystems, especially Windows, offer weaker ctime signals).
+ * This is not an atomic/adversarial filesystem snapshot guarantee.
+ */
+export function hasStableReadMetadata(before, after, readBytes) {
+  if (before === null || typeof before !== 'object' ||
+      after === null || typeof after !== 'object' ||
+      !Number.isSafeInteger(readBytes) || readBytes < 0) return false;
+  const keys = ['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'];
+  return keys.every(key =>
+    typeof before[key] === 'number' && Number.isFinite(before[key]) &&
+    typeof after[key] === 'number' && Number.isFinite(after[key]) &&
+    before[key] === after[key]
+  ) && Number.isSafeInteger(before.size) && readBytes === before.size;
+}
+
+/**
  * Fixed purpose and limits. This never creates files or follows a final
  * component symlink; O_NOFOLLOW is applied where the platform supports it.
  */
@@ -54,8 +72,9 @@ export function readBoundedUiText(path, kind) {
     }
 
     const after = fstatSync(fd);
-    if (total !== before.size || after.size !== before.size ||
-        after.mtimeMs !== before.mtimeMs) reject(kind, 'changed during read');
+    if (!hasStableReadMetadata(before, after, total)) {
+      reject(kind, 'changed during read');
+    }
 
     try {
       return new TextDecoder('utf-8', {fatal: true}).decode(Buffer.concat(chunks, total));
