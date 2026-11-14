@@ -136,6 +136,10 @@ test('streams directory entries and closes the directory handle on errors', () =
 
 test('rejects more than the file budget in one directory', () => fixture(({exe,dist}) => {
   for (let i = 0; i < 8193; i++) writeFileSync(join(dist, 'generated-' + i + '.dat'), 'x');
+  // The fixture's 2026-11-01 binary predates these freshly created files:
+  // set its mtime later so this test isolates FILE_LIMIT, not STALE_EXECUTABLE.
+  const newerBinary = new Date(Date.now() + 60_000);
+  utimesSync(exe, newerBinary, newerBinary);
   assert.throws(() => verifyNativeBundleFreshness(exe, dist), /NATIVE_BUNDLE_FILE_LIMIT/);
 }));
 
