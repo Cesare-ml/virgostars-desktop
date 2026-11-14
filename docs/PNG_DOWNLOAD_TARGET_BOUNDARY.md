@@ -56,3 +56,13 @@ node --check tests/png-download-boundary.test.mjs
 ```
 
 The focused new case failed before the implementation, then passed along with all 19 existing tests. The integrated helper's verified blob SHA is `7343e287baa2a04bd97b0140b28c3f32c2e07962` and boundary test SHA is `e6f95745140f5e6c6a5426825bb1b21ea6cb04ac`. No complete Angular/Charts build, Cargo/Tauri test, or Windows 11 WebView2 export smoke was performed. Do not merge to main or release before those gates.
+
+## Composed export-path regression — 14 November 2026
+
+`tests/png-export-flow.test.mjs` now executes **both real TypeScript validators together** (`validatePngDataUrl`, `syntheticPngFilename`) and the final browser-adapter request (`requestSyntheticPngDownload`). It follows the Angular component's argument order with a dependency-injected synthetic DOM port. Unlike a Windows test, this can prove call ordering and rejection behavior but **cannot prove that WebView2 downloaded or saved an actual file**.
+
+The five new test groups cover all eight synthetic chart mode/theme combinations, remote/script/SVG URLs and path-like filenames, a forged PNG with a correct signature but bad IHDR CRC, preservation of the primary click error when anchor cleanup also throws, and the distinction between a click request and a saved-file receipt. They use a fictional 1x1 PNG; no real chart, personal data or proprietary assets are used.
+
+**Executed locally against Git-blob-identical source files:** Node.js v22.16.0 `node --experimental-strip-types --test tests/*.mjs` — **25/25 pass, zero failures/skips** (20 previous tests + 5 new composed-flow tests); `node --check tests/png-export-flow.test.mjs` — PASS; TypeScript v5.8.3 standalone strict `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/png-download.ts src/app/png-export-safety.ts src/app/workspace-state.ts` — PASS. The uploaded test blob SHA is `c6bf804a9ca2cf86e7e8a47119c24355edcf3b55`; the existing helper and upstream validator blobs were `7343e287baa2a04bd97b0140b28c3f32c2e07962` and `e2de774777b6e09717f5d0ac468532f7fc80d9be`, respectively.
+
+**Remaining acceptance:** complete checkout `npm test` (all tests), `npm run build:ui`, `npm run verify:bundle`, Cargo/Tauri test and native Windows 11 WebView2 offline PNG export (including blocked-download scenarios). No build/install/release, cloud sync or main merge is implied by focused tests.
