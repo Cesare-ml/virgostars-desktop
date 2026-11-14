@@ -42,6 +42,41 @@ npm run verify:places-override
 
 **Not executed:** complete repository `npm test`, Angular + sibling Charts build, `cargo test --locked`, Windows native Tauri build, WebView2 offline GUI, protected v2 catalog access/download, installer signing/release. Those remain separate blockers.
 
+## Independent pinned identity before a real Windows package
+
+The pack preparer now has a second trust gate beyond the authenticated
+archive import: when invoked with the **production** row count, it also
+requires **exactly** the release v2 database fingerprint already pinned in
+`fetch_catalog.py`:
+
+- 1,951,599 declared rows and v2 schema;
+- 196,808,704 exact database bytes and the locked SHA-256 digest;
+- 244 country lookup rows, with the appropriate integer manifest field.
+
+An internally consistent *replacement* SQLite file and manifest are not
+sufficient for production packaging. The preparer reuses the one file hash
+it already computes to avoid hashing this ~197 MB resource twice.
+
+The CLI entrypoint invoked by both Windows city build scripts now rejects
+`--expected-rows` overrides, rather than allowing a test-only row count
+to bypass the production fingerprint. Explicit tiny counts remain usable
+from Python's `prepare(root, expected=...)` API solely for synthetic unit
+tests (e.g. the three-row fictional integration fixture).
+
+To verify the new release-boundary tests from a checkout:
+
+```powershell
+py -3 -m unittest discover -s tests -p "test_places_pinned_release_contract.py" -v
+py -3 -m unittest discover -s tests -p "test_places*.py" -v
+py -3 -m unittest discover -s tests -p "test_prepare_tauri_bundle.py" -v
+```
+
+The existing cross-language smoke cannot prove the **actual private catalog**
+matches the pinned fingerprint; that still requires authorized local access
+and Windows native acceptance. The byte length/hash are intentionally frozen
+values: a future licensed catalog release requires reviewing and updating
+both importer and packer together, with explicit tests.
+
 ## Merge/release coordination
 
 Review consolidated changes once, reconcile outstanding original draft PRs #196 and #201, run the full checkout tests, confirm real pinned manifest against the authorized pack, and carry out Windows 11 x64 offline packaging smoke before any approval. No `main` merge, CI/GitHub Actions, deployment, protected dataset redistribution, source visibility or release is performed by this work.
