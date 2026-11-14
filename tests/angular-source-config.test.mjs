@@ -70,7 +70,6 @@ test('checkout rejects symlink and malformed or oversized configuration input', 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-
 test('both ordinary and private UI builds run source preflight before staging', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   for (const script of ['build:ui', 'build:ui:private']) {
