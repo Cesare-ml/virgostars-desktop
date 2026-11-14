@@ -149,7 +149,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   private fitStage(): void {
     const bounds = this.stage.nativeElement.getBoundingClientRect();
-    const diameter = chartSide(bounds.width,bounds.height,24);
+    // Keep the CSS diameter within an estimated 4096-pixel backing budget
+    // on high-DPI displays (WebView2 still owns the actual GPU allocation).
+    const diameter = chartSide(bounds.width, bounds.height, 24, window.devicePixelRatio);
     if(diameter < 32) return;
     const surface = this.canvas.nativeElement;
     const css = diameter + 'px';
