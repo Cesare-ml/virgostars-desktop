@@ -23,8 +23,21 @@ rename-vs-edit of the original name is surfaced. Per-branch `changedFiles`
 counts **paths reviewed**, which can count a rename twice. External diff
 helpers and text conversions are disabled. Reports contain reviewed-path
 counts, shared paths and the relevant branches. It supports 2–100 refs
-and bounds Git output to 2 MiB per branch; errors fail closed rather
+and bounds Git diff output to 2 MiB per branch; errors fail closed rather
 than returning an incomplete report.
+
+## Branch freshness (read-only)
+
+The same command also runs `git rev-list --left-right --count base...branch`
+for each local branch. The JSON output includes `behindBy` (commits found
+only in the base), `aheadBy` (commits found only in the branch),
+`freshnessChecked` and `staleBranches`. The plain-text report shows the
+numbers and warns when any branch is behind. Invalid, partial, negative or
+out-of-range Git counters **stop the report** instead of marking a branch
+fresh. Counters come from the locally available refs; the command does not
+fetch from GitHub, so run `git fetch` manually if you need current remote
+information. Neither a zero behind count nor a clean file-overlap report
+proves that a PR is safe to merge.
 
 ## Important limitations
 
@@ -36,7 +49,8 @@ than returning an incomplete report.
   relationship remains unknown. Copies that Git does not classify as copies
   likewise cannot be inferred. Missing refs and unrelated histories return
   an error.
-- This tool does not check branch freshness, runtime compatibility, licensing,
+- Local ahead/behind counts do **not** guarantee that local refs match remote
+  GitHub state. This tool does not check runtime compatibility, licensing,
   privacy, scientific correctness, or native Windows packaging.
 - Before merging, compare candidates with current `main`, reconcile overlaps,
   then run `npm test`, `npm run verify:ipc`, `npm run build:ui`, and the
@@ -57,3 +71,8 @@ tests verify that HEAD, the current branch and the working tree remain
 untouched. Focused Node.js 22.16.0 / Git 2.47.3 check on 2026-11-14:
 **4/4 passing test cases**; the complete Desktop checkout, Angular build and
 Windows WebView2 acceptance are still required before integration.
+
+A follow-up adds strict parsing of `rev-list` counts and a fifth synthetic
+scenario: both branches diverge from `main`, which advances independently.
+For local verification run the focused Node test command above; do not infer
+production readiness from these fixture checks.
