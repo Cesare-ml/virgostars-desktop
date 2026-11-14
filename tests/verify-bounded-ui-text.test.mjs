@@ -4,7 +4,7 @@ import {mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync} from 'nod
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {
-  MAX_BUNDLED_CSS_BYTES, MAX_BUNDLED_HTML_BYTES, readBoundedUiText,
+  MAX_BUNDLED_CSS_BYTES, MAX_BUNDLED_HTML_BYTES, hasStableReadMetadata, readBoundedUiText,
 } from '../scripts/read-bounded-ui-text.mjs';
 import {inspectDesktopStyles} from '../scripts/verify-bundled-css.mjs';
 
@@ -27,6 +27,28 @@ test('fixed HTML/CSS limits remain bounded and CSS larger than HTML is permitted
   assert.equal(MAX_BUNDLED_HTML_BYTES, 2 * 1024 * 1024);
   assert.equal(MAX_BUNDLED_CSS_BYTES, 32 * 1024 * 1024);
   assert.ok(MAX_BUNDLED_CSS_BYTES > MAX_BUNDLED_HTML_BYTES);
+});
+
+test('same-size rewrite with restored mtime fails when ctime changed', () => {
+  const before = {dev: 1, ino: 5, size: 128, mtimeMs: 1234, ctimeMs: 1250};
+  assert.equal(hasStableReadMetadata(before, {...before}, 128), true);
+  assert.equal(hasStableReadMetadata(before, {...before, ctimeMs: 1300}, 128), false);
+});
+
+test('changed descriptor identity, size, mtime and short reads all fail closed', () => {
+  const before = {dev: 1, ino: 5, size: 128, mtimeMs: 1234, ctimeMs: 1250};
+  for (const after of [
+    {...before, dev: 2},
+    {...before, ino: 6},
+    {...before, size: 129},
+    {...before, mtimeMs: 1235},
+    {...before, ctimeMs: NaN},
+  ]) {
+    assert.equal(hasStableReadMetadata(before, after, 128), false);
+  }
+  assert.equal(hasStableReadMetadata(before, {...before}, 127), false);
+  assert.equal(hasStableReadMetadata(before, {...before}, -1), false);
+  assert.equal(hasStableReadMetadata(before, null, 128), false);
 });
 
 test('valid UTF-8 HTML/CSS works through the actual offline stylesheet gate', () => fixture(({dir}) => {
