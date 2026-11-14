@@ -22,8 +22,10 @@ read sites. It enforces:
   sentinel byte beyond the limit to detect growth. Check the descriptor's
   identity, byte count, size, modification time and ctime again after reading.
   Checking ctime catches some same-length rewrites even if mtime is restored.
-- Reject NUL bytes while streaming, and reject malformed UTF-8 using a fatal
-  decoder. Return stable errors without OS exception strings or local absolute paths.
+- Reject NUL and other binary ASCII control bytes (`0x01`–`0x08`, `0x0B`,
+  `0x0E`–`0x1F`, `0x7F`) while reading, but preserve the standard TAB, LF, FF,
+  and CR whitespace bytes accepted by HTML/CSS. Reject malformed UTF-8 using
+  a fatal decoder. Return stable errors without revealing absolute local paths.
 
 Both the existing static HTML-link rules and CSS import/resource checks remain
 in control of what is safe to package. This is **not** a filesystem sandbox
@@ -44,14 +46,14 @@ npm run verify:bundle
 ```
 
 Focused synthetic test coverage includes valid HTML/CSS, multibyte UTF-8,
-oversized sparse HTML and CSS files, embedded NUL bytes, symlink rejection
-when supported,
-invalid UTF-8, unsupported helper types and redacted missing-file errors.
+oversized sparse HTML and CSS files, binary ASCII control bytes and NUL,
+allowed whitespace, symlink rejection where supported, invalid UTF-8,
+unsupported helper types and redacted missing-file errors.
 Two additional pure metadata-regression groups cover restored mtime with
 changed ctime, descriptor-identity drift, invalid stat metadata and short reads.
 
 **Executed in a minimal local source mirror (Node.js v22.16.0):**
-`node --test tests/verify-bounded-ui-text.test.mjs` — **16/16 PASS**,
+`node --test tests/verify-bounded-ui-text.test.mjs` — **20/20 PASS**,
 zero failures and zero skips. This is the complete committed focused test file,
 including actual integration through `inspectDesktopStyles()` and
 `assertNoCssImports()`; it is not a full repository `npm test` run.
@@ -61,15 +63,18 @@ The source mirror contained **four exact GitHub file blobs**, verified with
 
 | File | Git blob SHA |
 | --- | --- |
-| `scripts/read-bounded-ui-text.mjs` | `bb8f00cc15ccb2f72cac6a073fbf8596749f9d94` |
+| `scripts/read-bounded-ui-text.mjs` | `fe92c8eba0a7c38623267117e51f82e496b9ee01` |
 | `scripts/verify-bundled-css.mjs` | `81bf813490eaad54bbc788a250c434537ff96fbf` |
 | `scripts/verify-css-imports.mjs` | `116cf963bc2dcd54f023932ae033b412e5cb7b32` |
-| `tests/verify-bounded-ui-text.test.mjs` | `5516708905e2e1dd4e0bd6ab6b2d6bf9ff17ffc4` |
+| `tests/verify-bounded-ui-text.test.mjs` | `08a95d1c4345c63d350e9e8a182a6ab960d8c9bd` |
 
 Four new regression cases test an HTML payload exactly at the byte limit,
 a NUL in the second read chunk, a valid UTF-8 codepoint split across
 64 KiB chunks, and an invalid sequence split at the same boundary.
-An earlier independent 19/19 pure-function check covered metadata validation.
+Four additional regression cases exercise allowed TAB/LF/FF/CR whitespace,
+forbidden ESC in HTML, DEL/vertical-tab in CSS, and a forbidden byte exactly
+at the second 64 KiB chunk boundary. An earlier 19/19 pure-function check
+covered metadata validation.
 
 **Not executed:** repository-wide `npm test`, Angular output compilation,
 `npm run verify:css` on real generated artifacts, complete synthetic/private
