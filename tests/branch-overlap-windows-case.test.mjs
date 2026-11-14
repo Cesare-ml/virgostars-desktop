@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {report, windowsCaseKey} from '../scripts/branch-overlap-report.mjs';
+import {report, windowsCaseKey, MAX_WINDOWS_CASE_VARIANT_PAIRS} from '../scripts/branch-overlap-report.mjs';
 
 test('Windows case variants are review signals separate from exact file overlaps', () => {
   const data=report('main', [
@@ -77,4 +77,49 @@ test('invalid paths fail closed before case comparisons', () => {
       {branch:'b',paths:['valid.ts']},
     ]),/Invalid path/);
   }
+});
+
+function caseVariants(count,offset=0) {
+  return Array.from({length:count},(_,i)=>{
+    const mask=(i+offset).toString(2).padStart(7,'0');
+    return 'dir/'+[...'abcdefg'].map((letter,j)=>mask[j]==='1'?letter.toUpperCase():letter).join('')+'.ts';
+  });
+}
+
+test('normalization batches with many aliases in one branch stay linear in emitted cross-branch pairs',()=>{
+  const names=caseVariants(120);
+  const result=report('main',[
+    {branch:'feature',paths:names},
+    {branch:'unrelated',paths:['src/other.ts']},
+  ]);
+  assert.equal(result.branches[0].changedFiles,120);
+  assert.equal(result.windowsCaseVariantPairs,0);
+});
+
+test('bounded output accepts exactly the candidate cap and rejects any further aliases',()=>{
+  const accepted=report('main',[
+    {branch:'a',paths:caseVariants(32)},
+    {branch:'b',paths:caseVariants(32,32)},
+  ]);
+  assert.equal(accepted.windowsCaseVariantPairs,MAX_WINDOWS_CASE_VARIANT_PAIRS);
+  assert.equal(accepted.windowsCaseVariants.length,MAX_WINDOWS_CASE_VARIANT_PAIRS);
+  assert.throws(()=>report('main',[
+    {branch:'a',paths:caseVariants(33)},
+    {branch:'b',paths:caseVariants(32,33)},
+  ]),/Too many Windows case variants/);
+});
+
+test('combined base-side and cross-branch aliases share one overflow budget',()=>{
+  const baseSidePaths=caseVariants(32,64);
+  const data=report('main',[
+    {branch:'a',paths:caseVariants(32),baseSidePaths,behindBy:1,aheadBy:1},
+    {branch:'b',paths:caseVariants(32,32),baseSidePaths:[],behindBy:0,aheadBy:1},
+  ]);
+  assert.equal(data.windowsCaseVariantPairs,MAX_WINDOWS_CASE_VARIANT_PAIRS);
+  assert.equal(data.windowsBaseCaseVariantPairs,0);
+
+  assert.throws(()=>report('main',[
+    {branch:'a',paths:caseVariants(32),baseSidePaths:caseVariants(32,32),behindBy:1,aheadBy:1},
+    {branch:'b',paths:caseVariants(32,64),baseSidePaths:[],behindBy:0,aheadBy:1},
+  ]),/Too many Windows case variants/);
 });
