@@ -60,13 +60,15 @@ test('packaged windows may not redirect to a website or use a different frontend
   }
 });
 
-test('a second native window or changed main label requires explicit review', () => {
-  for (const change of [
-    config => { config.app.windows.push({...config.app.windows[0], label: 'secondary'}); },
-    config => { config.app.windows[0].label = 'other'; },
+test('unknown app-level Tauri options fail closed even when set to false', () => {
+  for (const [key, value] of [
+    ['withGlobalTauri', false],
+    ['trayIcon', {id:'synthetic-tray'}],
+    ['newFutureAppOption', false],
   ]) {
-    const config = copy(); change(config);
-    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed native window configuration/);
+    const config = copy();
+    config.app[key] = value;
+    assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed Tauri app option/, key);
   }
 });
 
