@@ -84,6 +84,18 @@ export function planReviewLanes(audit) {
   const baseCaseRows = optionalAuditRows(audit, 'windowsBaseCaseVariantPairs', 'windowsBaseCaseVariants');
 
   const links = new Map([...branches.keys()].map(branch => [branch, new Set()]));
+  // Aggregate reasons per branch pair without echoing potentially sensitive
+  // local filenames into a reviewer dashboard or shared scheduling report.
+  const reviewPairs = new Map();
+  const connect = (left,right,reason) => {
+    if (left === right) return;
+    links.get(left).add(right);
+    links.get(right).add(left);
+    const [a,b] = [left,right].sort(compare);
+    const key = a + '\0' + b;
+    if (!reviewPairs.has(key)) reviewPairs.set(key,{branches:[a,b],reasons:new Set()});
+    reviewPairs.get(key).reasons.add(reason);
+  };
   const touched = new Map([...branches.keys()].map(branch => [branch, new Set()]));
   const overlapPaths = new Set();
   for (const item of audit.overlaps) {
@@ -96,7 +108,7 @@ export function planReviewLanes(audit) {
     for (const left of item.branches) {
       touched.get(left).add(item.path);
       for (const right of item.branches) {
-        if (left !== right) links.get(left).add(right);
+        connect(left,right,'exact-path');
       }
     }
   }
@@ -137,8 +149,7 @@ export function planReviewLanes(audit) {
         touched.get(b).add(item.nestedPath);
         if (a !== b) {
           crossBranch = true;
-          links.get(a).add(b);
-          links.get(b).add(a);
+          connect(a,b,'file-directory');
         }
       }
     }
@@ -169,8 +180,7 @@ export function planReviewLanes(audit) {
       item.branchB + '\0' + item.pathB;
     if (uniqueCases.has(key)) throw new Error('Duplicate Windows-case collision');
     uniqueCases.add(key);
-    links.get(item.branchA).add(item.branchB);
-    links.get(item.branchB).add(item.branchA);
+    connect(item.branchA,item.branchB,'windows-case');
     touched.get(item.branchA).add(item.pathA);
     touched.get(item.branchB).add(item.pathB);
   }
@@ -219,6 +229,11 @@ export function planReviewLanes(audit) {
       windowsCase: caseRows !== null,
       windowsBaseCase: baseCaseRows !== null,
     },
+    reviewPairCount: reviewPairs.size,
+    reviewPairs: [...reviewPairs.values()]
+      .map(pair => ({branches:pair.branches,reasons:[...pair.reasons].sort(compare)}))
+      .sort((a,b) => compare(a.branches[0],b.branches[0]) ||
+        compare(a.branches[1],b.branches[1])),
     lanes: lanes.map(members => {
       members.sort(compare);
       return {
