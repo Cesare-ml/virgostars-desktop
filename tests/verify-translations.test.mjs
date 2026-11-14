@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import { auditTranslationSource } from '../scripts/verify-translations.mjs';
 
 const fixture = (it = '"a":"Ciao", "b":"Pronto"', en = '"a":"Hello", "b":"Ready"') =>
@@ -41,4 +42,24 @@ test('rejects parse errors and absent or duplicate dictionary declarations', () 
   hasProblem('export const STRINGS = {it: ;', 'Invalid TypeScript syntax');
   hasProblem('export const OTHER = {};', 'Expected exactly one STRINGS');
   hasProblem(fixture() + '\nconst STRINGS = {};', 'Expected exactly one STRINGS');
+});
+
+
+test('rejects unsafe translation identifiers without exposing their values in diagnostics', () => {
+  for (const key of ['__proto__', 'constructor', 'prototype', 'a b', 'a\\nb', 'a'.repeat(81), '.leading']) {
+    const source = fixture(`${JSON.stringify(key)}:"Ciao", "a":"Salve", "b":"Pronto"`);
+    const result = auditTranslationSource(source);
+    assert.equal(result.ok, false, key);
+    assert.ok(result.problems.some(problem => problem.includes('invalid translation key')));
+    assert.ok(!result.problems.some(problem => problem.includes(key)), 'do not echo rejected identifier');
+  }
+  assert.equal(auditTranslationSource(fixture('"city.demoNote":"Ciao"', '"city.demoNote":"Hello"')).ok, true);
+});
+
+test('the actual checked-in desktop dictionary passes the source audit', () => {
+  const actualSource = readFileSync(new URL('../src/app/translations.ts', import.meta.url), 'utf8');
+  const result = auditTranslationSource(actualSource);
+  assert.deepEqual(result.problems, []);
+  assert.equal(result.ok, true);
+  assert.ok(result.keyCount > 0, 'real dictionary must have at least one pair');
 });
