@@ -91,20 +91,20 @@ export function verifyTauriSecurityConfig(config) {
     config.productName === 'VirgoStars Desktop Lab' &&
     config.identifier === 'it.virgostars.desktop.rendererlab',
     'unreviewed Tauri root option or application identity');
-  assertSafe(hasExactOwnKeys(config.build, REVIEWED_BUILD_FIELDS),
-    'unreviewed Tauri build option');
-  assertSafe(hasExactOwnKeys(config.bundle, REVIEWED_BUNDLE_FIELDS) &&
-    Array.isArray(config.bundle.icon) &&
-    config.bundle.icon.length === REVIEWED_BUNDLE_ICONS.length &&
-    REVIEWED_BUNDLE_ICONS.every((icon, index) => config.bundle.icon[index] === icon),
-    'unreviewed Tauri bundle option or icon');
   assertSafe(config.build.frontendDist === '../dist/desktop/browser' &&
     !Object.hasOwn(config.build, 'beforeBuildCommand'),
     'packaged frontend path or build hook changed');
   assertSafe(config.build.devUrl === 'http://127.0.0.1:4200' &&
     !Object.hasOwn(config.build, 'beforeDevCommand'),
     'development frontend must remain on reviewed loopback origin');
+  assertSafe(hasExactOwnKeys(config.build, REVIEWED_BUILD_FIELDS),
+    'unreviewed Tauri build option');
   assertSafe(config.bundle.active === false, 'installer packaging requires separate review');
+  assertSafe(hasExactOwnKeys(config.bundle, REVIEWED_BUNDLE_FIELDS) &&
+    Array.isArray(config.bundle.icon) &&
+    config.bundle.icon.length === REVIEWED_BUNDLE_ICONS.length &&
+    REVIEWED_BUNDLE_ICONS.every((icon, index) => config.bundle.icon[index] === icon),
+    'unreviewed Tauri bundle option or icon');
   // Only the reviewed single local window is allowed. Tauri accepts extra
   // window keys such as additionalBrowserArgs/devtools that can alter WebView
   // behavior without changing the pinned CSP or explicit window URL.
