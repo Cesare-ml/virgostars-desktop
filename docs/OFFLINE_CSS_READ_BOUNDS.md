@@ -30,6 +30,13 @@ eight source/test files. Checked source Git blobs against GitHub:
 - `tests/verify-css-resource-functions.test.mjs`: `e756acad54a991981eeaa9c8a6a386a45a037de4`
 - `tests/css-bundle-combined.test.mjs`: `26d390fcb21a85f4d55930e1e47d29c1088f0684`
 
+The four pre-existing tests in `tests/verify-css-imports-bundle.test.mjs` were
+also executed against this combined inspector (unaltered Git blob
+`cd4cc7d454ed39a21ac0ece18cc3501cc83d84e4`), bringing the
+**five-suite regression total to 61 passed / 0 failed / 0 skipped**.
+The extra tests cover local and remote `@import` rejection, inert import
+comments, and accepted self-contained CSS.
+
 The other three previously tested implementation/test files are unchanged.
 This supersedes historical 38/38 and earlier counts below. It does **not**
 constitute the entire repository `npm test`, Angular/Tauri build, Windows
