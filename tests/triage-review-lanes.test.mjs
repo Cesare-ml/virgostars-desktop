@@ -198,6 +198,48 @@ test('unknown future reporter risk fields never silently become an all-clear',()
   assert.throws(()=>planReviewLanes(empty),/Unknown audit schema/);
 });
 
+test('pair summary identifies exact, prefix and Windows-case reviewer risks',()=>{
+  const data=fixture();
+  data.branches[2].changedFiles=2;
+  data.prefixOverlapFiles=1;
+  data.prefixOverlaps=[{
+    ancestorPath:'two.txt',nestedPath:'two.txt/settings',
+    ancestorBranches:['b'],nestedBranches:['d'],
+  }];
+  data.windowsCaseVariantPairs=1;
+  data.windowsCaseVariants=[{
+    branchA:'b',pathA:'two.txt',branchB:'c',pathB:'TWO.TXT',
+  }];
+  const result=planReviewLanes(data);
+  assert.equal(result.reviewPairCount,3);
+  assert.deepEqual(result.reviewPairs,[
+    {branches:['a','b'],reasons:['exact-path']},
+    {branches:['b','c'],reasons:['exact-path','windows-case']},
+    {branches:['b','d'],reasons:['file-directory']},
+  ]);
+  for (const lane of result.lanes) {
+    assert.ok(!result.reviewPairs.some(pair =>
+      pair.branches.every(member => lane.branches.includes(member))),
+      'no reported conflicting pair may share a review lane');
+  }
+  assert.ok(!JSON.stringify(result.reviewPairs).includes('settings'),
+    'scheduling reason summary must not expose local paths');
+});
+
+test('pair summary remains stable across branch and collision input ordering',()=>{
+  const first=fixture();
+  first.branches[2].changedFiles=2;
+  first.windowsCaseVariantPairs=1;
+  first.windowsCaseVariants=[{branchA:'b',pathA:'two.txt',branchB:'c',pathB:'TWO.TXT'}];
+  const expected=planReviewLanes(first);
+  const reversed=structuredClone(first);
+  reversed.branches.reverse();
+  reversed.overlaps.reverse();
+  reversed.overlaps.forEach(row => row.branches.reverse());
+  assert.deepEqual(planReviewLanes(reversed).reviewPairs,expected.reviewPairs);
+  assert.equal(expected.reviewPairCount,2);
+});
+
 test('CLI accepts only bounded complete JSON over standard input',()=>{
   const good=spawnSync(process.execPath,[script],{
     input:JSON.stringify(fixture()),encoding:'utf8'
