@@ -137,6 +137,21 @@ if (-not $Interactive) {
     exit 0
 }
 
+# The initial main-window observation does not establish that the GUI
+# remains available while the maintainer works through the manual checklist.
+# Only inspect the handle returned by this smoke run; never search by name/PID.
+function Test-SmokeMainWindowAlive {
+    param([System.Diagnostics.Process] $Process)
+    try {
+        $Process.Refresh()
+        return (-not $Process.HasExited -and $Process.MainWindowHandle -ne [IntPtr]::Zero)
+    }
+    catch {
+        # Do not expose process-inspection OS exceptions or local paths.
+        return $false
+    }
+}
+
 # Intentionally no automation of keyboard/mouse, screen capture or filesystem
 # export: each visual observation must come from the maintainer.
 $checks = @(
@@ -153,7 +168,22 @@ $checks = @(
 
 $failures = @()
 foreach ($check in $checks) {
-    $reply = Read-Host ($check.Prompt + ' [y/N]')
+    if (-not (Test-SmokeMainWindowAlive -Process $appProcess)) {
+        Write-Host 'NATIVE_SMOKE_MANUAL_WINDOW_LOST'
+        exit 1
+    }
+    try {
+        $reply = Read-Host ($check.Prompt + ' [y/N]')
+    }
+    catch {
+        # An unavailable input stream cannot count as an affirmed checkpoint.
+        Write-Host 'NATIVE_SMOKE_MANUAL_INPUT_UNAVAILABLE'
+        exit 1
+    }
+    if (-not (Test-SmokeMainWindowAlive -Process $appProcess)) {
+        Write-Host 'NATIVE_SMOKE_MANUAL_WINDOW_LOST'
+        exit 1
+    }
     if ($reply -notin @('y', 'yes', 's', 'si', ('s' + [char]0x00EC))) {
         $failures += $check.Key
     }
