@@ -143,3 +143,27 @@ test('rejects invalid UTF-8 split between read chunks', () => fixture(({html}) =
   writeFileSync(html, Buffer.concat([Buffer.alloc(64 * 1024 - 1, 0x61), Buffer.from([0xc3, 0x28])]));
   assert.throws(() => readBoundedUiText(html, 'HTML'), /HTML invalid UTF-8/);
 }));
+
+
+test('HTML and CSS standard ASCII whitespace remain accepted', () => fixture(({dir, html, css}) => {
+  writeFileSync(html, '<head>\t\r\n\f' + LINK + '</head><vs-desktop-app></vs-desktop-app>');
+  writeFileSync(css, CSS + '\t\r\n\f');
+  assert.equal(inspectDesktopStyles(dir).stylesheets, 1);
+}));
+
+test('rejects embedded escape control in otherwise valid Angular HTML', () => fixture(({dir, html}) => {
+  writeFileSync(html, '<head>' + LINK + '</head>\x1b<vs-desktop-app></vs-desktop-app>');
+  assert.throws(() => inspectDesktopStyles(dir), /HTML contains forbidden control byte/);
+}));
+
+test('rejects DEL and vertical tab in linked Angular CSS', () => fixture(({dir, css}) => {
+  for (const invalid of ['\x7f', '\x0b']) {
+    writeFileSync(css, CSS + invalid);
+    assert.throws(() => inspectDesktopStyles(dir), /CSS contains forbidden control byte/);
+  }
+}));
+
+test('rejects non-NUL control byte at the start of the second read chunk', () => fixture(({html}) => {
+  writeFileSync(html, Buffer.concat([Buffer.alloc(64 * 1024, 0x61), Buffer.from([0x1b])]));
+  assert.throws(() => readBoundedUiText(html, 'HTML'), /HTML contains forbidden control byte/);
+}));
