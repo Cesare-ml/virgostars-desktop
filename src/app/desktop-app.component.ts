@@ -79,24 +79,31 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   status: MessageKey = 'chart.loading';
   runtimeStatus: MessageKey = 'runtime.checking';
   styleStatus: DesktopLayoutStatus = 'unavailable';
+  styleChecked = false;
   error = '';
 
   t(key:MessageKey): string { return translate(this.locale,key); }
   get styleStatusKey(): MessageKey {
-    return this.styleStatus === 'active' ? 'styles.active' :
+    return !this.styleChecked ? 'styles.checking' :
+      this.styleStatus === 'active' ? 'styles.active' :
       this.styleStatus === 'missing' ? 'styles.missing' :
       this.styleStatus === 'hidden' ? 'styles.hidden' :
       this.styleStatus === 'collapsed' ? 'styles.collapsed' : 'styles.unavailable';
   }
   checkStyles(): void {
     if (this.destroyed) return;
-    this.styleStatus = probeDesktopLayout({
+    const nextStatus = probeDesktopLayout({
       shell: this.shell.nativeElement,
       workspace: this.workspace.nativeElement,
       stage: this.stage.nativeElement,
       canvas: this.canvas.nativeElement,
     });
-    this.cd.markForCheck();
+    // Recheck on every resize; publish only the first result or an actual transition.
+    if (!this.styleChecked || nextStatus !== this.styleStatus) {
+      this.styleStatus = nextStatus;
+      this.styleChecked = true;
+      this.cd.markForCheck();
+    }
   }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
@@ -278,6 +285,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       // Do not show an obsolete request as ready (or clear the current spinner).
       if(this.drawGeneration.isCurrent(ticket)) {
         this.ready=true;
+        // The renderer may allocate/update backing pixels asynchronously.
+        this.checkStyles();
         this.status='chart.ready';
       }
     } catch(error) {

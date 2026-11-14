@@ -200,3 +200,25 @@ in the Desktop Angular component. See `STAGE_RESIZE_FALLBACK.md`.
 
 Source-level tests and static integration checks are not a substitute for
 Windows WebView2 startup, offline, high-DPI and panel-toggle acceptance.
+
+## Post-render CSS status, accessibility and status publication (14 November 2026)
+
+After the asynchronous synthetic chart render finishes for the **current**
+render generation, the Angular component checks CSS and canvas drawing-buffer
+health again. The probe begins with an explicit IT/EN **checking** message,
+not a false `unavailable` warning before the first check. The footer's
+single live status region is mounted only after a genuinely non-active result;
+the Settings copy remains readable but is not a duplicate live region.
+
+Live CSS geometry can be measured on every stage resize, fallback notification,
+panel refresh and manual recheck. However, Angular change detection is scheduled
+only for the first result or when the classification actually changes. No
+debouncing of the probe, additional observer, network request, native IPC,
+new permission or WebGL context interaction is introduced.
+
+These source changes are designed to sit on top of the now-merged CSS baseline
+and the separate stage-resize fallback PR (#161), without copying their
+already-implemented assets and tests into a second PR. Passing the probe still
+does not demonstrate actual WebGL pixels or astrological correctness. Run the
+full Node suite and Angular build on the combined checkout, then inspect on
+a real Windows 11 WebView2 application with screen-reader testing.

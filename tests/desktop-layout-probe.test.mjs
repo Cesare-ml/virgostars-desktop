@@ -147,7 +147,7 @@ test('Angular checks live styles and geometry at startup and offers manual reche
   assert.match(html, /class="workspace" #workspace/);
   assert.match(html, /\(click\)="checkStyles\(\)"/);
   assert.match(html, /class="layout-warning" role="status"/);
-  assert.match(html, /\*ngIf="styleStatus !== 'active'"/);
+  assert.match(html, /\*ngIf="styleChecked && styleStatus !== 'active'"/);
 });
 
 test('both localizations contain matching non-empty layout status keys', () => {
@@ -173,4 +173,34 @@ test('existing ResizeObserver updates layout health even for collapsed or unchan
   assert.equal((fit.match(/this\.checkStyles\(\)/g) ?? []).length, 1);
   assert.doesNotMatch(fit, /if\s*\(diameter < 32\) return/);
   assert.doesNotMatch(fit, /if\s*\(surface\.style\.width === css && surface\.style\.height === css\) return/);
+});
+
+test('current rendered canvas backing is rechecked only after the latest draw generation', () => {
+  const app = read('src/app/desktop-app.component.ts');
+  assert.match(app,/await this\.renderer\.disegnaScena\([\s\S]*?if\(this\.drawGeneration\.isCurrent\(ticket\)\) \{[\s\S]*?this\.ready=true;[\s\S]*?this\.checkStyles\(\);/);
+});
+
+test('pending UI and single layout live warning only after a completed check', () => {
+  const app = read('src/app/desktop-app.component.ts');
+  const html = read('src/app/desktop-app.component.html');
+  assert.match(app,/styleChecked = false;/);
+  assert.match(app,/!this\.styleChecked \? 'styles.checking'/);
+  assert.match(app,/this\.styleChecked = true;/);
+  assert.match(html,/\*ngIf="styleChecked && styleStatus !== 'active'"/);
+  assert.match(html,/<strong>{{t\(styleStatusKey\)}}<\/strong>/);
+  assert.doesNotMatch(html,/<strong role="status">/);
+  assert.equal((html.match(/class="layout-warning" role="status"/g) ?? []).length,1);
+  assert.ok(STRINGS.it['styles.checking']?.trim());
+  assert.ok(STRINGS.en['styles.checking']?.trim());
+});
+
+test('repeat layout probes publish Angular UI only for first result or status transition', () => {
+  const app = read('src/app/desktop-app.component.ts');
+  const method = app.match(/checkStyles\(\): void \{([\s\S]*?)\n  \}/)?.[1];
+  assert.ok(method,'checkStyles method missing');
+  assert.match(method,/if \(this\.destroyed\) return;/);
+  assert.match(method,/const nextStatus = probeDesktopLayout\(/);
+  assert.match(method,/if \(!this\.styleChecked \|\| nextStatus !== this\.styleStatus\)/);
+  assert.match(method,/this\.styleStatus = nextStatus;[\s\S]*?this\.styleChecked = true;[\s\S]*?this\.cd\.markForCheck\(\)/);
+  assert.equal((method.match(/this\.cd\.markForCheck\(\)/g) ?? []).length,1);
 });
