@@ -240,6 +240,74 @@ test('pair summary remains stable across branch and collision input ordering',()
   assert.equal(expected.reviewPairCount,2);
 });
 
+test('seeded graph sweep keeps every reported risk pair in separate lanes',()=>{
+  let seed=0x52a1f306;
+  const next=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/0x100000000);
+  for(let sample=0;sample<120;sample++){
+    const n=2+Math.floor(next()*16);
+    const branches=Array.from({length:n},(_,i)=>({
+      branch:'case-'+String(i).padStart(2,'0'),
+      changedFiles:0,behindBy:0,aheadBy:1,
+    }));
+    const touched=new Map(branches.map(b=>[b.branch,new Set()]));
+    const overlaps=[],prefixOverlaps=[],windowsCaseVariants=[];
+    const expected=new Map();
+    function register(i,j,reason,leftPath,rightPath){
+      const a=branches[i].branch,b=branches[j].branch;
+      const key=a+'\0'+b;
+      if(!expected.has(key))expected.set(key,new Set());
+      expected.get(key).add(reason);
+      touched.get(a).add(leftPath);
+      touched.get(b).add(rightPath);
+    }
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
+      const stem=i+'-'+j;
+      if(next()<0.28){
+        const path='exact/'+stem+'.ts';
+        overlaps.push({path,branches:[branches[i].branch,branches[j].branch]});
+        register(i,j,'exact-path',path,path);
+      }
+      if(next()<0.22){
+        const ancestor='nested/branch-'+stem;
+        const child=ancestor+'/child';
+        prefixOverlaps.push({ancestorPath:ancestor,nestedPath:child,
+          ancestorBranches:[branches[i].branch],nestedBranches:[branches[j].branch]});
+        register(i,j,'file-directory',ancestor,child);
+      }
+      if(next()<0.23){
+        const a='windows/Name-'+stem+'.ts',b='windows/name-'+stem+'.ts';
+        windowsCaseVariants.push({branchA:branches[i].branch,pathA:a,
+          branchB:branches[j].branch,pathB:b});
+        register(i,j,'windows-case',a,b);
+      }
+    }
+    for(const b of branches)b.changedFiles=touched.get(b.branch).size;
+    const report={
+      base:'main',freshnessChecked:true,baseFilesChecked:true,
+      branches,staleBranches:[],
+      overlapFiles:overlaps.length,overlaps,
+      baseOverlapFiles:0,baseOverlaps:[],
+      prefixOverlapFiles:prefixOverlaps.length,prefixOverlaps,
+      windowsCaseVariantPairs:windowsCaseVariants.length,windowsCaseVariants,
+    };
+    const result=planReviewLanes(report);
+    assert.equal(result.reviewPairCount,expected.size);
+    assert.equal(result.reviewPairs.length,expected.size);
+    for(const {branches:pair,reasons} of result.reviewPairs){
+      const key=pair.join('\0');
+      assert.deepEqual(reasons,[...expected.get(key)].sort());
+      assert.ok(!result.lanes.some(lane=>pair.every(b=>lane.branches.includes(b))),
+        'collision pair '+key+' not separated in sample '+sample);
+    }
+    assert.deepEqual(result.lanes.flatMap(lane=>lane.branches).sort(),
+      branches.map(b=>b.branch).sort());
+    const reversed=structuredClone(report);
+    reversed.branches.reverse();reversed.overlaps.reverse();
+    reversed.prefixOverlaps.reverse();reversed.windowsCaseVariants.reverse();
+    assert.deepEqual(planReviewLanes(reversed),result,'randomized input order sample '+sample);
+  }
+});
+
 test('CLI accepts only bounded complete JSON over standard input',()=>{
   const good=spawnSync(process.execPath,[script],{
     input:JSON.stringify(fixture()),encoding:'utf8'
