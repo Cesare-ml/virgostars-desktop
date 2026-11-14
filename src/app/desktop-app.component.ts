@@ -57,6 +57,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
+  private readonly onClockChanged = (): void => {
+    if (this.destroyed) return;
+    this.updateCityClock();
+    this.cd.markForCheck();
+  };
+  private readonly onVisibilityChange = (): void => {
+    if (this.destroyed) return;
+    if (document.visibilityState === 'hidden') {
+      this.deviceClock.pause();
+    } else {
+      // start() samples actual wall time immediately after OS sleep/minimize.
+      this.deviceClock.start(this.onClockChanged);
+    }
+  };
 
   readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
@@ -130,12 +144,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     document.documentElement.lang = this.locale;
     // Inspect applied WebView CSS after Angular's initial view check.
     queueMicrotask(() => this.checkStyles());
-    // Local clock is independent of renderer success, astronomy and account auth.
-    this.deviceClock.start(() => {
-      if (this.destroyed) return;
-      this.updateCityClock();
-      this.cd.markForCheck();
-    });
+    // Avoid an unnecessary 1-second timer while the WebView is hidden.
+    // Visibility is only a power-saving hint; all dates come from wall time.
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+    this.onVisibilityChange();
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     try {
@@ -163,6 +175,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
