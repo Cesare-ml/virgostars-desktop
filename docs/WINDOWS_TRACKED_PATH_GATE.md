@@ -40,8 +40,11 @@ It rejects reserved Win32 device names (including `CON`, `PRN`, `AUX`, `NUL`, `C
 - `git ls-files --cached` covers Git-tracked names in the index, not untracked files, uncommitted content, submodule contents, downloaded dependencies, or generated build assets. Symlink targets, actual file permissions, malware, secrets, licenses, WebView2 runtime behavior and executable signatures are **not** examined.
 - NFC plus lowercase is a conservative **Windows alias heuristic**, not a complete model of every NTFS or Win32 filesystem name comparison. Passing is not certification of full Windows portability.
 - Use it **in addition to**, not in place of, `npm test`, `npm run verify:privacy`, bundle/CSS checks and real Windows WebView2 visual smoke.
-- Earlier Linux synthetic verification (Node.js 22.16.0, Git 2.47.3): **22/22 Node test cases passed**, including temporary Git fixture checks that HEAD, index and working tree are unchanged. No full Desktop suite, Angular/Tauri compile or native Windows run was performed during this change.
+- Current Linux synthetic verification (Node.js 22.16.0, Git 2.47.3): **24/24 Node test cases passed**, including temporary Git fixture checks that HEAD, index and working tree are unchanged. No full Desktop suite, Angular/Tauri compile or native Windows run was performed during this change.
 
-The current branch adds bootstrap-order and CMD-delegation regressions. These new
-tests have not yet been exercised in a native Windows PowerShell invocation; a
-Windows build still needs the complete `npm test` and native smoke acceptance.
+The new bootstrap-order and CMD-delegation tests also passed on Linux with
+`node --test tests/windows-tracked-paths.test.mjs` (24/24). The committed Git
+blobs of the source, tests, PowerShell bootstrap and CMD entrypoint exactly
+matched the four files used in this local Node/Git test run. No native Windows
+PowerShell invocation or full `npm test` / Tauri/WebView2 build was performed;
+these remain acceptance gates before integration or release.
