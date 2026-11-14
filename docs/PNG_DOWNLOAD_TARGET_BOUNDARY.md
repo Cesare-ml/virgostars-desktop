@@ -37,3 +37,22 @@ tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler
 ```
 
 New regression demonstrates two different Base64 strings decoding to identical PNG bytes; the alternate spelling and invalid padded tails are rejected **before DOM access**. Exact source blob SHA `5fb785232f337ef35a0f66837f87db3b6f164d3b`, boundary test SHA `244ec7ae03599121ed24cb30069953587ce4551e`; both matched local tested copies. The previous 18/18 record remains historical. Whole-repository and Windows/WebView2 acceptance still pending.
+
+## Defense-in-depth PNG header preflight — 14 November 2026
+
+The download helper's bounded Base64 validation previously allowed arbitrary bytes carrying a PNG data-URL MIME label if a future caller omitted the upstream `validatePngDataUrl` step. A direct unit test reproduced the gap (valid Base64 containing a corrupted PNG signature or IHDR was accepted and touched the DOM).
+
+The final download boundary now decodes **only the first 24 Base64 characters (18 bytes)** and requires the exact PNG signature, first chunk length 13, and `IHDR` chunk type before allocating an anchor. The existing upstream validator is **still mandatory** to check IHDR fields/CRC and other structural limits; this new guard is not a complete PNG decoder, scientific validation or proof the browser saved a file.
+
+**Actually executed on Node.js v22.16.0 in an isolated exact-Git-blob mirror:**
+
+```sh
+node --experimental-strip-types --test tests/*.mjs
+# 20 passed, 0 failed, 0 skipped
+tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/png-download.ts
+# PASS
+node --check tests/png-download-boundary.test.mjs
+# PASS
+```
+
+The focused new case failed before the implementation, then passed along with all 19 existing tests. The integrated helper's verified blob SHA is `7343e287baa2a04bd97b0140b28c3f32c2e07962` and boundary test SHA is `e6f95745140f5e6c6a5426825bb1b21ea6cb04ac`. No complete Angular/Charts build, Cargo/Tauri test, or Windows 11 WebView2 export smoke was performed. Do not merge to main or release before those gates.
