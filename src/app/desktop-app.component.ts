@@ -20,6 +20,7 @@ import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
+import {DEFAULT_DEMO_PRESET, demoPresetDefinition, nextDemoPreset, type DemoPresetId} from './demo-presets';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -43,9 +44,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   private readonly cd = inject(ChangeDetectorRef);
   private readonly renderer = new GraficoRenderService();
-  private readonly natal: TemaRender = makeFictionalTheme(0);
-  private readonly transit: TemaRender = makeFictionalTheme(23);
-  private readonly synastry: TemaRender = makeFictionalTheme(58);
+  private natal: TemaRender = makeFictionalTheme(0);
+  private transit: TemaRender = makeFictionalTheme(23);
+  private synastry: TemaRender = makeFictionalTheme(58);
   private resizeObserver?: ResizeObserver;
   private initialized = false;
   private destroyed = false;
@@ -57,9 +58,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
-  readonly planets = fictionalPlanets();
-  readonly houses = fictionalHouses();
+  planets = fictionalPlanets();
+  houses = fictionalHouses();
 
+  demoPreset: DemoPresetId = DEFAULT_DEMO_PRESET;
   theme: UiTheme = this.initialUiPreferences.theme;
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
@@ -80,6 +82,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.theme === 'light' ? 'Light' : 'Dark'; }
+  get demoPresetName(): string { return this.t(demoPresetDefinition(this.demoPreset).labelKey); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
   get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
   get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
@@ -182,6 +185,27 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
     this.persistUiPreferences();
     if(this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  switchDemoPreset(): void {
+    if (this.destroyed || this.busy || !this.ready || this.exporting) return;
+    const next = nextDemoPreset(this.demoPreset);
+    const shift = demoPresetDefinition(next).shift;
+    // Assemble the next coherent fictional scene before publishing it. The
+    // renderer owns WebGL; the draw-generation guard rejects stale UI updates.
+    const natal = makeFictionalTheme(shift);
+    const transit = makeFictionalTheme(shift + 23);
+    const synastry = makeFictionalTheme(shift + 58);
+    const planets = fictionalPlanets(shift);
+    const houses = fictionalHouses(shift);
+    this.demoPreset = next;
+    this.natal = natal;
+    this.transit = transit;
+    this.synastry = synastry;
+    this.planets = planets;
+    this.houses = houses;
+    this.selectedPlanet = null;
+    if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
   setMode(mode:ChartMode): void {
