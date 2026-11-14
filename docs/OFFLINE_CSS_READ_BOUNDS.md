@@ -21,7 +21,7 @@ read sites. It enforces:
 - Read through one descriptor in chunks of up to **64 KiB**, checking one
   sentinel byte beyond the limit to detect growth. Check the descriptor's
   size and modification time again after reading.
-- Reject malformed UTF-8 using a fatal decoder. Return stable errors without
+- Reject NUL bytes while streaming, and reject malformed UTF-8 using a fatal decoder. Return stable errors without
   OS exception strings or local absolute filesystem paths.
 
 Both the existing static HTML-link rules and CSS import/resource checks remain
@@ -41,12 +41,12 @@ npm run verify:bundle
 ```
 
 Focused synthetic test coverage includes valid HTML/CSS, multibyte UTF-8,
-oversized sparse HTML and CSS files, symlink rejection when supported,
+oversized sparse HTML and CSS files, embedded NUL bytes, symlink rejection when supported,
 invalid UTF-8, unsupported helper types and redacted missing-file errors.
 
-**Executed in the authoring environment (Node 22.16.0):** 10/10 focused
+**Executed in the authoring environment (Node 22.16.0):** 12/12 focused
 checks of the new helper in a temporary isolated mirror. The mirrored helper
-has the identical Git blob SHA `e164553b863a59077b71ed4d393f0f06523d1238`
+has the identical Git blob SHA `e878aaac45af0edba84b1e460a16d2ef8d977012`
 as the committed source. These are **not** the entire committed integration
 test file: that file additionally exercises the real `inspectDesktopStyles`
 gate and remains unexecuted in the authoring environment.
