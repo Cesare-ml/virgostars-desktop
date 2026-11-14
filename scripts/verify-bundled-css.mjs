@@ -6,6 +6,7 @@ import { lstatSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNoCssImports } from './verify-css-imports.mjs';
+import { assertNoCssResourceFunctions } from './verify-css-resource-functions.mjs';
 import { readBoundedUiText } from './read-bounded-ui-text.mjs';
 
 const fail = (message) => { throw new Error('DESKTOP CSS BUNDLE: ' + message); };
@@ -155,6 +156,9 @@ export function inspectDesktopStyles(bundleDir) {
     const css = readBoundedUiText(cssFile, 'CSS');
     // Angular must inline imported CSS before an offline Tauri build.
     assertNoCssImports(css);
+    // For the current synthetic desktop global CSS, external and local
+    // CSS resource functions both require a future approved asset policy.
+    assertNoCssResourceFunctions(css);
     // Both selectors are in the committed global src/styles.css and survive CSS minification.
     if (!css.includes('vs-desktop-app') || !css.includes('box-sizing')) {
       fail('Global stylesheet is incomplete or does not match VirgoStars Desktop');
