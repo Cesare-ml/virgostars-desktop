@@ -1,6 +1,9 @@
 // A read-only runtime capabilities probe; no privileged account, storage or network IPC.
 mod runtime_probe;
 mod offline_places;
+// Internal status-freshness fence only; NOT a Tauri IPC command or unlock service.
+#[allow(dead_code)]
+mod profile_status_generation;
 // The native Rust ephemeris bridge will be integrated only after upstream validation.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
