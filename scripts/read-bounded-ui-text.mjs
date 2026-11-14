@@ -50,7 +50,10 @@ export function readBoundedUiText(path, kind) {
   try {
     fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     const before = fstatSync(fd);
-    if (!before.isFile() || before.dev !== prior.dev || before.ino !== prior.ino) {
+    if (!before.isFile() || before.dev !== prior.dev || before.ino !== prior.ino ||
+        !hasStableReadMetadata(prior, before, prior.size)) {
+      // Closing the lstat-to-open race matters too: a same-inode rewrite
+      // between these calls could otherwise escape the post-read check.
       reject(kind, 'changed before read');
     }
     if (!Number.isSafeInteger(before.size) || before.size > limit) {
