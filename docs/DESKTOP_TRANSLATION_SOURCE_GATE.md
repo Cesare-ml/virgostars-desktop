@@ -8,7 +8,7 @@ Angular's typed IT/EN dictionary already checks runtime key parity, but JavaScri
 
 ## Behavior
 
-`scripts/verify-translations.mjs` requires one static `STRINGS` object with exactly `it` and `en`, literal string labels, unique keys in each locale, identical key sets and visible nonblank text. It rejects C0/C1 controls, DEL and bidi override/isolate controls in label values. Dynamic syntax fails closed, and errors describe keys but do not echo text. It intentionally does **not** prove translation quality, linguistic correctness, screen-reader output, XSS safety or the completeness of labels used outside the dictionary.
+`scripts/verify-translations.mjs` requires one static `STRINGS` object with exactly `it` and `en`, literal string labels, unique safe dot-separated message keys (maximum 80 characters, no prototype-related reserved names), identical key sets and visible nonblank text. It rejects C0/C1 controls, DEL and bidi override/isolate controls in label values. Dynamic syntax fails closed, and errors describe keys but do not echo text. It intentionally does **not** prove translation quality, linguistic correctness, screen-reader output, XSS safety or the completeness of labels used outside the dictionary.
 
 The npm `verify:translations` command runs automatically in both `prepare:frontend` and `prepare:frontend:private`. That places it ahead of the Angular build and its Tauri packaging path, without enabling GitHub Actions or adding dependencies: the already-pinned `typescript` developer dependency supplies the parser. A normal `npm ci` is required first.
 
@@ -21,7 +21,7 @@ npm test
 npm run build:ui
 ```
 
-Six synthetic AST regression test groups have passed using Node 22.16.0 and TypeScript 5.8.3 in an isolated local harness. Run the actual checked-out dictionary gate, full npm suite, Angular build and Windows 11 Tauri/WebView2 review before integration; the isolated tests alone do not establish that the assembled app works.
+Eight regression test groups, including a check against the checked-in real dictionary, are now included. The original six synthetic AST test groups have passed using Node 22.16.0 and TypeScript 5.8.3 in an isolated local harness. Run the actual checked-out dictionary gate, full npm suite, Angular build and Windows 11 Tauri/WebView2 review before integration; the isolated tests alone do not establish that the assembled app works.
 
 ## Scope
 
