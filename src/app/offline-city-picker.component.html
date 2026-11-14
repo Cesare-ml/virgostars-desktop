@@ -13,6 +13,8 @@
     [attr.placeholder]="t('city.placeholder')"
     [attr.aria-label]="t('city.title')"
     [attr.aria-autocomplete]="'list'"
+    aria-haspopup="listbox"
+    aria-describedby="offline-city-query-status"
     [attr.aria-controls]="'offline-city-options'"
     [attr.aria-expanded]="state.results.length > 0"
     [attr.aria-activedescendant]="state.activeIndex >= 0 ? 'offline-city-option-'+state.activeIndex : null"
@@ -20,9 +22,9 @@
     (input)="onInput($event)"
     (keydown)="onKeydown($event)"
   >
-  <p class="city-status" role="status" aria-live="polite">{{message}}</p>
+  <p id="offline-city-query-status" class="city-status" role="status" aria-live="polite">{{message}}</p>
   <div class="city-results" id="offline-city-options" role="listbox" [attr.aria-label]="t('city.results.label')" *ngIf="state.results.length">
-    <button type="button" class="city-option" role="option"
+    <button type="button" class="city-option" role="option" tabindex="-1"
       *ngFor="let city of state.results; let i=index; trackBy:trackCity"
       [id]="'offline-city-option-'+i"
       [attr.aria-selected]="state.activeIndex === i"
