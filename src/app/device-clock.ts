@@ -75,11 +75,16 @@ export class DeviceClock {
     }
   }
 
+  /** UI observer errors must never interrupt wall-time sampling or startup. */
+  private emitChanged(changed: () => void): void {
+    try { changed(); } catch { /* Never expose private UI observer exceptions. */ }
+  }
+
   /** A clock without a working scheduler cannot safely display live time. */
   private invalidateTime(changed: () => void): void {
     if (this.disposed || Number.isNaN(this.timestamp)) return;
     this.timestamp = NaN;
-    changed();
+    this.emitChanged(changed);
   }
 
   refresh(changed: () => void): void {
@@ -90,7 +95,7 @@ export class DeviceClock {
       Math.floor(next / 1000) === Math.floor(this.timestamp / 1000);
     if (alreadyUnavailable || sameSecond) return;
     this.timestamp = next;
-    changed();
+    this.emitChanged(changed);
   }
 
   /** Suspend the ticking clock while the window is hidden; start() resumes it. */
