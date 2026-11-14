@@ -10,6 +10,10 @@ export function safeRef(s) {
     !s.endsWith('.') && !s.split('/').some(p => p.endsWith('.lock'));
 }
 
+// Exceeding this limit fails closed rather than emitting a truncated report
+// that would incorrectly look safe to integrate.
+export const MAX_WINDOWS_CASE_VARIANT_PAIRS = 1024;
+
 /**
  * Conservative Windows-path grouping for review only: Unicode NFC plus
  * lowercase catches common case-only/canonically equivalent names. This is
@@ -84,6 +88,12 @@ export function report(base, branches) {
   const windowsBaseCaseVariants=[];
   const stats=[];
   const baseOverlaps=[];
+  const windowsCaseVariants=[];
+  const pushCaseVariant = (into, candidate) => {
+    if (windowsCaseVariants.length + windowsBaseCaseVariants.length >= MAX_WINDOWS_CASE_VARIANT_PAIRS)
+      throw new Error('Too many Windows case variants; review a smaller branch batch');
+    into.push(candidate);
+  };
   for (const {branch,paths} of branches) {
     const unique=new Set(paths);
     const ownWindowsPaths=new Map();
@@ -110,21 +120,32 @@ export function report(base, branches) {
         // only different spellings that can alias on a Windows checkout.
         for (const branchPath of ownWindowsPaths.get(windowsCaseKey(path)) ?? []) {
           if (branchPath !== path)
-            windowsBaseCaseVariants.push({branch,branchPath,basePath:path});
+            pushCaseVariant(windowsBaseCaseVariants,{branch,branchPath,basePath:path});
         }
       }
     }
   }
-  const windowsCaseVariants=[];
+  // Group by branch before pairing. This avoids quadratic work when one
+  // feature branch contains many case aliases but no second branch touches
+  // that normalized path. Exact-spelling pairs are still reported elsewhere.
   for (const entries of windowsCandidates.values()) {
-    for (let i=0;i<entries.length;i++) {
-      for (let j=i+1;j<entries.length;j++) {
-        if (entries[i].branch===entries[j].branch || entries[i].path===entries[j].path) continue;
-        const [a,b]=entries[i].branch<entries[j].branch
-          ? [entries[i],entries[j]] : [entries[j],entries[i]];
-        windowsCaseVariants.push({
-          branchA:a.branch,pathA:a.path,branchB:b.branch,pathB:b.path,
-        });
+    const byBranch=new Map();
+    for (const entry of entries) {
+      if (!byBranch.has(entry.branch)) byBranch.set(entry.branch,[]);
+      byBranch.get(entry.branch).push(entry.path);
+    }
+    if (byBranch.size<2 || new Set(entries.map(e=>e.path)).size<2) continue;
+    const names=[...byBranch.keys()].sort();
+    for (let i=0;i<names.length;i++) {
+      for (let j=i+1;j<names.length;j++) {
+        for (const pathA of byBranch.get(names[i])) {
+          for (const pathB of byBranch.get(names[j])) {
+            if (pathA===pathB) continue;
+            pushCaseVariant(windowsCaseVariants,{
+              branchA:names[i],pathA,branchB:names[j],pathB,
+            });
+          }
+        }
       }
     }
   }
