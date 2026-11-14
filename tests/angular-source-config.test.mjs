@@ -109,6 +109,7 @@ test('manual Windows bootstrap checks Angular inputs before package installation
   assert.equal((script.match(/'node' @\('scripts\/verify-angular-source-config\.mjs'\)/g) ?? []).length, 1);
 });
 
+
 test('file swaps between lstat and open fail closed even with identical JSON content', () => {
   const dir = mkdtempSync(join(tmpdir(), 'desktop-angular-swap-'));
   try {
