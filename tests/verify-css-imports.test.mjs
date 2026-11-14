@@ -45,3 +45,22 @@ test('fails closed for invalid CSS input and a broken CSS URL', () => {
   assert.throws(() => assertNoCssImports(null), /Invalid CSS stylesheet/);
   assert.throws(() => assertNoCssImports(styles + 'a{background:url(foo'), /Unterminated CSS url/);
 });
+
+test('rejects raw LF, CR and form feed inside CSS quoted strings', () => {
+  for (const newline of ['\n', '\r', '\f']) {
+    assert.throws(
+      () => assertNoCssImports('p{content:"prefix' + newline + '@import \'./missing.css\'"}' + styles),
+      /Unterminated CSS string/,
+    );
+  }
+});
+
+test('rejects escaped CSS identifier form feed rather than ignoring it', () => {
+  assert.throws(() => assertNoCssImports('p{content:x} @im\\\fport "./missing.css";'), /Invalid CSS escape/);
+});
+
+test('preserves escaped CRLF and form feed CSS string continuations', () => {
+  assert.equal(assertNoCssImports('p{content:"prefix\\\r\nsuffix"}' + styles), true);
+  assert.equal(assertNoCssImports('p{content:"prefix\\\fsuffix"}' + styles), true);
+  assert.equal(assertNoCssImports('p{\f color:blue}' + styles), true);
+});
