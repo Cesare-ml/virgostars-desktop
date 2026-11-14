@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,rmSync,writeFileSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {checkTrackedPaths,parseTrackedGitPaths,inspectTrackedPaths} from '../scripts/verify-windows-tracked-paths.mjs';
@@ -78,4 +78,27 @@ test('Git fixture detects Windows aliases absent on Linux', {skip:process.platfo
   writeFileSync(join(dir,'clock.ts'),'x');
   git(dir,'add','.');
   assert.throws(()=>inspectTrackedPaths(dir),/case-insensitive or Unicode duplicate/);
+});
+
+test('Windows bootstrap checks tracked paths before doctor or dependency installation',()=>{
+  const ps1=readFileSync(new URL('../scripts/build-windows-spike.ps1',import.meta.url),'utf8');
+  const steps=[...ps1.matchAll(/Invoke-Step\s+'([^']+)'\s+'([^']+)'\s+@\(([^)]*)\)/g)]
+    .map(([match,label,command,args])=>({match,label,command,args}));
+  const pathGate=steps.findIndex(x=>x.command==='node' &&
+    x.args==="'scripts/verify-windows-tracked-paths.mjs'");
+  const setup=steps.findIndex(x=>x.command==='node' &&
+    x.args==="'scripts/desktop-doctor.mjs', '--stage=setup', '--strict'");
+  const installs=steps.map((step,i)=>step.command==='npm.cmd' && step.args==="'ci'"?i:-1)
+    .filter(i=>i!==-1);
+  assert.ok(pathGate>=0 && setup>pathGate && installs.length===2 &&
+    installs.every(i=>i>pathGate),'tracked path check must run before setup and installs');
+  assert.equal(steps.filter(x=>x.args==="'scripts/verify-windows-tracked-paths.mjs'").length,1);
+  assert.match(ps1,/if \(\$LASTEXITCODE -ne 0\) \{\s*throw /,
+    'Windows bootstrap must stop on any failed preflight');
+});
+
+test('the regular CMD launcher still delegates only to the checked PowerShell bootstrap',()=>{
+  const cmd=readFileSync(new URL('../scripts/build-windows.cmd',import.meta.url),'utf8');
+  assert.match(cmd,/"%VS_SYSTEM_POWERSHELL%" -NoProfile -NonInteractive -File "%~dp0build-windows-spike\.ps1"/);
+  assert.doesNotMatch(cmd,/verify-windows-tracked-paths|npm\.cmd|cargo|tauri/i);
 });
