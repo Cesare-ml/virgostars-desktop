@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {auditChartsNpmLock} from '../scripts/verify-charts-npm-lock.mjs';
 
 const sri = 'sha512-' + Buffer.alloc(64).toString('base64');
@@ -74,4 +75,15 @@ test('does not accept incidental extra manifest root changes', () => {
   assert.throws(() => auditChartsNpmLock({...manifest,name:'wrong-project'},valid()));
   assert.throws(() => auditChartsNpmLock(null,valid()));
   assert.throws(() => auditChartsNpmLock(manifest,null));
+});
+
+test('Windows bootstrap audits both lockfiles before first Charts npm ci', () => {
+  const bootstrap=readFileSync(new URL('../scripts/build-windows-spike.ps1',import.meta.url),'utf8');
+  const packageJson=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+  const desktopAudit=bootstrap.indexOf("'scripts/verify-npm-lock.mjs'");
+  const chartsAudit=bootstrap.indexOf("'scripts/verify-charts-npm-lock.mjs'");
+  const firstNpmCi=bootstrap.indexOf("'npm.cmd' @('ci')");
+  assert.ok(desktopAudit>=0 && chartsAudit>desktopAudit && firstNpmCi>chartsAudit,
+    'both offline preflights must run before Charts installation');
+  assert.equal(packageJson.scripts['verify:charts-lock'],'node scripts/verify-charts-npm-lock.mjs');
 });
