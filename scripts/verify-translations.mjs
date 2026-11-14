@@ -84,14 +84,60 @@ export function auditTranslationSource(source) {
   return {ok: problems.length === 0, keyCount: dictionaries.get('it')?.raw.size ?? 0, problems};
 }
 
+/**
+ * Audit the literal t('key') calls in the two approved Angular templates.
+ * This intentionally does not parse dynamic Angular expressions or TypeScript maps;
+ * the Angular type checker remains responsible for those bindings.
+ */
+export function auditTranslationTemplates(dictionarySource, templates) {
+  const dictionary = auditTranslationSource(dictionarySource);
+  if (!dictionary.ok) return {ok: false, referenceCount: 0, problems: ['Invalid translation dictionary']};
+  if (!Array.isArray(templates) || templates.length !== 2 ||
+      templates.some(template => typeof template !== 'string')) {
+    return {ok: false, referenceCount: 0, problems: ['Expected two Angular templates']};
+  }
+
+  // This source is already checked for the exact static dictionary shape.
+  const parsed = ts.createSourceFile('translations.ts', dictionarySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const declaration = parsed.statements.flatMap(statement =>
+    ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : []
+  ).find(item => ts.isIdentifier(item.name) && item.name.text === 'STRINGS');
+  const root = unwrap(declaration.initializer);
+  const italian = root.properties.find(property => ts.isPropertyAssignment(property) &&
+    property.name.text === 'it');
+  const keys = new Set(unwrap(italian.initializer).properties.map(property => property.name.text));
+
+  const problems = [];
+  let referenceCount = 0;
+  for (const [index, template] of templates.entries()) {
+    // HTML comments are inert and must not introduce false-positive references.
+    const visible = template.replace(/<!--[\s\S]*?-->/g, '');
+    for (const match of visible.matchAll(/(?:^|[^\w$])t\s*\(\s*(['"])([^'"]*)\1\s*\)/g)) {
+      const key = match[2];
+      referenceCount++;
+      if (key.length > 80 || !SAFE_TRANSLATION_KEY.test(key) || RESERVED_KEYS.has(key)) {
+        problems.push(`Template ${index + 1}: invalid literal translation key`);
+      } else if (!keys.has(key)) {
+        problems.push(`Template ${index + 1}: undefined translation key ${JSON.stringify(key)}`);
+      }
+    }
+  }
+  return {ok: problems.length === 0, referenceCount, problems};
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const source = readFileSync(new URL('../src/app/translations.ts', import.meta.url), 'utf8');
     const result = auditTranslationSource(source);
-    if (!result.ok) {
-      for (const problem of result.problems) console.error(`Translation gate: ${problem}`);
+    const templates = [
+      readFileSync(new URL('../src/app/desktop-app.component.html', import.meta.url), 'utf8'),
+      readFileSync(new URL('../src/app/offline-city-picker.component.html', import.meta.url), 'utf8'),
+    ];
+    const usage = result.ok ? auditTranslationTemplates(source, templates) : {ok: false, problems: []};
+    if (!result.ok || !usage.ok) {
+      for (const problem of [...result.problems, ...usage.problems]) console.error(`Translation gate: ${problem}`);
       process.exitCode = 1;
-    } else console.log(`Translation gate: ${result.keyCount} paired IT/EN keys verified`);
+    } else console.log(`Translation gate: ${result.keyCount} paired IT/EN keys and ${usage.referenceCount} template references verified`);
   } catch {
     // Do not print host paths or the source's label contents in build logs.
     console.error('Translation gate: unable to inspect source dictionary');
