@@ -52,6 +52,7 @@ This verifies fixed executable paths, gated launch order, bounded process observ
 
 ## Troubleshooting
 
+- NATIVE_SMOKE_NODE_REQUIRED: install a supported Node.js Windows executable or inspect `Get-Command node.exe -CommandType Application` in a trusted shell; PowerShell aliases or wrappers are not accepted.
 - NATIVE_SMOKE_PREFLIGHT_FAILED_*: rerun the corresponding gate, never disable security/CSS checks as a workaround.
 - NATIVE_SMOKE_LAUNCH_FAILED: Windows could not start the compiled process.
 - NATIVE_SMOKE_EARLY_EXIT: process exited before creating a main window.
