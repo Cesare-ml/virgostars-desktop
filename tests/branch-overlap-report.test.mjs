@@ -4,7 +4,7 @@ import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {safeRef,parsePaths,report,parseArgs,run} from '../scripts/branch-overlap-report.mjs';
+import {safeRef,parsePaths,parseCommitDrift,report,parseArgs,run} from '../scripts/branch-overlap-report.mjs';
 
 const script=resolve(import.meta.dirname,'../scripts/branch-overlap-report.mjs');
 function git(dir,...args) {
@@ -21,6 +21,20 @@ test('safe refs and arguments reject ambiguous revisions',()=>{
     assert.throws(()=>parseArgs(args));
   assert.throws(()=>run('--evil',['a','b']),/Invalid|Provide/);
   assert.throws(()=>run('main',['same','same']),/Invalid|Provide/);
+});
+
+test('revision counters accept only complete finite Git left/right counts',()=>{
+  assert.deepEqual(parseCommitDrift(Buffer.from('2\t3\n'.replaceAll('\t','\t'))),{behindBy:2,aheadBy:3});
+  assert.deepEqual(parseCommitDrift(Buffer.from('0\t0\n'.replaceAll('\t','\t'))),{behindBy:0,aheadBy:0});
+  for (const invalid of ['','1 2','-1\t2','1\t2\t3','1\tNaN','9007199254740992\t1',
+    '1\t2\nprivate', '1\t2\r\nextra']) {
+    assert.throws(()=>parseCommitDrift(Buffer.from(invalid)), 'must reject invalid revision counter');
+  }
+  assert.throws(()=>parseCommitDrift('0\t0'));
+  assert.throws(()=>parseCommitDrift(Buffer.alloc(65,0x30)));
+  assert.throws(()=>report('main',[
+    {branch:'a',paths:['x'],behindBy:0,aheadBy:1},
+    {branch:'b',paths:['x']}]), /Incomplete Git revision counts/);
 });
 
 test('NUL-safe file parser and deterministic path overlaps',()=>{
@@ -86,5 +100,32 @@ test('end to end: rename source and destination both reveal concurrent path over
   assert.deepEqual(result.branches.map(x=>x.changedFiles),[2,1], 'rename counts source and destination paths');
   assert.equal(git(dir,'rev-parse','HEAD'),head);
   assert.equal(git(dir,'branch','--show-current'),'edit');
+  assert.equal(git(dir,'status','--porcelain'),'');
+});
+
+test('end to end: reports branch divergence when main advances without modifying working tree',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-drift-audit-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  git(dir,'init','-q','-b','main');
+  git(dir,'config','user.email','test@example.invalid');
+  git(dir,'config','user.name','Synthetic Test');
+  writeFileSync(join(dir,'base.txt'),'fictional base\n');
+  git(dir,'add','.');git(dir,'commit','-qm','base');
+  git(dir,'branch','a');git(dir,'branch','b');
+  git(dir,'switch','-q','a');writeFileSync(join(dir,'a.txt'),'fictional a\n');
+  git(dir,'add','.');git(dir,'commit','-qm','a');
+  git(dir,'switch','-q','b');writeFileSync(join(dir,'b.txt'),'fictional b\n');
+  git(dir,'add','.');git(dir,'commit','-qm','b');
+  git(dir,'switch','-q','main');writeFileSync(join(dir,'new.txt'),'fictional main\n');
+  git(dir,'add','.');git(dir,'commit','-qm','new main');
+  const head=git(dir,'rev-parse','HEAD');
+  const r=spawnSync(process.execPath,[script,'--json','a','b'],{cwd:dir,encoding:'utf8'});
+  assert.equal(r.status,0,r.stderr);
+  const data=JSON.parse(r.stdout);
+  assert.equal(data.freshnessChecked,true);
+  assert.deepEqual(data.staleBranches,['a','b']);
+  assert.deepEqual(data.branches.map(b=>[b.behindBy,b.aheadBy]),[[1,1],[1,1]]);
+  assert.equal(git(dir,'rev-parse','HEAD'),head);
+  assert.equal(git(dir,'branch','--show-current'),'main');
   assert.equal(git(dir,'status','--porcelain'),'');
 });
