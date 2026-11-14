@@ -77,6 +77,19 @@ changed **within one branch** do not count as a cross-branch overlap.
 Output is deterministic, uses only locally supplied Git refs, and does
 not change or check out files.
 
+**Bounded alias reporting:** the total number of cross-branch and
+branch-versus-base Windows case-variant pairs is limited to **1,024**.
+The reporter groups records by normalized path and branch before comparing
+cross-branch spellings; a large number of variant names within only one
+branch cannot trigger pointless quadratic pair comparisons. Once the
+1,024-pair budget would be exceeded, the audit **fails closed** with a
+sanitized error and exit code 2, instead of silently truncating findings
+or printing an apparently safe partial report. Run smaller, logically
+related branch batches and review the shared base separately. The cap is
+a resource-safety limit, not a statement that more than 1,024 collisions
+are safe or impossible. This pair budget is separate from the existing
+2 MiB per-Git-diff output cap.
+
 **Important:** NFC plus JavaScript lowercase is a *conservative review
 heuristic*, **not an NTFS or macOS filesystem equivalence oracle**.
 Windows per-directory case sensitivity, locale-specific casing, Unicode
