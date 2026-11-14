@@ -101,3 +101,16 @@ test('combined verifier refuses symlinked linked CSS without revealing paths', t
     });
   });
 });
+
+
+test('combined verifier rejects raw form feed inside CSS quoted content', () => {
+  fixture(BASE + 'p{content:"prefix\furl(https://example.invalid/x.png)"}', dir => {
+    assert.throws(() => inspectDesktopStyles(dir), /DESKTOP CSS IMPORTS: Unterminated CSS string/);
+  });
+});
+
+test('combined verifier allows CSS form feed whitespace and escaped line continuation', () => {
+  fixture(BASE + 'p{\f color:red}p::before{content:"prefix\\\fsuffix"}', dir => {
+    assert.equal(inspectDesktopStyles(dir).stylesheets, 1);
+  });
+});
