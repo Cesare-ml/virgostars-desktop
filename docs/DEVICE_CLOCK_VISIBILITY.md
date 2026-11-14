@@ -30,3 +30,11 @@ npm test
 Synthetic tests cover a hidden-window pause, immediate resume, pre-cancel callbacks arriving late, synchronous pause during schedule registration, idempotent disposal and hostile cancellation.
 
 No new storage, native commands, permissions, remote requests, dependencies or third-party assets are introduced. No production changes or scientific accuracy claims are made.
+
+## Throwing UI observer safety (2026-11-14)
+
+A UI render/notification callback may throw while the clock samples a new wall time or marks an invalid timestamp. The clock now routes both notifications through `emitChanged()`, containing observer failures while continuing to schedule ticks and preserving the **already-written** timestamp. This is a small backport from the combined Desktop integration PR #239 and follows the separately reviewed observer-safety PR #133.
+
+`tests/device-clock-observer-lifecycle.test.mjs` adds five pure Node regressions: throwing startup callback, invalid-time recovery, throwing callback during scheduler retry, disposal during first refresh, and hidden-window pause/resume with a throwing observer. **5/5 passed locally on Node 22.16.0**, along with the other **16/16** isolated clock/runtime checks when tested together. The published module and test Git blob SHAs match the executed local mirror. Full-checkout `npm test`, Angular build and Windows WebView2 verification remain outstanding.
+
+No account/sync/astronomy capabilities, native permissions, network calls, storage or new dependencies are introduced. Do not merge the overlapping clock changes from #236 and #239 twice.
