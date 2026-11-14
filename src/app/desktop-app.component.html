@@ -73,7 +73,7 @@
         <span class="status-message" role="status">{{t(status)}}</span>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
       </div>
-      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span *ngIf="styleStatus !== 'active'" class="layout-warning" role="status"> · {{t(styleStatusKey)}}</span><span class="copyright-attribution"> · © 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</span></footer>
+      <footer>{{t('footer')}} · <span role="status">{{t(runtimeStatus)}}</span><span *ngIf="styleChecked && styleStatus !== 'active'" class="layout-warning" role="status"> · {{t(styleStatusKey)}}</span><span class="copyright-attribution"> · © 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</span></footer>
     </main>
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
@@ -119,7 +119,7 @@
           <div class="setting-line">
             <span>{{t('styles.label')}}</span>
             <div class="layout-probe-controls">
-              <strong role="status">{{t(styleStatusKey)}}</strong>
+              <strong>{{t(styleStatusKey)}}</strong>
               <button type="button" class="small-control" [attr.aria-label]="t('styles.retry')" (click)="checkStyles()">{{t('styles.retry')}}</button>
             </div>
           </div>
