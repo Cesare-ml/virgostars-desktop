@@ -89,8 +89,11 @@ malformed/truncated change records, and temporary synthetic Git repositories
 with diverging edits and rename-vs-original-edit overlap. The integration
 tests verify that HEAD, the current branch and the working tree remain
 untouched. Focused Node.js 22.16.0 / Git 2.47.3 check on 2026-11-14:
-**4/4 passing test cases**; the complete Desktop checkout, Angular build and
-Windows WebView2 acceptance are still required before integration.
+**8/8 passing test cases**, including branch-versus-main collisions, UTF-8
+paths, renames and independent `main` advancement. The verified script and
+test file matched their committed Git blob SHA-1 hashes exactly. This is a
+focused test of this tool, **not** the entire Desktop `npm test`, Angular
+build or Windows WebView2 acceptance.
 
 Additional regressions cover strict parsing of `rev-list` counts,
 incomplete base-side results, and a local synthetic Git fixture in which `main`
