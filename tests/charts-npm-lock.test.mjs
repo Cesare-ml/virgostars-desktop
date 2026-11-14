@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {auditChartsNpmLock} from '../scripts/verify-charts-npm-lock.mjs';
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync,symlinkSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {auditChartsNpmLock,auditChartsCheckout} from '../scripts/verify-charts-npm-lock.mjs';
 
 const sri = 'sha512-' + Buffer.alloc(64).toString('base64');
 const manifest = Object.freeze({
@@ -86,4 +88,56 @@ test('Windows bootstrap audits both lockfiles before first Charts npm ci', () =>
   assert.ok(desktopAudit>=0 && chartsAudit>desktopAudit && firstNpmCi>chartsAudit,
     'both offline preflights must run before Charts installation');
   assert.equal(packageJson.scripts['verify:charts-lock'],'node scripts/verify-charts-npm-lock.mjs');
+});
+
+function withCheckout(t) {
+  const charts = mkdtempSync(join(tmpdir(), 'vs-charts-lock-'));
+  t.after(() => rmSync(charts, {recursive:true,force:true}));
+  writeFileSync(join(charts,'package.json'),JSON.stringify(manifest));
+  writeFileSync(join(charts,'package-lock.json'),JSON.stringify(valid()));
+  return charts;
+}
+
+test('checkout reader accepts only regular synthetic manifest and lockfile',t=>{
+  const charts=withCheckout(t);
+  assert.deepEqual(auditChartsCheckout(charts),{registryPackages:1,localLinks:0});
+  rmSync(join(charts,'package-lock.json'));
+  mkdirSync(join(charts,'package-lock.json'));
+  assert.throws(()=>auditChartsCheckout(charts),/regular checkout entry/);
+});
+
+test('checkout reader rejects invalid UTF-8 that JSON.parse would silently replace',t=>{
+  const charts=withCheckout(t);
+  const corrupt=Buffer.concat([
+    Buffer.from(JSON.stringify(manifest).replace(/}$/,',"extra":"')),
+    Buffer.from([0xff]),Buffer.from('"}')
+  ]);
+  assert.doesNotThrow(()=>JSON.parse(corrupt.toString('utf8')));
+  writeFileSync(join(charts,'package.json'),corrupt);
+  assert.throws(()=>auditChartsCheckout(charts),/encoded data|UTF-8/i);
+  writeFileSync(join(charts,'package.json'),JSON.stringify(manifest));
+  const corruptLock=Buffer.concat([
+    Buffer.from(JSON.stringify(valid()).replace(/}$/,',"extra":"')),
+    Buffer.from([0xff]),Buffer.from('"}')
+  ]);
+  assert.doesNotThrow(()=>JSON.parse(corruptLock.toString('utf8')));
+  writeFileSync(join(charts,'package-lock.json'),corruptLock);
+  assert.throws(()=>auditChartsCheckout(charts),/encoded data|UTF-8/i);
+});
+
+test('checkout reader rejects oversized metadata before reading it',t=>{
+  const charts=withCheckout(t);
+  writeFileSync(join(charts,'package.json'),Buffer.alloc(1000000,65));
+  assert.throws(()=>auditChartsCheckout(charts),/size limits/);
+});
+
+test('checkout reader rejects symlinked manifests and locks', {skip:process.platform==='win32'},t=>{
+  const charts=withCheckout(t);
+  for (const name of ['package.json','package-lock.json']) {
+    const path=join(charts,name), target=join(charts,name+'.regular');
+    writeFileSync(target,name==='package.json'?JSON.stringify(manifest):JSON.stringify(valid()));
+    rmSync(path);symlinkSync(target,path);
+    assert.throws(()=>auditChartsCheckout(charts),/regular checkout entry/);
+    rmSync(path);writeFileSync(path,name==='package.json'?JSON.stringify(manifest):JSON.stringify(valid()));
+  }
 });
