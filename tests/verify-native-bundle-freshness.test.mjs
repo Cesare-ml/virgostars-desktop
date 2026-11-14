@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, rmSync, symlinkSync, lstatSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, rmSync, symlinkSync, lstatSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { verifyNativeBundleFreshness } from '../scripts/verify-native-bundle-freshness.mjs';
@@ -86,6 +86,26 @@ test('rejects excessively deep generated asset paths', () => fixture(({exe,dist,
   }
   assert.throws(() => verifyNativeBundleFreshness(exe, dist), /NATIVE_BUNDLE_DEPTH_LIMIT/);
 }));
+
+test('bounds the number of empty directories as well as file count', () => fixture(({exe,dist}) => {
+  for (let i=0; i<1025; i++) mkdirSync(join(dist, 'extra-' + i));
+  assert.throws(() => verifyNativeBundleFreshness(exe, dist), /NATIVE_BUNDLE_DIRECTORY_LIMIT/);
+}));
+
+test('checks sampled file and executable identity again before reporting success', () => {
+  const source = readFileSync(new URL('../scripts/verify-native-bundle-freshness.mjs', import.meta.url), 'utf8');
+  assert.match(source,/before\.ino === after\.ino/);
+  assert.match(source,/before\.size === after\.size/);
+  assert.match(source,/before\.mtimeMs === after\.mtimeMs/);
+  assert.match(source,/before\.ctimeMs === after\.ctimeMs/);
+  const scan = source.indexOf('inspect(root, 0);');
+  const fileCheck = source.indexOf('for (const snapshot of snapshots)');
+  const binaryCheck = source.indexOf('unchanged(executable, verifiedStat(executablePath');
+  const success = source.indexOf("status: 'plausibly_current'");
+  assert.ok(scan > 0 && fileCheck > scan && binaryCheck > fileCheck && success > binaryCheck);
+  assert.match(source,/failure\('CHANGED_DURING_SCAN'\)/);
+});
+
 
 test('does not change file timestamps or create reports', () => fixture(({exe,dist,files}) => {
   const before = [...files,exe].map(file=>({file,mtime: lstatSync(file).mtimeMs}));
