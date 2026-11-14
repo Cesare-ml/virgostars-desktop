@@ -4,6 +4,23 @@
 
 Git can store filenames on Linux/macOS that cannot be checked out safely on a Windows workstation. The existing `verify-build-privacy.mjs` examines only the **built Angular browser bundle**. This separate preflight inspects **all filenames currently tracked in the local Git index**, so invalid names can be detected before a Windows build attempt.
 
+## Automatic Windows bootstrap integration
+
+The single reviewed `scripts/build-windows-spike.ps1` entrypoint now invokes
+`node scripts/verify-windows-tracked-paths.mjs` at the start of the Desktop
+setup stage, **before** `desktop-doctor`, any `npm ci`, any Angular or Rust
+build and Tauri packaging. `scripts/build-windows.cmd` continues to delegate
+to the same PowerShell entrypoint. A nonzero check exit code stops the bootstrap.
+
+The check reports the **current locally tracked Git index**; it cannot protect
+a checkout that Windows already refused to create. For cross-platform review,
+run it in an existing Linux/macOS working tree or inspect the Git tree before
+attempting to check out an unsafe branch on Windows.
+
+Parallel draft PR #235 also edits the Windows bootstrap. Reviewers must
+reconcile both changes before accepting either; neither PR has been merged
+by this update.
+
 ## Manual use (from the Desktop repository root)
 
 ```sh
@@ -23,4 +40,8 @@ It rejects reserved Win32 device names (including `CON`, `PRN`, `AUX`, `NUL`, `C
 - `git ls-files --cached` covers Git-tracked names in the index, not untracked files, uncommitted content, submodule contents, downloaded dependencies, or generated build assets. Symlink targets, actual file permissions, malware, secrets, licenses, WebView2 runtime behavior and executable signatures are **not** examined.
 - NFC plus lowercase is a conservative **Windows alias heuristic**, not a complete model of every NTFS or Win32 filesystem name comparison. Passing is not certification of full Windows portability.
 - Use it **in addition to**, not in place of, `npm test`, `npm run verify:privacy`, bundle/CSS checks and real Windows WebView2 visual smoke.
-- Linux synthetic verification (Node.js 22.16.0, Git 2.47.3): **22/22 Node test cases passed**, including temporary Git fixture checks that HEAD, index and working tree are unchanged. No full Desktop suite, Angular/Tauri compile or native Windows run was performed during this change.
+- Earlier Linux synthetic verification (Node.js 22.16.0, Git 2.47.3): **22/22 Node test cases passed**, including temporary Git fixture checks that HEAD, index and working tree are unchanged. No full Desktop suite, Angular/Tauri compile or native Windows run was performed during this change.
+
+The current branch adds bootstrap-order and CMD-delegation regressions. These new
+tests have not yet been exercised in a native Windows PowerShell invocation; a
+Windows build still needs the complete `npm test` and native smoke acceptance.
