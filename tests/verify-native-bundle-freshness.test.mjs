@@ -51,17 +51,40 @@ test('rejects missing HTML, JavaScript or CSS entrypoints', () => {
   });
 });
 
-test('rejects symlinked file and directory paths', () => fixture(({root,exe,dist,files}) => {
-  symlinkSync(files[1], join(dist, 'extra.js'));
+test('rejects symlinked file and directory paths where the OS permits symlinks', t => fixture(({root,exe,dist,files}) => {
+  try { symlinkSync(files[1], join(dist, 'extra.js'), 'file'); }
+  catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error?.code)) { t.skip('symlinks require elevated Windows privileges'); return; }
+    throw error;
+  }
   assert.throws(() => verifyNativeBundleFreshness(exe, dist), /NATIVE_BUNDLE_UNSAFE_PATH/);
   rmSync(join(dist, 'extra.js'));
-  symlinkSync(dist, join(root, 'alias'));
+  symlinkSync(dist, join(root, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
   assert.throws(() => verifyNativeBundleFreshness(exe, join(root, 'alias')), /NATIVE_BUNDLE_UNSAFE_PATH/);
 }));
 
 test('rejects missing executable and bundle paths', () => fixture(({exe,dist,root}) => {
   assert.throws(() => verifyNativeBundleFreshness(join(root, 'missing.exe'), dist), /NATIVE_BUNDLE_MISSING/);
   assert.throws(() => verifyNativeBundleFreshness(exe, join(root, 'missing')), /NATIVE_BUNDLE_MISSING/);
+}));
+
+test('tolerates 1s filesystem timestamp granularity but rejects later modifications', () => fixture(({exe,dist,files,late}) => {
+  const within = new Date(late.getTime() + 900);
+  utimesSync(files[2], within, within);
+  assert.equal(verifyNativeBundleFreshness(exe, dist).status, 'plausibly_current');
+  const later = new Date(late.getTime() + 5000);
+  utimesSync(files[2], later, later);
+  assert.throws(() => verifyNativeBundleFreshness(exe, dist), /NATIVE_BUNDLE_STALE_EXECUTABLE/);
+}));
+
+test('rejects excessively deep generated asset paths', () => fixture(({exe,dist,early}) => {
+  let dir = dist;
+  for (let i=0;i<17;i++) {
+    dir = join(dir, 'd');
+    mkdirSync(dir);
+    utimesSync(dir, early, early);
+  }
+  assert.throws(() => verifyNativeBundleFreshness(exe, dist), /NATIVE_BUNDLE_DEPTH_LIMIT/);
 }));
 
 test('does not change file timestamps or create reports', () => fixture(({exe,dist,files}) => {
