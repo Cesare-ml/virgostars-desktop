@@ -81,6 +81,57 @@ with Rust 1.90 or later and review its real output before merge. The
 complete `npm test`, Angular/Tauri builds, native SQLCipher and Windows
 WebView2 smoke were **not executed**.
 
+## Standalone native Rust test gate (follow-up, 2026-11-14)
+
+A new **dependency-free Node launcher** `scripts/test-profile-status-rust.mjs`
+provides a direct route to compiling and executing only the seven pure-std
+Rust tests above. It does **not** invoke Cargo, Tauri, npm install, a
+network endpoint, a registry or a production account. When Rust 1.90+ and
+the platform-native linker are installed:
+
+```powershell
+node scripts/test-profile-status-rust.mjs
+```
+
+The runner validates the local checked-in Rust source, compiles it with
+`rustc --edition=2021 --test` into a fresh OS temporary directory, runs
+the resulting native test binary, and compares Rust's actual reported
+passing-test count to the number of `#[test]` functions in the source.
+It rejects missing compilers, compiler failures, crashes, timeouts and
+zero/missing/incorrect test results. Both processes use explicit argument
+arrays, `shell: false`, bounded execution times and buffered output.
+The temporary binary and directory are removed in a `finally` block.
+Detailed compiler errors, raw paths and runtime diagnostics are **not**
+echoed to the console; only fixed diagnostic codes are printed on failure.
+This launcher cannot replace the full locked Cargo/Tauri test gate.
+
+### Verified here
+
+- **Node 22.16.0, real runner unit tests:** `node --test
+  tests/profile-status-rust-runner.test.mjs` → **7/7 PASS**. The tests
+  use a deterministic fake compiler/process runner to check fixed
+  compiler arguments, isolated temporary execution, no shell, output count,
+  failure handling and cleanup.
+- **Direct runner without a fake compiler:** `node
+  scripts/test-profile-status-rust.mjs` → **`RUST_FENCE_COMPILER_UNAVAILABLE`
+  (exit 1)** because this execution environment does not contain
+  `rustc`. **No Rust compilation or Rust unit test execution occurred.**
+- **All available local mirror Node tests:** `node
+  --experimental-strip-types --test tests/*.test.mjs` → **32/32 PASS**,
+  including the seven new runner tests and the earlier 25 static/TypeScript
+  checks. TypeScript 5.8.3 strict compilation also passes for the UI
+  lifecycle modules.
+- The exact locally tested runner and test-source Git blob SHA-1s match
+  GitHub: `8063f73a6fcbba96f8cb26596172c79904cd4f48` and
+  `d52b21d454194d9bd763179ad5910e49f4308ee6`.
+
+**Still required:** run this command with a real local Rust compiler, then
+`cd src-tauri && cargo test --locked` with the full pinned dependency set,
+`npm test`, the Angular build and Windows WebView2 acceptance. Mock
+process-runner tests are **not evidence** that Rust code compiles, and this
+gate does not enable local authentication, encrypted profile storage, or
+account access.
+
 ## Next gates
 
 1. Review native Rust semantics and run all Cargo unit tests in an authorized
