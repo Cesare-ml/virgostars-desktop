@@ -23,14 +23,23 @@ export function requestSyntheticPngDownload<TAnchor extends SyntheticPngAnchor>(
   port: SyntheticPngDownloadPort<TAnchor>,
 ): void {
   const anchor = port.createAnchor();
+  let operationFailed = false;
   try {
     anchor.href = validatedDataUrl;
     anchor.download = validatedFilename;
     // Attach before clicking to support download behavior in embedded WebViews.
     port.appendAnchor(anchor);
     anchor.click();
+  } catch (error) {
+    operationFailed = true;
+    throw error;
   } finally {
-    // Even a partially failed append or a throwing href setter must clean up.
-    anchor.remove();
+    // A faulty WebView cleanup must not replace the original download error.
+    // A standalone cleanup failure is still reported to the caller.
+    try {
+      anchor.remove();
+    } catch (cleanupError) {
+      if (!operationFailed) throw cleanupError;
+    }
   }
 }
