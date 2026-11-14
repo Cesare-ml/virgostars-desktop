@@ -47,6 +47,15 @@ export function testProfileStatusRust({run=spawnSync, tempBase=tmpdir()}={}) {
     if (compiled?.error?.code === 'ENOENT') throw new Error('RUST_FENCE_COMPILER_UNAVAILABLE');
     assert(compiled?.status === 0 && !compiled?.signal && !compiled?.error,
       'RUST_FENCE_COMPILATION_FAILED');
+    // A zero exit status is not sufficient: the compiler MUST have produced
+    // a real, non-symlinked executable in the isolated output directory.
+    // Otherwise a broken/simulated compiler could claim success without
+    // producing any tests at all.
+    let artifact;
+    try { artifact = lstatSync(binary); }
+    catch { throw new Error('RUST_FENCE_BINARY_INVALID'); }
+    assert(artifact.isFile() && !artifact.isSymbolicLink() && artifact.size >= 128,
+      'RUST_FENCE_BINARY_INVALID');
 
     let executed;
     try {
@@ -59,9 +68,14 @@ export function testProfileStatusRust({run=spawnSync, tempBase=tmpdir()}={}) {
     }
     assert(executed?.status === 0 && !executed?.signal && !executed?.error,
       'RUST_FENCE_EXECUTION_FAILED');
-    const matches = [...String(executed.stdout ?? '').matchAll(/test result: ok\. (\d+) passed; (\d+) failed;/g)];
+    // Only a complete, unfiltered Rust libtest result counts as successful.
+    // In particular 7 passing tests plus 1 filtered/ignored test is NOT a
+    // complete passing suite, even if the process exits with status zero.
+    const matches = [...String(executed.stdout ?? '').matchAll(
+      /^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out;/gm,
+    )];
     assert(matches.length === 1 && Number(matches[0][1]) === expected &&
-      Number(matches[0][2]) === 0,
+      matches[0].slice(2).every(value => value === '0'),
       'RUST_FENCE_TEST_COUNT_MISMATCH');
     return Object.freeze({passed: expected});
   } finally {
@@ -79,6 +93,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const allowed = new Set([
       'RUST_FENCE_SOURCE_UNAVAILABLE', 'RUST_FENCE_TEST_INVENTORY_INVALID',
       'RUST_FENCE_COMPILER_UNAVAILABLE', 'RUST_FENCE_COMPILATION_FAILED',
+      'RUST_FENCE_BINARY_INVALID',
       'RUST_FENCE_EXECUTION_FAILED', 'RUST_FENCE_TEST_COUNT_MISMATCH',
       'RUST_FENCE_CLEANUP_FAILED', 'RUST_FENCE_ARGUMENTS_NOT_ALLOWED',
     ]);
