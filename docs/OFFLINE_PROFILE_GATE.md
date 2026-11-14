@@ -79,6 +79,73 @@ Exact committed source and test blob SHA-1s were confirmed against the local
 Node-tested copy. These checks **do not** validate Tauri, SQLCipher, Angular,
 native cancellation, session revocation or full npm suite.
 
+## Bounded status refresh scheduling (mock-only follow-up)
+
+`src/app/native/offline-profile-reader.ts` now supplies
+`LatestOfflineProfileReader<TDecision>`. It consumes the existing
+`LatestProfileStatus` through a narrow structural port (no runtime module
+import), accepts an injected asynchronous status-only reader, and publishes
+decisions through a best-effort subscriber.
+
+- Each `refresh()` immediately blocks the prior presentation and schedules
+  at most **one in-flight** read plus **one replaceable latest pending** read.
+  Consecutive same-turn refreshes coalesce before invoking the port.
+- A newer refresh requests `AbortSignal` cancellation, but the previous
+  request's answer is never shown even if the port ignores that signal.
+  Native requests are **not assumed cancellable**.
+- On lock/logout/profile switch, call `invalidate()` synchronously to abort
+  active work, discard pending work, and block visible status. Call `dispose()`
+  at view teardown. Late answers or errors cannot revive the UI.
+- Port rejection is passed as null to the injected v1 assessor, producing
+  the blocked decision, and subscriber exceptions are isolated without
+  displaying potentially sensitive diagnostic strings.
+- **Deliberate safety trade-off:** if an abort-ignoring port never settles,
+  the pending request cannot start and the UI remains blocked. This is safer
+  than launching unbounded native requests. The real Rust adapter must have
+  its own cooperative cancellation, bounded execution time and resource
+  accounting; this TypeScript class does **not** guarantee eventual refresh.
+
+Illustrative call wiring, **not** a working production IPC adapter:
+
+```ts
+const gate = new LatestProfileStatus(
+  assessOfflineProfileAccess,
+  assessOfflineProfileAccess(null),
+);
+const reader = new LatestOfflineProfileReader(
+  gate,
+  async signal => fakeTestOnlyStatusRead(signal), // ONLY a synthetic mock
+  decision => renderFutureUiStatus(decision),
+);
+// reader.refresh() is an eligibility check, NEVER native authorization.
+// reader.invalidate() must run on real lock/logout/profile switch.
+```
+
+The methods must not be used to fetch, authorize or persist birth records.
+Only a separately audited Rust-owned encrypted profile lifecycle may read
+actual sensitive data. This helper adds no IPC permissions, user credentials,
+services, logging or actual native storage.
+
+### Executed focused verification
+
+```sh
+node --experimental-strip-types --test tests/offline-profile-reader.test.mjs
+tsc --noEmit --strict --target ES2022 --module ES2022 \
+  --moduleResolution bundler --lib es2022,dom \
+  src/app/native/latest-profile-status.ts src/app/native/offline-profile-reader.ts
+```
+
+On **Node.js 22.16.0**, 11/11 new asynchronous mock tests passed in a
+standalone source mirror. TypeScript strict compilation also passed.
+Scenarios cover 10,000 rapid refreshes, same-turn coalescing, abort-ignoring
+readers, out-of-order replies, logout, disposal, never-settling transports,
+rejected/invalid replies and reentrant notification. Exact new source and
+test SHA-1 blobs match the GitHub branch: `299562f70312ef0d35e251ec3ff6494bdda96971`
+and `1ac452516a873d02f79fa383ae53bce546dc3ac4`.
+The existing guard is represented by an equivalent standalone local copy,
+not a full checkout. **Not executed:** full npm/Angular suites, Rust/Cargo,
+real native IPC, SQLCipher, real profiles, Windows/WebView2 acceptance.
+
 ## Threat and lifecycle boundaries
 
 - A disconnected computer cannot learn of a remote revocation that has not yet been delivered. The model denies access when revocation is **known**, but cannot promise immediate remote revocation against an offline device. The eventual product policy must explicitly decide how local unlock and optional offline grace periods behave.
