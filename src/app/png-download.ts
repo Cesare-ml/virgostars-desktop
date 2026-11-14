@@ -50,6 +50,17 @@ function assertSafeDownloadTarget(url: unknown, filename: unknown): asserts url 
       throw new Error('Invalid PNG download');
     }
   }
+  // A future caller might skip the upstream IHDR/CRC validator. Reject an
+  // obviously non-PNG payload before allocating any DOM anchor. Decode only
+  // 24 Base64 characters (18 bytes), never the complete image in this guard.
+  try {
+    const header = atob(body.slice(0, 24));
+    if (!header.startsWith('\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR')) {
+      throw new Error('Invalid PNG download');
+    }
+  } catch {
+    throw new Error('Invalid PNG download');
+  }
 }
 
 export function requestSyntheticPngDownload<TAnchor extends SyntheticPngAnchor>(
