@@ -199,6 +199,39 @@ and test files match GitHub Git blob hashes:
 Rust/Cargo tests, native SQLCipher, actual Tauri IPC, Windows WebView2 or
 any real profile/account test. None of those is implied by this focused check.
 
+## Bounded reentrant UI notifications
+
+The status reader now also protects against a synchronous UI subscriber that
+calls `refresh()`, `invalidate()` or `dispose()` while handling a status
+notification. Instead of recursively notifying itself until the call stack
+overflows, `emit()` delivers at most **one coalesced follow-up** after the
+original notification. This preserves the important ready → blocked
+notification sequence when the observer locks a profile in response to an
+asynchronous status update. A pathological subscriber that invalidates on
+*every* notification is bounded: further nested notifications are dropped
+for that emission, while the final decision remains available via
+`reader.decision`. Future UI wiring must consume the current decision,
+rather than assuming every intermediate state is delivered.
+
+Focused local check on exact current GitHub source:
+
+```sh
+node --experimental-strip-types --test \
+  tests/offline-profile-notify.test.mjs tests/offline-profile-timeout.test.mjs
+tsc --noEmit --strict --target ES2022 --module ES2022 \
+  --moduleResolution bundler --lib es2022,dom \
+  src/app/native/latest-profile-status.ts src/app/native/offline-profile-reader.ts
+```
+
+**18/18 Node tests passed** (five new notification tests and 13 existing
+deadline tests), plus TypeScript 5.8.3 strict compilation, in the
+synthetic local source mirror. The local Git object hashes were verified
+against GitHub for source
+`4e771fbb1f34b9eab310251c71e40454db1b212f` and regression tests
+`2a4aafa798252405116e59b0b7a9c87b03c22c3a`.
+The full repository test suite, Angular build, native Rust/SQLCipher,
+and Windows WebView2 integration were **not** executed.
+
 ## Threat and lifecycle boundaries
 
 - A disconnected computer cannot learn of a remote revocation that has not yet been delivered. The model denies access when revocation is **known**, but cannot promise immediate remote revocation against an offline device. The eventual product policy must explicitly decide how local unlock and optional offline grace periods behave.
