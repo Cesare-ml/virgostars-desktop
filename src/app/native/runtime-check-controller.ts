@@ -11,10 +11,13 @@ export class RuntimeCheckController {
   private generation = 0;
   private disposed = false;
 
-  constructor(
-    private readonly inspect: () => Promise<RuntimeProbeResult>,
-    private readonly onChange: () => void,
-  ) {}
+  private readonly inspect: () => Promise<RuntimeProbeResult>;
+  private readonly onChange: () => void;
+
+  constructor(inspect: () => Promise<RuntimeProbeResult>, onChange: () => void) {
+    this.inspect = inspect;
+    this.onChange = onChange;
+  }
 
   /** Explicit retry only: no polling, network fallback or native side effects. */
   async check(): Promise<void> {
