@@ -12,6 +12,7 @@ import {
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
+import { RuntimeCheckController } from './native/runtime-check-controller';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, syntheticPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
@@ -53,6 +54,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private initialized = false;
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
+  private readonly runtimeCheck = new RuntimeCheckController(
+    () => inspectDesktopRuntime(),
+    () => { if (!this.destroyed) this.cd.markForCheck(); },
+  );
   private exporting = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
@@ -89,7 +94,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   busy = true;
   ready = false;
   status: MessageKey = 'chart.loading';
-  runtimeStatus: MessageKey = 'runtime.checking';
+  get runtimeStatus(): MessageKey {
+    return this.runtimeCheck.status === 'native' ? 'runtime.native'
+      : this.runtimeCheck.status === 'browser' ? 'runtime.browser'
+      : this.runtimeCheck.status === 'unavailable' ? 'runtime.unavailable' : 'runtime.checking';
+  }
+  get runtimeChecking(): boolean { return this.runtimeCheck.checking; }
   styleStatus: DesktopLayoutStatus = 'unavailable';
   error = '';
 
@@ -164,13 +174,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private async checkRuntime(): Promise<void> {
-    const result = await inspectDesktopRuntime();
+  checkRuntime(): void {
     if (this.destroyed) return;
-    this.runtimeStatus = result.kind === 'desktop_demo'
-      ? 'runtime.native'
-      : result.kind === 'browser_preview' ? 'runtime.browser' : 'runtime.unavailable';
-    this.cd.markForCheck();
+    void this.runtimeCheck.check();
   }
 
   ngOnDestroy(): void {
@@ -178,6 +184,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
+    this.runtimeCheck.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
   }
