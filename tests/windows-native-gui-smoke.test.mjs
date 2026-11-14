@@ -46,6 +46,18 @@ test('preflight uses an application node.exe, not a PowerShell alias or script',
   assert.doesNotMatch(source,/& node \$Path/);
 });
 
+test('native preflight invocation errors are redacted and fail closed', () => {
+  const start = source.indexOf('function Invoke-ReadOnlyGate {');
+  const end = source.indexOf('Push-Location $root', start);
+  assert.ok(start >= 0 && end > start);
+  const gate = source.slice(start, end);
+  assert.match(gate,/try \{\s*& \$nodeExe \$Path \*> \$null\s*\}\s*catch \{\s*throw \('NATIVE_SMOKE_PREFLIGHT_FAILED_' \+ \$Label\)\s*\}/);
+  assert.match(gate,/if \(\$LASTEXITCODE -ne 0\) \{\s*throw \('NATIVE_SMOKE_PREFLIGHT_FAILED_' \+ \$Label\)/);
+  assert.doesNotMatch(gate,/\$ErrorActionPreference\s*=\s*['"]Continue['"]/);
+  assert.doesNotMatch(gate,/Write-(?:Host|Error|Output)[^\n]*\$_/);
+});
+
+
 test('process observation distinguishes a native GUI window from a merely present executable', () => {
   assert.match(source,/Start-Process[\s\S]*-PassThru/);
   assert.match(source,/System\.Diagnostics\.Stopwatch/);
