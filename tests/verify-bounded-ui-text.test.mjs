@@ -77,7 +77,10 @@ test('malformed UTF-8 is refused for both HTML and CSS', () => fixture(({dir, ht
 }));
 
 test('invalid type and missing file fail without leaking filesystem paths', () => fixture(({dir}) => {
-  assert.throws(() => readBoundedUiText(join(dir, 'none.css'), 'CSV'), /^Error: DESKTOP CSS BUNDLE: input unsupported text kind$/);
+  assert.throws(() => readBoundedUiText(join(dir, 'none.css'), 'CSV'), error => {
+    assert.equal(error.message, 'DESKTOP CSS BUNDLE: input unsupported text kind');
+    return true;
+  });
   assert.throws(() => readBoundedUiText(join(dir, 'none.css'), 'CSS'), error => {
     assert.equal(error.message, 'DESKTOP CSS BUNDLE: CSS missing or inaccessible');
     assert.equal(error.message.includes(dir), false);
