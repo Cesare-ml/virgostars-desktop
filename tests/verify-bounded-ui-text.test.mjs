@@ -38,9 +38,9 @@ test('UTF-8 multibyte characters are preserved without text truncation', () => f
   assert.equal(readBoundedUiText(html, 'HTML'), '<title>città ☼</title>');
 }));
 
-test('oversized sparse HTML is refused before it is read', () => fixture(({html}) => {
+test('oversized sparse HTML is refused before it is read', () => fixture(({dir, html}) => {
   truncateSync(html, MAX_BUNDLED_HTML_BYTES + 1);
-  assert.throws(() => inspectDesktopStyles(join(html, '..')), /HTML exceeds byte limit/);
+  assert.throws(() => inspectDesktopStyles(dir), /HTML exceeds byte limit/);
 }));
 
 test('oversized sparse linked CSS is refused before it is read', () => fixture(({dir, css}) => {
