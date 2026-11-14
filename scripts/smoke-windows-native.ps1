@@ -53,6 +53,8 @@ try {
     Invoke-ReadOnlyGate 'BUNDLED_CSS' 'scripts/verify-bundled-css.mjs'
     Invoke-ReadOnlyGate 'COMPONENT_STYLES' 'scripts/verify-component-styles.mjs'
     Invoke-ReadOnlyGate 'WINDOWS_PE' 'scripts/verify-windows-pe.mjs'
+    # Prevent trusting a GUI binary older than its current Angular output.
+    Invoke-ReadOnlyGate 'BUNDLE_FRESHNESS' 'scripts/verify-native-bundle-freshness.mjs'
 }
 finally {
     Pop-Location
