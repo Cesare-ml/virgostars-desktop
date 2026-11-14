@@ -1,6 +1,5 @@
 """Synthetic tests for verified installation; no licensed data is used."""
 import hashlib
-import os
 import json
 from pathlib import Path
 import sys
