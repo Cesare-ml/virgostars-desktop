@@ -59,8 +59,7 @@ export function parseTrackedGitPaths(bytes){
   return checkTrackedPaths(paths);
 }
 
-export function inspectTrackedPaths(root=ROOT){
-  const base=resolve(root);
+function assertGitRoot(base){
   const head=spawnSync('git',['rev-parse','--show-toplevel'],{
     cwd:base,encoding:'utf8',maxBuffer:8192,windowsHide:true});
   if(head.error||head.signal||head.status!==0||typeof head.stdout!=='string')
@@ -69,6 +68,11 @@ export function inspectTrackedPaths(root=ROOT){
   const canonical=path=>process.platform==='win32'?resolve(path).toLowerCase():resolve(path);
   if(!actual||canonical(actual)!==canonical(base))
     fail('Git checkout root mismatch');
+}
+
+export function inspectTrackedPaths(root=ROOT){
+  const base=resolve(root);
+  assertGitRoot(base);
   const result=spawnSync('git',['ls-files','--cached','-z','--full-name','--'],{
     cwd:base,encoding:null,maxBuffer:MAX_BYTES,windowsHide:true});
   if(result.error||result.signal||result.status!==0)
@@ -76,10 +80,29 @@ export function inspectTrackedPaths(root=ROOT){
   return parseTrackedGitPaths(result.stdout);
 }
 
+/** Audit a local commit before switching branches, without checkout or fetch. */
+export function inspectCommitPaths(root=ROOT, commit){
+  if(typeof commit!=='string'||!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(commit))
+    fail('invalid full Git commit id');
+  const base=resolve(root);
+  assertGitRoot(base);
+  const kind=spawnSync('git',['cat-file','-t',commit],{
+    cwd:base,encoding:'utf8',maxBuffer:128,windowsHide:true});
+  if(kind.error||kind.signal||kind.status!==0||kind.stdout!=='commit\n')
+    fail('local Git commit unavailable');
+  const result=spawnSync('git',['ls-tree','-r','-z','--name-only','--full-tree',commit],{
+    cwd:base,encoding:null,maxBuffer:MAX_BYTES,windowsHide:true});
+  if(result.error||result.signal||result.status!==0)
+    fail('Git commit-path listing failed');
+  return parseTrackedGitPaths(result.stdout);
+}
+
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
   try{
-    if(process.argv.length!==2)fail('unexpected CLI arguments');
-    const result=inspectTrackedPaths();
+    const args=process.argv.slice(2);
+    if(args.length>1||(args.length===1&&!/^--commit=(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(args[0])))
+      fail('expected optional --commit=<full-hex-id>');
+    const result=args.length?inspectCommitPaths(ROOT,args[0].slice(9)):inspectTrackedPaths();
     console.log('WINDOWS TRACKED PATHS: '+result.files+' tracked filenames checked.');
     console.log('Path-name portability only; no build, network, merge or file writes.');
   }catch(error){
