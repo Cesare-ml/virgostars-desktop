@@ -63,7 +63,7 @@ The source mirror contained **four exact GitHub file blobs**, verified with
 
 | File | Git blob SHA |
 | --- | --- |
-| `scripts/read-bounded-ui-text.mjs` | `fe92c8eba0a7c38623267117e51f82e496b9ee01` |
+| `scripts/read-bounded-ui-text.mjs` | `afbfc7e09f365a0c99877e7ce62857d504444664` |
 | `scripts/verify-bundled-css.mjs` | `81bf813490eaad54bbc788a250c434537ff96fbf` |
 | `scripts/verify-css-imports.mjs` | `116cf963bc2dcd54f023932ae033b412e5cb7b32` |
 | `tests/verify-bounded-ui-text.test.mjs` | `08a95d1c4345c63d350e9e8a182a6ab960d8c9bd` |
@@ -73,7 +73,13 @@ a NUL in the second read chunk, a valid UTF-8 codepoint split across
 64 KiB chunks, and an invalid sequence split at the same boundary.
 Four additional regression cases exercise allowed TAB/LF/FF/CR whitespace,
 forbidden ESC in HTML, DEL/vertical-tab in CSS, and a forbidden byte exactly
-at the second 64 KiB chunk boundary. An earlier 19/19 pure-function check
+at the second 64 KiB chunk boundary.
+
+Additionally, a local, synthetic **32 MiB exact-size CSS boundary smoke**
+passed with Node.js 22.16.0 (full data read and decoded, 33,554,432 bytes;
+~214 ms on the authoring environment). It is not a cross-machine performance
+benchmark or a Windows acceptance result. The byte scanner uses direct
+comparisons to avoid per-byte array allocation. An earlier 19/19 pure-function check
 covered metadata validation.
 
 **Not executed:** repository-wide `npm test`, Angular output compilation,
