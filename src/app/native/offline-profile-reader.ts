@@ -47,6 +47,8 @@ export class LatestOfflineProfileReader<TDecision> {
   private deadline: {controller: AbortController; handle: unknown} | null = null;
   private pending: symbol | null = null;
   private disposed = false;
+  private notifying = false;
+  private notifyAgain = false;
 
   constructor(gate: OfflineProfileStatusGate<TDecision>,
     read: OfflineProfileStatusPort,
@@ -101,8 +103,25 @@ export class LatestOfflineProfileReader<TDecision> {
   }
 
   private emit(): void {
-    try { this.changed(this.gate.decision); }
-    catch { /* UI subscribers cannot poison status scheduling or expose raw errors. */ }
+    // A subscriber may synchronously lock, refresh or dispose the profile.
+    // Queue at most one follow-up notification; otherwise a listener that
+    // invalidates on every callback can recurse until stack exhaustion.
+    if (this.notifying) {
+      this.notifyAgain = true;
+      return;
+    }
+    this.notifying = true;
+    try {
+      for (let delivery = 0; delivery < 2; delivery++) {
+        this.notifyAgain = false;
+        try { this.changed(this.gate.decision); }
+        catch { /* UI observers cannot poison scheduling or leak errors. */ }
+        if (!this.notifyAgain) break;
+      }
+    } finally {
+      this.notifyAgain = false;
+      this.notifying = false;
+    }
   }
 
   private clearDeadline(): void {
