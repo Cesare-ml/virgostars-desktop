@@ -20,14 +20,17 @@ read sites. It enforces:
   changed descriptor identity. Apply `O_NOFOLLOW` where supported.
 - Read through one descriptor in chunks of up to **64 KiB**, checking one
   sentinel byte beyond the limit to detect growth. Check the descriptor's
-  size and modification time again after reading.
+  descriptor identity, byte count, size, modification time and ctime again after reading.
+  Checking ctime catches some same-length rewrites even if mtime is restored.
 - Reject NUL bytes while streaming, and reject malformed UTF-8 using a fatal decoder. Return stable errors without
   OS exception strings or local absolute filesystem paths.
 
 Both the existing static HTML-link rules and CSS import/resource checks remain
 in control of what is safe to package. This is **not** a filesystem sandbox
 or cross-platform proof against races through ancestor directories, timestamp
-granularity, network filesystems or adversarial concurrent writes. The separate
+granularity, network filesystems or adversarial concurrent writes. On Windows,
+ctime can have creation-time semantics and must not be treated as a universal
+rewrite detector. The separate
 component-CSS verifier still has its own bounded candidate scanner.
 
 ## Tests
@@ -43,6 +46,8 @@ npm run verify:bundle
 Focused synthetic test coverage includes valid HTML/CSS, multibyte UTF-8,
 oversized sparse HTML and CSS files, embedded NUL bytes, symlink rejection when supported,
 invalid UTF-8, unsupported helper types and redacted missing-file errors.
+Two additional pure metadata-regression groups cover restored mtime with
+changed ctime, descriptor-identity drift, invalid stat metadata and short reads.
 
 **Executed in the authoring environment (Node 22.16.0):** 12/12 focused
 checks of the new helper in a temporary isolated mirror. The mirrored helper
@@ -50,6 +55,11 @@ has the identical Git blob SHA `e878aaac45af0edba84b1e460a16d2ef8d977012`
 as the committed source. These are **not** the entire committed integration
 test file: that file additionally exercises the real `inspectDesktopStyles`
 gate and remains unexecuted in the authoring environment.
+
+**Additional static verification:** 19/19 assertions passed in a V8 harness
+executing the `hasStableReadMetadata` function extracted from the **exact**
+GitHub source blob `bb8f00cc15ccb2f72cac6a073fbf8596749f9d94`.
+This is a focused pure-function test, **not** the complete Node test suite.
 
 The original CSS inspector integration, full repo tests, production Angular
 bundle, Rust/Tauri compilation and native Windows 11 WebView2 visual check
