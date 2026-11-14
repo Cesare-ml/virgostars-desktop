@@ -71,7 +71,7 @@ export function readBoundedUiText(path, kind) {
       // on NUL, other C0 control bytes and DEL before UTF-8 decoding.
       for (let i = 0; i < n; i++) {
         const byte = scratch[i];
-        if ((byte < 0x20 && ![0x09, 0x0a, 0x0c, 0x0d].includes(byte)) || byte === 0x7f) {
+        if ((byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0c && byte !== 0x0d) || byte === 0x7f) {
           reject(kind, byte === 0 ? 'contains NUL byte' : 'contains forbidden control byte');
         }
       }
