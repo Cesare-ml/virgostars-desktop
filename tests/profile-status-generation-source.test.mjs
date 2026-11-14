@@ -96,3 +96,10 @@ test('race test forces simultaneous native publication and logout',()=>{
   assert.match(race,/lock_gate\.invalidate\(\)/);
   assert.match(race,/assert_eq!\(gate\.visible_hint\(\), ProfileStatusUiHint::Blocked\)/);
 });
+
+test('Rust concurrent joins consume each JoinHandle before filtering results',()=>{
+  const race=source.split('fn competing_completions_accept_exactly_one()')[1]
+    .split('fn generation_exhaustion_permanently_fails_closed()')[0];
+  assert.match(race,/\.into_iter\(\)\s*\.map\(\|worker\| worker\.join\(\)/s);
+  assert.doesNotMatch(race,/\.filter\(\|worker\| worker\.join\(\)/s);
+});
