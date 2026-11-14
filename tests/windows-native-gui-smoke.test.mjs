@@ -124,7 +124,7 @@ test('manual CSS checkpoint is connected to the live computed-layout probe', () 
   assert.ok(line, 'explicit layout checkpoint required');
   assert.match(line,/Layout diagnostics \/ Diagnostica layout/);
   assert.match(line,/Recheck styles \/ Ricontrolla stili/);
-  assert.match(line,/Interface grid detected \/ Griglia dell.interfaccia rilevata/);
+  assert.match(line,/Interface grid detected \/ Griglia dell\{0\}interfaccia rilevata/);
   assert.match(layoutProbe,/export type DesktopLayoutStatus = 'active' \| 'missing' \| 'hidden' \| 'collapsed' \| 'unavailable'/);
   assert.match(template,/\{\{t\(styleStatusKey\)\}\}/);
   assert.match(template,/\(click\)="checkStyles\(\)"/);
@@ -134,6 +134,17 @@ test('manual CSS checkpoint is connected to the live computed-layout probe', () 
   assert.match(translations,/"styles\.retry":"Recheck styles"/);
   assert.match(source,/all eight visual observations confirmed/);
 });
+
+test('Windows PowerShell 5.1 can parse ASCII-only source without an UTF-8 BOM', () => {
+  // Windows PowerShell 5.1 may decode UTF-8 without a BOM as an ANSI code page.
+  // Encode the curly apostrophe and accented reply using ASCII source only.
+  assert.ok([...source].every(ch => ch.codePointAt(0) < 128), 'native smoke PS1 source must be ASCII');
+  assert.match(source,/Griglia dell\{0\}interfaccia rilevata\?' -f \[char\]0x2019/);
+  assert.match(source,/\$reply -notin @\('y', 'yes', 's', 'si', \('s' \+ \[char\]0x00EC\)\)/);
+  assert.ok(translations.includes('Griglia dell' + String.fromCharCode(0x2019) + 'interfaccia rilevata'));
+  assert.equal('s' + String.fromCharCode(0x00EC), 'sì');
+});
+
 
 test('smoke script leaves the app available for inspection and records no personal reports', () => {
   assert.doesNotMatch(source,/Stop-Process|Remove-Item|Out-File|Set-Content|Add-Content|Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|Start-Transcript/);
