@@ -31,6 +31,8 @@ const EXPECTED_DEV_CSP = Object.freeze({
   'frame-src': ["'none'"],
 });
 
+const REVIEWED_SECURITY_FIELDS = Object.freeze(['capabilities', 'csp', 'devCsp']);
+
 function assertSafe(ok, reason) {
   if (!ok) throw new Error('TAURI SECURITY CONFIG: ' + reason);
 }
@@ -78,10 +80,15 @@ export function verifyTauriSecurityConfig(config) {
     !Object.hasOwn(config.build, 'beforeDevCommand'),
     'development frontend must remain on reviewed loopback origin');
   assertSafe(config.bundle.active === false, 'installer packaging requires separate review');
-  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length > 0 &&
-    config.app.windows.every(window => isObject(window) && !Object.hasOwn(window, 'url')),
-    'external or missing native window configuration');
+  assertSafe(Array.isArray(config.app.windows) && config.app.windows.length === 1 &&
+    config.app.windows.every(window => isObject(window) && window.label === 'main' &&
+      !Object.hasOwn(window, 'url')),
+    'unreviewed native window configuration');
   const security = config.app.security;
+  // Explicitly reject new Tauri security knobs, including options introduced by
+  // future Tauri versions: an innocuous-looking default must be reviewed first.
+  assertSafe(Object.keys(security).every(field => REVIEWED_SECURITY_FIELDS.includes(field)),
+    'unreviewed Tauri security option');
   assertSafe(Array.isArray(security.capabilities) && security.capabilities.length === 0,
     'native capability list changed');
   assertSafe(config.app.withGlobalTauri !== true &&
