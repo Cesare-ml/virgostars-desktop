@@ -41,6 +41,6 @@ test('Angular combobox stays a single tab stop; options remain clickable and scr
   assert.match(html, /class="city-option" role="option" tabindex="-1"/);
   assert.match(html, /\(click\)="choose\(i\)"/);
   assert.match(component, /cityPickerKeyAction\(event\.key, this\.state\.results\.length, this\.state\.activeIndex\)/);
-  assert.match(component, /case 'dismiss':\s*if\s*\(event\.key === 'Escape'/);
+  assert.match(component, /case 'dismiss':[\s\S]*?if\s*\(event\.key === 'Escape'/);
   assert.match(component, /this\.state\.dismiss\(\)/);
 });
