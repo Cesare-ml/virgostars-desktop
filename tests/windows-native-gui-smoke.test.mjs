@@ -24,6 +24,7 @@ test('all read-only gates run in strict order before launching the local binary'
     "Invoke-ReadOnlyGate 'BUNDLED_CSS' 'scripts/verify-bundled-css.mjs'",
     "Invoke-ReadOnlyGate 'COMPONENT_STYLES' 'scripts/verify-component-styles.mjs'",
     "Invoke-ReadOnlyGate 'WINDOWS_PE' 'scripts/verify-windows-pe.mjs'",
+    "Invoke-ReadOnlyGate 'BUNDLE_FRESHNESS' 'scripts/verify-native-bundle-freshness.mjs'",
     'Start-Process -FilePath $exe -WorkingDirectory $root -PassThru',
   ];
   let previous = -1;
