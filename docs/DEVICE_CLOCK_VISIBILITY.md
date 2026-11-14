@@ -11,6 +11,7 @@ The Desktop component subscribes to `document.visibilitychange` exactly once dur
 - **Visible (or visibility unknown):** start the clock, sampling `Date.now()` immediately. Repeated starts do not create extra intervals.
 - **Hidden:** cancel the one-second interval without invalidating the last displayed reading. A hidden display is not promised to be current.
 - **Visible again:** restart with a fresh wall-time sample. An OS sleep or clock adjustment cannot be misinterpreted as elapsed intervals.
+- **Repeated Angular rendering:** the UI reuses the full and compact formatted strings for the same timestamp and locale, avoiding repeated `Intl.DateTimeFormat` allocations while keeping time and language changes reactive.
 - **Destroyed:** cancel the interval, detach the document listener and ignore callbacks.
 
 `DeviceClock.pause()` uses a generation counter, so a callback queued before the timer was cancelled cannot update the view, including **after** a new interval is registered. A scheduler that synchronously pauses during registration must have its returned handle cancelled. If that scheduler then throws or returns no timer handle, the obsolete start must **not** replace the paused clock's last displayed time with an unavailable value. Exceptions from timer cancellation remain contained; clock readings remain non-sensitive and are never logged.
@@ -22,7 +23,7 @@ This is a **best-effort power-saving** feature: whether a minimized Tauri/WebVie
 Run from the desktop repository with Node.js 22.12+ (or Node 24+):
 
 ```sh
-node --experimental-strip-types --test tests/device-clock.test.mjs tests/device-clock-visibility.test.mjs tests/device-clock-paused-scheduler.test.mjs
+node --experimental-strip-types --test tests/device-clock.test.mjs tests/device-clock-visibility.test.mjs tests/device-clock-paused-scheduler.test.mjs tests/device-clock-text-cache.test.mjs
 npm test
 ```
 
