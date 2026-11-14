@@ -36,6 +36,8 @@ node --test tests/triage-review-lanes.test.mjs
 
 Synthetic tests exercise deterministic lane partitioning, stale/base-side warnings, Windows case aliases, file/directory prefix collisions, rejection of partial or contradictory newer audit metadata, bounded CLI input and the two-tool pipeline over a temporary fictional Git repository without changing HEAD or the working tree. These tests do not validate any open PR, remote state, Windows WebView2, encryption, astronomic computations or a release installer.
 
+The review-lane suite also includes a fixed-seed sweep of **120 synthetic multi-branch risk graphs** (2–17 branches, mixing exact paths, Windows-case candidates and file/directory candidates). It verifies all reported branch pairs are separated, pair reasons match the inputs, every branch appears exactly once and results are stable when input ordering changes. The fixed seed makes failures reproducible; this is a regression heuristic, not a proof of all possible graphs.
+
 ### Before any actual integration
 
 Manually inspect the latest GitHub PR diffs and dependencies, refresh local refs, resolve conflicts and run the relevant full suite plus native Windows GUI acceptance. Follow [AGENTS.md](../AGENTS.md): no automatic merges, production access, GitHub Actions, publishing or releases. This tool does not access the protected city catalog, cloud credentials or personal birth charts.
