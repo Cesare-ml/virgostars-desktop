@@ -167,3 +167,26 @@ test('CLI commit mode is read-only and fails closed on invalid arguments',t=>{
   assert.equal(git(dir,'rev-parse','HEAD'),commit);
   assert.equal(git(dir,'status','--porcelain'),before);
 });
+
+
+test('both pre-install audits coexist in reconciled Windows bootstrap',()=>{
+  const ps1=readFileSync(new URL('../scripts/build-windows-spike.ps1',import.meta.url),'utf8');
+  const steps=[...ps1.matchAll(/Invoke-Step\s+'([^']+)'\s+'([^']+)'\s+@\(([^)]*)\)/g)]
+    .map(([,label,command,args])=>({label,command,args}));
+  const names=[
+    'scripts/verify-windows-tracked-paths.mjs',
+    'scripts/desktop-doctor.mjs',
+    'scripts/verify-npm-lock.mjs',
+    'scripts/verify-charts-npm-lock.mjs',
+    'scripts/verify-desktop-version.mjs',
+  ];
+  const indexes=names.map(p=>steps.findIndex(x=>x.command==='node' && x.args.includes("'"+p+"'")));
+  assert.ok(indexes.every((x,i)=>x>=0 && (i===0||x>indexes[i-1])),
+    'portable names, doctor and both npm provenance checks must run in order');
+  assert.ok(indexes.every((x,i)=>steps.filter(y=>y.args.includes("'"+names[i]+"'")).length===1));
+  const installs=steps.map((x,i)=>x.command==='npm.cmd' && x.args==="'ci'"?i:-1).filter(i=>i>=0);
+  assert.equal(installs.length,2);
+  assert.ok(installs.every(index=>index>indexes.at(-1)));
+  assert.match(ps1,/if \(\$LASTEXITCODE -ne 0\) \{\s*throw /,
+    'a failed preflight must stop the bootstrap');
+});
