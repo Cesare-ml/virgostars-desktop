@@ -77,6 +77,27 @@ while ($clock.Elapsed.TotalSeconds -lt $WindowWaitSeconds) {
     }
 }
 
+# A transient window handle is not enough: a process can crash immediately
+# after the first successful observation. Recheck once after a short dwell.
+if ($foundWindow) {
+    try {
+        Start-Sleep -Milliseconds 250
+        $appProcess.Refresh()
+        if ($appProcess.HasExited) {
+            $foundWindow = $false
+            $windowFailure = 'NATIVE_SMOKE_EARLY_EXIT'
+        }
+        elseif ($appProcess.MainWindowHandle -eq [IntPtr]::Zero) {
+            $foundWindow = $false
+            $windowFailure = 'NATIVE_SMOKE_WINDOW_DISAPPEARED'
+        }
+    }
+    catch {
+        $foundWindow = $false
+        $windowFailure = 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'
+    }
+}
+
 if (-not $foundWindow) {
     # Cleanup only the process returned by THIS Start-Process call, not other
     # VirgoStars instances or arbitrary PIDs. Successful runs remain open.
