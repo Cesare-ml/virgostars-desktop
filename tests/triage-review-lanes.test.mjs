@@ -34,8 +34,10 @@ test('deterministic disjoint review lanes retain base risks',()=>{
   assert.equal(result.branchCount,4);
   assert.equal(result.sharedPathCount,2);
   assert.deepEqual(result.lanes,[
-    {branches:['b','d'],requiresBaseRefresh:['b'],baseOverlapBranches:['b']},
-    {branches:['a','c'],requiresBaseRefresh:[],baseOverlapBranches:[]},
+    {branches:['b','d'],requiresBaseRefresh:['b'],baseOverlapBranches:['b'],
+      basePrefixOverlapBranches:[],windowsBaseCaseVariantBranches:[]},
+    {branches:['a','c'],requiresBaseRefresh:[],baseOverlapBranches:[],
+      basePrefixOverlapBranches:[],windowsBaseCaseVariantBranches:[]},
   ]);
   assert.match(result.note,/No lane implies merge safety/);
   const reversed=fixture();
@@ -74,6 +76,92 @@ test('missing, contradictory and duplicated evidence fails closed',()=>{
   for (const edit of edits) {
     const data=fixture();edit(data);
     assert.throws(()=>planReviewLanes(data), 'invalid audit must not be scheduled');
+  }
+});
+
+
+test('file-directory collisions split otherwise shared review lanes',()=>{
+  const data=fixture();
+  data.prefixOverlapFiles=1;
+  data.prefixOverlaps=[{
+    ancestorPath:'two.txt',nestedPath:'two.txt/options',
+    ancestorBranches:['b'],nestedBranches:['d'],
+  }];
+  const result=planReviewLanes(data);
+  assert.equal(result.fileDirectoryCollisionCount,1);
+  assert.equal(result.lanes.length,2);
+  assert.ok(!result.lanes.some(lane=>lane.branches.includes('b')&&lane.branches.includes('d')));
+  assert.deepEqual(new Set(result.lanes.flatMap(lane=>lane.branches)),
+    new Set(['a','b','c','d']));
+});
+
+test('Windows case variants split a third review lane',()=>{
+  const data=fixture();
+  data.branches[2].changedFiles=2; // c also edits a different Windows-cased path
+  data.windowsCaseVariantPairs=1;
+  data.windowsCaseVariants=[{
+    branchA:'a',pathA:'one.txt',branchB:'c',pathB:'ONE.TXT',
+  }];
+  const result=planReviewLanes(data);
+  assert.equal(result.windowsCaseCollisionCount,1);
+  assert.equal(result.lanes.length,3,'a, b and c form a triangle of review risks');
+  assert.ok(!result.lanes.some(lane=>lane.branches.includes('a')&&lane.branches.includes('c')));
+});
+
+test('base-side prefix and case-only collisions remain visible in review output',()=>{
+  const data=fixture();
+  data.basePrefixOverlapFiles=1;
+  data.basePrefixOverlaps=[{
+    branch:'b',basePath:'two.txt/options',branchPath:'two.txt',
+  }];
+  data.windowsBaseCaseVariantPairs=1;
+  data.windowsBaseCaseVariants=[{
+    branch:'b',branchPath:'two.txt',basePath:'TWO.TXT',
+  }];
+  const result=planReviewLanes(data);
+  const lane=result.lanes.find(lane=>lane.branches.includes('b'));
+  assert.deepEqual(lane.basePrefixOverlapBranches,['b']);
+  assert.deepEqual(lane.windowsBaseCaseVariantBranches,['b']);
+  assert.deepEqual(lane.baseOverlapBranches,['b']);
+  assert.deepEqual(lane.requiresBaseRefresh,['b']);
+});
+
+test('partial and invalid newer audit fields fail closed without unsafe grouping',()=>{
+  const edits=[
+    data=>{data.prefixOverlapFiles=1;},
+    data=>{data.prefixOverlaps=[];},
+    data=>{data.windowsCaseVariantPairs=0;},
+    data=>{data.windowsBaseCaseVariants=[];},
+    data=>{data.basePrefixOverlapFiles=1;data.basePrefixOverlaps=[];},
+    data=>{data.prefixOverlapFiles=1;data.prefixOverlaps=[{
+      ancestorPath:'config',nestedPath:'cfg/other',
+      ancestorBranches:['a'],nestedBranches:['d'],
+    }];},
+    data=>{data.prefixOverlapFiles=1;data.prefixOverlaps=[{
+      ancestorPath:'config',nestedPath:'config/item',
+      ancestorBranches:['a'],nestedBranches:['a'],
+    }];},
+    data=>{data.prefixOverlapFiles=1;data.prefixOverlaps=[{
+      ancestorPath:'config',nestedPath:'config/item',
+      ancestorBranches:['a'],nestedBranches:['missing'],
+    }];},
+    data=>{data.windowsCaseVariantPairs=1;data.windowsCaseVariants=[{
+      branchA:'a',pathA:'Alpha.ts',branchB:'c',pathB:'not-alpha.ts',
+    }];},
+    data=>{data.windowsCaseVariantPairs=1;data.windowsCaseVariants=[{
+      branchA:'a',pathA:'Alpha.ts',branchB:'a',pathB:'alpha.ts',
+    }];},
+    data=>{data.basePrefixOverlapFiles=1;data.basePrefixOverlaps=[{
+      branch:'a',basePath:'two.txt/item',branchPath:'two.txt',
+    }];},
+    data=>{data.windowsBaseCaseVariantPairs=1;data.windowsBaseCaseVariants=[{
+      branch:'a',branchPath:'Alpha.ts',basePath:'alpha.ts',
+    }];},
+  ];
+  for (const edit of edits) {
+    const data=fixture();
+    edit(data);
+    assert.throws(()=>planReviewLanes(data),'malformed optional collision data must block lanes');
   }
 });
 
