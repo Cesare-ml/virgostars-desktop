@@ -186,3 +186,31 @@ sized drawing buffer after startup, resize, theme changes and zoom.
   Angular/Charts build, Rust/Tauri binary, Windows/WebView2 visuals
   and actual GPU buffer/render output. A nonzero canvas buffer alone
   never proves that Three.js drew the chart.
+
+## Canvas-to-CSS sampling ratio (14 November 2026)
+
+The read-only diagnostic now also flags a **severely undersampled** drawing
+buffer: either backing-buffer axis below 25% of the corresponding displayed
+canvas CSS bounding-box axis returns `collapsed`. This matters when a
+large styled chart retains a tiny native drawing surface. The threshold
+intentionally allows reduced-resolution rendering and higher-DPI backing
+buffers; it is a **smoke warning**, not an exact GPU, DPR or sharpness score.
+
+For example, a 602x602 CSS canvas backed by 150x602 pixels is flagged,
+while 151x151 and 1204x1204 buffers pass this particular ratio check.
+The probe evaluates each axis independently and uses the **canvas box**
+rather than stage dimensions (which may include intended margins).
+A styled canvas can still be blank due to WebGL or renderer failures
+despite passing this check.
+
+Verification command in a full checkout:
+
+```powershell
+node --experimental-strip-types --test tests/desktop-layout-probe.test.mjs
+npm.cmd test
+npm.cmd run build:ui
+```
+
+The actual Windows 11 x64 Tauri/WebView2 render and DPR tests remain
+required. No canvas mutation, WebGL allocation, networking, private
+assets or platform permission has been added.
