@@ -23,6 +23,9 @@ struct GenerationState {
     revision: u64,
     pending: bool,
     exhausted: bool,
+    /// Once a local profile is locked/logged out this instance never resumes.
+    /// A fresh native-verified profile lifecycle requires a NEW fence.
+    retired: bool,
     visible: ProfileStatusUiHint,
 }
 
@@ -49,7 +52,7 @@ impl ProfileStatusGenerationFence {
         let mut state = self.state.lock().ok()?;
         state.pending = false;
         state.visible = ProfileStatusUiHint::Blocked;
-        if state.exhausted {
+        if state.exhausted || state.retired {
             return None;
         }
         let next = match state.revision.checked_add(1) {
@@ -82,7 +85,7 @@ impl ProfileStatusGenerationFence {
             Ok(state) => state,
             Err(_) => return false,
         };
-        if state.exhausted || !state.pending || state.revision != ticket.revision {
+        if state.exhausted || state.retired || !state.pending || state.revision != ticket.revision {
             return false;
         }
         state.pending = false;
@@ -94,17 +97,20 @@ impl ProfileStatusGenerationFence {
     /// and a poisoned mutex always maps to the blocked state.
     pub(crate) fn visible_hint(&self) -> ProfileStatusUiHint {
         match self.state.lock() {
-            Ok(state) if !state.exhausted => state.visible,
+            Ok(state) if !state.exhausted && !state.retired => state.visible,
             _ => ProfileStatusUiHint::Blocked,
         }
     }
 
-    /// Synchronous native-side invalidation on logout, account switch, local
-    /// lock or profile teardown. Does not revoke an already copied offline DB.
+    /// Permanently retire this profile lifecycle on logout, account switch,
+    /// local lock or teardown. Once retired, begin() cannot reopen it.
+    /// A separately native-verified profile must receive a new fence.
+    /// This does not revoke an already copied offline DB.
     pub(crate) fn invalidate(&self) {
         match self.state.lock() {
             Ok(mut state) => {
                 state.pending = false;
+                state.retired = true;
                 state.visible = ProfileStatusUiHint::Blocked;
                 if !state.exhausted {
                     if let Some(next) = state.revision.checked_add(1) {
@@ -119,6 +125,7 @@ impl ProfileStatusGenerationFence {
                 // future status reply to be published from this fence.
                 let mut state = poisoned.into_inner();
                 state.pending = false;
+                state.retired = true;
                 state.visible = ProfileStatusUiHint::Blocked;
                 state.exhausted = true;
             }
@@ -153,12 +160,17 @@ mod tests {
         gate.invalidate();
         assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
         assert!(!gate.publish_hint(&pending, ProfileStatusUiHint::SyntheticReady));
-        let fresh = gate.begin().expect("new synthetic read");
-        assert!(gate.publish_hint(&fresh, ProfileStatusUiHint::SyntheticReady));
-        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::SyntheticReady);
+        assert!(gate.begin().is_none());
         gate.invalidate();
+        assert!(gate.begin().is_none());
         assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+
+        // Even equal numeric generations from a new lifecycle are isolated.
+        let replacement = ProfileStatusGenerationFence::default();
+        let fresh = replacement.begin().expect("separately verified profile mock");
+        assert!(replacement.publish_hint(&fresh, ProfileStatusUiHint::SyntheticReady));
         assert!(!gate.publish_hint(&fresh, ProfileStatusUiHint::SyntheticReady));
+        assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
     }
 
     #[test]
@@ -237,6 +249,35 @@ mod tests {
             locker.join().expect("locker");
             assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
         }
+    }
+
+
+    #[test]
+    fn retired_profile_stays_closed_after_10000_retry_attempts() {
+        let gate = ProfileStatusGenerationFence::default();
+        let ticket = gate.begin().expect("synthetic status");
+        assert!(gate.publish_hint(&ticket, ProfileStatusUiHint::SyntheticReady));
+        gate.invalidate();
+        for _ in 0..10_000 {
+            assert!(gate.begin().is_none());
+            assert!(!gate.publish_hint(&ticket, ProfileStatusUiHint::SyntheticReady));
+            assert_eq!(gate.visible_hint(), ProfileStatusUiHint::Blocked);
+        }
+    }
+
+    #[test]
+    fn profile_switch_uses_independent_new_fence() {
+        let old = ProfileStatusGenerationFence::default();
+        let old_ticket = old.begin().expect("old account status");
+        old.invalidate();
+        let new_profile = ProfileStatusGenerationFence::default();
+        let new_ticket = new_profile.begin().expect("new verified profile mock");
+        assert!(!old.publish_hint(&new_ticket, ProfileStatusUiHint::SyntheticReady));
+        assert!(!new_profile.publish_hint(&old_ticket, ProfileStatusUiHint::SyntheticReady));
+        assert!(new_profile.publish_hint(&new_ticket, ProfileStatusUiHint::SyntheticReady));
+        assert_eq!(new_profile.visible_hint(), ProfileStatusUiHint::SyntheticReady);
+        assert_eq!(old.visible_hint(), ProfileStatusUiHint::Blocked);
+        assert!(old.begin().is_none());
     }
 
     #[test]
