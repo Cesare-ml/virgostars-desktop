@@ -18,7 +18,9 @@ Run from the desktop repository root in PowerShell:
 
     powershell -NoProfile -File .\scripts\smoke-windows-native.ps1
 
-This runs read-only checks, in order: Desktop versions; Tauri security settings; the native IPC command allowlist; the full synthetic offline bundle (HTML, local JavaScript, CSS, approved asset hashes); compiled global CSS; compiled component CSS; Windows PE header. If any fails, no executable launches. When all checks pass, the script starts the fixed-path executable and looks for a nonzero main-window handle for up to 15 seconds, configurable between 2 and 30.
+This runs read-only checks, in order: Desktop versions; Tauri security settings; the native IPC command allowlist; the full synthetic offline bundle (HTML, local JavaScript, CSS, approved asset hashes); compiled global CSS; compiled component CSS; Windows PE header; and **native executable vs. Angular bundle timestamp freshness**. If any fails, no executable launches. When all checks pass, the script starts the fixed-path executable and looks for a nonzero main-window handle for up to 15 seconds, configurable between 2 and 30.
+
+The new read-only `BUNDLE_FRESHNESS` preflight rejects a Tauri executable whose modification time predates a packaged Angular file by more than one second. It inspects `index.html`, the root JavaScript and CSS entrypoints, and all nested bundle files (including lazy chunks and synthetic assets); symlinks, missing entrypoints and malformed trees fail closed. The scan is bounded to 8,192 files and 16 directory levels. After rebuilding Angular, **rebuild Tauri too** before retrying this smoke. File timestamps may be copied or manipulated, so passing this gate **does not prove** that the executable embeds those same bytes, was signed, or renders correctly in WebView2. The prior offline bundle and PE checks remain mandatory.
 
 The launcher resolves `node.exe` once as a PowerShell **Application** command, rather than running an alias, function or `.ps1` wrapper named `node`. If no executable can be resolved, it fails with `NATIVE_SMOKE_NODE_REQUIRED` before any preflight or GUI launch. This pins the command selected from the local `PATH` for the duration of the smoke test; it does **not** independently authenticate or verify that Node installation.
 
@@ -47,6 +49,7 @@ The script creates no reports, scans no birth data, captures no screenshots, inv
 ## Verify source contract without Windows
 
     node --test tests/windows-native-gui-smoke.test.mjs
+    node --test tests/verify-native-bundle-freshness.test.mjs
 
 This verifies fixed executable paths, gated launch order, bounded process observation, explicitly manual acceptance, and absence of file-write/network tooling in the source. It is not a native or visual test.
 
@@ -54,6 +57,7 @@ This verifies fixed executable paths, gated launch order, bounded process observ
 
 - NATIVE_SMOKE_NODE_REQUIRED: install a supported Node.js Windows executable or inspect `Get-Command node.exe -CommandType Application` in a trusted shell; PowerShell aliases or wrappers are not accepted.
 - NATIVE_SMOKE_PREFLIGHT_FAILED_*: rerun the corresponding gate, never disable security/CSS checks as a workaround.
+- NATIVE_SMOKE_PREFLIGHT_FAILED_BUNDLE_FRESHNESS: run `node scripts/verify-native-bundle-freshness.mjs` locally; if stale, rebuild the offline Angular bundle **and** the native Tauri executable using the documented locked build path. Do not bypass the gate.
 - NATIVE_SMOKE_LAUNCH_FAILED: Windows could not start the compiled process.
 - NATIVE_SMOKE_EARLY_EXIT: process exited before creating a main window.
 - NATIVE_SMOKE_NO_MAIN_WINDOW: process stayed alive but exposed no main-window handle within the deadline.
