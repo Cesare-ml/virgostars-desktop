@@ -69,6 +69,9 @@
         <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
         <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>
         <button type="button" class="toolbar-button fit-button" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
+        <button type="button" class="toolbar-button" [disabled]="!ready||busy"
+          [attr.title]="t('demo.next')" [attr.aria-label]="t('demo.next')"
+          (click)="switchDemoPreset()">{{demoPresetName}} ↻</button>
         <div class="toolbar-spacer"></div>
         <span class="status-message" role="status">{{t(status)}}</span>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
@@ -116,6 +119,7 @@
               <span *ngIf="cityClock.kind !== 'ready'" class="city-clock-unavailable">{{t('clock.city.unavailable')}}</span>
             </div>
           </div>
+          <div class="setting-line"><span>{{t('demo.current')}}</span><strong>{{demoPresetName}}</strong></div>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
