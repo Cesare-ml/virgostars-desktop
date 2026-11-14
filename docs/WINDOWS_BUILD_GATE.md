@@ -49,6 +49,10 @@ powershell -NoProfile -File .\scripts\build-windows-spike.ps1
 Or, from Command Prompt, invoke `scripts\build-windows.cmd`. The `.cmd` launcher now delegates to **the same** PowerShell bootstrap, returns its exit code, and never maintains a second independent installation or Tauri build path. It does not modify execution policy, install PowerShell or download anything by itself.
 The CMD wrapper resolves the quoted Windows-supplied `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` directly rather than trusting `PATH`, and fails if that executable is missing.
 
+The bootstrap first runs `node scripts/verify-desktop-version.mjs` before installing dependencies. This read-only, offline check requires the exact same canonical SemVer value in `package.json`, both root version fields (`version` and `packages[""].version`) of the npm v3 `package-lock.json`, `src-tauri/tauri.conf.json`, the `[package]` version in `src-tauri/Cargo.toml`, and that package's entry in `src-tauri/Cargo.lock`. It also verifies that the npm lock's top-level and installed-root package names match `package.json`, rejecting a missing or wrong lockfile before any Tauri entrypoint runs. The separate npm provenance audit still verifies dependency identities and integrity metadata; this version check does not replace it. Malformed, missing or conflicting declarations stop the Windows build; dependency versions in unrelated Cargo packages are ignored. The verification does **not** sign, release or automatically update the application. You can run the check independently and its synthetic tests with `node --test tests/desktop-version-gate.test.mjs`.
+
+The same `verify:version` gate is now the **first step** in every npm Tauri entrypoint (`tauri:dev`, `tauri:build`, `tauri:build:private`, and both `tauri:build:places:*` variants). This prevents development or alternate Windows packaging commands from bypassing the version check. The manual bootstrap invokes the gate directly because it deliberately runs Tauri through `npm.cmd exec --offline`, not through those scripts. Run `node --test tests/desktop-version-entrypoints.test.mjs` to check the wrappers. Running the gate alone is not a signed-update or release-integrity guarantee.
+
 The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, **audits the committed Desktop npm lockfile before invoking any package installer**, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies **using the reviewed npm lockfile (`npm ci`)**, runs Node tests, audits the reviewed native IPC command registry and Tauri capabilities, builds Angular with exact asset verification, checks that the bundled stylesheet exists, runs Rust unit tests with `cargo test --locked`, compiles Tauri **from that same already-audited Angular output** and checks expected output files. It stops at the first failed command.
 
 The bootstrap invokes the locally installed Tauri CLI using `npm.cmd exec --offline -- tauri build` rather than `npm.cmd run tauri:build`: the general-purpose npm script rebuilds Angular and would invalidate the independent CSS check. The current `tauri.conf.json` has no `beforeBuildCommand`; adding one requires reviewing this gate again. The separate `npm run tauri:build` command remains available for ordinary standalone builds.
@@ -137,3 +141,34 @@ installing dependencies. This is a lockfile **shape/provenance** preflight,
 not a comparison against a downloaded tarball, a signature verification,
 a vulnerability audit or proof that install scripts are harmless.
 No network requests or package installs are performed by the preflight.
+
+
+## Registry tarball identity gate (2026-11-13)
+
+The pre-`npm ci` lock audit additionally matches the exact installed registry
+package **name and pinned version** to the `resolved` tarball path. For example,
+`node_modules/three` at `0.170.0` must resolve to
+`https://registry.npmjs.org/three/-/three-0.170.0.tgz`. Merely pointing
+to any `.tgz` on the official npm registry is no longer sufficient.
+
+Scoped names (`@angular/core`) and nested `node_modules` installations are
+supported. Legitimate `npm:` aliases are permitted **only when** a dependency
+entry in a **different** pinned lockfile package explicitly declares that
+installed alias and source name, and the URL names the underlying source package. Three existing
+`@isaacs/cliui` compatibility aliases remain accepted without a blanket
+exception for arbitrary renamed packages.
+
+To inspect this gate independently:
+
+```powershell
+node --test tests/npm-tarball-identity.test.mjs tests/npm-lock-provenance.test.mjs
+node scripts/verify-npm-lock.mjs
+```
+
+This is intentionally restrictive for the current pinned npm registry layout.
+Future alternate registry URL layouts or alias conventions require a reviewed
+source change rather than a silent preflight bypass. The audit is local,
+read-only and does not fetch tarballs: it verifies only lockfile metadata,
+not actual downloaded bytes, publishers, lifecycle scripts, transitive code
+safety, or dependency vulnerabilities. npm remains responsible for validating
+tarball contents against the pinned integrity digests during installation.
