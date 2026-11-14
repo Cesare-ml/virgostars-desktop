@@ -50,6 +50,9 @@ export function hasDesktopLayoutOverride(css) {
     }
     if (/(?:^|;)\s*visibility\s*:\s*hidden\s*(?:!important)?\s*(?=;|$)/i.test(declarations) ||
         /(?:^|;)\s*opacity\s*:\s*0(?:\.0+)?\s*(?:!important)?\s*(?=;|$)/i.test(declarations)) return true;
+    // A grid can remain "display:grid" while its own dimensions collapse.
+    // Check only layout roots: min-width:0 / min-height:0 are intentional.
+    if (/(?:^|;)\s*(?:width|height|max-width|max-height)\s*:\s*0(?:\.0+)?(?:px|em|rem|%|vh|vw|vmin|vmax)?\s*(?:!important)?\s*(?=;|$)/i.test(declarations)) return true;
   }
   return false;
 }
