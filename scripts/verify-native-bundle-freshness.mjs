@@ -2,7 +2,7 @@
  * Read-only, fail-closed heuristic for the Windows native GUI smoke runner.
  * A valid recent mtime is not an integrity proof of executable embedded assets.
  */
-import { lstatSync, readdirSync } from 'node:fs';
+import { lstatSync, opendirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -57,25 +57,37 @@ export function verifyNativeBundleFreshness(binaryPath, bundlePath) {
     if (++directories > MAX_BUNDLE_DIRECTORIES) failure('DIRECTORY_LIMIT');
     const directoryBefore = verifiedStat(directory, 'directory');
     directorySnapshots.push({ path: directory, stat: directoryBefore });
-    let entries;
-    try { entries = readdirSync(directory, { withFileTypes: true }); }
+    // Stream entries: a huge directory must not be read into memory before
+    // file and directory budgets can reject it.
+    let handle;
+    try { handle = opendirSync(directory); }
     catch { failure('UNREADABLE'); }
-    for (const entry of entries) {
-      const path = join(directory, entry.name);
-      if (entry.isSymbolicLink()) failure('UNSAFE_PATH');
-      if (entry.isDirectory()) {
-        verifiedStat(path, 'directory');
-        inspect(path, depth + 1);
-      } else if (entry.isFile()) {
-        const stat = verifiedStat(path, 'file');
-        snapshots.push({ path, stat });
-        files++;
-        if (files > MAX_BUNDLE_FILES) failure('FILE_LIMIT');
-        if (stat.mtimeMs > limit) failure('STALE_EXECUTABLE');
-        if (depth === 0 && entry.name === 'index.html') foundIndex = true;
-        if (depth === 0 && /\.(?:m?js)$/i.test(entry.name)) foundScript = true;
-        if (depth === 0 && /\.css$/i.test(entry.name)) foundStyle = true;
-      } else failure('UNSAFE_PATH');
+    try {
+      while (true) {
+        let entry;
+        try { entry = handle.readSync(); }
+        catch { failure('UNREADABLE'); }
+        if (entry === null) break;
+        const path = join(directory, entry.name);
+        if (entry.isSymbolicLink()) failure('UNSAFE_PATH');
+        if (entry.isDirectory()) {
+          verifiedStat(path, 'directory');
+          inspect(path, depth + 1);
+        } else if (entry.isFile()) {
+          const stat = verifiedStat(path, 'file');
+          snapshots.push({ path, stat });
+          files++;
+          if (files > MAX_BUNDLE_FILES) failure('FILE_LIMIT');
+          if (stat.mtimeMs > limit) failure('STALE_EXECUTABLE');
+          if (depth === 0 && entry.name === 'index.html') foundIndex = true;
+          if (depth === 0 && /\.(?:m?js)$/i.test(entry.name)) foundScript = true;
+          if (depth === 0 && /\.css$/i.test(entry.name)) foundStyle = true;
+        } else failure('UNSAFE_PATH');
+      }
+    } finally {
+      // Cleanup even when a file, nested directory or timestamp check fails.
+      try { handle.closeSync(); }
+      catch { failure('UNREADABLE'); }
     }
     if (!unchanged(directoryBefore, verifiedStat(directory, 'directory'))) {
       failure('CHANGED_DURING_SCAN');
