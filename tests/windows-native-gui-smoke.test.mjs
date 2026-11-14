@@ -64,5 +64,5 @@ test('both successful and failing paths avoid exposing native OS exception detai
   assert.match(source,/throw 'NATIVE_SMOKE_LAUNCH_FAILED'/);
   assert.match(source,/throw 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'/);
   assert.match(source,/NATIVE_SMOKE_WINDOWS_ONLY/);
-  assert.doesNotMatch(source,/Write-(?:Host|Error|Output)[^\n]*\$_.Exception/);
+  assert.doesNotMatch(source,/Write-(?:Host|Error|Output)[^\n]*\$_\.Exception/);
 });
