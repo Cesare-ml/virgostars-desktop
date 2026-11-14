@@ -54,18 +54,14 @@ $clock = [System.Diagnostics.Stopwatch]::StartNew()
 $foundWindow = $false
 while ($clock.Elapsed.TotalSeconds -lt $WindowWaitSeconds) {
     Start-Sleep -Milliseconds 250
-    try {
-        $appProcess.Refresh()
-        if ($appProcess.HasExited) {
-            throw 'NATIVE_SMOKE_EARLY_EXIT'
-        }
-        if ($appProcess.MainWindowHandle -ne [IntPtr]::Zero) {
-            $foundWindow = $true
-            break
-        }
+    try { $appProcess.Refresh() }
+    catch { throw 'NATIVE_SMOKE_PROCESS_UNAVAILABLE' }
+    if ($appProcess.HasExited) {
+        throw 'NATIVE_SMOKE_EARLY_EXIT'
     }
-    catch {
-        throw 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'
+    if ($appProcess.MainWindowHandle -ne [IntPtr]::Zero) {
+        $foundWindow = $true
+        break
     }
 }
 
