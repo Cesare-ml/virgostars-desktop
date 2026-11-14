@@ -37,6 +37,30 @@ test('revision counters accept only complete finite Git left/right counts',()=>{
     {branch:'b',paths:['x']}]), /Incomplete Git revision counts/);
 });
 
+test('base-side overlap requires complete reports and never claims merge safety',()=>{
+  const reportWithMain = report('main',[
+    {branch:'b',paths:['shared','only-b'],behindBy:2,aheadBy:1,baseSidePaths:['shared','shared','base-only']},
+    {branch:'a',paths:['shared','only-a'],behindBy:0,aheadBy:1,baseSidePaths:[]},
+  ]);
+  assert.equal(reportWithMain.baseFilesChecked,true);
+  assert.equal(reportWithMain.baseOverlapFiles,1);
+  assert.deepEqual(reportWithMain.baseOverlaps,[{branch:'b',path:'shared'}]);
+  assert.equal(reportWithMain.overlapFiles,1);
+  assert.deepEqual(reportWithMain.staleBranches,['b']);
+  assert.match(reportWithMain.note,/review/);
+  assert.throws(()=>report('main',[
+    {branch:'a',paths:['shared'],behindBy:1,aheadBy:1,baseSidePaths:['shared']},
+    {branch:'b',paths:['other'],behindBy:1,aheadBy:1},
+  ]),/Incomplete base-side file comparison/);
+  assert.throws(()=>report('main',[
+    {branch:'a',paths:['shared'],behindBy:1,aheadBy:1,baseSidePaths:['\\0']},
+    {branch:'b',paths:[],behindBy:0,aheadBy:1,baseSidePaths:[]},
+  ]),/Invalid base-side path/);
+  const withoutAudit=report('main',[{branch:'a',paths:[]},{branch:'b',paths:[]}]);
+  assert.equal(withoutAudit.baseFilesChecked,false);
+  assert.deepEqual(withoutAudit.baseOverlaps,[]);
+});
+
 test('NUL-safe file parser and deterministic path overlaps',()=>{
   const names=['src/a b.ts','docs/città.md','src/new\nline.ts'];
   assert.deepEqual(parsePaths(Buffer.from(['M',names[0],'A',names[1],'D',names[2]].join('\0')+'\0')),names);
@@ -128,4 +152,37 @@ test('end to end: reports branch divergence when main advances without modifying
   assert.equal(git(dir,'rev-parse','HEAD'),head);
   assert.equal(git(dir,'branch','--show-current'),'main');
   assert.equal(git(dir,'status','--porcelain'),'');
+});
+
+test('end to end: identifies files changed on main and a feature branch since divergence',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-main-overlap-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  git(dir,'init','-q','-b','main');
+  git(dir,'config','user.email','test@example.invalid');
+  git(dir,'config','user.name','Synthetic Test');
+  writeFileSync(join(dir,'common.txt'),'Synthetic original\n');
+  git(dir,'add','.');git(dir,'commit','-qm','base');
+  git(dir,'branch','a');git(dir,'branch','b');
+  git(dir,'switch','-q','a');
+  writeFileSync(join(dir,'common.txt'),'Synthetic branch change\n');
+  git(dir,'add','.');git(dir,'commit','-qm','a change');
+  git(dir,'switch','-q','b');
+  writeFileSync(join(dir,'b.txt'),'Synthetic separate change\n');
+  git(dir,'add','.');git(dir,'commit','-qm','b change');
+  git(dir,'switch','-q','main');
+  writeFileSync(join(dir,'common.txt'),'Synthetic main change\n');
+  git(dir,'add','.');git(dir,'commit','-qm','main change');
+  const head=git(dir,'rev-parse','HEAD');
+  const result=spawnSync(process.execPath,[script,'--json','a','b'],{cwd:dir,encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  const data=JSON.parse(result.stdout);
+  assert.equal(data.freshnessChecked,true);
+  assert.equal(data.baseFilesChecked,true);
+  assert.equal(data.overlapFiles,0,'feature branches do not share modified paths');
+  assert.equal(data.baseOverlapFiles,1,'but main and branch a both modified common.txt');
+  assert.deepEqual(data.baseOverlaps,[{branch:'a',path:'common.txt'}]);
+  assert.deepEqual(data.branches.map(x=>[x.behindBy,x.aheadBy]),[[1,1],[1,1]]);
+  assert.equal(git(dir,'rev-parse','HEAD'),head);
+  assert.equal(git(dir,'status','--porcelain'),'');
+  assert.equal(git(dir,'branch','--show-current'),'main');
 });
