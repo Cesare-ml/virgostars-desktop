@@ -88,11 +88,45 @@ bundle gates, Rust/Tauri compilation, or native Windows 11 WebView2 visual
 verification. The mirror uses synthetic temporary files only. Perform
 full-workspace and Windows acceptance before merging this draft PR.
 
+## Integrated CSS resource-function policy (draft #150)
+
+This branch also carries the **exact** `scripts/verify-css-resource-functions.mjs`
+scanner and 10-case `tests/verify-css-resource-functions.test.mjs`
+from draft PR #150, byte-for-byte (Git blob SHA:
+`1b5270f2d62a8632f3b07bec7cd5b958516261c1` and
+`bc3352364952a81d6c120d534f85f444e24f82ac`).
+
+After the bounded read and `assertNoCssImports()`,
+`inspectDesktopStyles()` now calls `assertNoCssResourceFunctions()`.
+The scanner rejects active `url()`, `image()`, `image-set()`, and
+`-webkit-image-set()` functions, including escaped identifiers and trivia
+between the name and `(`. Quoted strings, comments and unrelated names
+remain valid. In this prototype, there is deliberately **no global CSS
+resource allowlist**: real local images/fonts require separate asset/rights
+review and a documented change to the policy.
+
+Focused verification in an isolated V8 source harness: **21/21**
+scanner scenarios passed on the exact GitHub source, including the
+committed `src/styles.css` and inert/active resource examples.
+**8/8** GitHub source integration assertions passed for the CSS
+inspector's imports, ordering and bounded reads. These checks do not
+replace running the newly integrated 10-case Node test file. The existing
+20-case bounded-reader suite was run earlier before this integration; a
+**combined full Node suite has not been executed** in this turn.
+
+The alternative PR #154 proposes permitting certain local `url()`
+references. Do not merge both policies blindly: the stricter no-resource
+policy is selected for the present synthetic global stylesheet, while
+#154 can inform a later reviewed extension. Neither policy alone audits
+Angular component CSS embedded in JavaScript, or proves Windows WebView2
+rendering and fully offline operation.
+
 ## Constraints and follow-ups
 
-There are draft branches adding other CSS resource scanners (e.g. #150 and
-#154). Reconcile their shared `scripts/verify-bundled-css.mjs` changes before
-merging. This PR should preserve any approved resource gate, not replace it.
+The formerly separate draft #150 resource scanner is incorporated in this
+branch; keep its original PR open for independent review until maintainers
+confirm supersession. The competing URL-allowlist draft #154 must not be
+merged on top without an explicit policy decision and rerun of all tests.
 
 No user accounts, birth records, personal data, city catalog, protected
 assets, credentials, astronomical algorithms, native IPC, cloud sync, new
