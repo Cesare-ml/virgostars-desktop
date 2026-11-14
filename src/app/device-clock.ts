@@ -125,7 +125,15 @@ export function selectedCityClockAt(
   locale: Locale,
 ): SelectedCityClock {
   if (city === null) return {kind: 'not_selected'};
-  const zone = city.timeZone;
+  // A malformed or revoked city object must not crash Angular's clock view.
+  // Capture the timezone once; accessors may throw or change between reads.
+  let zone: unknown;
+  try {
+    if (typeof city !== 'object' || Array.isArray(city)) return {kind: 'unavailable'};
+    zone = city.timeZone;
+  } catch {
+    return {kind: 'unavailable'};
+  }
   if (typeof zone !== 'string' || zone.length === 0 || zone.length > 80 ||
       !/^[A-Za-z0-9_+\/-]+$/.test(zone)) return {kind: 'unavailable'};
   const text = formatDeviceClock(timestamp, locale, false, zone);
