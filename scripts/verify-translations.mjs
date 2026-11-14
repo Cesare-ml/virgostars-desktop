@@ -12,7 +12,9 @@ const EXPECTED_LOCALES = ['it', 'en'];
 // Dot-separated UI message identifiers only; do not print attacker-controlled keys in diagnostics.
 const SAFE_TRANSLATION_KEY = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)*$/;
 const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
-const BAD_CONTROLS = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
+const BAD_CONTROLS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
+const MAX_DICTIONARY_SOURCE_LENGTH = 256 * 1024;
+const MAX_TEMPLATE_SOURCE_LENGTH = 256 * 1024;
 
 function unwrap(expression) {
   while (expression && (ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression) ||
@@ -22,6 +24,9 @@ function unwrap(expression) {
 
 /** Pure checker: diagnostics contain keys, never raw localized text. */
 export function auditTranslationSource(source) {
+  if (typeof source !== 'string' || source.length > MAX_DICTIONARY_SOURCE_LENGTH) {
+    return {ok: false, keyCount: 0, problems: ['Invalid translation dictionary source']};
+  }
   const problems = [];
   const file = ts.createSourceFile('translations.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   if (file.parseDiagnostics.length) return {ok: false, keyCount: 0, problems: ['Invalid TypeScript syntax']};
@@ -93,7 +98,7 @@ export function auditTranslationTemplates(dictionarySource, templates) {
   const dictionary = auditTranslationSource(dictionarySource);
   if (!dictionary.ok) return {ok: false, referenceCount: 0, problems: ['Invalid translation dictionary']};
   if (!Array.isArray(templates) || templates.length !== 2 ||
-      templates.some(template => typeof template !== 'string')) {
+      templates.some(template => typeof template !== 'string' || template.length > MAX_TEMPLATE_SOURCE_LENGTH)) {
     return {ok: false, referenceCount: 0, problems: ['Expected two Angular templates']};
   }
 
@@ -112,15 +117,18 @@ export function auditTranslationTemplates(dictionarySource, templates) {
   for (const [index, template] of templates.entries()) {
     // HTML comments are inert and must not introduce false-positive references.
     const visible = template.replace(/<!--[\s\S]*?-->/g, '');
+    let localReferences = 0;
     for (const match of visible.matchAll(/(?:^|[^\w$])t\s*\(\s*(['"])([^'"]*)\1\s*\)/g)) {
       const key = match[2];
       referenceCount++;
+      localReferences++;
       if (key.length > 80 || !SAFE_TRANSLATION_KEY.test(key) || RESERVED_KEYS.has(key)) {
         problems.push(`Template ${index + 1}: invalid literal translation key`);
       } else if (!keys.has(key)) {
         problems.push(`Template ${index + 1}: undefined translation key ${JSON.stringify(key)}`);
       }
     }
+    if (localReferences === 0) problems.push(`Template ${index + 1}: no literal translation references`);
   }
   return {ok: problems.length === 0, referenceCount, problems};
 }
