@@ -149,7 +149,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   private fitStage(): void {
     const bounds = this.stage.nativeElement.getBoundingClientRect();
-    const diameter = chartSide(bounds.width,bounds.height,24);
+    // Bound layout CSS size by the approximate high-DPI backing-pixel budget.
+    // The renderer remains responsible for its actual WebGL allocation.
+    const diameter = chartSide(bounds.width,bounds.height,24,window.devicePixelRatio);
     if(diameter < 32) return;
     const surface = this.canvas.nativeElement;
     const css = diameter + 'px';
