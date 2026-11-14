@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, symlinkSync} from 'node:fs';
+import {existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, symlinkSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {testProfileStatusRust} from '../scripts/test-profile-status-rust.mjs';
+
+const TEST_COUNT = [...readFileSync(new URL('../src-tauri/src/profile_status_generation.rs', import.meta.url), 'utf8')
+  .matchAll(/^\s*#\[test\]\s*$/gm)].length;
 
 function isolated(check) {
   const base = mkdtempSync(join(tmpdir(), 'vs-rust-gate-fixture-'));
@@ -20,14 +23,14 @@ function fakeCompiler({build={},testRun={}}={}) {
       }
       return {status:0, stdout:'', ...build};
     }
-    return {status:0, stdout:'test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s', ...testRun};
+    return {status:0, stdout:`test result: ok. ${TEST_COUNT} passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`, ...testRun};
   }
   return {calls,run};
 }
 
 test('standalone gate invokes rustc --test then fixed temporary binary without a shell',()=>isolated(base=>{
   const f=fakeCompiler();
-  assert.deepEqual(testProfileStatusRust({run:f.run,tempBase:base}),{passed:7});
+  assert.deepEqual(testProfileStatusRust({run:f.run,tempBase:base}),{passed:TEST_COUNT});
   assert.equal(f.calls.length,2);
   assert.equal(f.calls[0].cmd,'rustc');
   assert.deepEqual(f.calls[0].args.slice(0,2),['--edition=2021','--test']);
@@ -61,12 +64,13 @@ test('Rust test execution failure returns a generic error and leaves no artifact
 }));
 
 test('zero or incomplete Rust test output is rejected even with exit code zero',()=>isolated(base=>{
-  for(const stdout of ['', 'test result: ok. 0 passed; 0 failed;', 'test result: ok. 6 passed; 0 failed;',
+  for(const output of ['', 'test result: ok. 0 passed; 0 failed;', 'test result: ok. 6 passed; 0 failed;',
     'test result: ok. 7 passed; 1 failed;', 'test result: ok. 7 passed; 0 failed;\ntest result: ok. 7 passed; 0 failed;',
     'test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out',
     'test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out',
     'test result: ok. 7 passed; 0 failed; 0 ignored; 1 measured; 0 filtered out',
     'test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\ntest result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out']) {
+    const stdout=output.replace(/7 passed;/g, `${TEST_COUNT} passed;`);
     const f=fakeCompiler({testRun:{stdout}});
     assert.throws(()=>testProfileStatusRust({tempBase:base,run:f.run}),/RUST_FENCE_TEST_COUNT_MISMATCH/);
   }
@@ -84,7 +88,7 @@ test('signal termination and timer failure cannot be mistaken for success',()=>i
 test('runner never injects remote install/download commands or user paths',()=>{
   const f=fakeCompiler();
   const result=isolated(base=>testProfileStatusRust({run:f.run,tempBase:base}));
-  assert.deepEqual(result,{passed:7});
+  assert.deepEqual(result,{passed:TEST_COUNT});
   for(const call of f.calls) {
     assert.equal(call.options.windowsHide,true);
     assert.ok(call.options.timeout > 0 && call.options.timeout <= 120000);
