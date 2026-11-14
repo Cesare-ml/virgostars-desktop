@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import { auditTranslationSource } from '../scripts/verify-translations.mjs';
+import { auditTranslationSource, auditTranslationTemplates } from '../scripts/verify-translations.mjs';
 
 const fixture = (it = '"a":"Ciao", "b":"Pronto"', en = '"a":"Hello", "b":"Ready"') =>
   `export const STRINGS = { it: {${it}}, en: {${en}} } as const;`;
@@ -62,4 +62,45 @@ test('the actual checked-in desktop dictionary passes the source audit', () => {
   assert.deepEqual(result.problems, []);
   assert.equal(result.ok, true);
   assert.ok(result.keyCount > 0, 'real dictionary must have at least one pair');
+});
+
+
+test('recognizes paired literal t() calls in both templates', () => {
+  assert.deepEqual(auditTranslationTemplates(fixture(), [
+    `<span>{{t('a')}}</span>`, `<button [attr.title]='t("b")'></button>`,
+  ]), {ok: true, referenceCount: 2, problems: []});
+});
+
+test('rejects missing and unsafe literal template keys without logging unsafe content', () => {
+  const missing = auditTranslationTemplates(fixture(), [`<span>{{t('missing')}}</span>`, '']);
+  assert.equal(missing.ok, false);
+  assert.match(missing.problems[0], /undefined translation key "missing"/);
+  const unsafe = auditTranslationTemplates(fixture(), [`<span>{{t('bad\\nkey')}}</span>`, '']);
+  assert.equal(unsafe.ok, false);
+  assert.match(unsafe.problems[0], /invalid literal translation key/);
+  assert.ok(!unsafe.problems[0].includes('bad'));
+});
+
+test('ignores inert HTML comments and dynamic calls left to Angular type checking', () => {
+  const result = auditTranslationTemplates(fixture(), [
+    `<!-- {{t('missing')}} --><span>{{t(dynamicKey)}}</span>{{t('a')}}`,
+    `{{t('b')}}`,
+  ]);
+  assert.deepEqual(result, {ok: true, referenceCount: 2, problems: []});
+});
+
+test('requires exactly two template source strings and a valid dictionary', () => {
+  assert.equal(auditTranslationTemplates(fixture(), []).ok, false);
+  assert.equal(auditTranslationTemplates(fixture(), ['', null]).ok, false);
+  assert.equal(auditTranslationTemplates('const STRINGS = 42;', ['', '']).ok, false);
+});
+
+test('the checked-in Angular templates contain only known literal translation keys', () => {
+  const source = readFileSync(new URL('../src/app/translations.ts', import.meta.url), 'utf8');
+  const paths = ['../src/app/desktop-app.component.html', '../src/app/offline-city-picker.component.html'];
+  const templateSources = paths.map(path => readFileSync(new URL(path, import.meta.url), 'utf8'));
+  const result = auditTranslationTemplates(source, templateSources);
+  assert.deepEqual(result.problems, []);
+  assert.equal(result.ok, true);
+  assert.ok(result.referenceCount > 0);
 });
