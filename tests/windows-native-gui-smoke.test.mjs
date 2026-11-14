@@ -119,6 +119,31 @@ test('manual visual acceptance cannot be inferred from detecting only a window h
   assert.match(source,/NATIVE_SMOKE_MANUAL_PASSED/);
 });
 
+test('manual GUI acceptance requires a live native main window before and after every answer', () => {
+  const helper = source.slice(
+    source.indexOf('function Test-SmokeMainWindowAlive {'),
+    source.indexOf('# Intentionally no automation of keyboard/mouse'),
+  );
+  assert.match(helper,/param\(\[System\.Diagnostics\.Process\] \$Process\)/);
+  assert.match(helper,/\$Process\.Refresh\(\)/);
+  assert.match(helper,/-not \$Process\.HasExited -and \$Process\.MainWindowHandle -ne \[IntPtr\]::Zero/);
+  assert.match(helper,/catch \{\s*return \$false/);
+
+  const manual = source.slice(source.indexOf('foreach ($check in $checks) {'),
+    source.indexOf('if ($failures.Count -gt 0)'));
+  const before = manual.indexOf('if (-not (Test-SmokeMainWindowAlive -Process $appProcess))');
+  const answer = manual.indexOf('$reply = Read-Host');
+  const after = manual.indexOf('if (-not (Test-SmokeMainWindowAlive -Process $appProcess))', answer);
+  assert.ok(before >= 0 && answer > before && after > answer,
+    'each prompt must be surrounded by main-window liveness checks');
+  assert.equal((manual.match(/Test-SmokeMainWindowAlive -Process \$appProcess/g) ?? []).length, 2);
+  assert.equal((manual.match(/NATIVE_SMOKE_MANUAL_WINDOW_LOST/g) ?? []).length, 2);
+  assert.match(manual,/try \{\s*\$reply = Read-Host[\s\S]*?catch \{\s*[\s\S]*?NATIVE_SMOKE_MANUAL_INPUT_UNAVAILABLE/);
+  assert.ok(source.indexOf('NATIVE_SMOKE_MANUAL_PASSED') > source.indexOf('if ($failures.Count -gt 0)'));
+  assert.doesNotMatch(helper,/Get-Process|Stop-Process|Write-(?:Host|Error|Output)[^\n]*\$_/);
+});
+
+
 test('manual CSS checkpoint is connected to the live computed-layout probe', () => {
   const line = source.split(/\r?\n/).find(line => line.includes("Key = 'layout'"));
   assert.ok(line, 'explicit layout checkpoint required');
