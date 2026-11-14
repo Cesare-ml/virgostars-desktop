@@ -19,15 +19,17 @@ keychain, server sync engine or Tauri IPC command.
 The fence provides three lifecycle operations:
 
 1. `begin()` invalidates any older status read and returns a token for the
-   newest generation, or `None` on poisoned/overflowed state.
+   newest generation, or `None` on a poisoned, overflowed **or permanently
+   retired** profile fence.
 2. `publish_hint(&ticket, hint)` atomically **consumes the newest ticket
    and saves a synthetic UI presentation hint under the same Mutex lock**.
    Copies and old replies return `false`. Ticket instances are distinguished
    by `Arc::ptr_eq`; equal numeric generations from separate fences never match.
 3. `visible_hint()` reads the current presentation-only value, or `Blocked`
    on poisoned/invalidated state; a new `begin()` immediately resets it.
-4. `invalidate()` revokes pending replies and clears the visible hint
-   synchronously on a future lock, logout, profile switch or teardown.
+4. `invalidate()` revokes pending replies, clears the visible hint and
+   **permanently retires this fence instance** on lock, logout, profile switch
+   or teardown. Repeated calls are safe; no method on that instance reopens it.
 
 The old check-only `is_current()` and separate `complete()` APIs were
 **removed**, so callers cannot perform a check-then-publish sequence that
@@ -223,6 +225,63 @@ was added, no actual profile was unlocked, and the UI still cannot authorize
 local database reads. Any later status adapter must enforce all real
 security boundaries independently, and the frontend must also suppress
 late UI callbacks after logout.
+
+## Permanent native profile retirement (2026-11-14)
+
+A review uncovered a native lifecycle gap: the earlier `invalidate()` blocked
+old completions but still allowed the **same fence** to issue new `begin()`
+tickets. That is acceptable for transient refresh cancellation but **not**
+for a native logout, profile switch or local lock, where the old lifetime must
+never be resumed accidentally.
+
+The internal `GenerationState` now has an initially-false `retired` latch.
+`invalidate()` sets it to true under the same mutex as the blocked UI hint,
+including on the poisoned-mutex recovery path. `begin()` thereafter returns
+`None`; `publish_hint()` rejects every reply; `visible_hint()` returns
+`Blocked`. The retired state is permanent and is not reset by retries or
+another `invalidate()`.
+
+A **new fence** is required for a new profile lifetime, and must only be
+created by a future independently reviewed Rust adapter after actually
+checking the new profile's identity, encrypted DB key ownership and unlock
+policy. The current prototype **does not provide that authorization,
+database, keychain, authentication or native IPC**. `SyntheticReady` cannot
+be used as permission to read data. The reusable TypeScript status reader
+remains only a presentation component; a native retired fence must not be
+reopened merely because the WebView asks for a refresh.
+
+Two additional Rust unit tests were written:
+`retired_profile_stays_closed_after_10000_retry_attempts` and
+`profile_switch_uses_independent_new_fence`. The updated Rust module now
+contains **nine** test functions, **not executed** (the authoring environment
+still has no `rustc` or `cargo`). The compiler runner's injected fake-test
+fixture now derives the expected count from the source rather than hardcoding
+seven, and the Node source-audit identifier expression accepts digit suffixes
+in legitimate Rust test names.
+
+### Checks performed
+
+- **14/14 source-contract checks executed directly on the exact current
+  GitHub source**: internal-only module, unchanged two-command Tauri IPC,
+  latest-only atomic publication, one-way retired state, cross-fence unit
+  tests, poisoned state and updated test inventories.
+- **18/18 Node UI lifecycle tests and 10/10 Node compiler-runner tests
+  passed** using the unchanged matching local components. Strict TypeScript
+  type-check of the unchanged local lifecycle modules passed.
+- Exact current GitHub blobs after this change: Rust
+  `33eb566ea5fe82b765ab463e1e627f1d2475d411`, Rust source audit
+  `3a48b30fd2cf203d8e406923c58ce5b0f5a55a33`, compiler-runner tests
+  `29a0145c5d1504c606b313bff4a40dd959246738`.
+- **Not completed:** compiling or executing any Rust tests, full current
+  Node repository test suite, Cargo/Tauri, Windows GUI smoke, native
+  SQLCipher, keychain, identity, cloud sync, real profile access. The Node
+  28/28 checks are not a Rust compilation result. Run the nine real tests
+  with the checked-in standalone Rust compiler runner and `cargo test
+  --locked` on an authorized Rust-equipped machine before merge.
+
+This is a synthetic internal guard, not real native profile locking or a
+security authorization system. No release, GitHub Actions, main merge,
+private data, production service or Tauri IPC permission was changed.
 
 ## Next gates
 
