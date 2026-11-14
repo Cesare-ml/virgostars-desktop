@@ -107,6 +107,23 @@ test('checks sampled file and executable identity again before reporting success
 });
 
 
+test('rechecks every visited directory after recursion and before a success report', () => {
+  const source = readFileSync(new URL('../scripts/verify-native-bundle-freshness.mjs', import.meta.url), 'utf8');
+  assert.match(source,/const directorySnapshots = \[\]/);
+  assert.match(source,/directorySnapshots\.push\(\{ path: directory, stat: directoryBefore \}\)/);
+  const walk = source.indexOf('inspect(root, 0);');
+  const directoryRecheck = source.indexOf('for (const snapshot of directorySnapshots)', walk);
+  const fileRecheck = source.indexOf('for (const snapshot of snapshots)', directoryRecheck);
+  const executableRecheck = source.indexOf('unchanged(executable, verifiedStat(executablePath', fileRecheck);
+  const success = source.indexOf("return Object.freeze({ files, status: 'plausibly_current' });", executableRecheck);
+  assert.ok(walk > 0 && directoryRecheck > walk && fileRecheck > directoryRecheck &&
+    executableRecheck > fileRecheck && success > executableRecheck);
+  const fragment = source.slice(directoryRecheck, fileRecheck);
+  assert.match(fragment,/unchanged\(snapshot\.stat, verifiedStat\(snapshot\.path, 'directory'\)\)/);
+  assert.match(fragment,/failure\('CHANGED_DURING_SCAN'\)/);
+});
+
+
 test('does not change file timestamps or create reports', () => fixture(({exe,dist,files}) => {
   const before = [...files,exe].map(file=>({file,mtime: lstatSync(file).mtimeMs}));
   verifyNativeBundleFreshness(exe, dist);
