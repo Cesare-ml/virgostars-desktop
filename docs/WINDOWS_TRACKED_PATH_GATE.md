@@ -14,9 +14,7 @@ to the same PowerShell entrypoint. A nonzero check exit code stops the bootstrap
 
 Without arguments the check reports the **current locally tracked Git index**; that mode alone cannot protect a checkout Windows already refused to create. To inspect an existing local commit *before switching branches*, use the optional commit mode below. This does not perform any Git fetch, update remote refs, or checkout; you must have the desired commit in the local object database already.
 
-Parallel draft PR #235 also edits the Windows bootstrap. Reviewers must
-reconcile both changes before accepting either; neither PR has been merged
-by this update.
+The Windows bootstrap changes proposed in draft PR #235 have been **reconciled on this feature branch** with the tracked-path gate. The combined script checks Git filename safety, Desktop and Charts npm lockfile provenance, and versions **before either `npm ci`**. The #235 feature commit is a parent of the #237 feature-branch integration commit; **neither PR is merged to `main`**. Review the combined PR #237 before deciding which changes to integrate.
 
 ## Manual use (from the Desktop repository root)
 
@@ -40,8 +38,10 @@ It rejects reserved Win32 device names (including `CON`, `PRN`, `AUX`, `NUL`, `C
 - Index mode covers Git-tracked names in the index. Commit mode covers the selected local commit's tree, not untracked files, uncommitted content, submodule contents, downloaded dependencies, or generated build assets. Symlink targets, actual file permissions, malware, secrets, licenses, WebView2 runtime behavior and executable signatures are **not** examined.
 - NFC plus lowercase is a conservative **Windows alias heuristic**, not a complete model of every NTFS or Win32 filesystem name comparison. Passing is not certification of full Windows portability.
 - Use it **in addition to**, not in place of, `npm test`, `npm run verify:privacy`, bundle/CSS checks and real Windows WebView2 visual smoke.
-- Current Linux synthetic verification (Node.js 22.16.0, Git 2.47.3): **27/27 Node test cases passed**, including temporary Git fixture checks that HEAD, index and working tree are unchanged. No full Desktop suite, Angular/Tauri compile or native Windows run was performed during this change.
+- Current Linux synthetic verification (Node.js 22.16.0, Git 2.47.3): **28/28 Node test cases passed**, including temporary Git fixture checks that HEAD, index and working tree are unchanged. No full Desktop suite, Angular/Tauri compile or native Windows run was performed during this change.
 
-The bootstrap-order, CMD-delegation and pre-checkout commit-mode tests all passed on Linux with `node --test tests/windows-tracked-paths.test.mjs` (**27/27**). The new tests cover both valid and invalid commit objects, CLI argument rejection, simulated Windows-incompatible names on an un-checked-out branch, and unchanged HEAD/index/worktree. The committed Git blobs of the source, tests, PowerShell bootstrap and CMD entrypoint exactly matched the four files used in this local Node/Git test run. No native Windows
+The bootstrap-order, CMD-delegation, pre-checkout commit-mode and **combined lockfile-preflight order** tests all passed on Linux with `node --test tests/windows-tracked-paths.test.mjs` (**28/28**). The new tests cover both valid and invalid commit objects, CLI argument rejection, simulated Windows-incompatible names on an un-checked-out branch, and unchanged HEAD/index/worktree. The tested Git blobs match this PR's source (`ccc1356053e511ce89406ea41c93d6998d858425`), tests (`6960b7f12a2da3895b569881f4690f355a5095e7`), and combined PowerShell bootstrap (`1dd4ad268e7777d2adf328d2e5c6d55e3e34fe45`). The CMD launcher is unchanged. No native Windows
 PowerShell invocation or full `npm test` / Tauri/WebView2 build was performed;
 these remain acceptance gates before integration or release.
+
+The separate `tests/charts-npm-lock.test.mjs` tests inherited from PR #235 and the full project suite still require execution against a complete checkout; the 28 passing tests above are scoped to `tests/windows-tracked-paths.test.mjs` only.
