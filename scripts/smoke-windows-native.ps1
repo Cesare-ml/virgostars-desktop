@@ -12,9 +12,14 @@ $ErrorActionPreference = 'Stop'
 if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
     throw 'NATIVE_SMOKE_WINDOWS_ONLY'
 }
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+# Resolve an actual Node executable once. Do not run a PowerShell alias,
+# function or script named 'node' between the preflight checks.
+$nodeCommand = Get-Command -Name 'node.exe' -CommandType Application -ErrorAction SilentlyContinue
+if ($null -eq $nodeCommand -or [string]::IsNullOrWhiteSpace($nodeCommand.Source) -or
+    -not [System.IO.Path]::IsPathRooted($nodeCommand.Source)) {
     throw 'NATIVE_SMOKE_NODE_REQUIRED'
 }
+$nodeExe = $nodeCommand.Source
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # Exact Cargo binary name; the user cannot supply an arbitrary executable path.
@@ -23,7 +28,7 @@ $exe = Join-Path $root 'src-tauri\target\release\virgostars-desktop-spike.exe'
 function Invoke-ReadOnlyGate {
     param([string] $Label, [string] $Path)
     # Gate output can include checkout paths on failure. Surface only stable labels.
-    & node $Path *> $null
+    & $nodeExe $Path *> $null
     if ($LASTEXITCODE -ne 0) {
         throw ('NATIVE_SMOKE_PREFLIGHT_FAILED_' + $Label)
     }
