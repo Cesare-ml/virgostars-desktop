@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,rmSync,writeFileSync,readFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,rmSync,writeFileSync,readFileSync,copyFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
-import {checkTrackedPaths,parseTrackedGitPaths,inspectTrackedPaths} from '../scripts/verify-windows-tracked-paths.mjs';
+import {checkTrackedPaths,parseTrackedGitPaths,inspectTrackedPaths,inspectCommitPaths} from '../scripts/verify-windows-tracked-paths.mjs';
 
 const invalid=[
   'src/CON.ts','src/aux.json','assets/LPT9.txt','assets/com¹.png',
@@ -101,4 +101,69 @@ test('the regular CMD launcher still delegates only to the checked PowerShell bo
   const cmd=readFileSync(new URL('../scripts/build-windows.cmd',import.meta.url),'utf8');
   assert.match(cmd,/"%VS_SYSTEM_POWERSHELL%" -NoProfile -NonInteractive -File "%~dp0build-windows-spike\.ps1"/);
   assert.doesNotMatch(cmd,/verify-windows-tracked-paths|npm\.cmd|cargo|tauri/i);
+});
+
+test('commit mode checks an exact local commit without switching branches',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-commit-git-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  git(dir,'init','-q','-b','main');
+  git(dir,'config','user.name','Synthetic Test');
+  git(dir,'config','user.email','test@example.invalid');
+  writeFileSync(join(dir,'safe.txt'),'synthetic safe fixture');
+  git(dir,'add','.');git(dir,'commit','-qm','synthetic safe');
+  const safe=git(dir,'rev-parse','HEAD');
+  assert.deepEqual(inspectCommitPaths(dir,safe),{files:1,windowsPortableNames:true});
+  git(dir,'branch','unsafe');
+  git(dir,'switch','-q','unsafe');
+  writeFileSync(join(dir,'CON.txt'),'synthetic Windows-incompatible filename');
+  git(dir,'add','.');git(dir,'commit','-qm','synthetic incompatible');
+  const unsafe=git(dir,'rev-parse','HEAD');
+  git(dir,'switch','-q','main');
+  const beforeStatus=git(dir,'status','--porcelain');
+  assert.throws(()=>inspectCommitPaths(dir,unsafe),/nonportable Windows path component/);
+  assert.deepEqual(inspectCommitPaths(dir,safe),{files:1,windowsPortableNames:true});
+  assert.deepEqual(inspectTrackedPaths(dir),{files:1,windowsPortableNames:true});
+  assert.equal(git(dir,'rev-parse','HEAD'),safe);
+  assert.equal(git(dir,'status','--porcelain'),beforeStatus);
+});
+
+test('commit mode rejects incomplete IDs, ambiguous refs and non-commit objects',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-commit-id-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  git(dir,'init','-q','-b','main');
+  writeFileSync(join(dir,'test.txt'),'synthetic fixture');
+  const blob=git(dir,'hash-object','-w','test.txt');
+  for(const input of ['HEAD','--help','0'.repeat(39),'0'.repeat(65),'a'.repeat(40)+';exit',null]){
+    assert.throws(()=>inspectCommitPaths(dir,input),/invalid full Git commit id/);
+  }
+  assert.throws(()=>inspectCommitPaths(dir,blob),/local Git commit unavailable/);
+  assert.throws(()=>inspectCommitPaths(dir,'0'.repeat(40)),/local Git commit unavailable/);
+});
+
+test('CLI commit mode is read-only and fails closed on invalid arguments',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'vs-commit-cli-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  git(dir,'init','-q','-b','main');
+  git(dir,'config','user.name','Synthetic Test');
+  git(dir,'config','user.email','test@example.invalid');
+  mkdirSync(join(dir,'scripts'));
+  const script=join(dir,'scripts','verify-windows-tracked-paths.mjs');
+  copyFileSync(new URL('../scripts/verify-windows-tracked-paths.mjs',import.meta.url),script);
+  git(dir,'add','.');git(dir,'commit','-qm','synthetic baseline');
+  const commit=git(dir,'rev-parse','HEAD');
+  const before=git(dir,'status','--porcelain');
+  const invoke=(...args)=>spawnSync(process.execPath,[script,...args],{
+    cwd:dir,encoding:'utf8'});
+  const success=invoke('--commit='+commit);
+  assert.equal(success.status,0,success.stderr);
+  assert.match(success.stdout,/1 tracked filenames checked/);
+  for(const args of [['--commit=HEAD'],['--commit='+commit,'--unknown'],['--commit='+'0'.repeat(40)]]){
+    const fail=invoke(...args);
+    assert.equal(fail.status,1);
+    assert.equal(fail.stdout,'');
+    assert.match(fail.stderr,/WINDOWS TRACKED PATHS:/);
+    assert.ok(!fail.stderr.includes('0'.repeat(40)));
+  }
+  assert.equal(git(dir,'rev-parse','HEAD'),commit);
+  assert.equal(git(dir,'status','--porcelain'),before);
 });
