@@ -95,3 +95,25 @@ test('Angular build keeps active bundled CSS compatible with strict script CSP',
   assert.equal(opts.optimization.styles.inlineCritical, false);
   assert.equal(opts.optimization.fonts, false);
 });
+
+test('rejects http-equiv refresh before or after the canonical base', () => {
+  for (const candidate of [
+    '<meta http-equiv="refresh" content="0;url=https://example.invalid/"><base href="/">',
+    '<base href="/"><meta http-equiv="refresh" content="0;url=https://example.invalid/">',
+    '<base href="/"><META HTTP-EQUIV=REFRESH content="0;url=https://example.invalid/">',
+    '<base href="/"><meta content="0; quoted > value" http-equiv = \'refresh\'>',
+  ]) {
+    assert.throws(() => verifyDesktopBaseHref(html(candidate)), /DESKTOP BASE HREF/, candidate);
+  }
+});
+
+test('rejects unreviewed http-equiv directives instead of allowing policy overrides', () => {
+  const directive = '<meta http-equiv="Content-Security-Policy" content="default-src *">';
+  assert.throws(() => verifyDesktopBaseHref(html('<base href="/">' + directive)), /DESKTOP BASE HREF/);
+});
+
+test('ignores commented-out refresh but keeps normal Angular metadata valid', () => {
+  const canonical = '<!-- <meta http-equiv="refresh" content="0;url=evil"> -->' +
+    '<base href="/"><meta name="viewport" content="width=device-width, initial-scale=1">';
+  assert.equal(verifyDesktopBaseHref(html(canonical)), true);
+});
