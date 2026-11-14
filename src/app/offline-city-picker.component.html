@@ -1,30 +1,36 @@
 <section class="city-picker" [attr.aria-label]="t('city.title')">
-  <label class="city-title" for="offline-city-query">{{t('city.title')}}</label>
+  <label class="city-title" [attr.for]="domIds.inputId">{{t('city.title')}}</label>
   <p class="city-note">{{t('city.note')}}</p>
   <p class="city-note">{{t('city.demoNote')}}</p>
   <input
-    id="offline-city-query"
+    [attr.id]="domIds.inputId"
+    #citySearchInput
     type="search"
     class="city-input"
     role="combobox"
     autocomplete="off"
     spellcheck="false"
-    maxlength="80"
+    maxlength="160"
     [attr.placeholder]="t('city.placeholder')"
     [attr.aria-label]="t('city.title')"
     [attr.aria-autocomplete]="'list'"
-    [attr.aria-controls]="'offline-city-options'"
+    [attr.aria-controls]="state.results.length ? domIds.listId : null"
     [attr.aria-expanded]="state.results.length > 0"
-    [attr.aria-activedescendant]="state.activeIndex >= 0 ? 'offline-city-option-'+state.activeIndex : null"
+    [attr.aria-activedescendant]="state.activeIndex >= 0 ? domIds.optionId(state.activeIndex) : null"
     [value]="state.query"
     (input)="onInput($event)"
+    (compositionstart)="onCompositionStart()"
+    (compositionend)="onCompositionEnd($event)"
     (keydown)="onKeydown($event)"
   >
   <p class="city-status" role="status" aria-live="polite">{{message}}</p>
-  <div class="city-results" id="offline-city-options" role="listbox" [attr.aria-label]="t('city.results.label')" *ngIf="state.results.length">
+  <button type="button" class="city-retry"
+    *ngIf="state.status === 'busy' || state.status === 'unavailable'"
+    (click)="retry(citySearchInput)">{{t('city.retry')}}</button>
+  <div class="city-results" [attr.id]="domIds.listId" role="listbox" [attr.aria-label]="t('city.results.label')" *ngIf="state.results.length">
     <button type="button" class="city-option" role="option"
       *ngFor="let city of state.results; let i=index; trackBy:trackCity"
-      [id]="'offline-city-option-'+i"
+      [attr.id]="domIds.optionId(i)"
       [attr.aria-selected]="state.activeIndex === i"
       [class.active]="state.activeIndex === i"
       (click)="choose(i)">
@@ -36,7 +42,12 @@
       </span>
     </button>
   </div>
-  <p class="city-selected" *ngIf="state.selected">
-    {{t('city.selected')}}: <strong>{{state.selected.name}}</strong>
-  </p>
+  <div class="city-selection" *ngIf="state.selected as place">
+    <div class="city-selection-details">
+      <p class="city-selected">{{t('city.selected')}}: <strong>{{place.name}}</strong></p>
+      <p class="city-secondary" *ngIf="selectedDetail">{{selectedDetail}}</p>
+    </div>
+    <button type="button" class="city-clear" [attr.aria-label]="t('city.clear')"
+      (click)="clearSelected()">{{t('city.clear')}}</button>
+  </div>
 </section>

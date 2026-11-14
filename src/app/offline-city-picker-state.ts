@@ -41,7 +41,8 @@ export class OfflineCityPickerState {
   input(value: string): void {
     if (this.disposed) return;
     this.abortPending();
-    this.query = value.slice(0, 80);
+    // Match the native query limit in Unicode scalar values, not UTF-16 units.
+    this.query = [...value].slice(0, 80).join('');
     this.selected = null;
     this.results = [];
     this.activeIndex = -1;
@@ -51,10 +52,21 @@ export class OfflineCityPickerState {
     else {
       this.status = 'typing';
       const ticket = this.seq;
-      this.pending = this.timers.set(() => {
-        this.pending = null;
-        if (ticket === this.seq && !this.disposed) void this.perform(ticket, this.query);
-      }, this.debounceMs);
+      try {
+        const handle = this.timers.set(() => {
+          this.pending = null;
+          if (ticket === this.seq && !this.disposed) void this.perform(ticket, this.query);
+        }, this.debounceMs);
+        if (handle === null || handle === undefined) {
+          // A missing timer cannot transition typing into a live result.
+          this.status = 'unavailable';
+        } else {
+          this.pending = handle;
+        }
+      } catch {
+        // Never expose scheduler errors or leave an endless typing spinner.
+        this.status = 'unavailable';
+      }
     }
     this.changed();
   }
@@ -68,9 +80,11 @@ export class OfflineCityPickerState {
       if (result.kind === 'ready') {
         this.results = result.items;
         this.status = result.items.length ? 'ready' : 'empty';
-      } else if (result.kind !== 'stale') {
+      } else {
         this.results = [];
-        this.status = result.kind;
+        // Even a current query may be invalidated by its native lookup scope.
+        // Always settle loading into an explicit retryable state.
+        this.status = result.kind === 'stale' ? 'busy' : result.kind;
       }
     } catch {
       if (ticket !== this.seq || this.disposed) return;
@@ -103,6 +117,13 @@ export class OfflineCityPickerState {
 
   chooseActive(): OfflinePlaceV1 | null { return this.choose(this.activeIndex); }
 
+  /** Manual retry only for transient native failures; reuses bounded debounce. */
+  retry(): boolean {
+    if (this.disposed || (this.status !== 'busy' && this.status !== 'unavailable')) return false;
+    this.input(this.query);
+    return true;
+  }
+
   dismiss(): void {
     if (this.disposed) return;
     this.abortPending();
@@ -123,6 +144,18 @@ export class OfflineCityPickerState {
     this.changed();
   }
 
+  /** Explicitly forget the temporary city; no persistence or network operation. */
+  clearSelection(): void {
+    if (this.disposed) return;
+    this.abortPending();
+    this.selected = null;
+    this.query = '';
+    this.results = [];
+    this.activeIndex = -1;
+    this.status = 'idle';
+    this.changed();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -132,9 +165,27 @@ export class OfflineCityPickerState {
   }
 
   private abortPending(): void {
+    // Invalidate all previous async callbacks before attempting external cleanup.
     this.seq++;
-    if (this.pending !== null) this.timers.clear(this.pending);
+    const handle = this.pending;
     this.pending = null;
-    this.lookup.clear();
+    if (handle !== null) {
+      try { this.timers.clear(handle); } catch { /* Stale callback is generation-guarded. */ }
+    }
+    try { this.lookup.clear(); } catch { /* A misbehaving adapter must not block local clear. */ }
   }
+}
+
+
+/**
+ * Mirror an externally changed parent selection into one temporary picker.
+ * A parent clear must remove an obsolete chosen city, but must NOT erase
+ * an in-progress query whose local selection was already invalidated by typing.
+ * No event is sent to the parent by this state-level reconciliation.
+ */
+export function reconcileParentCitySelection(
+  state: OfflineCityPickerState, selectedPlace: OfflinePlaceV1 | null,
+): void {
+  if (selectedPlace !== null) state.restore(selectedPlace);
+  else if (state.selected !== null) state.clearSelection();
 }
