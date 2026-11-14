@@ -24,8 +24,8 @@ test('safe refs and arguments reject ambiguous revisions',()=>{
 });
 
 test('revision counters accept only complete finite Git left/right counts',()=>{
-  assert.deepEqual(parseCommitDrift(Buffer.from('2\t3\n'.replaceAll('\t','\t'))),{behindBy:2,aheadBy:3});
-  assert.deepEqual(parseCommitDrift(Buffer.from('0\t0\n'.replaceAll('\t','\t'))),{behindBy:0,aheadBy:0});
+  assert.deepEqual(parseCommitDrift(Buffer.from('2\t3\n')),{behindBy:2,aheadBy:3});
+  assert.deepEqual(parseCommitDrift(Buffer.from('0\t0\n')),{behindBy:0,aheadBy:0});
   for (const invalid of ['','1 2','-1\t2','1\t2\t3','1\tNaN','9007199254740992\t1',
     '1\t2\nprivate', '1\t2\r\nextra']) {
     assert.throws(()=>parseCommitDrift(Buffer.from(invalid)), 'must reject invalid revision counter');
