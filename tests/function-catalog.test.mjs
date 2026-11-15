@@ -31,7 +31,8 @@ test('the catalog is frozen and its summary matches the entries', () => {
 
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
-    'archive', 'house-system', 'latitudes', 'lunar-return', 'natal', 'new-chart', 'planet-info', 'real-time',
+    'archive', 'aspect-direction', 'aspect-orbs', 'aspects', 'celestial-elements', 'house-system', 'latitudes',
+    'lunar-return', 'natal', 'new-chart', 'planet-info', 'planet-orbs', 'real-time',
     'session-charts', 'solar-return', 'synastry', 'transits',
   ]);
 });
@@ -62,5 +63,6 @@ test('a calculated chart is never paired with fixture overlays', () => {
   const component = read('src/app/desktop-app.component.ts');
   assert.match(component, /const transit = active \? this\.transitChart\?\.render : this\.transit;/);
   assert.match(component, /const synastry = active \? this\.partnerChart\?\.render : this\.synastry;/);
-  assert.match(component, /if \(!\(name in active\.data\.planets\)\) points\[name\]\.att = false;/);
+  assert.match(component, /const present = AXIS_IDS\.includes\(id\) \|\| id in planets;/);
+  assert.match(component, /target\.att = present && setting\.shown;/);
 });

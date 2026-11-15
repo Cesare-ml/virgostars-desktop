@@ -92,6 +92,8 @@
           [attr.aria-selected]="inspectorTab==='planets'" (click)="setInspectorTab('planets')">{{t('tab.planets')}}</button>
         <button type="button" role="tab" id="tab-houses" aria-controls="inspector-content"
           [attr.aria-selected]="inspectorTab==='houses'" (click)="setInspectorTab('houses')">{{t('tab.houses')}}</button>
+        <button type="button" role="tab" id="tab-aspects" aria-controls="inspector-content"
+          [attr.aria-selected]="inspectorTab==='aspects'" (click)="setInspectorTab('aspects')">{{t('tab.aspects')}}</button>
         <button type="button" role="tab" id="tab-chart" aria-controls="inspector-content"
           [attr.aria-selected]="inspectorTab==='chart'" (click)="setInspectorTab('chart')">{{t('tab.chart')}}</button>
         <button type="button" role="tab" id="tab-functions" aria-controls="inspector-content"
@@ -188,6 +190,22 @@
             <button type="button" class="small-control wide" (click)="cancelDeleteSaved()">{{t('archive.confirm.no')}}</button>
           </div>
         </div>
+        <div *ngIf="inspectorTab==='aspects'">
+          <p class="inspector-hint" *ngIf="!activeChart">{{t('aspects.help.demo')}}</p>
+          <ng-container *ngIf="activeChart">
+            <p class="inspector-hint">{{t('aspects.help')}}</p>
+            <p class="inspector-hint" *ngIf="!chartSettings.showAspects">{{t('aspects.hidden')}}</p>
+            <div class="data-head"><span>{{t('tab.aspects')}} ({{aspectRows.length}})</span><span>{{t('aspects.orb')}}</span></div>
+            <p class="inspector-hint missing-note" *ngIf="!aspectRows.length">{{t('aspects.none')}}</p>
+            <div class="data-line static aspect-line" *ngFor="let row of aspectRows">
+              <span>{{planetLabel(row.from)}} <em>{{aspectLabel(row.aspect)}}</em> {{planetLabel(row.to)}}</span>
+              <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
+                [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{row.applying ? 'A' : 'S'}}</span></span>
+            </div>
+            <p class="inspector-hint missing-note">{{t('aspects.legend')}}</p>
+          </ng-container>
+          <button type="button" class="link-control" (click)="setInspectorTab('settings')">{{t('aspects.settings')}}</button>
+        </div>
         <div *ngIf="inspectorTab==='functions'">
           <vs-returns-panel *ngIf="returnTool && returnRadix" [locale]="locale" [kind]="returnTool" [radix]="returnRadix"
             [busy]="calcBusy || busy" (chartRequested)="onReturnChartRequested($event)" (closed)="closeReturns()"></vs-returns-panel>
@@ -204,6 +222,9 @@
           </section>
         </div>
         <div *ngIf="inspectorTab==='settings'">
+          <h3 class="panel-title first">{{t('chartsettings.title')}}</h3>
+          <vs-chart-settings [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
+            (settingsChange)="onChartSettingsChanged($event)"></vs-chart-settings>
           <p class="inspector-hint">{{t('settings.help')}}</p>
           <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
           <div class="setting-line" *ngIf="selectedCity">

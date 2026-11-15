@@ -9,7 +9,7 @@ import {
 import {
   chartSide, CHART_MODES, type ChartMode, type InspectorTab, type UiTheme
 } from './workspace-state';
-import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
+import { fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
@@ -34,6 +34,13 @@ import { chartArchive } from './native/chart-archive';
 import { newChartId, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
 import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
 import type { ReturnKind, ReturnRadix } from './returns-form';
+import { ChartSettingsComponent } from './chart-settings.component';
+import {
+  ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
+  type ChartSettings
+} from './chart-settings';
+import { aspectPoints, computeAspects, formatOrb, type AspectRow } from './astro/aspects';
+import { ASPECT_LABEL_KEYS, POINT_LABEL_KEYS } from './point-labels';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -51,7 +58,6 @@ const SIGN_KEYS: readonly MessageKey[] = [
   'sign.libra','sign.scorpio','sign.sagittarius','sign.capricorn','sign.aquarius','sign.pisces',
 ];
 const SIGN_GLYPHS = '♈♉♊♋♌♍♎♏♐♑♒♓';
-const DEFAULT_EXTRA_POINTS: readonly string[] = ['true Node', 'true Node Sud', 'osc. Apogee', 'osc. Perigee', 'Chiron'];
 const HOUSE_SYSTEM_KEYS: Record<HouseSystemId,MessageKey> = {
   egizia:'house.egizia', placido:'house.placido', koch:'house.koch',
   'regio-montano':'house.regiomontano', porfirio:'house.porfirio',
@@ -99,7 +105,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, OfflineCityPickerComponent, NewChartComponent, ReturnsPanelComponent],
+  imports:[CommonModule, OfflineCityPickerComponent, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -151,6 +157,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   archiveBusy = false;
   archiveMessage: MessageKey | null = null;
   pendingDeleteId: string | null = null;
+  // Aspects, orbs and points: device-only display preferences, no personal data.
+  chartSettings: ChartSettings = loadChartSettings(this.uiPreferencesStorage);
+  private aspectCache: {chartId: number; settings: ChartSettings; rows: AspectRow[]} | null = null;
   // Solar or lunar return panel; its radix is the chart that was active when it opened.
   returnTool: ReturnKind | null = null;
   returnRadix: ReturnRadix | null = null;
@@ -184,8 +193,31 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:string): string {
-    const key = POINT_KEYS[planet];
+    const key = POINT_KEYS[planet] ?? POINT_LABEL_KEYS[planet];
     return key ? this.t(key) : planet;
+  }
+  aspectLabel(aspect:string): string {
+    const key = ASPECT_LABEL_KEYS[aspect];
+    return key ? this.t(key) : aspect;
+  }
+  formatOrb(orbDeg:number): string { return formatOrb(orbDeg); }
+  /** Aspects of the active chart under the current settings; the same rule the renderer draws with. */
+  get aspectRows(): AspectRow[] {
+    const chart = this.activeChart;
+    if (!chart) return [];
+    const cache = this.aspectCache;
+    if (cache && cache.chartId === chart.id && cache.settings === this.chartSettings) return cache.rows;
+    const rows = computeAspects(aspectPoints(chart.data, this.chartSettings.points), this.chartSettings, ASPECT_DEFINITIONS);
+    this.aspectCache = {chartId:chart.id, settings:this.chartSettings, rows};
+    return rows;
+  }
+  onChartSettingsChanged(next: ChartSettings): void {
+    if (this.destroyed || this.exporting) return;
+    this.chartSettings = sanitizeChartSettings(next);
+    // Best effort: a failed write never blocks the chart.
+    saveChartSettings(this.uiPreferencesStorage, this.chartSettings);
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
   }
   get activeChart(): SessionChart | null {
     return this.sessionCharts.find(chart => chart.id === this.activeChartId) ?? null;
@@ -491,6 +523,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     switch (entry.action) {
       case 'archive': this.openArchive(); break;
       case 'solar_return': this.openReturns('solar'); break;
+      case 'aspect_table': this.setInspectorTab('aspects'); break;
+      case 'chart_settings': this.setInspectorTab('settings'); break;
       case 'lunar_return': this.openReturns('lunar'); break;
       case 'new_chart': case 'now_chart': case 'session_charts': this.setInspectorTab('chart'); break;
       case 'house_system': this.setInspectorTab('houses'); break;
@@ -657,17 +691,28 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const active = this.activeChart;
     options.mostraTransiti = this.mode === 'transits' && (!active || this.transitChart !== null);
     options.mostraSinastria = this.mode === 'synastry' && (!active || this.partnerChart !== null);
-    if (active) {
-      options.settaggi.domificazione_selezionata = this.houseSystem;
-      // A point the provider did not compute is switched off, never drawn from a default.
-      const points = options.settaggi.elementi_celesti as unknown as Record<string,{att:boolean}>;
-      for (const name of Object.keys(points)) if (!(name in active.data.planets)) points[name].att = false;
-      // Same points Regolo draws by default, until per-point settings exist.
-      for (const name of DEFAULT_EXTRA_POINTS) if (name in active.data.planets && points[name]) points[name].att = true;
+    if (active) options.settaggi.domificazione_selezionata = this.houseSystem;
+    const settings = this.chartSettings;
+    options.mostraAspetti = settings.showAspects;
+    const aspectsOn = options.settaggi.aspetti_attivi as unknown as Record<string,boolean>;
+    const aspectOrbs = options.settaggi.aspetti_orbite as unknown as Record<string,number|null>;
+    for (const {id} of ASPECT_DEFINITIONS) {
+      aspectsOn[id] = settings.aspects[id].active;
+      aspectOrbs[id] = settings.aspects[id].orb;
     }
-    for(const name of DEMO_NAMES) {
-      options.settaggi.elementi_celesti[name].att = true;
-      options.settaggi.elementi_celesti[name].aspVerso = true;
+    const planets: Record<string,unknown> = active ? active.data.planets : this.natal.planets;
+    const points = options.settaggi.elementi_celesti as unknown as Record<string,{att:boolean; orb:number; aspVerso:boolean}>;
+    // Everything starts switched off: lots and other points this build does not compute stay off.
+    for (const name of Object.keys(points)) { points[name].att = false; points[name].aspVerso = false; }
+    for (const id of POINT_IDS) {
+      const target = points[id];
+      if (!target) continue;
+      const setting = settings.points[id];
+      // A point the provider did not compute is never drawn from a default.
+      const present = AXIS_IDS.includes(id) || id in planets;
+      target.att = present && setting.shown;
+      target.orb = setting.orb;
+      target.aspVerso = present && setting.aspects;
     }
     return options;
   }
