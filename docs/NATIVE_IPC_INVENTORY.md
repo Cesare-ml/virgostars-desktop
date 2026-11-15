@@ -2,7 +2,7 @@
 
 **Status:** local developer verification only (13 November 2026). This is not a native security audit, penetration test or a proof that a released Windows application is safe.
 
-> **Update 2026-11-15 — four commands.** The reviewed registry now also contains `chart_calculation::calculate_chart` and `chart_archive::chart_archive`, each with its own protocol (`chart-calculation-contract.ts`, `chart-archive-contract.ts`) and adapter (`chart-calculation.ts`, `chart-archive.ts`) under `src/app/native/`. Where the text below says "two" commands, protocols or adapters, read four. See the sections at the end, [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md) and [Chart archive](CHART_ARCHIVE.md).
+> **Update 2026-11-15 — five commands.** The reviewed registry now also contains `chart_calculation::calculate_chart`, `chart_archive::chart_archive` and `return_search::find_returns`, each with its own protocol (`chart-calculation-contract.ts`, `chart-archive-contract.ts`, `return-search-contract.ts`) and adapter (`chart-calculation.ts`, `chart-archive.ts`, `return-search.ts`) under `src/app/native/`. Where the text below says "two" commands, protocols or adapters, read five. See the sections at the end, [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md), [Chart archive](CHART_ARCHIVE.md) and [Returns](RETURNS.md).
 
 ## Why this gate exists
 
@@ -60,4 +60,14 @@ The command was exercised in the native release window on 2026-11-15 through Web
 - **Threat considered:** a compromised WebView can read, overwrite or delete every saved chart (up to 5000 rows). It cannot reach other files. The archive is **not encrypted**, so any process running as the same Windows user can read it without the application; see [Chart archive](CHART_ARCHIVE.md).
 - **Not covered:** secure deletion, multi-instance locking behaviour, account isolation.
 
-Gate status on 2026-11-15: `npm run verify:ipc` reports 4 commands and 4 adapters; `tests/native-ipc-registry.test.mjs` passes 21/21 with both new commands in every fixture.
+## Return search command (2026-11-15)
+
+`find_returns` asks the ephemeris provider when the Sun or Moon is back at a given longitude. Review notes:
+
+- **Input:** one `request` object with `protocolVersion`, `body` (`Sun` or `Moon`), `targetLongitudeDeg` and `year`. Unknown fields are rejected. No name, birth date, place or path crosses IPC; a longitude alone does not identify a person.
+- **Output:** up to a handful of instants as UTC text and Julian day, plus the provider id and version. The decoder requires chronological order and agreement between the two forms of each instant.
+- **Side effects:** none. Nothing is stored or logged.
+- **Cost:** bounded. At most 366 daily samples for the Sun or 1464 six-hourly samples for the Moon, plus about 30 refinements per return; the command is synchronous and took well under a second in the native window.
+- **Threat considered:** a compromised WebView can ask for returns of arbitrary longitudes and years. That discloses nothing stored on the device.
+
+Gate status on 2026-11-15: `npm run verify:ipc` reports 5 commands and 5 adapters; `tests/native-ipc-registry.test.mjs` passes 21/21 with the three new commands in every fixture.

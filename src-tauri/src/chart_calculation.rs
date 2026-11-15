@@ -96,9 +96,21 @@ pub struct ChartResponseV1 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProviderError;
 
+/// The two bodies whose returns are searched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Luminary {
+    Sun,
+    Moon,
+}
+
 pub trait EphemerisProvider: Send + Sync {
     fn info(&self) -> ProviderInfoV1;
     fn chart(&self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError>;
+    /// Apparent geocentric ecliptic longitude of a luminary, degrees in `[0, 360)`.
+    /// Providers that cannot answer keep this default and searches report a failure.
+    fn luminary_longitude(&self, _body: Luminary, _julian_day_ut: f64) -> Result<f64, ProviderError> {
+        Err(ProviderError)
+    }
 }
 
 fn digits(text: &str) -> Option<u32> {
@@ -193,12 +205,12 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
 }
 
 #[cfg(feature = "swiss-ephemeris")]
-fn active_provider() -> Option<&'static dyn EphemerisProvider> {
+pub(crate) fn active_provider() -> Option<&'static dyn EphemerisProvider> {
     Some(&crate::swiss_provider::SwissEphemeris)
 }
 
 #[cfg(not(feature = "swiss-ephemeris"))]
-fn active_provider() -> Option<&'static dyn EphemerisProvider> {
+pub(crate) fn active_provider() -> Option<&'static dyn EphemerisProvider> {
     None
 }
 

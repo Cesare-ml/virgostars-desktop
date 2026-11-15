@@ -13,7 +13,8 @@ export type FunctionStatus = 'available' | 'planned' | 'excluded';
 /** What clicking an available entry does. Planned entries have none. */
 export type FunctionAction =
   | 'new_chart' | 'session_charts' | 'now_chart' | 'mode_natal' | 'mode_transits'
-  | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive';
+  | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive'
+  | 'solar_return' | 'lunar_return';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -66,8 +67,8 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     planned('swap-charts', 'Inverti Temi', 'Swap charts'),
     planned('synastry-transits', 'Mostra Transiti in sinastria', 'Transits over synastry'),
     planned('deflective-synastry', 'Sinastria Deflettiva', 'Deflective synastry'),
-    planned('solar-return', 'Rivoluzione Solare', 'Solar return'),
-    planned('lunar-return', 'Rivoluzione Lunare', 'Lunar return'),
+    available('solar-return', 'Rivoluzione Solare', 'Solar return', 'solar_return'),
+    available('lunar-return', 'Rivoluzione Lunare', 'Lunar return', 'lunar_return'),
     planned('return-map', 'Mappa delle rivoluzioni', 'Return relocation map'),
     planned('directions', 'Direzioni', 'Directions'),
   ]),

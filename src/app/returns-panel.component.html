@@ -1,0 +1,48 @@
+<section class="returns-panel" [attr.aria-label]="t(titleKey)">
+  <div class="returns-head">
+    <h3>{{t(titleKey)}}</h3>
+    <button type="button" class="returns-close" [attr.aria-label]="t('returns.close')" [attr.title]="t('returns.close')" (click)="closed.emit()">×</button>
+  </div>
+  <p class="returns-note">{{t('returns.radix')}} <strong>{{radix.name || t('session.unnamed')}}</strong></p>
+  <p class="returns-note">{{t(kind === 'solar' ? 'returns.note.solar' : 'returns.note.lunar')}}</p>
+
+  <form class="returns-form" (submit)="$event.preventDefault(); search()">
+    <label class="field narrow">
+      <span>{{t('returns.year')}}</span>
+      <input type="text" inputmode="numeric" autocomplete="off" maxlength="4" required [value]="year" (input)="set('year', $event)">
+    </label>
+    <button type="submit" class="returns-primary" [disabled]="searching">{{t(searching ? 'returns.searching' : 'returns.search')}}</button>
+  </form>
+
+  <p class="returns-note">{{t('returns.place')}}</p>
+  <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false"
+    (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
+  <div class="field-row">
+    <label class="field">
+      <span>{{t('form.latitude')}}</span>
+      <input type="text" inputmode="decimal" autocomplete="off" maxlength="14" [value]="latitude" (input)="set('latitude', $event)">
+    </label>
+    <label class="field">
+      <span>{{t('form.longitude')}}</span>
+      <input type="text" inputmode="decimal" autocomplete="off" maxlength="14" [value]="longitude" (input)="set('longitude', $event)">
+    </label>
+  </div>
+  <label class="field">
+    <span>{{t('form.zone')}}</span>
+    <input type="text" autocomplete="off" spellcheck="false" maxlength="120" [value]="timeZone" (input)="set('timeZone', $event)">
+  </label>
+  <label class="returns-check">
+    <input type="checkbox" [checked]="withRadix" (change)="toggleWithRadix($event)">
+    <span>{{t('returns.withRadix')}}</span>
+  </label>
+
+  <p class="returns-message" role="alert" *ngIf="message">{{t(message)}}</p>
+  <p class="returns-note" role="status" *ngIf="searched && !instants.length">{{t('returns.none')}}</p>
+  <div class="returns-list" *ngIf="instants.length" role="list" [attr.aria-label]="t('returns.found')">
+    <p class="returns-note">{{t('returns.found')}} {{instants.length}}</p>
+    <div class="returns-row" role="listitem" *ngFor="let instant of instants; trackBy:trackInstant">
+      <span class="returns-when">{{whenLabel(instant)}}</span>
+      <button type="button" class="returns-cast" [disabled]="busy" (click)="cast(instant)">{{t('returns.cast')}}</button>
+    </div>
+  </div>
+</section>
