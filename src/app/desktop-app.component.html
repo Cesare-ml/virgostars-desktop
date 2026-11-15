@@ -218,6 +218,14 @@
               <button type="button" class="small-control" [attr.aria-label]="t('styles.retry')" (click)="checkStyles()">{{t('styles.retry')}}</button>
             </div>
           </div>
+          <div class="setting-line">
+            <span>{{t('runtime.label')}}</span>
+            <div class="layout-probe-controls">
+              <strong>{{t(runtimeStatus)}}</strong>
+              <button type="button" class="small-control" [disabled]="runtimeChecking"
+                [attr.aria-label]="t('runtime.retry')" (click)="checkRuntime()">{{t('runtime.retry')}}</button>
+            </div>
+          </div>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>
           <div class="setting-line"><span>{{t('settings.theme')}}</span><strong>{{activeThemeLabel}}</strong></div>
           <div class="setting-line"><span>{{t('settings.session')}}</span><strong>{{t('noaccount')}}</strong></div>
