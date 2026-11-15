@@ -30,6 +30,8 @@ export class DeviceClock {
   private timer: unknown | null = null;
   private starting = false;
   private disposed = false;
+  // Reject late callbacks from a stopped interval, even after restarting.
+  private generation = 0;
   private readonly driver: ClockDriver;
 
   constructor(driver: ClockDriver = SYSTEM_CLOCK) {
@@ -43,22 +45,27 @@ export class DeviceClock {
     // refresh() and schedule() may invoke callbacks synchronously. Treat start
     // as in progress until the first handle has been installed or abandoned.
     this.starting = true;
+    const generation = this.generation;
     try {
       this.refresh(changed);
-      if (this.disposed) return;
+      if (this.disposed || generation !== this.generation) return;
       let handle: unknown;
       try {
-        handle = this.driver.schedule(() => this.refresh(changed));
+        handle = this.driver.schedule(() => {
+          if (generation === this.generation) this.refresh(changed);
+        });
       } catch {
-        this.invalidateTime(changed);
+        // The injected scheduler may have paused/disposed the clock before
+        // throwing. A stale start must not invalidate its hidden snapshot.
+        if (generation === this.generation) this.invalidateTime(changed);
         return;
       }
       if (handle === null || handle === undefined) {
-        this.invalidateTime(changed);
+        if (generation === this.generation) this.invalidateTime(changed);
         return;
       }
-      // An injected scheduler may synchronously destroy the owner before returning.
-      if (this.disposed) {
+      // A scheduler or observer may synchronously pause/destroy the clock.
+      if (this.disposed || generation !== this.generation) {
         try { this.driver.cancel(handle); } catch { /* Already disposed; do not leak driver errors. */ }
         return;
       }
@@ -68,11 +75,16 @@ export class DeviceClock {
     }
   }
 
+  /** UI observer errors must never interrupt wall-time sampling or startup. */
+  private emitChanged(changed: () => void): void {
+    try { changed(); } catch { /* Never expose private UI observer exceptions. */ }
+  }
+
   /** A clock without a working scheduler cannot safely display live time. */
   private invalidateTime(changed: () => void): void {
     if (this.disposed || Number.isNaN(this.timestamp)) return;
     this.timestamp = NaN;
-    changed();
+    this.emitChanged(changed);
   }
 
   refresh(changed: () => void): void {
@@ -83,12 +95,24 @@ export class DeviceClock {
       Math.floor(next / 1000) === Math.floor(this.timestamp / 1000);
     if (alreadyUnavailable || sameSecond) return;
     this.timestamp = next;
-    changed();
+    this.emitChanged(changed);
+  }
+
+  /** Suspend the ticking clock while the window is hidden; start() resumes it. */
+  pause(): void {
+    if (this.disposed) return;
+    this.generation++;
+    const handle = this.timer;
+    this.timer = null;
+    if (handle !== null) {
+      try { this.driver.cancel(handle); } catch { /* A stopped timer must never block the UI. */ }
+    }
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.generation++;
     const handle = this.timer;
     this.timer = null;
     if (handle !== null) {
@@ -110,6 +134,36 @@ export function formatDeviceClock(timestamp: number, locale: Locale, compact = f
     return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'it-IT', options)
       .format(new Date(timestamp));
   } catch { return '—'; }
+}
+
+/**
+ * The Angular template reads both clock variants on every change-detection pass.
+ * Reuse strings for one timestamp/locale without caching Intl formatters across
+ * system timezone changes. Exactly two values are retained, never user records.
+ */
+export class DeviceClockTextCache {
+  private timestamp = NaN;
+  private locale: Locale | null = null;
+  private full: string | null = null;
+  private compact: string | null = null;
+  private readonly format: (ms: number, locale: Locale, compact: boolean) => string;
+
+  constructor(format: (ms: number, locale: Locale, compact: boolean) => string = formatDeviceClock) {
+    this.format = format;
+  }
+
+  text(ms: number, locale: Locale, compact = false): string {
+    if (!Object.is(ms, this.timestamp) || locale !== this.locale) {
+      this.timestamp = ms;
+      this.locale = locale;
+      this.full = null;
+      this.compact = null;
+    }
+    if (compact) {
+      return this.compact ?? (this.compact = this.format(ms, locale, true));
+    }
+    return this.full ?? (this.full = this.format(ms, locale, false));
+  }
 }
 
 /** Only a civil-time preview; a selected city never changes synthetic chart data. */

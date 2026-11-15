@@ -53,7 +53,7 @@
         <div class="chart-header-controls">
           <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
             <span class="device-clock-caption">{{t('clock.now')}}</span>
-            <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
+            <time class="device-clock-reading" [attr.datetime]="clockInstantIso" aria-live="off">
               <span class="clock-full">{{clockText}}</span>
               <span class="clock-compact">{{clockCompactText}}</span>
             </time>
@@ -207,7 +207,7 @@
             <span>{{t('clock.city')}}</span>
             <div class="city-clock-values">
               <strong>{{selectedCity.name}}</strong>
-              <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')">{{cityClockText}}</time>
+              <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')" aria-live="off">{{cityClockText}}</time>
               <span *ngIf="cityClock.kind !== 'ready'" class="city-clock-unavailable">{{t('clock.city.unavailable')}}</span>
             </div>
           </div>
@@ -216,6 +216,14 @@
             <div class="layout-probe-controls">
               <strong role="status">{{t(styleStatusKey)}}</strong>
               <button type="button" class="small-control" [attr.aria-label]="t('styles.retry')" (click)="checkStyles()">{{t('styles.retry')}}</button>
+            </div>
+          </div>
+          <div class="setting-line">
+            <span>{{t('runtime.label')}}</span>
+            <div class="layout-probe-controls">
+              <strong>{{t(runtimeStatus)}}</strong>
+              <button type="button" class="small-control" [disabled]="runtimeChecking"
+                [attr.aria-label]="t('runtime.retry')" (click)="checkRuntime()">{{t('runtime.retry')}}</button>
             </div>
           </div>
           <div class="setting-line"><span>{{t('settings.mode')}}</span><strong>{{modeLabel(mode)}}</strong></div>

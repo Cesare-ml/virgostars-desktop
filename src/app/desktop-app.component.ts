@@ -12,6 +12,7 @@ import {
 import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
+import { RuntimeCheckController } from './native/runtime-check-controller';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, syntheticPngFilename, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
@@ -19,7 +20,7 @@ import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
-import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
+import { DeviceClock, DeviceClockTextCache, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
@@ -116,10 +117,29 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private initialized = false;
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
+  private readonly runtimeCheck = new RuntimeCheckController(
+    () => inspectDesktopRuntime(),
+    () => { if (!this.destroyed) this.cd.markForCheck(); },
+  );
   private exporting = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
+  private readonly clockDisplay = new DeviceClockTextCache();
+  private readonly onClockChanged = (): void => {
+    if (this.destroyed) return;
+    this.updateCityClock();
+    this.cd.markForCheck();
+  };
+  private readonly onVisibilityChange = (): void => {
+    if (this.destroyed) return;
+    if (document.visibilityState === 'hidden') {
+      this.deviceClock.pause();
+    } else {
+      // start() samples actual wall time immediately after OS sleep/minimize.
+      this.deviceClock.start(this.onClockChanged);
+    }
+  };
 
   readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
@@ -156,7 +176,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   busy = true;
   ready = false;
   status: MessageKey = 'chart.loading';
-  runtimeStatus: MessageKey = 'runtime.checking';
+  get runtimeStatus(): MessageKey {
+    return this.runtimeCheck.status === 'native' ? 'runtime.native'
+      : this.runtimeCheck.status === 'browser' ? 'runtime.browser'
+      : this.runtimeCheck.status === 'unavailable' ? 'runtime.unavailable' : 'runtime.checking';
+  }
+  get runtimeChecking(): boolean { return this.runtimeCheck.checking; }
   styleStatus: DesktopLayoutStatus = 'unavailable';
   error = '';
 
@@ -463,18 +488,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.t(this.theme === 'light' ? 'theme.current.light' : 'theme.current.dark'); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
-  get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
+  get clockText(): string { return this.clockDisplay.text(this.deviceClock.timestamp, this.locale); }
   get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
-  get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
+  get clockCompactText(): string { return this.clockDisplay.text(this.deviceClock.timestamp, this.locale, true); }
   private updateCityClock(): void {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
   }
   onCitySelected(place: OfflinePlaceV1): void {
+    if (this.destroyed) return;
     this.selectedCity = place;
     this.updateCityClock();
     this.cd.markForCheck();
   }
   onCityEdited(): void {
+    if (this.destroyed) return;
     this.selectedCity = null;
     this.updateCityClock();
     this.cd.markForCheck();
@@ -492,12 +519,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     document.documentElement.lang = this.locale;
     // Inspect applied WebView CSS after Angular's initial view check.
     queueMicrotask(() => this.checkStyles());
-    // Local clock is independent of renderer success, astronomy and account auth.
-    this.deviceClock.start(() => {
-      if (this.destroyed) return;
-      this.updateCityClock();
-      this.cd.markForCheck();
-    });
+    // Avoid an unnecessary 1-second timer while the WebView is hidden.
+    // Visibility is only a power-saving hint; all dates come from wall time.
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+    this.onVisibilityChange();
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     void this.loadArchive();
@@ -515,19 +540,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private async checkRuntime(): Promise<void> {
-    const result = await inspectDesktopRuntime();
+  checkRuntime(): void {
     if (this.destroyed) return;
-    this.runtimeStatus = result.kind === 'desktop_demo'
-      ? 'runtime.native'
-      : result.kind === 'browser_preview' ? 'runtime.browser' : 'runtime.unavailable';
-    this.cd.markForCheck();
+    void this.runtimeCheck.check();
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
+    this.runtimeCheck.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
   }
@@ -559,6 +582,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   toggleLanguage(): void {
+    if (this.destroyed) return;
     this.locale = this.locale === 'it' ? 'en' : 'it';
     document.documentElement.lang = this.locale;
     this.persistUiPreferences();
