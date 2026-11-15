@@ -2,7 +2,7 @@
 
 **Status:** local developer verification only (13 November 2026). This is not a native security audit, penetration test or a proof that a released Windows application is safe.
 
-> **Update 2026-11-15 — three commands.** The reviewed registry now also contains `chart_calculation::calculate_chart`, with the protocol `src/app/native/chart-calculation-contract.ts` and the adapter `src/app/native/chart-calculation.ts`. Where the text below says "two" commands, protocols or adapters, read three. See the section at the end and [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md).
+> **Update 2026-11-15 — four commands.** The reviewed registry now also contains `chart_calculation::calculate_chart` and `chart_archive::chart_archive`, each with its own protocol (`chart-calculation-contract.ts`, `chart-archive-contract.ts`) and adapter (`chart-calculation.ts`, `chart-archive.ts`) under `src/app/native/`. Where the text below says "two" commands, protocols or adapters, read four. See the sections at the end, [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md) and [Chart archive](CHART_ARCHIVE.md).
 
 ## Why this gate exists
 
@@ -47,4 +47,17 @@ This is a **read-only static gate**, not proof of compiled capabilities, runtime
 - **Threat considered:** a compromised WebView can ask for positions at arbitrary instants and places. That discloses nothing stored on the device and costs a few milliseconds of CPU per call; the command is synchronous and bounded (15 bodies, 5 house systems).
 - **Not covered:** the C library linked by the optional `swiss-ephemeris` feature is third-party code running in the host process. It has not been audited here.
 
-Gate status on 2026-11-15: `npm run verify:ipc` reports 3 commands and 3 adapters; `tests/native-ipc-registry.test.mjs` passes 21/21 with the third command in every fixture. The native Tauri window has not been exercised with this command.
+The command was exercised in the native release window on 2026-11-15 through WebView2's local DevTools port (valid and malformed requests).
+
+## Chart archive command (2026-11-15)
+
+`chart_archive` is the first command that **writes user data to disk**. Review notes:
+
+- **Input:** one `request` object with `protocolVersion`, `operation` (`list`, `save`, `delete`) and either a chart record or an id. Unknown fields are rejected. Text fields are bounded and stripped of control and direction characters on both sides; every value is bound as a SQL parameter.
+- **Storage location:** fixed by the host (application local data folder, fixed file name). No path is accepted from, or returned to, the WebView.
+- **Output:** the saved records only. No path, SQL text or OS error crosses IPC; failures are reduced to named states.
+- **Side effects:** creates, updates or deletes rows in one SQLite file. A damaged or newer-format file is reported and never modified, recreated or deleted.
+- **Threat considered:** a compromised WebView can read, overwrite or delete every saved chart (up to 5000 rows). It cannot reach other files. The archive is **not encrypted**, so any process running as the same Windows user can read it without the application; see [Chart archive](CHART_ARCHIVE.md).
+- **Not covered:** secure deletion, multi-instance locking behaviour, account isolation.
+
+Gate status on 2026-11-15: `npm run verify:ipc` reports 4 commands and 4 adapters; `tests/native-ipc-registry.test.mjs` passes 21/21 with both new commands in every fixture.

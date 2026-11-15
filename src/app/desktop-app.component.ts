@@ -30,6 +30,8 @@ import {
   type PlanetRow, type TemaRenderData
 } from './astro/tema-render-data';
 import { FUNCTION_CATALOG, summarizeCatalog, type FunctionEntry, type FunctionStatus } from './function-catalog';
+import { chartArchive } from './native/chart-archive';
+import { newChartId, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -59,6 +61,11 @@ const CALCULATION_FAILURES: Record<Exclude<ChartCalculationResult['kind'],'ready
   not_native:'calc.browser', provider_unavailable:'calc.noprovider', invalid_request:'calc.invalid',
   calculation_failed:'calc.failed', unavailable:'calc.failed',
 };
+const ARCHIVE_FAILURES: Record<ArchiveFailure,MessageKey> = {
+  not_native:'archive.browser', invalid_request:'archive.invalid', not_found:'archive.notfound',
+  archive_full:'archive.full', archive_unavailable:'archive.unavailable', archive_corrupt:'archive.corrupt',
+  archive_newer:'archive.newer', unavailable:'archive.unavailable',
+};
 const STATUS_KEYS: Record<FunctionStatus,MessageKey> = {
   available:'functions.available', planned:'functions.planned', excluded:'functions.excluded',
 };
@@ -69,6 +76,9 @@ type SessionChart = Readonly<{
   name: string;
   utcIso: string;
   timeZone: string;
+  /** Identity in the on-device archive; null while the chart exists only in memory. */
+  archiveId: string | null;
+  placeName: string;
   placeLabel: string;
   latMicro: number;
   lngMicro: number;
@@ -134,6 +144,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private calcTicket = 0;
   private nextChartId = 1;
   private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
+  // Charts saved in the local SQLite archive (inputs only, recalculated when opened).
+  savedCharts: readonly SavedChartV1[] = [];
+  archiveBusy = false;
+  archiveMessage: MessageKey | null = null;
+  pendingDeleteId: string | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
   cityClock: SelectedCityClock = {kind: 'not_selected'};
   navCollapsed = false;
@@ -190,7 +205,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   get footerKey(): MessageKey { return this.activeChart ? 'footer.real' : 'footer'; }
   chartName(chart: SessionChart): string { return chart.name || this.t('session.unnamed'); }
-  chartWhen(chart: SessionChart): string {
+  chartWhen(chart: {utcIso: string; timeZone: string}): string {
     try {
       return new Intl.DateTimeFormat(this.locale === 'it' ? 'it-IT' : 'en-GB', {
         dateStyle:'medium', timeStyle:'medium', timeZone:chart.timeZone,
@@ -234,7 +249,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   trackChart(_index:number, chart:SessionChart): number { return chart.id; }
 
-  private async computeChart(input: NewChartInput): Promise<SessionChart | MessageKey> {
+  private async computeChart(input: NewChartInput, archiveId: string | null = null): Promise<SessionChart | MessageKey> {
     const result = await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
     if (result.kind !== 'ready') return CALCULATION_FAILURES[result.kind];
     const data = buildTemaRenderData(result.chart, input.utcIso);
@@ -244,6 +259,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
     return {
       id:this.nextChartId++, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
+      archiveId, placeName:input.placeName,
       placeLabel:input.placeName ? input.placeName + ' (' + coordinates + ')' : coordinates,
       latMicro:input.latMicro, lngMicro:input.lngMicro,
       provider:result.provider,
@@ -259,13 +275,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const systems = availableHouseSystems(chart.data);
     if (!systems.includes(this.houseSystem) && systems.length) this.houseSystem = systems[0];
   }
-  async onChartRequested(input: NewChartInput): Promise<void> {
+  async onChartRequested(input: NewChartInput, archiveId: string | null = null): Promise<void> {
     if (this.destroyed) return;
     const ticket = ++this.calcTicket;
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
-    const chart = await this.computeChart(input);
+    const chart = await this.computeChart(input, archiveId);
     // Only the latest request may change what is on screen.
     if (this.destroyed || ticket !== this.calcTicket) return;
     this.calcBusy = false;
@@ -351,8 +367,86 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     this.cd.markForCheck();
   }
+  trackSaved(_index:number, chart:SavedChartV1): string { return chart.id; }
+  savedPlace(chart: SavedChartV1): string {
+    const coordinates = (chart.latMicro / 1e6).toFixed(4) + '°, ' + (chart.lngMicro / 1e6).toFixed(4) + '°';
+    return chart.placeName ? chart.placeName + ' (' + coordinates + ')' : coordinates;
+  }
+  private applyArchive(result: ArchiveResult, success: MessageKey | null): boolean {
+    if (result.kind === 'ready') {
+      this.savedCharts = result.charts;
+      this.archiveMessage = success;
+      return true;
+    }
+    this.archiveMessage = ARCHIVE_FAILURES[result.kind];
+    return false;
+  }
+  private async runArchive(operation: Parameters<typeof chartArchive>[0], success: MessageKey | null): Promise<boolean> {
+    if (this.archiveBusy || this.destroyed) return false;
+    this.archiveBusy = true;
+    this.cd.markForCheck();
+    const result = await chartArchive(operation);
+    if (this.destroyed) return false;
+    this.archiveBusy = false;
+    const ok = this.applyArchive(result, success);
+    this.cd.markForCheck();
+    return ok;
+  }
+  /** Read the archive at startup; a browser preview simply has none. */
+  private async loadArchive(): Promise<void> {
+    await this.runArchive({operation:'list'}, null);
+    if (this.archiveMessage === 'archive.browser') this.archiveMessage = null;
+    this.cd.markForCheck();
+  }
+  async saveActiveChart(): Promise<void> {
+    const chart = this.activeChart;
+    if (!chart || this.archiveBusy) return;
+    const archiveId = chart.archiveId ?? newChartId();
+    const saved = await this.runArchive({operation:'save', chart:{
+      id:archiveId, name:chart.name, utcIso:chart.utcIso, timeZone:chart.timeZone,
+      latMicro:chart.latMicro, lngMicro:chart.lngMicro, placeName:chart.placeName,
+    }}, 'archive.saved');
+    if (saved) {
+      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...item, archiveId} : item);
+      this.cd.markForCheck();
+    }
+  }
+  openSavedChart(saved: SavedChartV1): void {
+    if (this.calcBusy || this.exporting) return;
+    const open = this.sessionCharts.find(chart => chart.archiveId === saved.id);
+    if (open) { this.activateChart(open.id); return; }
+    void this.onChartRequested({
+      name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
+      offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName,
+    }, saved.id);
+  }
+  askDeleteSaved(id: string): void {
+    this.pendingDeleteId = id;
+    this.cd.markForCheck();
+  }
+  cancelDeleteSaved(): void {
+    this.pendingDeleteId = null;
+    this.cd.markForCheck();
+  }
+  /** Permanent: runs only after the explicit confirmation step. */
+  async confirmDeleteSaved(): Promise<void> {
+    const id = this.pendingDeleteId;
+    if (!id || this.archiveBusy) return;
+    this.pendingDeleteId = null;
+    const deleted = await this.runArchive({operation:'delete', id}, 'archive.deleted');
+    if (deleted) {
+      // The chart stays open in this session, but is no longer a saved one.
+      this.sessionCharts = this.sessionCharts.map(item => item.archiveId === id ? {...item, archiveId:null} : item);
+      this.cd.markForCheck();
+    }
+  }
+  openArchive(): void {
+    this.inspectorCollapsed = false;
+    this.setInspectorTab('chart');
+  }
   runFunction(entry: FunctionEntry): void {
     switch (entry.action) {
+      case 'archive': this.openArchive(); break;
       case 'new_chart': case 'now_chart': case 'session_charts': this.setInspectorTab('chart'); break;
       case 'house_system': this.setInspectorTab('houses'); break;
       case 'planet_info': this.setInspectorTab('planets'); break;
@@ -406,6 +500,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     });
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
+    void this.loadArchive();
     try {
       // No network fallback. The selected local image pack is embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');

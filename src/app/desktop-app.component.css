@@ -162,6 +162,14 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .session-open strong { font-size:13px; overflow-wrap:anywhere; }
 .session-open span { color:var(--vs-text-secondary); overflow-wrap:anywhere; }
 .link-control { margin-top:14px; padding:0; background:transparent; border:0; color:var(--vs-accent); font-size:12px; text-decoration:underline; }
+.archive-save { width:100%; margin:4px 0 8px; padding:9px 12px; font-size:12px; font-weight:650; color:var(--vs-text);
+  background:var(--vs-surface-muted); border:1px solid var(--vs-border); border-radius:8px; }
+.archive-save:disabled { opacity:.6; }
+.confirm-delete { margin-top:12px; padding:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+  background:var(--vs-surface-muted); border:1px solid var(--vs-border); border-radius:8px; }
+.confirm-delete p { flex-basis:100%; margin:0; font-size:12px; }
+.danger-control { padding:8px 12px; font-size:12px; font-weight:700; color:#FFFFFF; background:#B3261E; border:0; border-radius:8px; }
+.small-control.wide { padding:0 12px; font-size:12px; }
 .function-line:disabled { color:var(--vs-text-secondary); }
 .function-status { flex:0 0 auto; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
   padding:2px 6px; border-radius:6px; border:1px solid var(--vs-border); color:var(--vs-text-secondary); }

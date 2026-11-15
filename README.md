@@ -14,7 +14,8 @@ VirgoStars Desktop is an offline-first workstation in development. It combines a
 - Integration adapter for the independently developed [Astrological Charts](https://github.com/Cesare-ml/astrological-charts) renderer, using locally generated synthetic assets.
 - Prototype Tauri/Rust runtime and an experimental offline location picker.
 - Synthetic-only build checks, unit tests, and read-only prerequisite diagnostics.
-- **Prototype, off by default:** a chart-calculation command behind an `EphemerisProvider` port, with a new-chart form, session-only chart list, transits, synastry between two calculated charts and five house systems. It computes nothing unless the host is built with the optional, local-use-only provider described in [Swiss Ephemeris provider](docs/SWISS_EPHEMERIS_PROVIDER.md). The default build still shows the labelled synthetic chart.
+- **Prototype, off by default:** a chart-calculation command behind an `EphemerisProvider` port, with a new-chart form, a session chart list, transits, synastry between two calculated charts and five house systems. It computes nothing unless the host is built with the optional, local-use-only provider described in [Swiss Ephemeris provider](docs/SWISS_EPHEMERIS_PROVIDER.md). The default build still shows the labelled synthetic chart.
+- **Prototype:** a local chart archive in a plain, **unencrypted** SQLite file that keeps saved charts between runs. See [Chart archive](docs/CHART_ARCHIVE.md); it is not the encrypted store the project requires before a beta.
 - The function menu of the earlier Regolo Alpha Leonis program is listed in the Functions tab; entries not built yet are shown disabled.
 
 Features under development include the canonical Rust astronomy engine, advanced astrological methods, secure encrypted local storage, account-aware synchronization, real chart computation and signed cross-platform distribution. The hosted VirgoStars service is separate from this open-source client.

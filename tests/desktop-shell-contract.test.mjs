@@ -22,11 +22,12 @@ test('Tauri references the owned offline Angular build with no privileged IPC ca
   assert.equal(angular.projects.desktop.architect.build.options.browser,'src/main.ts');
   assert.equal(angular.projects.desktop.architect.build.options.assets[0].input,'.local/frontend/assets');
 });
-test('UI keeps unimplemented account, research, and archive flows disabled or clearly experimental',()=>{
+test('UI keeps unimplemented account and research flows disabled; the archive opens its panel',()=>{
   const html=read('src/app/desktop-app.component.html');
   assert.match(html,/t\('noaccount'\)/);
   assert.match(html,/t\('fixture'\)/);
-  assert.match(html,/disabled \[attr.title\]="t\('archive'\)"/);
+  assert.match(html,/\[attr.title\]="t\('archive'\)" \(click\)="openArchive\(\)"/);
+  assert.doesNotMatch(html,/disabled \[attr.title\]="t\('archive'\)"/);
   assert.match(html,/disabled \[attr.title\]="t\('research'\)"/);
   assert.match(html,/role="tabpanel"/);
 });

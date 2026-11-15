@@ -13,7 +13,7 @@ export type FunctionStatus = 'available' | 'planned' | 'excluded';
 /** What clicking an available entry does. Planned entries have none. */
 export type FunctionAction =
   | 'new_chart' | 'session_charts' | 'now_chart' | 'mode_natal' | 'mode_transits'
-  | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info';
+  | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -43,7 +43,7 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
   group('charts', 'Temi e archivio', 'Charts and archive', [
     available('new-chart', 'Nuovo Tema', 'New chart', 'new_chart'),
     available('session-charts', 'Temi della sessione', 'Session charts', 'session_charts'),
-    planned('archive', 'Archivio su disco', 'Archive on disk'),
+    available('archive', 'Archivio', 'Archive', 'archive'),
     planned('groups', 'Gruppi', 'Groups'),
     planned('account-chart', 'Tema Account', 'Account chart'),
     planned('default-place', 'Posizione di Default', 'Default place'),
