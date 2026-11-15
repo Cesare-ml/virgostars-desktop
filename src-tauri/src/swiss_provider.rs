@@ -9,7 +9,7 @@
 //! environment variable `VIRGOSTARS_EPHE_PATH` names a directory, Swiss `.se1`
 //! files there are used instead. The path never crosses IPC and is never logged.
 use crate::chart_calculation::{
-    BodyPositionV1, ChartSnapshotV1, EphemerisProvider, HouseSystemV1, ProviderError, ProviderInfoV1,
+    BodyPositionV1, ChartSnapshotV1, EphemerisProvider, HouseSystemV1, Luminary, ProviderError, ProviderInfoV1,
     ValidatedRequest,
 };
 use std::ffi::{c_char, c_int, CStr, CString};
@@ -153,6 +153,15 @@ impl EphemerisProvider for SwissEphemeris {
             CStr::from_ptr(buffer.as_ptr())
         };
         ProviderInfoV1 { id: "swiss_ephemeris", engine_version: version.to_string_lossy().into_owned() }
+    }
+
+    fn luminary_longitude(&self, body: Luminary, julian_day_ut: f64) -> Result<f64, ProviderError> {
+        let _engine = ENGINE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let id = match body {
+            Luminary::Sun => swe::SE_SUN,
+            Luminary::Moon => swe::SE_MOON,
+        };
+        calc(julian_day_ut, id, ephemeris_flag() | swe::SEFLG_SPEED).map(|(values, _)| values[0]).ok_or(ProviderError)
     }
 
     fn chart(&self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {

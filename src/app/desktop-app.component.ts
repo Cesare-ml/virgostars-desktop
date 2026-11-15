@@ -32,6 +32,8 @@ import {
 import { FUNCTION_CATALOG, summarizeCatalog, type FunctionEntry, type FunctionStatus } from './function-catalog';
 import { chartArchive } from './native/chart-archive';
 import { newChartId, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
+import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
+import type { ReturnKind, ReturnRadix } from './returns-form';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
@@ -97,7 +99,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, OfflineCityPickerComponent, NewChartComponent],
+  imports:[CommonModule, OfflineCityPickerComponent, NewChartComponent, ReturnsPanelComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -149,6 +151,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   archiveBusy = false;
   archiveMessage: MessageKey | null = null;
   pendingDeleteId: string | null = null;
+  // Solar or lunar return panel; its radix is the chart that was active when it opened.
+  returnTool: ReturnKind | null = null;
+  returnRadix: ReturnRadix | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
   cityClock: SelectedCityClock = {kind: 'not_selected'};
   navCollapsed = false;
@@ -316,6 +321,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   removeChart(id:number): void {
     if (this.calcBusy || this.exporting) return;
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
+    if (this.returnRadix?.chartId === id) this.closeReturns();
     if (this.partnerChartId === id) this.partnerChartId = null;
     if (this.activeChartId === id) this.showChart(null);
     else if (this.mode === 'synastry' && !this.partnerChart) this.setMode('natal');
@@ -440,6 +446,43 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.cd.markForCheck();
     }
   }
+  /** Returns start from a calculated chart; without one, point the user to the chart form. */
+  openReturns(kind: ReturnKind): void {
+    const chart = this.activeChart;
+    const sun = chart?.data.planets['Sun'];
+    const moon = chart?.data.planets['Moon'];
+    if (!chart || !sun || !moon) {
+      this.calcMessage = 'returns.needchart';
+      this.openNewChart();
+      return;
+    }
+    this.returnRadix = {
+      chartId:chart.id, name:chart.name, sunLongitude:sun.longitude, moonLongitude:moon.longitude,
+      latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone, placeName:chart.placeName,
+    };
+    this.returnTool = kind;
+    this.inspectorCollapsed = false;
+    this.setInspectorTab('functions');
+  }
+  closeReturns(): void {
+    this.returnTool = null;
+    this.returnRadix = null;
+    this.cd.markForCheck();
+  }
+  async onReturnChartRequested(request: ReturnChartRequest): Promise<void> {
+    await this.onChartRequested(request.input);
+    const cast = this.activeChart;
+    const radix = this.sessionCharts.find(chart => chart.id === request.radixChartId);
+    // Pair with the radix only if this very return is now on screen.
+    if (this.destroyed || !request.withRadix || !radix || !cast || cast.id === radix.id ||
+        cast.utcIso !== request.input.utcIso || this.calcMessage !== 'calc.ready') {
+      return;
+    }
+    this.partnerChartId = radix.id;
+    this.mode = 'synastry';
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
   openArchive(): void {
     this.inspectorCollapsed = false;
     this.setInspectorTab('chart');
@@ -447,6 +490,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   runFunction(entry: FunctionEntry): void {
     switch (entry.action) {
       case 'archive': this.openArchive(); break;
+      case 'solar_return': this.openReturns('solar'); break;
+      case 'lunar_return': this.openReturns('lunar'); break;
       case 'new_chart': case 'now_chart': case 'session_charts': this.setInspectorTab('chart'); break;
       case 'house_system': this.setInspectorTab('houses'); break;
       case 'planet_info': this.setInspectorTab('planets'); break;

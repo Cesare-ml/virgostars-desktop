@@ -31,8 +31,8 @@ test('the catalog is frozen and its summary matches the entries', () => {
 
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
-    'archive', 'house-system', 'latitudes', 'natal', 'new-chart', 'planet-info', 'real-time',
-    'session-charts', 'synastry', 'transits',
+    'archive', 'house-system', 'latitudes', 'lunar-return', 'natal', 'new-chart', 'planet-info', 'real-time',
+    'session-charts', 'solar-return', 'synastry', 'transits',
   ]);
 });
 

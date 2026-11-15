@@ -1,0 +1,28 @@
+:host { display:block; }
+.returns-panel { display:flex; flex-direction:column; gap:10px; padding:12px; margin-bottom:16px;
+  background:var(--vs-surface-muted); border:1px solid var(--vs-border); border-radius:10px; }
+.returns-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.returns-head h3 { margin:0; font-size:14px; font-weight:700; color:var(--vs-text); }
+.returns-close { width:32px; height:32px; font-size:16px; color:var(--vs-text); background:var(--vs-surface);
+  border:1px solid var(--vs-border); border-radius:8px; }
+.returns-note { margin:0; font-size:12px; line-height:1.5; color:var(--vs-text-secondary); }
+.returns-note strong { color:var(--vs-text); }
+.returns-form { display:flex; align-items:flex-end; gap:8px; }
+.field { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; font-size:12px; color:var(--vs-text-secondary); }
+.field.narrow { flex:0 0 96px; }
+.field input { min-width:0; height:36px; padding:0 8px; font-size:13px; color:var(--vs-text);
+  background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:8px; }
+.field input:focus-visible { outline:2px solid var(--vs-focus); outline-offset:1px; }
+.field-row { display:flex; gap:8px; }
+.returns-primary { height:36px; padding:0 14px; font-size:13px; font-weight:700; border:0; border-radius:8px;
+  background:var(--vs-accent); color:var(--vs-accent-contrast); }
+.returns-primary:disabled,.returns-cast:disabled { opacity:.55; }
+.returns-check { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--vs-text); }
+.returns-message { margin:0; padding:8px 10px; font-size:12px; color:var(--vs-text);
+  background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:8px; }
+.returns-list { display:flex; flex-direction:column; gap:4px; }
+.returns-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px;
+  background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:8px; }
+.returns-when { font-size:12px; font-variant-numeric:tabular-nums; color:var(--vs-text); }
+.returns-cast { flex:0 0 auto; padding:6px 10px; font-size:12px; font-weight:650; color:var(--vs-text);
+  background:var(--vs-surface-muted); border:1px solid var(--vs-border); border-radius:8px; }

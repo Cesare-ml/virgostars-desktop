@@ -189,6 +189,9 @@
           </div>
         </div>
         <div *ngIf="inspectorTab==='functions'">
+          <vs-returns-panel *ngIf="returnTool && returnRadix" [locale]="locale" [kind]="returnTool" [radix]="returnRadix"
+            [busy]="calcBusy || busy" (chartRequested)="onReturnChartRequested($event)" (closed)="closeReturns()"></vs-returns-panel>
+          <p class="calc-status" role="status" *ngIf="returnTool && calcMessage">{{t(calcMessage)}}</p>
           <p class="inspector-hint">{{t('functions.help')}}</p>
           <p class="inspector-hint">{{catalogSummary.available}} {{t('functions.available')}} · {{catalogSummary.planned}} {{t('functions.planned')}} · {{catalogSummary.excluded}} {{t('functions.excluded')}}</p>
           <section class="function-group" *ngFor="let group of catalog">
