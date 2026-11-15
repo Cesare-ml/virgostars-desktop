@@ -1,7 +1,7 @@
 // Pure UI geometry/state helpers. No astronomy, persistence, or server access.
 export type ChartMode = 'natal' | 'transits' | 'synastry' | 'latitude';
 export type UiTheme = 'light' | 'dark';
-export type InspectorTab = 'planets' | 'houses' | 'settings';
+export type InspectorTab = 'planets' | 'houses' | 'chart' | 'functions' | 'settings';
 export type Locale = 'it' | 'en';
 
 export const CHART_MODES: ReadonlyArray<ChartMode> = Object.freeze(['natal', 'transits', 'synastry', 'latitude']);

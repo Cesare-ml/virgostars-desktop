@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {auditNpmLock,auditNpmLockCheckout} from '../scripts/verify-npm-lock.mjs';
 
 const target='../astrological-charts/dist/grafici-astrologici';
+const functionsTarget='../astrological-functions';
 function fixture(){
   return {
     manifest:{
       name:'virgostars-desktop',version:'0.0.1',
-      dependencies:{'grafici-astrologici':'file:'+target,three:'0.170.0'},
+      dependencies:{'astrological-functions':'file:'+functionsTarget,'grafici-astrologici':'file:'+target,three:'0.170.0'},
       devDependencies:{typescript:'5.8.3'},engines:{node:'^22.12.0 || ^24.0.0'},
     },
     lock:{
@@ -15,10 +16,12 @@ function fixture(){
       packages:{
         '':{
           name:'virgostars-desktop',version:'0.0.1',
-          dependencies:{'grafici-astrologici':'file:'+target,three:'0.170.0'},
+          dependencies:{'astrological-functions':'file:'+functionsTarget,'grafici-astrologici':'file:'+target,three:'0.170.0'},
           devDependencies:{typescript:'5.8.3'},engines:{node:'^22.12.0 || ^24.0.0'},
         },
         [target]:{version:'0.0.1'},
+        [functionsTarget]:{version:'0.1.0-dev'},
+        'node_modules/astrological-functions':{resolved:functionsTarget,link:true},
         'node_modules/grafici-astrologici':{resolved:target,link:true},
         'node_modules/three':{
           version:'0.170.0',
@@ -30,9 +33,21 @@ function fixture(){
   };
 }
 
-test('allows the reviewed public Charts symlink and pinned npm registry package',()=>{
+test('allows the two reviewed sibling links and pinned npm registry package',()=>{
   const f=fixture();
-  assert.deepEqual(auditNpmLock(f.manifest,f.lock),{registryPackages:1,localLinks:1});
+  assert.deepEqual(auditNpmLock(f.manifest,f.lock),{registryPackages:1,localLinks:2});
+});
+
+test('rejects a missing, redirected or decorated astrological-functions link',()=>{
+  const f=fixture();f.manifest.dependencies['astrological-functions']='file:../private-functions';
+  f.lock.packages[''].dependencies['astrological-functions']='file:../private-functions';
+  assert.throws(()=>auditNpmLock(f.manifest,f.lock),/Unreviewed local Functions/);
+  const g=fixture();g.lock.packages['node_modules/astrological-functions'].resolved='../elsewhere';
+  assert.throws(()=>auditNpmLock(g.manifest,g.lock),/Unreviewed local npm link/);
+  const h=fixture();h.lock.packages[functionsTarget].integrity='sha512-x';
+  assert.throws(()=>auditNpmLock(h.manifest,h.lock),/Invalid local Functions/);
+  const i=fixture();delete i.lock.packages['node_modules/astrological-functions'];
+  assert.throws(()=>auditNpmLock(i.manifest,i.lock),/Unreviewed local npm link/);
 });
 
 test('root npm dependency changes must be reflected in the committed lockfile',()=>{
@@ -140,5 +155,5 @@ test('declared npm alias remains valid without weakening tarball identity',()=>{
 test('current committed repository lockfile passes the complete provenance audit',()=>{
   const result=auditNpmLockCheckout();
   assert.ok(result.registryPackages>0);
-  assert.equal(result.localLinks,1);
+  assert.equal(result.localLinks,2);
 });

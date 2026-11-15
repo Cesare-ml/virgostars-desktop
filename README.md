@@ -6,7 +6,7 @@
 
 VirgoStars Desktop is an offline-first workstation in development. It combines an Angular/TypeScript user interface, a Tauri 2/Rust host and an interactive Three.js astrological chart renderer. The goal is a professional desktop environment for exploring natal charts, transits, synastry and research workflows on Windows, with macOS support planned.
 
-**Project status: prototype, not a production release.** The current application can show **synthetic demonstration positions** and exercises a limited native runtime bridge. It does not yet offer verified real astronomical calculations, production cloud synchronization, a finished personal-data archive, a signed updater, or a supported public installer. Screenshots and fictional chart data must not be treated as scientifically calculated birth charts.
+**Project status: prototype, not a production release.** The current application can show **synthetic demonstration positions** and exercises a limited native runtime bridge. An optional local-use provider can calculate real positions (see below), but the project does not yet offer independently validated astronomical calculations, production cloud synchronization, a finished personal-data archive, a signed updater, or a supported public installer. Screenshots and fictional chart data must not be treated as scientifically calculated birth charts.
 
 ## What works today
 
@@ -14,6 +14,8 @@ VirgoStars Desktop is an offline-first workstation in development. It combines a
 - Integration adapter for the independently developed [Astrological Charts](https://github.com/Cesare-ml/astrological-charts) renderer, using locally generated synthetic assets.
 - Prototype Tauri/Rust runtime and an experimental offline location picker.
 - Synthetic-only build checks, unit tests, and read-only prerequisite diagnostics.
+- **Prototype, off by default:** a chart-calculation command behind an `EphemerisProvider` port, with a new-chart form, session-only chart list, transits, synastry between two calculated charts and five house systems. It computes nothing unless the host is built with the optional, local-use-only provider described in [Swiss Ephemeris provider](docs/SWISS_EPHEMERIS_PROVIDER.md). The default build still shows the labelled synthetic chart.
+- The function menu of the earlier Regolo Alpha Leonis program is listed in the Functions tab; entries not built yet are shown disabled.
 
 Features under development include the canonical Rust astronomy engine, advanced astrological methods, secure encrypted local storage, account-aware synchronization, real chart computation and signed cross-platform distribution. The hosted VirgoStars service is separate from this open-source client.
 
@@ -23,10 +25,11 @@ This source build is aimed at contributors, **not** at end users seeking a finis
 
 Prerequisites: Git, Node.js 22.12+ or 24+, npm, Rust with the Windows MSVC toolchain for a native Windows build, Microsoft C++ Build Tools and WebView2. A modern browser can be used for frontend development. See [Windows Build Gate](docs/WINDOWS_BUILD_GATE.md) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-The current npm dependency references a **local build** of the public Charts library. Clone both repositories as sibling directories:
+The current npm dependencies reference a **local build** of the public Charts library and a sibling checkout of [Astrological Functions](https://github.com/Cesare-ml/astrological-functions). Clone the repositories as sibling directories:
 
 ```powershell
 git clone https://github.com/Cesare-ml/astrological-charts.git
+git clone https://github.com/Cesare-ml/astrological-functions.git
 git clone https://github.com/Cesare-ml/virgostars-desktop.git
 cd astrological-charts
 npm ci

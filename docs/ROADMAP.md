@@ -24,8 +24,8 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 - [ ] Local export backup/restore and permanent data deletion policy.
 
 ## Gate 3 — Astronomical/astrological libraries
-- [ ] Establish versioned Rust EphemerisProvider boundary; do not duplicate astronomical algorithms.
-- [ ] Integrate supported astrological-functions operations with numerical regression tests.
+- [ ] Establish versioned Rust EphemerisProvider boundary; do not duplicate astronomical algorithms. **Partial (prototype, 2026-11-15):** `calculate_chart` v1 and the provider trait exist with Rust and Node tests. The only adapter is the optional, local-use-only Swiss Ephemeris feature ([details](SWISS_EPHEMERIS_PROVIDER.md)); the canonical VirgoStars-Ephemeris adapter and numerical comparison against it are still to do.
+- [ ] Integrate supported astrological-functions operations with numerical regression tests. **Partial (prototype, 2026-11-15):** sign index, dodecatemoria and house placement are used through a sibling `file:` dependency. Aspects, lots and every method listed as planned in `src/app/function-catalog.ts` are not integrated.
 - [ ] Integrate approved/redistributable assets only after rights review.
 - [ ] Explicitly mark unavailable bodies, houses, time ranges and precision; no silent fallback.
 - [ ] Optional independent event dataset/index after VirgoStars-Event-Ephemeris becomes valid and distributable.

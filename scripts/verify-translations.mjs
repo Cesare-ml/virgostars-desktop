@@ -90,16 +90,16 @@ export function auditTranslationSource(source) {
 }
 
 /**
- * Audit the literal t('key') calls in the two approved Angular templates.
+ * Audit the literal t('key') calls in the approved Angular templates.
  * This intentionally does not parse dynamic Angular expressions or TypeScript maps;
  * the Angular type checker remains responsible for those bindings.
  */
 export function auditTranslationTemplates(dictionarySource, templates) {
   const dictionary = auditTranslationSource(dictionarySource);
   if (!dictionary.ok) return {ok: false, referenceCount: 0, problems: ['Invalid translation dictionary']};
-  if (!Array.isArray(templates) || templates.length !== 2 ||
+  if (!Array.isArray(templates) || templates.length < 2 || templates.length > 8 ||
       templates.some(template => typeof template !== 'string' || template.length > MAX_TEMPLATE_SOURCE_LENGTH)) {
-    return {ok: false, referenceCount: 0, problems: ['Expected two Angular templates']};
+    return {ok: false, referenceCount: 0, problems: ['Expected the approved Angular templates']};
   }
 
   // This source is already checked for the exact static dictionary shape.
@@ -140,6 +140,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const templates = [
       readFileSync(new URL('../src/app/desktop-app.component.html', import.meta.url), 'utf8'),
       readFileSync(new URL('../src/app/offline-city-picker.component.html', import.meta.url), 'utf8'),
+      readFileSync(new URL('../src/app/new-chart.component.html', import.meta.url), 'utf8'),
     ];
     const usage = result.ok ? auditTranslationTemplates(source, templates) : {ok: false, problems: []};
     if (!result.ok || !usage.ok) {

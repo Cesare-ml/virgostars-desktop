@@ -23,7 +23,7 @@ const MAX_PNG_BASE64_LENGTH = 32 * 1024 * 1024;
 const BASE64_BODY = /^[A-Za-z0-9+/]+={0,2}$/;
 const SYNTHETIC_FILENAMES = new Set(
   ['natal', 'transits', 'synastry', 'latitude'].flatMap(mode =>
-    ['light', 'dark'].map(theme => `virgostars-synthetic-${mode}-${theme}.png`)),
+    ['light', 'dark'].flatMap(theme => ['synthetic', 'chart'].map(kind => `virgostars-${kind}-${mode}-${theme}.png`))),
 );
 
 /** Defense in depth: reject dangerous input before creating an anchor. */
