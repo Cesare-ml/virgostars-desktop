@@ -37,7 +37,7 @@
         </button>
       </div>
       <div class="nav-separator"></div>
-      <button type="button" class="nav-item" disabled [attr.title]="t('archive')">
+      <button type="button" class="nav-item" [attr.title]="t('archive')" (click)="openArchive()">
         <span class="nav-mark" aria-hidden="true">▤</span><span class="nav-label">{{t('archive')}}</span>
       </button>
       <button type="button" class="nav-item" disabled [attr.title]="t('research')">
@@ -167,6 +167,26 @@
             </select>
           </label>
           <button type="button" class="link-control" *ngIf="activeChart" [disabled]="calcBusy || busy" (click)="showDemoChart()">{{t('session.demo')}}</button>
+          <h3 class="panel-title">{{t('archive.title')}}</h3>
+          <p class="inspector-hint">{{t('archive.note')}}</p>
+          <button type="button" class="archive-save" *ngIf="activeChart as chart" [disabled]="archiveBusy || calcBusy || chart.archiveId !== null"
+            (click)="saveActiveChart()">{{t(chart.archiveId === null ? 'archive.save' : 'archive.already')}}</button>
+          <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
+          <p class="inspector-hint" *ngIf="!savedCharts.length && !archiveMessage">{{t('archive.empty')}}</p>
+          <div class="session-chart" *ngFor="let saved of savedCharts; trackBy:trackSaved">
+            <button type="button" class="session-open" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">
+              <strong>{{saved.name || t('session.unnamed')}}</strong>
+              <span>{{chartWhen(saved)}}</span>
+              <span>{{savedPlace(saved)}}</span>
+            </button>
+            <button type="button" class="small-control" [disabled]="archiveBusy"
+              [attr.aria-label]="t('archive.delete')" [attr.title]="t('archive.delete')" (click)="askDeleteSaved(saved.id)">×</button>
+          </div>
+          <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.confirm')" *ngIf="pendingDeleteId">
+            <p>{{t('archive.confirm')}}</p>
+            <button type="button" class="danger-control" [disabled]="archiveBusy" (click)="confirmDeleteSaved()">{{t('archive.confirm.yes')}}</button>
+            <button type="button" class="small-control wide" (click)="cancelDeleteSaved()">{{t('archive.confirm.no')}}</button>
+          </div>
         </div>
         <div *ngIf="inspectorTab==='functions'">
           <p class="inspector-hint">{{t('functions.help')}}</p>

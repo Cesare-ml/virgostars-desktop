@@ -39,7 +39,7 @@ Swiss Ephemeris and the `sweph-sys` crate are **AGPL-3.0** (or a paid Astrodiens
 - `npm run verify:ipc`, `verify:translations`, `verify-npm-lock`, `ng build desktop`, `verify:bundle`: passed.
 - Browser preview with a mocked bridge returning a captured real provider response: form, natal wheel, planets, houses and transits flow rendered without console errors.
 - Native Windows release build with `--features swiss-ephemeris`, inspected through WebView2's local DevTools port: the real command returned J2000 positions (Sun 280.3689°, Moon 223.3238°, Moshier), a malformed request returned `invalid_request`, and the form produced a natal chart, a transit ring, a synastry of two fictional charts and a Placidus house change, each ending in "chart ready" with no renderer error. Run once with synthetic assets and once with the approved private artwork (1013 files verified).
-- **Not done:** PNG export of a calculated chart, a manual click-through by a person, the city catalog in the native build (the search answered `PLACE_CATALOG_UNAVAILABLE`, so coordinates were typed), Swiss `.se1` files via `VIRGOSTARS_EPHE_PATH`, comparison of positions against an independent ephemeris beyond the J2000 Sun.
+- **Not done:** PNG export of a calculated chart, a manual click-through by a person, Swiss `.se1` files via `VIRGOSTARS_EPHE_PATH`, comparison of positions against an independent ephemeris beyond the J2000 Sun.
 
 ## Running it locally
 
@@ -49,4 +49,10 @@ From a normal checkout (siblings `astrological-charts`, `astrological-functions`
 npm run tauri:build:swiss:private:local
 ```
 
-or `npm run tauri:build:swiss:local` for the synthetic placeholder images. The executable is `src-tauri/target/release/virgostars-desktop-spike.exe`. These three `…:local` scripts exist for the maintainer's machine only.
+or `npm run tauri:build:swiss:local` for the synthetic placeholder images. To include the offline city catalog as well (no installer is produced):
+
+```powershell
+npm run tauri:build:places:swiss:private:local
+```
+
+The plain builds above do not package the catalog, so the city search answers "catalog not installed" and coordinates must be typed. With the catalog build, city search and the picker were verified in the native window on 2026-11-15. The executable is `src-tauri/target/release/virgostars-desktop-spike.exe`. The `…:local` scripts exist for the maintainer's machine only.

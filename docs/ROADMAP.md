@@ -19,7 +19,7 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 
 ## Gate 2 — Local-first storage/offline
 - [ ] Choose and prove encrypted SQLite storage + OS secure storage, migrations and account isolation.
-- [ ] Model synthetic subjects, charts, favorites/notes and durable outbox.
+- [ ] Model synthetic subjects, charts, favorites/notes and durable outbox. **Partial (prototype, 2026-11-15):** saved chart inputs persist in a plain, unencrypted SQLite file ([Chart archive](CHART_ARCHIVE.md)) with versioned schema, transactional saves and fail-closed handling of damaged or newer files. No encryption, profiles, groups, notes or outbox yet.
 - [ ] Simulate offline startup, offline edits, crashes and interrupted sync.
 - [ ] Local export backup/restore and permanent data deletion policy.
 

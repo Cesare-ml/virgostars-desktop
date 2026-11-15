@@ -21,6 +21,10 @@ Status: **DESIGN / required gates**. User birth data can be sensitive personal i
 9. Dependency supply-chain controls, license review, pinned lockfiles and vulnerability audit before public build.
 10. The client must not silently upload synthetic fixtures, local scripts, personal comments or local-only research notes unless user-approved sync scope includes them.
 
+## Known deviation (2026-11-15)
+
+The prototype chart archive stores user-entered birth data in a **plain, unencrypted SQLite file** in the application's local data folder ([Chart archive](CHART_ARCHIVE.md)). This does not satisfy rule 3. It was added at the maintainer's request to make the prototype usable on his own machine, is labelled as unencrypted in the interface, and must be replaced by the encrypted design, with a migration, before any beta or distribution.
+
 ## Threats to test
 - Stolen laptop / offline attacker; unprotected unlocked session; database copied from disk.
 - Token theft or reuse from logs; fake OAuth callback or wrong redirect target; refresh-token compromise.
