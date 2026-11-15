@@ -13,7 +13,7 @@ import { DEMO_NAMES, fictionalHouses, fictionalPlanets, makeFictionalTheme, type
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
-import {validatePngDataUrl, syntheticPngFilename} from './png-export-safety';
+import {validatePngDataUrl, syntheticPngFilename, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
@@ -21,12 +21,65 @@ import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
+import { NewChartComponent } from './new-chart.component';
+import type { NewChartInput } from './new-chart-form';
+import { calculateChart } from './native/chart-calculation';
+import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
+import {
+  availableHouseSystems, buildTemaRenderData, formatDegreeInSign, planetRows,
+  type PlanetRow, type TemaRenderData
+} from './astro/tema-render-data';
+import { FUNCTION_CATALOG, summarizeCatalog, type FunctionEntry, type FunctionStatus } from './function-catalog';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
   Mars:'name.mars', Jupiter:'name.jupiter', Saturn:'name.saturn',
   Uranus:'name.uranus', Neptune:'name.neptune', Pluto:'name.pluto',
 };
+const POINT_KEYS: Record<string,MessageKey> = {
+  ...BODY_KEYS,
+  'mean Node':'name.meanNode', 'true Node':'name.trueNode', 'mean Apogee':'name.meanApogee',
+  'osc. Apogee':'name.oscApogee', Chiron:'name.chiron', 'true Node Sud':'name.trueNodeSouth',
+  'mean Node Sud':'name.meanNodeSouth', 'osc. Perigee':'name.oscPerigee', 'mean Perigee':'name.meanPerigee',
+};
+const SIGN_KEYS: readonly MessageKey[] = [
+  'sign.aries','sign.taurus','sign.gemini','sign.cancer','sign.leo','sign.virgo',
+  'sign.libra','sign.scorpio','sign.sagittarius','sign.capricorn','sign.aquarius','sign.pisces',
+];
+const SIGN_GLYPHS = '♈♉♊♋♌♍♎♏♐♑♒♓';
+const DEFAULT_EXTRA_POINTS: readonly string[] = ['true Node', 'true Node Sud', 'osc. Apogee', 'osc. Perigee', 'Chiron'];
+const HOUSE_SYSTEM_KEYS: Record<HouseSystemId,MessageKey> = {
+  egizia:'house.egizia', placido:'house.placido', koch:'house.koch',
+  'regio-montano':'house.regiomontano', porfirio:'house.porfirio',
+};
+const SOURCE_KEYS: Record<string,MessageKey> = {
+  moshier:'source.moshier', swiss_files:'source.swissFiles', jpl:'source.jpl',
+};
+const CALCULATION_FAILURES: Record<Exclude<ChartCalculationResult['kind'],'ready'>,MessageKey> = {
+  not_native:'calc.browser', provider_unavailable:'calc.noprovider', invalid_request:'calc.invalid',
+  calculation_failed:'calc.failed', unavailable:'calc.failed',
+};
+const STATUS_KEYS: Record<FunctionStatus,MessageKey> = {
+  available:'functions.available', planned:'functions.planned', excluded:'functions.excluded',
+};
+
+/** One calculated chart, held in memory for this session only. */
+type SessionChart = Readonly<{
+  id: number;
+  name: string;
+  utcIso: string;
+  timeZone: string;
+  placeLabel: string;
+  latMicro: number;
+  lngMicro: number;
+  provider: ChartProviderV1;
+  sourceKey: MessageKey;
+  unavailableBodies: readonly string[];
+  unavailableHouseSystems: readonly HouseSystemId[];
+  data: TemaRenderData;
+  render: TemaRender;
+}>;
+
 const MODE_KEYS: Record<ChartMode,MessageKey> = {
   natal:'mode.natal',transits:'mode.transits',synastry:'mode.synastry',latitude:'mode.latitude',
 };
@@ -34,7 +87,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, OfflineCityPickerComponent],
+  imports:[CommonModule, OfflineCityPickerComponent, NewChartComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -67,7 +120,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
   inspectorTab: InspectorTab = 'planets';
-  selectedPlanet: DemoPlanet | null = null;
+  selectedPlanet: string | null = null;
+  // Calculated charts live in memory only: no disk, no account, no network.
+  sessionCharts: SessionChart[] = [];
+  activeChartId: number | null = null;
+  partnerChartId: number | null = null;
+  houseSystem: HouseSystemId = 'egizia';
+  calcBusy = false;
+  calcMessage: MessageKey | null = null;
+  readonly catalog = FUNCTION_CATALOG;
+  readonly catalogSummary = summarizeCatalog();
+  private transitChart: SessionChart | null = null;
+  private calcTicket = 0;
+  private nextChartId = 1;
+  private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
   selectedCity: OfflinePlaceV1 | null = null;
   cityClock: SelectedCityClock = {kind: 'not_selected'};
   navCollapsed = false;
@@ -97,7 +163,209 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
-  planetLabel(planet:DemoPlanet): string { return this.t(BODY_KEYS[planet]); }
+  planetLabel(planet:string): string {
+    const key = POINT_KEYS[planet];
+    return key ? this.t(key) : planet;
+  }
+  get activeChart(): SessionChart | null {
+    return this.sessionCharts.find(chart => chart.id === this.activeChartId) ?? null;
+  }
+  get partnerChart(): SessionChart | null {
+    return this.sessionCharts.find(chart => chart.id === this.partnerChartId) ?? null;
+  }
+  get subjectTitle(): string {
+    const chart = this.activeChart;
+    return chart ? this.chartName(chart) : this.t('subject');
+  }
+  get subjectCaption(): string {
+    const chart = this.activeChart;
+    return chart ? this.chartWhen(chart) + ' · ' + chart.placeLabel : this.t('fixture');
+  }
+  /** Says which engine and which data produced what is on screen. */
+  get provenanceLabel(): string {
+    const chart = this.activeChart;
+    if (!chart) return this.t('lab');
+    const engine = chart.provider.id === 'swiss_ephemeris' ? this.t('provider.swiss') : chart.provider.id;
+    return engine + ' ' + chart.provider.engineVersion + ' · ' + this.t(chart.sourceKey);
+  }
+  get footerKey(): MessageKey { return this.activeChart ? 'footer.real' : 'footer'; }
+  chartName(chart: SessionChart): string { return chart.name || this.t('session.unnamed'); }
+  chartWhen(chart: SessionChart): string {
+    try {
+      return new Intl.DateTimeFormat(this.locale === 'it' ? 'it-IT' : 'en-GB', {
+        dateStyle:'medium', timeStyle:'medium', timeZone:chart.timeZone,
+      }).format(new Date(chart.utcIso)) + ' ' + chart.timeZone;
+    } catch {
+      return chart.utcIso;
+    }
+  }
+  get planetRowsView(): PlanetRow[] {
+    const chart = this.activeChart;
+    if (!chart) return [];
+    const cache = this.rowsCache;
+    if (cache && cache.chartId === chart.id && cache.system === this.houseSystem) return cache.rows;
+    const rows = planetRows(chart.data, this.houseSystem);
+    this.rowsCache = {chartId:chart.id, system:this.houseSystem, rows};
+    return rows;
+  }
+  get houseSystems(): HouseSystemId[] {
+    const chart = this.activeChart;
+    return chart ? availableHouseSystems(chart.data) : [];
+  }
+  get cuspRows(): ReadonlyArray<{number:number; longitude:number}> {
+    const cusps = this.activeChart?.data.houses[this.houseSystem]?.house ?? [];
+    return cusps.map((longitude,index) => ({number:index+1, longitude}));
+  }
+  houseSystemLabel(system:HouseSystemId): string { return this.t(HOUSE_SYSTEM_KEYS[system]); }
+  statusLabel(status:FunctionStatus): string { return this.t(STATUS_KEYS[status]); }
+  entryLabel(entry:{it:string; en:string}): string { return this.locale === 'it' ? entry.it : entry.en; }
+  /** Zodiac position such as "♉ 15°30'", with the sign name for assistive text. */
+  formatZodiac(longitude:number): string {
+    const sign = Math.min(11, Math.max(0, Math.floor(longitude / 30)));
+    // U+FE0E asks for the text glyph instead of a colour emoji tile.
+    return SIGN_GLYPHS.charAt(sign) + '︎ ' + formatDegreeInSign(longitude - sign * 30);
+  }
+  signName(longitude:number): string {
+    return this.t(SIGN_KEYS[Math.min(11, Math.max(0, Math.floor(longitude / 30)))]);
+  }
+  namesOf(points: readonly string[]): string { return points.map(name => this.planetLabel(name)).join(', '); }
+  systemsOf(systems: readonly HouseSystemId[]): string {
+    return systems.map(system => this.houseSystemLabel(system)).join(', ');
+  }
+  trackChart(_index:number, chart:SessionChart): number { return chart.id; }
+
+  private async computeChart(input: NewChartInput): Promise<SessionChart | MessageKey> {
+    const result = await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
+    if (result.kind !== 'ready') return CALCULATION_FAILURES[result.kind];
+    const data = buildTemaRenderData(result.chart, input.utcIso);
+    if (!data) return 'calc.nohouses';
+    const sources = new Set(result.chart.bodies.map(body => body.ephemerisSource));
+    const onlySource = sources.size === 1 ? [...sources][0] : null;
+    const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
+    return {
+      id:this.nextChartId++, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
+      placeLabel:input.placeName ? input.placeName + ' (' + coordinates + ')' : coordinates,
+      latMicro:input.latMicro, lngMicro:input.lngMicro,
+      provider:result.provider,
+      sourceKey:onlySource ? SOURCE_KEYS[onlySource] ?? 'source.mixed' : 'source.mixed',
+      unavailableBodies:result.chart.unavailableBodies,
+      unavailableHouseSystems:result.chart.unavailableHouseSystems,
+      data,
+      // The renderer may annotate its input, so it gets its own copy.
+      render:Object.assign(new TemaRender(), structuredClone(data)),
+    };
+  }
+  private useAvailableHouseSystem(chart: SessionChart): void {
+    const systems = availableHouseSystems(chart.data);
+    if (!systems.includes(this.houseSystem) && systems.length) this.houseSystem = systems[0];
+  }
+  async onChartRequested(input: NewChartInput): Promise<void> {
+    if (this.destroyed) return;
+    const ticket = ++this.calcTicket;
+    this.calcBusy = true;
+    this.calcMessage = 'calc.running';
+    this.cd.markForCheck();
+    const chart = await this.computeChart(input);
+    // Only the latest request may change what is on screen.
+    if (this.destroyed || ticket !== this.calcTicket) return;
+    this.calcBusy = false;
+    if (typeof chart === 'string') {
+      this.calcMessage = chart;
+    } else {
+      const previous = this.activeChartId;
+      this.sessionCharts = [...this.sessionCharts, chart];
+      if (this.partnerChartId === null && previous !== null) this.partnerChartId = previous;
+      this.showChart(chart);
+      this.calcMessage = 'calc.ready';
+    }
+    this.cd.markForCheck();
+  }
+  private showChart(chart: SessionChart | null): void {
+    this.activeChartId = chart ? chart.id : null;
+    this.transitChart = null;
+    this.rowsCache = null;
+    this.selectedPlanet = null;
+    if (chart) this.useAvailableHouseSystem(chart);
+    if (chart && this.partnerChartId === chart.id) this.partnerChartId = null;
+    // Overlays belong to the previous chart; start again from the plain wheel.
+    if (this.mode === 'transits' || this.mode === 'synastry') this.mode = 'natal';
+    if (this.initialized) void this.draw();
+  }
+  activateChart(id:number): void {
+    const chart = this.sessionCharts.find(item => item.id === id);
+    if (!chart || this.calcBusy || this.exporting || id === this.activeChartId) return;
+    this.showChart(chart);
+    this.cd.markForCheck();
+  }
+  removeChart(id:number): void {
+    if (this.calcBusy || this.exporting) return;
+    this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
+    if (this.partnerChartId === id) this.partnerChartId = null;
+    if (this.activeChartId === id) this.showChart(null);
+    else if (this.mode === 'synastry' && !this.partnerChart) this.setMode('natal');
+    this.cd.markForCheck();
+  }
+  showDemoChart(): void {
+    if (this.calcBusy || this.exporting || this.activeChartId === null) return;
+    this.showChart(null);
+    this.cd.markForCheck();
+  }
+  setPartner(event: Event): void {
+    const id = Number((event.target as HTMLSelectElement).value);
+    const chart = this.sessionCharts.find(item => item.id === id && item.id !== this.activeChartId);
+    this.partnerChartId = chart ? chart.id : null;
+    if (this.mode === 'synastry') {
+      if (chart) { if (this.initialized) void this.draw(); }
+      else this.setMode('natal');
+    }
+    this.cd.markForCheck();
+  }
+  setHouseSystem(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value as HouseSystemId;
+    if (!this.houseSystems.includes(value) || value === this.houseSystem || this.exporting) return;
+    this.houseSystem = value;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  /** Sky of this moment at the active chart's place, drawn around it. */
+  async showTransits(): Promise<void> {
+    const natal = this.activeChart;
+    if (!natal || this.calcBusy || this.exporting || this.destroyed) return;
+    const ticket = ++this.calcTicket;
+    this.calcBusy = true;
+    this.calcMessage = 'calc.running';
+    this.cd.markForCheck();
+    const chart = await this.computeChart({
+      name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:natal.timeZone,
+      offsetSeconds:0, latMicro:natal.latMicro, lngMicro:natal.lngMicro, placeName:'',
+    });
+    if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== natal.id) return;
+    this.calcBusy = false;
+    if (typeof chart === 'string') {
+      this.calcMessage = chart;
+    } else {
+      this.transitChart = chart;
+      this.mode = 'transits';
+      this.calcMessage = null;
+      if (this.initialized) void this.draw();
+    }
+    this.cd.markForCheck();
+  }
+  runFunction(entry: FunctionEntry): void {
+    switch (entry.action) {
+      case 'new_chart': case 'now_chart': case 'session_charts': this.setInspectorTab('chart'); break;
+      case 'house_system': this.setInspectorTab('houses'); break;
+      case 'planet_info': this.setInspectorTab('planets'); break;
+      case 'mode_natal': this.setMode('natal'); break;
+      case 'mode_transits': this.setMode('transits'); break;
+      case 'mode_synastry': this.setMode('synastry'); break;
+      case 'mode_latitude': this.setMode('latitude'); break;
+    }
+  }
+  openNewChart(): void {
+    this.inspectorCollapsed = false;
+    this.setInspectorTab('chart');
+  }
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.t(this.theme === 'light' ? 'theme.current.light' : 'theme.current.dark'); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
@@ -212,6 +480,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   setMode(mode:ChartMode): void {
     if(this.busy || mode === this.mode) return;
+    if (this.activeChart && mode === 'transits') { void this.showTransits(); return; }
+    if (this.activeChart && mode === 'synastry' && !this.partnerChart) {
+      // Never pair a calculated chart with fixture data.
+      this.calcMessage = 'synastry.needsecond';
+      this.openNewChart();
+      return;
+    }
     this.mode = mode;
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
@@ -220,7 +495,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.inspectorTab = tab;
     this.cd.markForCheck();
   }
-  selectPlanet(name:DemoPlanet): void {
+  selectPlanet(name:string): void {
     // Inspector-only selection; the upstream renderer does not yet expose a stable
     // planet selection contract. Never pretend the chart itself is highlighted.
     this.selectedPlanet = this.selectedPlanet === name ? null : name;
@@ -239,8 +514,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const options = structuredClone(defaultOpzioniGrafico);
     options.settaggi.skin_id = this.theme;
     options.temaGrafico = this.theme;
-    options.mostraTransiti = this.mode === 'transits';
-    options.mostraSinastria = this.mode === 'synastry';
+    const active = this.activeChart;
+    options.mostraTransiti = this.mode === 'transits' && (!active || this.transitChart !== null);
+    options.mostraSinastria = this.mode === 'synastry' && (!active || this.partnerChart !== null);
+    if (active) {
+      options.settaggi.domificazione_selezionata = this.houseSystem;
+      // A point the provider did not compute is switched off, never drawn from a default.
+      const points = options.settaggi.elementi_celesti as unknown as Record<string,{att:boolean}>;
+      for (const name of Object.keys(points)) if (!(name in active.data.planets)) points[name].att = false;
+      // Same points Regolo draws by default, until per-point settings exist.
+      for (const name of DEFAULT_EXTRA_POINTS) if (name in active.data.planets && points[name]) points[name].att = true;
+    }
     for(const name of DEMO_NAMES) {
       options.settaggi.elementi_celesti[name].att = true;
       options.settaggi.elementi_celesti[name].aspVerso = true;
@@ -252,9 +536,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     // null to mean that an optional overlay is disabled. This cast isolates the
     // legacy type mismatch until the renderer exports nullable parameters.
     const noOverlay = null as unknown as TemaRender;
-    return [this.natal,
-      this.mode==='transits' ? this.transit : noOverlay,
-      this.mode==='synastry' ? this.synastry : noOverlay,
+    const active = this.activeChart;
+    const transit = active ? this.transitChart?.render : this.transit;
+    const synastry = active ? this.partnerChart?.render : this.synastry;
+    return [active ? active.render : this.natal,
+      this.mode==='transits' && transit ? transit : noOverlay,
+      this.mode==='synastry' && synastry ? synastry : noOverlay,
       this.mode==='latitude' ? 'latitudini' : 'carta-astrale'];
   }
   async draw(): Promise<void> {
@@ -272,6 +559,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if(this.drawGeneration.isCurrent(ticket)) {
         this.ready=true;
         this.status='chart.ready';
+        if (this.activeChart) this.status='chart.ready.real';
       }
     } catch(error) {
       if(this.drawGeneration.isCurrent(ticket)) this.renderError(error);
@@ -295,7 +583,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if(this.destroyed) return;
       // A renderer failure must never become an arbitrary link/download target.
       const safePng = validatePngDataUrl(png);
-      const safeFilename = syntheticPngFilename(exportMode,exportTheme);
+      const safeFilename = this.activeChart
+        ? calculatedPngFilename(exportMode,exportTheme) : syntheticPngFilename(exportMode,exportTheme);
       requestSyntheticPngDownload(safePng,safeFilename,{
         createAnchor: () => document.createElement('a'),
         appendAnchor: anchor => { document.body.appendChild(anchor); },

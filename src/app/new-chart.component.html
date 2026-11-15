@@ -1,0 +1,55 @@
+<form class="new-chart" [attr.aria-label]="t('form.title')" (submit)="$event.preventDefault(); submit()">
+  <p class="form-note">{{t('form.intro')}}</p>
+
+  <label class="field">
+    <span>{{t('form.name')}}</span>
+    <input type="text" autocomplete="off" spellcheck="false" [attr.maxlength]="maxNameLength"
+      [value]="name" (input)="set('name', $event)">
+  </label>
+
+  <div class="field-row">
+    <label class="field">
+      <span>{{t('form.date')}}</span>
+      <input type="date" min="1900-01-01" max="2100-12-31" required [value]="date" (input)="set('date', $event)">
+    </label>
+    <label class="field">
+      <span>{{t('form.time')}}</span>
+      <input type="time" step="1" required [value]="time" (input)="set('time', $event)">
+    </label>
+  </div>
+
+  <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false"
+    (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
+
+  <div class="field-row">
+    <label class="field">
+      <span>{{t('form.latitude')}}</span>
+      <input type="text" inputmode="decimal" autocomplete="off" maxlength="14" required
+        [value]="latitude" (input)="set('latitude', $event)">
+    </label>
+    <label class="field">
+      <span>{{t('form.longitude')}}</span>
+      <input type="text" inputmode="decimal" autocomplete="off" maxlength="14" required
+        [value]="longitude" (input)="set('longitude', $event)">
+    </label>
+  </div>
+
+  <label class="field">
+    <span>{{t('form.zone')}}</span>
+    <input type="text" autocomplete="off" spellcheck="false" maxlength="120" required
+      [value]="timeZone" (input)="set('timeZone', $event)">
+  </label>
+
+  <p class="form-problem" role="alert" *ngIf="problem">{{problemText}}</p>
+
+  <div class="form-choice" *ngIf="choices.length" role="group" [attr.aria-label]="t('form.choice')">
+    <p>{{t('form.choice')}}</p>
+    <button type="button" class="form-secondary" *ngFor="let choice of choices" [disabled]="busy"
+      (click)="submit(choice.instantUtc)">{{offsetLabel(choice)}}</button>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="form-primary" [disabled]="busy">{{t('form.submit')}}</button>
+    <button type="button" class="form-secondary" [disabled]="busy" (click)="submitNow()">{{t('form.now')}}</button>
+  </div>
+</form>

@@ -1,7 +1,7 @@
 <section class="city-picker" [attr.aria-label]="t('city.title')">
   <label class="city-title" for="offline-city-query">{{t('city.title')}}</label>
-  <p class="city-note">{{t('city.note')}}</p>
-  <p class="city-note">{{t('city.demoNote')}}</p>
+  <p class="city-note" *ngIf="showDemoNotes">{{t('city.note')}}</p>
+  <p class="city-note" *ngIf="showDemoNotes">{{t('city.demoNote')}}</p>
   <input
     id="offline-city-query"
     type="search"

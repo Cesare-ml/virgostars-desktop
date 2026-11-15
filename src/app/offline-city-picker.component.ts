@@ -22,6 +22,8 @@ const STATUS_KEYS: Record<CityPickerStatus, MessageKey> = {
 export class OfflineCityPickerComponent implements OnChanges, OnDestroy {
   @Input() locale: Locale = 'it';
   @Input() selectedPlace: OfflinePlaceV1 | null = null;
+  /** The Settings preview explains that it does not affect the chart; the chart form does. */
+  @Input() showDemoNotes = true;
   @Output() readonly locationSelected = new EventEmitter<OfflinePlaceV1>();
   @Output() readonly locationEdited = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);

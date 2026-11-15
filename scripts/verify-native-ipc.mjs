@@ -5,9 +5,9 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places']);
-const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places']);
-const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts']);
+const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart']);
+const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart']);
+const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts']);
 const FRONTEND_EXTENSIONS = /\.(?:ts|tsx|js|mjs)$/;
 
 function assert(ok, message) { if (!ok) throw new Error(message); }
@@ -49,12 +49,14 @@ export function auditNativeIpc(sources) {
   }
   // The presence of one approved call must not mask a second, unreviewed IPC.
   // Bracket notation is also a native invoke call and requires review.
-  for(const contract of [sources.runtimeContract,sources.placesContract]) {
+  for(const contract of [sources.runtimeContract,sources.placesContract,sources.chartContract]) {
+    assert(typeof contract==='string', 'Missing reviewed native protocol');
     const calls=[...contract.matchAll(/(?:\.\s*invoke|\[\s*['"]invoke['"]\s*\])\s*(?:\?\.)?\s*\(/g)];
     assert(calls.length===1, 'Unexpected protocol native invocation count');
   }
   assert(/invoke\(['"]desktop_runtime_info['"]\)/.test(sources.runtimeContract), 'Runtime contract command mismatch');
   assert(/invoke\(['"]search_offline_places['"]\s*,/.test(sources.placesContract), 'Places contract command mismatch');
+  assert(/invoke\(['"]calculate_chart['"]\s*,/.test(sources.chartContract), 'Chart contract command mismatch');
   // Inspect every frontend source, including src/main.ts, not just src/app.
   // Conservative inventory: any additional Tauri package/API usage needs review.
   for(const [path,content] of Object.entries(sources.tsFiles)) {
@@ -111,7 +113,7 @@ export function auditCheckout(root=ROOT) {
     assert(!Object.hasOwn(rustModules,moduleName), 'Ambiguous Rust module filename');
     rustModules[moduleName]=read(path);
   }
-  for(const moduleName of ['runtime_probe','offline_places']) {
+  for(const moduleName of ['runtime_probe','offline_places','chart_calculation']) {
     assert(Object.hasOwn(rustModules,moduleName), 'Missing reviewed Rust command module');
   }
   return auditNativeIpc({
@@ -119,6 +121,7 @@ export function auditCheckout(root=ROOT) {
     rustModules,
     runtimeContract:read('src/app/native/runtime-protocol.ts'),
     placesContract:read('src/app/native/offline-places-contract.ts'),
+    chartContract:read('src/app/native/chart-calculation-contract.ts'),
     tsFiles,
     tauriConfig:JSON.parse(read('src-tauri/tauri.conf.json')),
   });

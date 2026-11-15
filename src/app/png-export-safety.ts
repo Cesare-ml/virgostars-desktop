@@ -76,7 +76,12 @@ export function validatePngDataUrl(value: unknown): string {
   return value;
 }
 
-/** Data is always fictional in the current renderer; never label it as a real chart. */
+/** Calculated charts get their own name so a fixture export is never mistaken for one. */
+export function calculatedPngFilename(mode: ChartMode, theme: UiTheme): string {
+  return syntheticPngFilename(mode, theme).replace('virgostars-synthetic-', 'virgostars-chart-');
+}
+
+/** Fixture data only; never label it as a real chart. */
 export function syntheticPngFilename(mode: ChartMode, theme: UiTheme): string {
   const modes: readonly string[] = ['natal', 'transits', 'synastry', 'latitude'];
   if (!modes.includes(mode) || (theme !== 'light' && theme !== 'dark')) {

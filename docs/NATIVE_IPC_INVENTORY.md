@@ -2,6 +2,8 @@
 
 **Status:** local developer verification only (13 November 2026). This is not a native security audit, penetration test or a proof that a released Windows application is safe.
 
+> **Update 2026-11-15 — three commands.** The reviewed registry now also contains `chart_calculation::calculate_chart`, with the protocol `src/app/native/chart-calculation-contract.ts` and the adapter `src/app/native/chart-calculation.ts`. Where the text below says "two" commands, protocols or adapters, read three. See the section at the end and [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md).
+
 ## Why this gate exists
 
 VirgoStars Desktop's synthetic prototype has exactly two intentionally local Tauri commands: `desktop_runtime_info` (read-only capability probe) and `search_offline_places` (read-only SQLite/FTS5 place search). A change to Rust's command registry, the TypeScript transport contracts or Tauri privileges must not be mistaken for a harmless UI refactor.
@@ -33,3 +35,16 @@ The ordinary npm commands `tauri:build` (synthetic assets) and `tauri:build:priv
 The optional city-enabled Windows npm commands already audit native IPC and their resource-only override; those commands are unchanged. The **PowerShell/CMD Windows acceptance bootstrap** also continues to run `verify:ipc` explicitly before packaging the **already audited** Angular output with the Tauri CLI directly. It must not be replaced with `npm run tauri:build` because that rebuilds Angular after the independent verification. Manual `tauri build` or `npm exec -- tauri build` outside the npm build commands can still bypass this source audit.
 
 This is a **read-only static gate**, not proof of compiled capabilities, runtime access control, network isolation, dependency integrity, signing or public release readiness. Full `npm test`, Rust `cargo test --locked`, actual Windows Tauri compilation and WebView2 smoke still require an authorized local checkout. No accounts, production services, city catalog assets or releases are accessed by this change.
+
+## Chart calculation command (2026-11-15)
+
+`calculate_chart` is the first command that carries user-entered data: one UTC instant and one latitude/longitude pair in micro-degrees. Review notes:
+
+- **Input:** a single `request` object with `protocolVersion`, `utcIso`, `latMicro`, `lngMicro`; unknown fields are rejected by serde. No name, free text, file path or account value crosses IPC. The ephemeris directory is read by the host from a local environment variable and is never accepted from, or returned to, the WebView.
+- **Output:** numbers and fixed identifiers only (body and house-system ids from closed lists, a provider id and an engine version). The TypeScript decoder rejects unknown ids, duplicates, out-of-range values, accessors and inherited fields with one generic error.
+- **Side effects:** none. No file is written, nothing is logged, no network connection is opened. The request is not retained after the call returns.
+- **Failure states:** `provider_unavailable` (default build), `invalid_request`, `calculation_failed`. Provider diagnostics are discarded because they may echo paths.
+- **Threat considered:** a compromised WebView can ask for positions at arbitrary instants and places. That discloses nothing stored on the device and costs a few milliseconds of CPU per call; the command is synchronous and bounded (15 bodies, 5 house systems).
+- **Not covered:** the C library linked by the optional `swiss-ephemeris` feature is third-party code running in the host process. It has not been audited here.
+
+Gate status on 2026-11-15: `npm run verify:ipc` reports 3 commands and 3 adapters; `tests/native-ipc-registry.test.mjs` passes 21/21 with the third command in every fixture. The native Tauri window has not been exercised with this command.

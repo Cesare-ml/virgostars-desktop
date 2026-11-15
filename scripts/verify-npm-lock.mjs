@@ -6,8 +6,11 @@ import {fileURLToPath} from 'node:url';
 import {assertNpmTarballIdentity} from './verify-npm-tarball.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const LOCAL_TARGET='../astrological-charts/dist/grafici-astrologici';
-const LOCAL_LINK='node_modules/grafici-astrologici';
+// Sibling checkouts linked by path. Anything else must come from the npm registry.
+const LOCAL_PACKAGES=Object.freeze([
+  Object.freeze({name:'grafici-astrologici',target:'../astrological-charts/dist/grafici-astrologici',label:'Charts'}),
+  Object.freeze({name:'astrological-functions',target:'../astrological-functions',label:'Functions'}),
+]);
 const isRecord=x=>x!==null && typeof x==='object' && !Array.isArray(x);
 const assert=(condition,message)=>{if(!condition)throw new Error(message)};
 const canonical=x=>JSON.stringify(Object.entries(x).sort(([a],[b])=>a.localeCompare(b)));
@@ -30,21 +33,25 @@ export function auditNpmLock(manifest,lock) {
     canonical(root.devDependencies??{})===canonical(manifest.devDependencies??{}) &&
     canonical(root.engines??{})===canonical(manifest.engines??{}),
     'npm lock root differs from package manifest');
-  assert(manifest.dependencies?.['grafici-astrologici']==='file:'+LOCAL_TARGET,
-    'Unreviewed local Charts package source');
-  assert(isRecord(lock.packages[LOCAL_TARGET]) &&
-    typeof lock.packages[LOCAL_TARGET].version==='string' &&
-    !Object.hasOwn(lock.packages[LOCAL_TARGET],'resolved') &&
-    !Object.hasOwn(lock.packages[LOCAL_TARGET],'integrity'),
-    'Invalid local Charts package metadata');
-  const link=lock.packages[LOCAL_LINK];
-  assert(isRecord(link) && link.link===true && link.resolved===LOCAL_TARGET &&
-    Object.keys(link).length===2, 'Unreviewed local npm link');
+  const localEntries=new Set();
+  for(const {name,target,label} of LOCAL_PACKAGES) {
+    assert(manifest.dependencies?.[name]==='file:'+target,
+      'Unreviewed local '+label+' package source');
+    assert(isRecord(lock.packages[target]) &&
+      typeof lock.packages[target].version==='string' &&
+      !Object.hasOwn(lock.packages[target],'resolved') &&
+      !Object.hasOwn(lock.packages[target],'integrity'),
+      'Invalid local '+label+' package metadata');
+    const link=lock.packages['node_modules/'+name];
+    assert(isRecord(link) && link.link===true && link.resolved===target &&
+      Object.keys(link).length===2, 'Unreviewed local npm link');
+    localEntries.add(target).add('node_modules/'+name);
+  }
   const entries=Object.entries(lock.packages).filter(([name])=>name!=='');
-  assert(entries.length>=3 && entries.length<=10000, 'Unexpected npm lock package count');
+  assert(entries.length>localEntries.size && entries.length<=10000, 'Unexpected npm lock package count');
   let registryPackages=0;
   for(const [name,entry] of entries) {
-    if(name===LOCAL_TARGET || name===LOCAL_LINK)continue;
+    if(localEntries.has(name))continue;
     assert(name.startsWith('node_modules/') && !name.split('/').includes('..') &&
       isRecord(entry) && entry.link!==true, 'Unreviewed npm package path or link');
     assert(typeof entry.resolved==='string' && canonicalSha512Integrity(entry.integrity),
@@ -59,7 +66,7 @@ export function auditNpmLock(manifest,lock) {
     registryPackages++;
   }
   assert(registryPackages>0, 'No verified npm registry dependencies');
-  return Object.freeze({registryPackages,localLinks:1});
+  return Object.freeze({registryPackages,localLinks:LOCAL_PACKAGES.length});
 }
 
 export function auditNpmLockCheckout(root=ROOT) {
@@ -73,7 +80,7 @@ if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))
   try {
     if(process.argv.length!==2)throw new Error('No CLI arguments allowed');
     const result=auditNpmLockCheckout();
-    console.log('Verified '+result.registryPackages+' pinned npm registry packages and one public Charts link.');
+    console.log('Verified '+result.registryPackages+' pinned npm registry packages and '+result.localLinks+' reviewed sibling links.');
   } catch {
     console.error('NPM LOCK PROVENANCE CHECK FAILED. Review package-lock.json before installing.');
     process.exitCode=1;
