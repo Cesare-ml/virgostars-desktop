@@ -1,0 +1,40 @@
+<section class="chart-settings" [attr.aria-label]="t('chartsettings.title')">
+  <label class="settings-check">
+    <input type="checkbox" [checked]="settings.showAspects" [disabled]="disabled" (change)="setShowAspects($event)">
+    <span>{{t('chartsettings.show')}}</span>
+  </label>
+  <p class="settings-problem" role="alert" *ngIf="invalidOrb">{{t('chartsettings.orb.invalid')}}</p>
+
+  <details class="settings-group" open>
+    <summary>{{t('chartsettings.aspects')}}</summary>
+    <p class="settings-note">{{t('chartsettings.aspects.note')}}</p>
+    <div class="settings-head"><span>{{t('chartsettings.aspect')}}</span><span>{{t('chartsettings.orb')}}</span></div>
+    <div class="settings-row" *ngFor="let id of aspectIds">
+      <label class="settings-check grow">
+        <input type="checkbox" [checked]="settings.aspects[id].active" [disabled]="disabled" (change)="setAspectActive(id, $event)">
+        <span>{{aspectLabel(id)}}</span>
+      </label>
+      <input type="text" class="orb-input" inputmode="decimal" autocomplete="off" maxlength="4" placeholder="—"
+        [attr.aria-label]="t('chartsettings.orb') + ' ' + aspectLabel(id)"
+        [value]="orbText(settings.aspects[id].orb)" [disabled]="disabled" (change)="setAspectOrb(id, $event)">
+    </div>
+  </details>
+
+  <details class="settings-group">
+    <summary>{{t('chartsettings.points')}}</summary>
+    <p class="settings-note">{{t('chartsettings.points.note')}}</p>
+    <div class="settings-head three"><span>{{t('chartsettings.point')}}</span><span>{{t('chartsettings.shown')}}</span><span>{{t('chartsettings.aspected')}}</span><span>{{t('chartsettings.orb')}}</span></div>
+    <div class="settings-row three" *ngFor="let id of pointIds">
+      <span class="grow">{{pointLabel(id)}}</span>
+      <input type="checkbox" [attr.aria-label]="t('chartsettings.shown') + ' ' + pointLabel(id)"
+        [checked]="settings.points[id].shown" [disabled]="disabled" (change)="setPointShown(id, $event)">
+      <input type="checkbox" [attr.aria-label]="t('chartsettings.aspected') + ' ' + pointLabel(id)"
+        [checked]="settings.points[id].aspects" [disabled]="disabled" (change)="setPointAspects(id, $event)">
+      <input type="text" class="orb-input" inputmode="decimal" autocomplete="off" maxlength="4"
+        [attr.aria-label]="t('chartsettings.orb') + ' ' + pointLabel(id)"
+        [value]="orbText(settings.points[id].orb)" [disabled]="disabled" (change)="setPointOrb(id, $event)">
+    </div>
+  </details>
+
+  <button type="button" class="settings-reset" [disabled]="disabled" (click)="reset()">{{t('chartsettings.reset')}}</button>
+</section>

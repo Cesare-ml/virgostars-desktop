@@ -142,6 +142,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       readFileSync(new URL('../src/app/offline-city-picker.component.html', import.meta.url), 'utf8'),
       readFileSync(new URL('../src/app/new-chart.component.html', import.meta.url), 'utf8'),
       readFileSync(new URL('../src/app/returns-panel.component.html', import.meta.url), 'utf8'),
+      readFileSync(new URL('../src/app/chart-settings.component.html', import.meta.url), 'utf8'),
     ];
     const usage = result.ok ? auditTranslationTemplates(source, templates) : {ok: false, problems: []};
     if (!result.ok || !usage.ok) {

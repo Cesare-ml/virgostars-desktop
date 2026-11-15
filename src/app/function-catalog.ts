@@ -14,7 +14,7 @@ export type FunctionStatus = 'available' | 'planned' | 'excluded';
 export type FunctionAction =
   | 'new_chart' | 'session_charts' | 'now_chart' | 'mode_natal' | 'mode_transits'
   | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive'
-  | 'solar_return' | 'lunar_return';
+  | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -75,11 +75,11 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
   group('settings', 'Impostazioni del tema', 'Chart settings', [
     available('house-system', 'Domificazione', 'House system', 'house_system'),
     available('planet-info', 'Info Pianeti', 'Planet information', 'planet_info'),
-    planned('celestial-elements', 'Elementi Celesti', 'Celestial elements'),
-    planned('aspects', 'Aspetti', 'Aspects'),
-    planned('aspect-direction', 'Aspetti Verso', 'Aspect direction'),
-    planned('planet-orbs', 'Orbite Pianeti', 'Planet orbs'),
-    planned('aspect-orbs', 'Orbite Aspetti', 'Aspect orbs'),
+    available('celestial-elements', 'Elementi Celesti', 'Celestial elements', 'chart_settings'),
+    available('aspects', 'Aspetti', 'Aspects', 'aspect_table'),
+    available('aspect-direction', 'Aspetti Verso', 'Aspect direction', 'chart_settings'),
+    available('planet-orbs', 'Orbite Pianeti', 'Planet orbs', 'chart_settings'),
+    available('aspect-orbs', 'Orbite Aspetti', 'Aspect orbs', 'chart_settings'),
     planned('aspect-focus', 'Focus Aspetti', 'Aspect focus'),
     planned('applications', 'Applicazioni (appl./disappl.)', 'Applying and separating'),
     planned('transsaturnians', 'Transaturnini se in congiunzione', 'Trans-Saturnians when conjunct'),
