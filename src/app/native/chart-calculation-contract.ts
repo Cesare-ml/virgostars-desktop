@@ -193,10 +193,40 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
   }
 }
 
+/**
+ * Validate and detach request values before they cross the native boundary.
+ * Match Rust's strict Gregorian UTC parser (years 1600..2400).
+ */
+function snapshotRequest(source: unknown): ChartRequestV1 | null {
+  try {
+    if (!plainObject(source)) return null;
+    const utcIso = field(source, 'utcIso');
+    const latMicro = field(source, 'latMicro');
+    const lngMicro = field(source, 'lngMicro');
+    if (typeof utcIso !== 'string' || !UTC_PATTERN.test(utcIso) ||
+        typeof latMicro !== 'number' || !Number.isSafeInteger(latMicro) || Math.abs(latMicro) > 90_000_000 ||
+        typeof lngMicro !== 'number' || !Number.isSafeInteger(lngMicro) || Math.abs(lngMicro) > 180_000_000) {
+      return null;
+    }
+    const year = Number(utcIso.slice(0, 4));
+    const month = Number(utcIso.slice(5, 7));
+    const day = Number(utcIso.slice(8, 10));
+    const hour = Number(utcIso.slice(11, 13));
+    const minute = Number(utcIso.slice(14, 16));
+    const second = Number(utcIso.slice(17, 19));
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (year < 1600 || year > 2400 || month < 1 || month > 12 ||
+        day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59) return null;
+    return Object.freeze({utcIso, latMicro, lngMicro});
+  } catch {
+    // Accessors, inherited fields and throwing Proxy traps are not trusted.
+    return null;
+  }
+}
+
 export function validChartRequest(request: ChartRequestV1): boolean {
-  return typeof request?.utcIso === 'string' && UTC_PATTERN.test(request.utcIso) &&
-    Number.isSafeInteger(request.latMicro) && Math.abs(request.latMicro) <= 90_000_000 &&
-    Number.isSafeInteger(request.lngMicro) && Math.abs(request.lngMicro) <= 180_000_000;
+  return snapshotRequest(request) !== null;
 }
 
 /**
@@ -207,11 +237,12 @@ export async function requestChart(
   transport: ChartCalculationTransport,
   request: ChartRequestV1,
 ): Promise<ChartCalculationResult> {
-  if (!validChartRequest(request)) return {kind: 'invalid_request'};
+  const snapshot = snapshotRequest(request);
+  if (!snapshot) return {kind: 'invalid_request'};
   try {
     if (!transport.isNative()) return {kind: 'not_native'};
     const raw = await transport.invoke('calculate_chart', {
-      request: {protocolVersion: 1, utcIso: request.utcIso, latMicro: request.latMicro, lngMicro: request.lngMicro},
+      request: {protocolVersion: 1, utcIso: snapshot.utcIso, latMicro: snapshot.latMicro, lngMicro: snapshot.lngMicro},
     });
     const decoded = decodeChartResponse(raw);
     return decoded.status === 'ok'
