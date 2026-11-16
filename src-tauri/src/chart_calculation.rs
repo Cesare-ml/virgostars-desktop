@@ -197,6 +197,11 @@ fn valid_angle(value: f64) -> bool {
     value.is_finite() && (0.0..360.0).contains(&value)
 }
 
+fn valid_provider_info(info: &ProviderInfoV1) -> bool {
+    valid_provider_label(info.id) && valid_provider_label(&info.engine_version)
+}
+
+
 /// Validate an adapter result before serializing it across the native boundary.
 /// This checks shape and numeric plausibility only; it does not certify astronomy.
 fn valid_snapshot(snapshot: &ChartSnapshotV1) -> bool {
@@ -272,12 +277,19 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
         return failure("provider_unavailable");
     };
     match provider.chart(&valid) {
-        Ok(chart) if valid_snapshot(&chart) => ChartResponseV1 {
-            protocol_version: PROTOCOL_VERSION,
-            status: "ok",
-            provider: Some(provider.info()),
-            chart: Some(chart),
-        },
+        Ok(chart) if valid_snapshot(&chart) => {
+            let info = provider.info();
+            if valid_provider_info(&info) {
+                ChartResponseV1 {
+                    protocol_version: PROTOCOL_VERSION,
+                    status: "ok",
+                    provider: Some(info),
+                    chart: Some(chart),
+                }
+            } else {
+                failure("calculation_failed")
+            }
+        }
         Ok(_) | Err(ProviderError) => failure("calculation_failed"),
     }
 }
@@ -317,6 +329,16 @@ mod tests {
         }
         fn chart(&self, _request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
             self.0.clone()
+        }
+    }
+
+    struct InvalidInfoProvider;
+    impl EphemerisProvider for InvalidInfoProvider {
+        fn info(&self) -> ProviderInfoV1 {
+            ProviderInfoV1 { id: "synthetic_test", engine_version: "bad\\nversion".to_string() }
+        }
+        fn chart(&self, _request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
+            Ok(empty_chart())
         }
     }
 
@@ -405,6 +427,13 @@ mod tests {
         let response = respond(Some(&provider), &request("not a date"));
         assert_eq!(response.status, "invalid_request");
         assert!(response.chart.is_none());
+    }
+
+    #[test]
+    fn test_provider_metadata_must_be_bounded_and_printable() {
+        let response = respond(Some(&InvalidInfoProvider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.provider.is_none() && response.chart.is_none());
     }
 
     #[test]
