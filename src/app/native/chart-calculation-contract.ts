@@ -172,6 +172,11 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
       .map(id => member(id, CHART_BODY_IDS, bodyIds));
     const unavailableHouseSystems = denseArray(field(chart, 'unavailableHouseSystems'), HOUSE_SYSTEM_IDS.length)
       .map(id => member(id, HOUSE_SYSTEM_IDS, houseIds));
+    // Every requested body and house system must be accounted for, even if unavailable.
+    // Otherwise an incomplete provider response could silently hide missing data.
+    if (bodyIds.size !== CHART_BODY_IDS.length || houseIds.size !== HOUSE_SYSTEM_IDS.length) {
+      throw new Error(PROTOCOL_ERROR);
+    }
     if (!bodyIds.has('Sun') || !bodyIds.has('Moon') ||
         unavailableBodies.includes('Sun') || unavailableBodies.includes('Moon')) {
       throw new Error(PROTOCOL_ERROR);
