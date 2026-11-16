@@ -198,6 +198,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       initialized:this.initialized,
       destroyed:this.destroyed,
       busy:this.busy,
+      calcBusy:this.calcBusy,
       ready:this.ready,
       exporting:this.exporting,
       hasError:this.lastDrawFailed && this.error.length > 0,
