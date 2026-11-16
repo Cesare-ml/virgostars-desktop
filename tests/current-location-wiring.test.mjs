@@ -24,6 +24,10 @@ test('first-run location requires a deliberate button and secure context', () =>
   assert.match(form, /getCurrentPosition/);
   assert.match(form, /locationPending\) return/);
   assert.match(form, /locationPending = true/);
+  assert.match(form, /locationTimer = setTimeout/);
+  assert.match(form, /}, 13_000\)/);
+  assert.match(form, /this\.locationRequest\+\+/);
+  assert.match(form, /clearLocationTimer\(\)/);
   assert.match(formHtml, /\[disabled\]="busy \|\| locationPending"/);
   assert.match(rust, /tauri::webview::PermissionKind::Geolocation => tauri::webview::PermissionResponse::Default/);
   assert.match(rust, /_ => tauri::webview::PermissionResponse::Deny/);
