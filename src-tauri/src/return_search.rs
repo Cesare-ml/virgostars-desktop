@@ -121,7 +121,13 @@ fn find_crossings(
                 let middle = low + (high - low) / 2.0;
                 if read(middle)? <= 0.0 { low = middle } else { high = middle }
             }
-            crossings.push(low + (high - low) / 2.0);
+            // The calendar interval is [start, end): a return exactly at the
+            // next January boundary belongs to the following year, not both.
+            // Check the bracket, not a rounded timestamp, so no millisecond
+            // serialization can move an event into the wrong year.
+            if low < end && (high < end || read(end)? > 0.0) {
+                crossings.push(low + (high - low) / 2.0);
+            }
         }
         left = right;
         left_offset = right_offset;
@@ -260,6 +266,26 @@ mod tests {
         let previous_year = find_crossings(on_boundary, 40.0, start - 365.0, start, 1.0).unwrap();
         assert_eq!(previous_year.len(), 1);
         assert!((previous_year[0] - (start - 360.0)).abs() < 2e-9);
+    }
+
+    #[test]
+    fn test_crossing_exactly_at_end_is_not_returned_for_previous_year() {
+        let start = year_start_julian_day(2001);
+        let at_next_year = |time: f64| Ok((40.0 + (time - (start + 365.0))).rem_euclid(360.0));
+        let previous = find_crossings(at_next_year, 40.0, start, start + 365.0, 1.0).unwrap();
+        assert!(previous.is_empty(), "boundary return must not appear in preceding year");
+        let following = find_crossings(at_next_year, 40.0, start + 365.0, start + 730.0, 1.0).unwrap();
+        assert_eq!(following.len(), 2);
+        assert!((following[0] - (start + 365.0)).abs() < 2e-9);
+    }
+
+    #[test]
+    fn test_crossing_just_before_end_remains_in_previous_year() {
+        let start = year_start_julian_day(2001);
+        let at_last_second = |time: f64| Ok((40.0 + (time - (start + 365.0 - 1.0 / 86_400.0))).rem_euclid(360.0));
+        let previous = find_crossings(at_last_second, 40.0, start, start + 365.0, 1.0).unwrap();
+        assert_eq!(previous.len(), 1);
+        assert!((previous[0] - (start + 365.0 - 1.0 / 86_400.0)).abs() < 2e-9);
     }
 
     #[test]
