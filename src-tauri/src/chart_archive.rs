@@ -437,6 +437,25 @@ mod tests {
     }
 
     #[test]
+    fn test_invalid_rename_preserves_existing_saved_chart() {
+        let archive = TempArchive::new("invalid-rename");
+        let original = record(ID_A, "Nome valido");
+        assert_eq!(handle(&archive.0, &save_request(original), 1000).status, "ok");
+
+        for name in ["", " ", "\t"] {
+            let response = handle(&archive.0, &save_request(record(ID_A, name)), 2000);
+            assert_eq!(response.status, "invalid_request");
+            assert!(response.charts.is_none());
+        }
+
+        let saved = handle(&archive.0, &list_request(), 3000).charts.unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].name, "Nome valido");
+        assert_eq!(saved[0].created_at_ms, 1000);
+        assert_eq!(saved[0].updated_at_ms, 1000);
+    }
+
+    #[test]
     fn test_text_that_looks_like_sql_is_stored_as_text() {
         let archive = TempArchive::new("literal");
         let name = "Robert'); DROP TABLE saved_charts;--";
