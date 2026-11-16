@@ -107,7 +107,7 @@ test('current-moment chart refuses missing or unsupported time zones', () => {
     {status: 'problem', problem: 'zone_invalid'});
   assert.deepEqual(resolveNowChart({...fields, timeZone: 'UTC'}, new Date('2026-01-01T00:00:00Z')),
     {status: 'ready', input: {
-      name: '', utcIso: '2026-01-01T00:00:00.000Z', localDate: '', localTime: '',
+      name: '', utcIso: '2026-01-01T00:00:00.000Z', localDate: '2026-01-01', localTime: '00:00:00',
       timeZone: 'UTC', offsetSeconds: 0, latMicro: 0, lngMicro: 0, placeName: '',
     }});
 });
@@ -160,4 +160,30 @@ test('UTC is explicit and stable; extended ISO instants are rejected before IPC'
 
   assert.deepEqual(resolveNowChart(fields, new Date(8_640_000_000_000_000)),
     {status: 'problem', problem: 'instant_unavailable'});
+});
+
+test('current sky uses the exact UTC instant across the spring DST jump', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  const before = resolveNowChart(fields, new Date('2026-03-29T00:59:59.000Z'));
+  const after = resolveNowChart(fields, new Date('2026-03-29T01:00:00.000Z'));
+  assert.equal(before.status, 'ready');
+  assert.equal(after.status, 'ready');
+  assert.equal(before.input.localTime, '01:59:59');
+  assert.equal(before.input.offsetSeconds, 3600);
+  assert.equal(after.input.localTime, '03:00:00');
+  assert.equal(after.input.offsetSeconds, 7200);
+  assert.equal(after.input.utcIso, '2026-03-29T01:00:00.000Z');
+});
+
+test('current sky distinguishes repeated local clock times at the autumn DST fold', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  const earlier = resolveNowChart(fields, new Date('2026-10-25T00:30:00.000Z'));
+  const later = resolveNowChart(fields, new Date('2026-10-25T01:30:00.000Z'));
+  assert.equal(earlier.status, 'ready');
+  assert.equal(later.status, 'ready');
+  assert.equal(earlier.input.localTime, '02:30:00');
+  assert.equal(later.input.localTime, '02:30:00');
+  assert.equal(earlier.input.offsetSeconds, 7200);
+  assert.equal(later.input.offsetSeconds, 3600);
+  assert.notEqual(earlier.input.utcIso, later.input.utcIso);
 });
