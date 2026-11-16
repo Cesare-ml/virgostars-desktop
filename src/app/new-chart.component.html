@@ -1,6 +1,12 @@
 <form class="new-chart" [attr.aria-label]="t('form.title')" (submit)="$event.preventDefault(); submit()">
   <p class="form-note">{{t('form.intro')}}</p>
 
+  <div class="location-start">
+    <button type="button" class="form-primary" [disabled]="busy" (click)="requestCurrentLocation()">{{t('location.useDevice')}}</button>
+    <p class="form-note">{{t('location.privacy')}}</p>
+    <p class="form-problem" role="status" aria-live="polite" *ngIf="locationMessage">{{t(locationMessage)}}</p>
+  </div>
+
   <label class="field">
     <span>{{t('form.name')}}</span>
     <input type="text" autocomplete="off" spellcheck="false" [attr.maxlength]="maxNameLength"
