@@ -25,6 +25,10 @@ Swiss Ephemeris and the `sweph-sys` crate are **AGPL-3.0** (or a paid Astrodiens
 
 **Maintainer decision, 2026-11-15:** no professional licence is held. The provider is for **local use on the maintainer's own machine only**. Do not publish, attach to a release or hand to anyone a binary built with `swiss-ephemeris`, and do not enable the feature by default.
 
+## Source consistency hardening (draft)
+
+A separate draft change checks that the native C result identifies exactly one known ephemeris source and that ecliptic/equatorial calculations agree. Unknown flags are no longer labelled JPL by default. See [source-consistency guard](SWISS_SOURCE_CONSISTENCY.md). This is not a numerical validation or a licence change.
+
 ## Other open points
 
 - `astrological-functions` is now a required sibling checkout (`file:../astrological-functions`). The maintainer made that repository public on 2026-11-15; its README still says "private" and should be updated there.
