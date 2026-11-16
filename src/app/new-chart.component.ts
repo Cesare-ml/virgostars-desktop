@@ -41,6 +41,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
   private readonly cd = inject(ChangeDetectorRef);
   private destroyed = false;
   private locationRequest = 0;
+  private locationTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly maxNameLength = MAX_CHART_NAME_LENGTH;
   name = '';
@@ -69,6 +70,13 @@ export class NewChartComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.locationRequest++;
+    this.clearLocationTimer();
+  }
+
+  private clearLocationTimer(): void {
+    const timer = this.locationTimer;
+    this.locationTimer = null;
+    if (timer !== null) clearTimeout(timer);
   }
 
   private async resumePreviouslyGrantedLocation(): Promise<void> {
@@ -105,10 +113,18 @@ export class NewChartComponent implements OnInit, OnDestroy {
     }
     this.locationPending = true;
     this.locationMessage = 'location.requesting';
+    this.locationTimer = setTimeout(() => {
+      if (this.destroyed || request !== this.locationRequest) return;
+      this.locationTimer = null;
+      this.locationPending = false;
+      this.locationMessage = 'location.timeout';
+      this.cd.markForCheck();
+    }, 13_000);
     this.cd.markForCheck();
     try {
       navigator.geolocation.getCurrentPosition(position => {
         if (this.destroyed || request !== this.locationRequest) return;
+        this.clearLocationTimer();
         const coordinates = normalizeCurrentCoordinates(position.coords.latitude, position.coords.longitude);
         if (!coordinates) {
           this.locationPending = false;
@@ -129,6 +145,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
         this.cd.markForCheck();
       }, error => {
         if (this.destroyed || request !== this.locationRequest) return;
+        this.clearLocationTimer();
         this.locationPending = false;
         this.locationMessage = error.code === 1 ? 'location.denied' :
           error.code === 3 ? 'location.timeout' : 'location.unavailable';
@@ -136,6 +153,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
       }, {enableHighAccuracy: false, maximumAge: 60_000, timeout: 12_000});
     } catch {
       if (!this.destroyed && request === this.locationRequest) {
+        this.clearLocationTimer();
         this.locationPending = false;
         this.locationMessage = 'location.unavailable';
         this.cd.markForCheck();
