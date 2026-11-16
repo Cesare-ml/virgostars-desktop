@@ -131,3 +131,33 @@ test('selected offline place never inherits an earlier or host timezone', () => 
   assert.deepEqual(resolveNowChart(fields, new Date('2026-11-16T12:00:00Z')),
     {status: 'problem', problem: 'zone_invalid'});
 });
+
+
+test('current-moment metadata follows daylight-saving changes while preserving UTC', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  const winter = resolveNowChart(fields, new Date('2026-01-15T12:34:56.789Z'));
+  assert.equal(winter.status, 'ready');
+  assert.equal(winter.input.utcIso, '2026-01-15T12:34:56.789Z');
+  assert.equal(winter.input.localDate, '2026-01-15');
+  assert.equal(winter.input.localTime, '13:34:56');
+  assert.equal(winter.input.offsetSeconds, 3600);
+
+  const summer = resolveNowChart(fields, new Date('2026-07-15T12:34:56.789Z'));
+  assert.equal(summer.status, 'ready');
+  assert.equal(summer.input.utcIso, '2026-07-15T12:34:56.789Z');
+  assert.equal(summer.input.localDate, '2026-07-15');
+  assert.equal(summer.input.localTime, '14:34:56');
+  assert.equal(summer.input.offsetSeconds, 7200);
+});
+
+test('UTC is explicit and stable; extended ISO instants are rejected before IPC', () => {
+  const fields = {name: '', timeZone: 'UTC', latitude: '0', longitude: '0', placeName: ''};
+  const utc = resolveNowChart(fields, new Date('2026-11-16T08:09:10.123Z'));
+  assert.equal(utc.status, 'ready');
+  assert.equal(utc.input.localDate, '2026-11-16');
+  assert.equal(utc.input.localTime, '08:09:10');
+  assert.equal(utc.input.offsetSeconds, 0);
+
+  assert.deepEqual(resolveNowChart(fields, new Date(8_640_000_000_000_000)),
+    {status: 'problem', problem: 'instant_unavailable'});
+});
