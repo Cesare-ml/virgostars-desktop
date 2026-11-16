@@ -28,10 +28,13 @@ test('refresh uses the existing local provider path and preserves chart identity
   assert.match(desktop, /liveNow:\s*true/);
 });
 
-test('historical archive payload excludes the transient live marker', () => {
+test('archive writes a snapshot and freezes the live session chart after success', () => {
   const saveBlock = desktop.match(/async saveActiveChart\(\): Promise<void>[\s\S]*?\n  }/)?.[0] ?? '';
+  const saveRequest = saveBlock.match(/this\.runArchive\(\{operation:'save', chart:\{[\s\S]*?\}\}, 'archive\.saved'\)/)?.[0] ?? '';
   assert.ok(saveBlock.length > 0);
-  assert.match(saveBlock, /placeName:\s*chart\.placeName/);
+  assert.ok(saveRequest.length > 0);
+  assert.match(saveRequest, /placeName:\s*chart\.placeName/);
+  assert.doesNotMatch(saveRequest, /liveNow/);
   assert.match(saveBlock, /liveNow:false/);
   assert.match(saveBlock, /this\.liveNowRefreshBusy/);
 });
