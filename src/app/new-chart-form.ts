@@ -170,3 +170,9 @@ export function resolveNowChart(
     },
   };
 }
+
+
+/** Never inherit a prior place's zone when a catalog entry lacks one. */
+export function selectedPlaceTimeZone(timeZone: string | null | undefined): string {
+  return typeof timeZone === 'string' ? timeZone.trim() : '';
+}
