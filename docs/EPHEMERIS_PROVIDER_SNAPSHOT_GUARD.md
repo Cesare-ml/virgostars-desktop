@@ -14,7 +14,7 @@ The versioned `calculate_chart` command already validates the UTC request before
 - The body collection must be non-empty and bounded (64); house systems and unavailable-item lists are bounded too.
 - Every angular coordinate must be finite and in its declared range: longitudes/right ascensions/house angles in [0, 360), latitudes/declinations in [-90, 90].
 - Distances must be finite and positive; all three motion components must be finite.
-- Body, house and unavailable identifiers/source labels must be short printable ASCII labels.
+- Body, house and unavailable identifiers/source labels must be short printable ASCII labels; provider ID and engine-version labels receive the same check.
 - Duplicate identifiers and an identifier being both available and unavailable are rejected.
 
 Any provider error or malformed provider snapshot becomes the existing opaque `calculation_failed` response. No diagnostic, path or input is included in that response. No fallback provider is silently selected.
@@ -32,7 +32,7 @@ The current optional Swiss provider remains a local-use prototype subject to its
 ## Tests added
 
 Rust unit tests cover:
-- non-finite and out-of-range coordinates;
+- non-finite and out-of-range coordinates plus malformed provider metadata;
 - duplicate/contradictory body identifiers and invalid house cusps;
 - excessive body counts and invalid source labels.
 
