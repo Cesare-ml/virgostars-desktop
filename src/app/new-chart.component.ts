@@ -116,6 +116,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
     this.locationTimer = setTimeout(() => {
       if (this.destroyed || request !== this.locationRequest) return;
       this.locationTimer = null;
+      this.locationRequest++;
       this.locationPending = false;
       this.locationMessage = 'location.timeout';
       this.cd.markForCheck();
