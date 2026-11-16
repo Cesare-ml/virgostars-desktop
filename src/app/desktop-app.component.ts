@@ -153,6 +153,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private transitChart: SessionChart | null = null;
   private calcTicket = 0;
   private nextChartId = 1;
+  private currentSkyChartId: number | null = null;
   private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
   // Charts saved in the local SQLite archive (inputs only, recalculated when opened).
   savedCharts: readonly SavedChartV1[] = [];
@@ -314,7 +315,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const systems = availableHouseSystems(chart.data);
     if (!systems.includes(this.houseSystem) && systems.length) this.houseSystem = systems[0];
   }
-  async onChartRequested(input: NewChartInput, archiveId: string | null = null): Promise<void> {
+  async onChartRequested(input: NewChartInput, archiveId: string | null = null, replaceCurrentSky = false): Promise<void> {
     if (this.destroyed) return;
     const ticket = ++this.calcTicket;
     this.calcBusy = true;
@@ -328,8 +329,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.calcMessage = chart;
     } else {
       const previous = this.activeChartId;
+      const obsoleteId = replaceCurrentSky ? this.currentSkyChartId : null;
+      if (obsoleteId !== null) {
+        this.sessionCharts = this.sessionCharts.filter(item => item.id !== obsoleteId);
+        if (this.partnerChartId === obsoleteId) this.partnerChartId = null;
+        if (this.returnRadix?.chartId === obsoleteId) this.closeReturns();
+      }
       this.sessionCharts = [...this.sessionCharts, chart];
-      if (this.partnerChartId === null && previous !== null) this.partnerChartId = previous;
+      if (replaceCurrentSky) this.currentSkyChartId = chart.id;
+      // Refreshing the sky is not a new synastry partner; preserve only real prior charts.
+      if (this.partnerChartId === null && previous !== null && previous !== obsoleteId &&
+          this.sessionCharts.some(item => item.id === previous)) this.partnerChartId = previous;
       this.showChart(chart);
       this.calcMessage = 'calc.ready';
     }
@@ -355,6 +365,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   removeChart(id:number): void {
     if (this.calcBusy || this.exporting) return;
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
+    if (this.currentSkyChartId === id) this.currentSkyChartId = null;
     if (this.returnRadix?.chartId === id) this.closeReturns();
     if (this.partnerChartId === id) this.partnerChartId = null;
     if (this.activeChartId === id) this.showChart(null);
@@ -568,7 +579,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     const input = currentSkyInput(utcIso, place);
     if (!input) return;
-    await this.onChartRequested(input);
+    await this.onChartRequested(input, null, true);
   }
   onCityEdited(): void {
     this.selectedCity = null;
