@@ -23,6 +23,7 @@ import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityC
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
+import { currentSkyInput } from './astro/current-sky-input';
 import { calculateChart } from './native/chart-calculation';
 import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
@@ -552,6 +553,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.selectedCity = place;
     this.updateCityClock();
     this.cd.markForCheck();
+  }
+  /** Compute the actual sky at the device's current UTC instant for the selected offline city. */
+  async showCurrentSky(): Promise<void> {
+    if (this.destroyed || this.calcBusy || this.exporting) return;
+    const place = this.selectedCity;
+    const utcIso = this.clockInstantIso;
+    if (!place || !utcIso) {
+      this.inspectorCollapsed = false;
+      this.setInspectorTab('settings');
+      return;
+    }
+    const input = currentSkyInput(utcIso, place);
+    if (!input) return;
+    await this.onChartRequested(input);
   }
   onCityEdited(): void {
     this.selectedCity = null;

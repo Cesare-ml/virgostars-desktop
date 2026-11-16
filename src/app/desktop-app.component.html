@@ -26,6 +26,9 @@
         <button type="button" class="nav-item nav-primary" [attr.title]="t('newchart')" (click)="openNewChart()">
           <span class="nav-mark" aria-hidden="true">＋</span><span class="nav-label">{{t('newchart')}}</span>
         </button>
+        <button type="button" class="nav-item" [disabled]="busy || calcBusy" (click)="showCurrentSky()" title="Calculate the current sky for the selected offline city">
+          <span class="nav-mark" aria-hidden="true">◷</span><span class="nav-label">Cielo adesso / Sky now</span>
+        </button>
         <button type="button" class="nav-item" *ngFor="let item of modes"
           [class.selected]="mode===item"
           [disabled]="busy || calcBusy"
