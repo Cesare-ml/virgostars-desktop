@@ -382,15 +382,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
     let result: SessionChart | MessageKey;
-    try {
-      result = await this.computeChart({
-        name:chart.name, utcIso:iso, timeZone:chart.timeZone,
-        // Only the UTC instant and coordinates are consumed by computeChart.
-        localDate:iso.slice(0, 10), localTime:iso.slice(11, 19), offsetSeconds:0,
-        placeName:chart.placeName, latMicro:chart.latMicro, lngMicro:chart.lngMicro,
-      }, null);
-    } catch {
-      result = 'calc.failed';
+    const now = resolveNowChart({
+      name: chart.name, timeZone: chart.timeZone,
+      latitude: String(chart.latMicro / 1e6),
+      longitude: String(chart.lngMicro / 1e6),
+      placeName: chart.placeName,
+    }, new Date(iso));
+    if (now.status !== 'ready') {
+      result = 'calc.invalid';
+    } else {
+      try {
+        result = await this.computeChart(now.input, null);
+      } catch {
+        result = 'calc.failed';
+      }
     }
     if (this.destroyed || ticket !== this.calcTicket) return;
     this.calcBusy = false;
