@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart,
+  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart, resolveNowChart,
 } from '../src/app/new-chart-form.ts';
 import {resolveCivilTime} from '../src/app/native/civil-time.ts';
 
@@ -77,4 +77,47 @@ test('UTC offsets are labelled with sign, hours, minutes and historical seconds'
   assert.equal(formatUtcOffset(-12600), '-03:30');
   assert.equal(formatUtcOffset(0), '+00:00');
   assert.equal(formatUtcOffset(2996), '+00:49:56');
+});
+
+
+test('current-moment chart uses the injected UTC instant and the exact selected place', () => {
+  const result = resolveNowChart({
+    name: '  Cielo presente  ', timeZone: ' Europe/Rome ',
+    latitude: '44.697805', longitude: '11,805778', placeName: ' Bologna ',
+  }, new Date('2026-11-16T11:28:42.123Z'));
+  assert.equal(result.status, 'ready');
+  assert.deepEqual(result.input, {
+    name: 'Cielo presente',
+    utcIso: '2026-11-16T11:28:42.123Z',
+    localDate: '',
+    localTime: '',
+    timeZone: 'Europe/Rome',
+    offsetSeconds: 0,
+    latMicro: 44_697_805,
+    lngMicro: 11_805_778,
+    placeName: 'Bologna',
+  });
+});
+
+test('current-moment chart refuses missing or unsupported time zones', () => {
+  const fields = {name: '', timeZone: '', latitude: '0', longitude: '0', placeName: ''};
+  assert.deepEqual(resolveNowChart(fields, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'zone_invalid'});
+  assert.deepEqual(resolveNowChart({...fields, timeZone: 'Mars/Olympus_Mons'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'zone_invalid'});
+  assert.deepEqual(resolveNowChart({...fields, timeZone: 'UTC'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'ready', input: {
+      name: '', utcIso: '2026-01-01T00:00:00.000Z', localDate: '', localTime: '',
+      timeZone: 'UTC', offsetSeconds: 0, latMicro: 0, lngMicro: 0, placeName: '',
+    }});
+});
+
+test('current-moment chart never emits an invalid or fabricated instant', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  assert.deepEqual(resolveNowChart(fields, new Date(Number.NaN)),
+    {status: 'problem', problem: 'instant_unavailable'});
+  assert.deepEqual(resolveNowChart({...fields, latitude: '91'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'latitude_invalid'});
+  assert.deepEqual(resolveNowChart({...fields, longitude: '181'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'longitude_invalid'});
 });
