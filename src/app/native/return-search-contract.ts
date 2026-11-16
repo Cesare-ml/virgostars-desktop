@@ -116,9 +116,13 @@ export async function requestReturns(
       request: {protocolVersion: 1, body: request.body, targetLongitudeDeg: request.targetLongitudeDeg, year: request.year},
     });
     const decoded = decodeReturnResponse(raw);
-    return decoded.status === 'ok'
-      ? {kind: 'ready', provider: decoded.provider, instants: decoded.instants}
-      : {kind: decoded.status};
+    if (decoded.status !== 'ok') return {kind: decoded.status};
+    // A successful native response must belong to the requested UTC calendar
+    // year. A neighboring year's event must not silently enter the chart list.
+    if (decoded.instants.some(instant => Number(instant.utcIso.slice(0, 4)) !== request.year)) {
+      return {kind: 'unavailable'};
+    }
+    return {kind: 'ready', provider: decoded.provider, instants: decoded.instants};
   } catch {
     return {kind: 'unavailable'};
   }
