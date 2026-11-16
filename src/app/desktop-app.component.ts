@@ -549,11 +549,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
   }
   onCitySelected(place: OfflinePlaceV1): void {
+    if (this.destroyed) return;
     this.selectedCity = place;
     this.updateCityClock();
     this.cd.markForCheck();
   }
   onCityEdited(): void {
+    if (this.destroyed) return;
     this.selectedCity = null;
     this.updateCityClock();
     this.cd.markForCheck();
@@ -638,6 +640,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   toggleLanguage(): void {
+    if (this.destroyed) return;
     this.locale = this.locale === 'it' ? 'en' : 'it';
     document.documentElement.lang = this.locale;
     this.persistUiPreferences();
