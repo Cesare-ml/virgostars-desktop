@@ -429,8 +429,11 @@ mod tests {
             assert_eq!(handle(&archive.0, request, 1000).status, "invalid_request", "request {index}");
         }
         assert!(!archive.0.exists(), "validation must happen before any disk access");
-        // An empty name is allowed: the interface shows "unnamed chart".
-        assert_eq!(handle(&archive.0, &save_request(record(ID_A, "")), 1000).status, "ok");
+        // Empty and whitespace-only names are invalid, even before first use.
+        for name in ["", " ", "\t"] {
+            assert_eq!(handle(&archive.0, &save_request(record(ID_A, name)), 1000).status, "invalid_request");
+        }
+        assert!(!archive.0.exists(), "invalid names must not create an archive");
     }
 
     #[test]
