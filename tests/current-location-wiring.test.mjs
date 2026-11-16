@@ -22,8 +22,8 @@ test('first-run location requires a deliberate button and secure context', () =>
   assert.match(formHtml, /\(click\)="requestCurrentLocation\(\)"/);
   assert.match(form, /window\.isSecureContext === true/);
   assert.match(form, /getCurrentPosition/);
-  assert.match(rust, /tauri::webview::PermissionKind::Geolocation => tauri::webview::PermissionResponse::Allow/);
-  assert.match(rust, /_ => tauri::webview::PermissionResponse::Default/);
+  assert.match(rust, /tauri::webview::PermissionKind::Geolocation => tauri::webview::PermissionResponse::Default/);
+  assert.match(rust, /_ => tauri::webview::PermissionResponse::Deny/);
 });
 
 test('denials and failures retain offline city fallback', () => {
