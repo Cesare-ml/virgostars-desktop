@@ -31,3 +31,23 @@ test('current sky rejects unknown zones and preserves subsecond UTC offsets', ()
   assert.equal(subsecond.offsetSeconds, 7200);
   assert.equal(subsecond.utcIso, '2026-07-15T12:00:00.999Z');
 });
+
+test('current sky resolves DST fold as two distinct UTC instants', () => {
+  const first = currentSkyInput('2026-10-25T00:30:00.000Z', city);
+  const second = currentSkyInput('2026-10-25T01:30:00.000Z', city);
+  assert.equal(first.localTime, '02:30:00');
+  assert.equal(second.localTime, '02:30:00');
+  assert.equal(first.offsetSeconds, 7200);
+  assert.equal(second.offsetSeconds, 3600);
+  assert.notEqual(first.utcIso, second.utcIso);
+});
+
+test('current sky handles western time zones and native calendar bounds', () => {
+  const ny = {...city, name: 'New York', timeZone: 'America/New_York'};
+  const west = currentSkyInput('2026-01-01T02:30:00.000Z', ny);
+  assert.equal(west.localDate, '2025-12-31');
+  assert.equal(west.localTime, '21:30:00');
+  assert.equal(west.offsetSeconds, -18000);
+  assert.equal(currentSkyInput('1599-12-31T23:00:00.000Z', city), null);
+  assert.equal(currentSkyInput('2401-01-01T00:00:00.000Z', city), null);
+});
