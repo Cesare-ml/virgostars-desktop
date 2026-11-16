@@ -7,6 +7,7 @@ export interface ChartRetryState {
   readonly destroyed: boolean;
   readonly busy: boolean;
   readonly calcBusy: boolean;
+  readonly calcBusy: boolean;
   readonly ready: boolean;
   readonly exporting: boolean;
   readonly hasError: boolean;
@@ -18,6 +19,7 @@ export function canRetryChartRender(state: ChartRetryState | null | undefined): 
     state.initialized === true &&
     state.destroyed === false &&
     state.busy === false &&
+    state.calcBusy === false &&
     state.calcBusy === false &&
     state.ready === false &&
     state.exporting === false &&
