@@ -605,7 +605,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ): Promise<void> {
     try {
       const refreshed = await this.computeChart(input, null);
-      if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== previous.id) return;
+      if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== previous.id ||
+          this.exporting || this.archiveBusy || this.calcBusy) return;
       // A failed provider calculation leaves the last valid chart visible. The
       // next minute is a fresh attempt; no rapid retry loop is started.
       if (typeof refreshed === 'string') return;
