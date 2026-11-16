@@ -152,6 +152,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private calcTicket = 0;
   liveChartId: number | null = null;
   private liveMinute: number | null = null;
+  private liveOriginalChart: SessionChart | null = null;
   private nextChartId = 1;
   private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
   // Charts saved in the local SQLite archive (inputs only, recalculated when opened).
@@ -342,7 +343,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.liveChartId === chart.id) {
       this.liveChartId = null;
       this.liveMinute = null;
+      this.liveOriginalChart = null;
     } else {
+      this.liveOriginalChart = chart;
       this.liveChartId = chart.id;
       this.liveMinute = null;
       void this.refreshLiveSky();
@@ -377,8 +380,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.calcMessage = result;
       // Retry on a later tick rather than endlessly repeating within this minute.
       this.liveChartId = null;
+      this.liveOriginalChart = null;
     } else if (this.liveChartId === chart.id && this.activeChartId === chart.id) {
-      const updated = {...result, id:chart.id, archiveId:chart.archiveId};
+      // A live sky is not the archived birth chart; never retain its archive identity.
+      const updated = {...result, id:chart.id, archiveId:null};
       this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? updated : item);
       this.rowsCache = null;
       this.aspectCache = null;
@@ -390,7 +395,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private showChart(chart: SessionChart | null): void {
     this.activeChartId = chart ? chart.id : null;
-    if (this.liveChartId !== null && this.liveChartId !== this.activeChartId) this.liveChartId = null;
+    if (this.liveChartId !== null && this.liveChartId !== this.activeChartId) {
+      this.liveChartId = null;
+      this.liveOriginalChart = null;
+      this.liveMinute = null;
+    }
     this.transitChart = null;
     this.rowsCache = null;
     this.selectedPlanet = null;
@@ -407,8 +416,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   removeChart(id:number): void {
-    if (this.liveChartId === id) this.liveChartId = null;
     if (this.calcBusy || this.exporting) return;
+    if (this.liveChartId === id) {
+      this.liveChartId = null;
+      this.liveOriginalChart = null;
+      this.liveMinute = null;
+    }
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
     if (this.returnRadix?.chartId === id) this.closeReturns();
     if (this.partnerChartId === id) this.partnerChartId = null;
@@ -664,6 +677,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.liveChartId = null;
+    this.liveOriginalChart = null;
     ++this.calcTicket;
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
