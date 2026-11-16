@@ -130,6 +130,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   skyAutoRefresh = false;
   private skyRefreshBucket = -1;
   private skyChartId: number | null = null;
+  private skyPendingTicket: number | null = null;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
@@ -319,11 +320,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   async onChartRequested(input: NewChartInput, archiveId: string | null = null, replaceSky = false): Promise<void> {
     if (this.destroyed) return;
+    if (!replaceSky) this.skyPendingTicket = null;
     const ticket = ++this.calcTicket;
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
-    const chart = await this.computeChart(input, archiveId);
+    let chart: SessionChart | MessageKey;
+    try {
+      chart = await this.computeChart(input, archiveId);
+    } catch {
+      chart = 'calc.failed';
+    }
     // Only the latest request may change what is on screen.
     if (this.destroyed || ticket !== this.calcTicket) return;
     this.calcBusy = false;
@@ -601,20 +608,34 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const now = this.deviceClock.timestamp;
     if (!Number.isFinite(now) || Math.abs(now) > 8_640_000_000_000_000) return;
     const utcIso = new Date(now).toISOString();
-    await this.onChartRequested({
+    const request = this.onChartRequested({
       name: this.t('sky.now'),
       utcIso,
       localDate: '', localTime: '', timeZone: city.timeZone || 'UTC',
       offsetSeconds: 0, latMicro: city.latMicro, lngMicro: city.lngMicro,
       placeName: city.name,
     }, null, true);
+    const ticket = this.calcTicket;
+    this.skyPendingTicket = ticket;
+    await request;
+    // A city change or another calculation invalidates this request.
+    if (this.destroyed || this.calcTicket !== ticket || this.skyPendingTicket !== ticket) return;
+    this.skyPendingTicket = null;
     if (this.calcMessage !== 'calc.ready') {
       // No repeated IPC calls every five minutes when the provider is absent.
       this.skyAutoRefresh = false;
       this.cd.markForCheck();
     }
   }
+  private invalidatePendingSky(): void {
+    if (this.skyPendingTicket !== null) {
+      ++this.calcTicket;
+      this.calcBusy = false;
+      this.skyPendingTicket = null;
+    }
+  }
   onCitySelected(place: OfflinePlaceV1): void {
+    this.invalidatePendingSky();
     this.selectedCity = place;
     this.skyAutoRefresh = false;
     this.skyRefreshBucket = -1;
@@ -622,6 +643,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   onCityEdited(): void {
+    this.invalidatePendingSky();
     this.selectedCity = null;
     this.skyAutoRefresh = false;
     this.skyRefreshBucket = -1;
