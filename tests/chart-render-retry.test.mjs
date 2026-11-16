@@ -166,3 +166,19 @@ test('draw failure uses failed status instead of leaving a stale loading label',
   const catalog = readFileSync(new URL('../src/app/translations.ts', import.meta.url), 'utf8');
   assert.equal((catalog.match(/"chart\.failed":/g) ?? []).length, 2);
 });
+
+test('native calculation completion re-enables retry only for a still-failed draw', () => {
+  const state = {...failed, calcBusy: true};
+  assert.equal(canRetryChartRender(state), false);
+  state.calcBusy = false;
+  assert.equal(canRetryChartRender(state), true);
+  state.ready = true;
+  assert.equal(canRetryChartRender(state), false);
+});
+
+test('missing native calculation flag cannot bypass retry contention guard', () => {
+  const {calcBusy: _omitted, ...withoutCalcBusy} = failed;
+  assert.equal(canRetryChartRender(withoutCalcBusy), false);
+  assert.equal(canRetryChartRender({...failed, calcBusy: undefined}), false);
+  assert.equal(canRetryChartRender({...failed, calcBusy: 0}), false);
+});
