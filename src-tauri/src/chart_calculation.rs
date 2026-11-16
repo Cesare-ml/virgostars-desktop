@@ -215,6 +215,24 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
             return false;
         }
     }
+    // A body or house system cannot be simultaneously available and unavailable.
+    // Keep unavailable lists unique so the UI never receives contradictory status.
+    for (index, id) in chart.unavailable_bodies.iter().enumerate() {
+        if id.is_empty()
+            || chart.unavailable_bodies[..index].contains(id)
+            || chart.bodies.iter().any(|body| body.id == *id)
+        {
+            return false;
+        }
+    }
+    for (index, id) in chart.unavailable_house_systems.iter().enumerate() {
+        if id.is_empty()
+            || chart.unavailable_house_systems[..index].contains(id)
+            || chart.houses.iter().any(|house| house.id == *id)
+        {
+            return false;
+        }
+    }
     for (index, house) in chart.houses.iter().enumerate() {
         if house.id.is_empty()
             || !house.cusps_deg.iter().all(|value| angle(*value))
@@ -442,6 +460,58 @@ mod tests {
             armc_deg: 0.0,
             vertex_deg: 0.0,
         });
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+    }
+
+    #[test]
+    fn test_provider_cannot_mark_available_items_as_unavailable() {
+        let mut chart = empty_chart();
+        chart.bodies.push(BodyPositionV1 {
+            id: "Chiron",
+            longitude_deg: 10.0,
+            latitude_deg: 0.0,
+            distance_au: 1.0,
+            longitude_speed: 0.0,
+            latitude_speed: 0.0,
+            distance_speed: 0.0,
+            right_ascension_deg: 10.0,
+            declination_deg: 0.0,
+            ephemeris_source: "synthetic_test",
+        });
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+
+        let mut chart = empty_chart();
+        chart.houses.push(HouseSystemV1 {
+            id: "placido",
+            cusps_deg: [0.0; 12],
+            ascendant_deg: 0.0,
+            mc_deg: 0.0,
+            armc_deg: 0.0,
+            vertex_deg: 0.0,
+        });
+        chart.unavailable_house_systems.push("placido");
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+    }
+
+    #[test]
+    fn test_duplicate_unavailable_ids_are_rejected() {
+        let mut chart = empty_chart();
+        chart.unavailable_bodies.push("Chiron");
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+        let mut chart = empty_chart();
+        chart.unavailable_house_systems = vec!["koch", "koch"];
         assert_eq!(
             respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
             "calculation_failed"
