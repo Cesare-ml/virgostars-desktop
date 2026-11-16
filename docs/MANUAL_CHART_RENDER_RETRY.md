@@ -4,7 +4,7 @@
 
 ## Behaviour
 
-After a completed chart draw fails, the toolbar offers **Riprova il disegno / Retry chart rendering**. The action reuses the existing `draw()` path and its `RenderGeneration` latest-request-wins guard. Starting the redraw clears the prior error and returns the UI to its normal loading state.
+Only a **draw() failure** can enable retry; initialization and PNG-export errors never do. After a completed chart draw fails, the toolbar offers **Riprova il disegno / Retry chart rendering**. The action reuses the existing `draw()` path and its `RenderGeneration` latest-request-wins guard. Starting the redraw clears the prior error and returns the UI to its normal loading state.
 
 The button is available only when the renderer has initialized, the component is alive, no draw or export is active, the chart is not ready, and a visible render error exists. The click handler checks the state again before dispatching.
 
