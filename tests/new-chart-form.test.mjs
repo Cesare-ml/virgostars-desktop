@@ -187,3 +187,24 @@ test('current sky distinguishes repeated local clock times at the autumn DST fol
   assert.equal(later.input.offsetSeconds, 3600);
   assert.notEqual(earlier.input.utcIso, later.input.utcIso);
 });
+
+test('current sky derives local calendar day across UTC midnight', () => {
+  const rome = resolveNowChart(
+    {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''},
+    new Date('2026-11-16T23:30:00.000Z'),
+  );
+  assert.equal(rome.status, 'ready');
+  assert.equal(rome.input.utcIso, '2026-11-16T23:30:00.000Z');
+  assert.equal(rome.input.localDate, '2026-11-17');
+  assert.equal(rome.input.localTime, '00:30:00');
+  assert.equal(rome.input.offsetSeconds, 3600);
+
+  const newYork = resolveNowChart(
+    {name: '', timeZone: 'America/New_York', latitude: '0', longitude: '0', placeName: ''},
+    new Date('2026-11-16T02:30:00.000Z'),
+  );
+  assert.equal(newYork.status, 'ready');
+  assert.equal(newYork.input.localDate, '2026-11-15');
+  assert.equal(newYork.input.localTime, '21:30:00');
+  assert.equal(newYork.input.offsetSeconds, -18000);
+});
