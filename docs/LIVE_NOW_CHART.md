@@ -13,6 +13,6 @@
 
 ## Boundaries and remaining acceptance
 
-The `liveNow` flag belongs to the in-memory request/session model only and is deliberately not written to the chart archive. The existing provider must be present and return a valid response; this feature does not make Swiss Ephemeris the default or imply that VirgoStars-Ephemeris is integrated. The local clock is not an ephemeris.
+The `liveNow` flag belongs to the in-memory request/session model only and is deliberately not written to the chart archive. This does **not** yet satisfy the full startup experience: the user must open the chart form, choose a place and press **Now**. A remembered default place and automatic current-sky chart on application launch remain outstanding. The existing provider must be present and return a valid response; this feature does not make Swiss Ephemeris the default or imply that VirgoStars-Ephemeris is integrated. The local clock is not an ephemeris.
 
 The minute boundary helper has isolated Node tests. Full `npm test`, Angular/Charts production build, Rust provider checks, and native Windows WebView2 visual smoke still need to be run from an authorized full checkout. Confirm manually that the visible live wheel changes on a later minute, that historical charts do not change, and that hiding the window prevents background recalculation.
