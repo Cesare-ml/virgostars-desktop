@@ -176,3 +176,20 @@ test('archive requests whitelist chart fields while ignoring unrelated UI metada
     {request: {protocolVersion: 1, operation: 'save', chart: record()}},
   ]);
 });
+
+test('operation discriminant is captured once even when property descriptors change', async () => {
+  const transport = native(okResponse);
+  let reads = 0;
+  const operation = new Proxy({operation: 'save', chart: record()}, {
+    getOwnPropertyDescriptor(target, property) {
+      if (property === 'operation') {
+        reads += 1;
+        if (reads > 1) throw new Error('second read forbidden');
+      }
+      return Reflect.getOwnPropertyDescriptor(target, property);
+    },
+  });
+  assert.equal((await requestArchive(transport, operation)).kind, 'ready');
+  assert.equal(reads, 1);
+  assert.equal(transport.calls.length, 1);
+});
