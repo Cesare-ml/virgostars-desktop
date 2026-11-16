@@ -142,7 +142,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   theme: UiTheme = this.initialUiPreferences.theme;
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
-  inspectorTab: InspectorTab = 'planets';
+  inspectorTab: InspectorTab = 'chart';
+  autoLocateCurrentSky = true;
   selectedPlanet: string | null = null;
   // Calculated charts live in memory only: no disk, no account, no network.
   sessionCharts: SessionChart[] = [];
@@ -543,6 +544,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       case 'mode_synastry': this.setMode('synastry'); break;
       case 'mode_latitude': this.setMode('latitude'); break;
     }
+  }
+  onAutoLocationCheckStarted(): void {
+    this.autoLocateCurrentSky = false;
+    this.cd.markForCheck();
   }
   openNewChart(): void {
     this.inspectorCollapsed = false;
