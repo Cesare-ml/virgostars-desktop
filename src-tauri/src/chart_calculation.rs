@@ -199,11 +199,15 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
     if !chart.julian_day_ut.is_finite() {
         return false;
     }
+    // IDs and provenance cross the native-to-WebView boundary. Keep their
+    // byte sizes bounded even when an unexpected provider supplies them.
+    let identifier = |value: &str| !value.trim().is_empty() && value.len() <= 64;
+    let provenance = |value: &str| !value.trim().is_empty() && value.len() <= 128;
     let angle = |value: f64| value.is_finite() && (0.0..360.0).contains(&value);
     let latitude = |value: f64| value.is_finite() && (-90.0..=90.0).contains(&value);
     for (index, body) in chart.bodies.iter().enumerate() {
-        if body.id.trim().is_empty()
-            || body.ephemeris_source.trim().is_empty()
+        if !identifier(body.id)
+            || !provenance(body.ephemeris_source)
             || !angle(body.longitude_deg)
             || !latitude(body.latitude_deg)
             || !angle(body.right_ascension_deg)
@@ -230,7 +234,7 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
     // A body or house system cannot be simultaneously available and unavailable.
     // Keep unavailable lists unique so the UI never receives contradictory status.
     for (index, id) in chart.unavailable_bodies.iter().enumerate() {
-        if id.trim().is_empty()
+        if !identifier(id)
             || chart.unavailable_bodies[..index].contains(id)
             || chart.bodies.iter().any(|body| body.id == *id)
         {
@@ -238,7 +242,7 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
         }
     }
     for (index, id) in chart.unavailable_house_systems.iter().enumerate() {
-        if id.trim().is_empty()
+        if !identifier(id)
             || chart.unavailable_house_systems[..index].contains(id)
             || chart.houses.iter().any(|house| house.id == *id)
         {
@@ -246,7 +250,7 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
         }
     }
     for (index, house) in chart.houses.iter().enumerate() {
-        if house.id.trim().is_empty()
+        if !identifier(house.id)
             || !house.cusps_deg.iter().all(|value| angle(*value))
             || ![house.ascendant_deg, house.mc_deg, house.armc_deg, house.vertex_deg]
                 .iter()
@@ -601,6 +605,35 @@ mod tests {
         );
         let mut chart = empty_chart();
         chart.unavailable_house_systems = vec!["koch"; 33];
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+    }
+
+    #[test]
+    fn test_oversized_provider_identifiers_are_rejected() {
+        const LONG_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const LONG_SOURCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let mut chart = empty_chart();
+        chart.unavailable_bodies.push(LONG_ID);
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+        let mut chart = empty_chart();
+        chart.bodies.push(BodyPositionV1 {
+            id: "Sun",
+            longitude_deg: 10.0,
+            latitude_deg: 0.0,
+            distance_au: 1.0,
+            longitude_speed: 1.0,
+            latitude_speed: 0.0,
+            distance_speed: 0.0,
+            right_ascension_deg: 10.0,
+            declination_deg: 0.0,
+            ephemeris_source: LONG_SOURCE,
+        });
         assert_eq!(
             respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
             "calculation_failed"
