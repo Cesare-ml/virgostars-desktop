@@ -357,7 +357,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** Opt-in current-sky tracking: recalculate at most once per device-clock minute. */
   toggleLiveSky(): void {
     const chart = this.activeChart;
-    if (!chart || this.calcBusy || this.exporting) return;
+    if (!chart || this.calcBusy || this.exporting || this.archiveBusy) return;
     if (this.liveChartId === chart.id) {
       ++this.calcTicket;
       this.restoreLiveOriginal();
@@ -373,7 +373,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private async refreshLiveSky(): Promise<void> {
     const chart = this.activeChart;
     const iso = this.clockInstantIso;
-    if (!chart || chart.id !== this.liveChartId || this.calcBusy || this.exporting) return;
+    if (!chart || chart.id !== this.liveChartId || this.calcBusy || this.exporting || this.archiveBusy) return;
     if (!iso) {
       // Do not leave a previously calculated live sky displayed as current
       // when the device clock becomes invalid or exceeds the IPC date range.
