@@ -147,23 +147,69 @@ export function resolveNowChart(
   if (!timeZone || timeZone.length > 120) {
     return {status: 'problem', problem: 'zone_invalid'};
   }
+  let utcIso: string;
+  let localParts: Intl.DateTimeFormatPart[];
   try {
-    // Construction validates the supplied IANA zone without changing the
-    // UTC instant or substituting the host's timezone.
-    new Intl.DateTimeFormat('en-US', {timeZone});
+    // Keep the captured UTC instant authoritative and derive civil metadata
+    // from that same instant; never round-trip through an ambiguous local time.
+    utcIso = new Date(milliseconds).toISOString();
+    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(utcIso)) {
+      return {status: 'problem', problem: 'instant_unavailable'};
+    }
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      calendar: 'gregory',
+      numberingSystem: 'latn',
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    localParts = formatter.formatToParts(new Date(milliseconds));
   } catch {
     return {status: 'problem', problem: 'zone_invalid'};
   }
+
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    localParts.find(item => item.type === type)?.value ?? '';
+  const year = Number(part('year'));
+  const month = Number(part('month'));
+  const day = Number(part('day'));
+  const hour = Number(part('hour'));
+  const minute = Number(part('minute'));
+  const second = Number(part('second'));
+  if (!Number.isInteger(year) || year < 1 || year > 9999 ||
+      !Number.isInteger(month) || month < 1 || month > 12 ||
+      !Number.isInteger(day) || day < 1 || day > 31 ||
+      !Number.isInteger(hour) || hour < 0 || hour > 23 ||
+      !Number.isInteger(minute) || minute < 0 || minute > 59 ||
+      !Number.isInteger(second) || second < 0 || second > 59) {
+    return {status: 'problem', problem: 'zone_unavailable'};
+  }
+
+  // Interpret the formatted civil fields as UTC only to calculate their
+  // difference from the captured UTC second. This preserves historic
+  // second-level offsets and avoids DST assumptions or host-zone fallbacks.
+  const localWallTime = new Date(0);
+  localWallTime.setUTCFullYear(year, month - 1, day);
+  localWallTime.setUTCHours(hour, minute, second, 0);
+  const offsetSeconds = Math.round(
+    (localWallTime.getTime() - Math.floor(milliseconds / 1000) * 1000) / 1000,
+  );
+  const pad = (value: number) => String(value).padStart(2, '0');
 
   return {
     status: 'ready',
     input: {
       name: cleanChartName(fields.name),
-      utcIso: new Date(milliseconds).toISOString(),
-      localDate: '',
-      localTime: '',
+      utcIso,
+      localDate: `${String(year).padStart(4, '0')}-${pad(month)}-${pad(day)}`,
+      localTime: `${pad(hour)}:${pad(minute)}:${pad(second)}`,
       timeZone,
-      offsetSeconds: 0,
+      offsetSeconds,
       latMicro,
       lngMicro,
       placeName: cleanChartName(fields.placeName),
