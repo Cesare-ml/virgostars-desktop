@@ -181,6 +181,89 @@ pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
     })
 }
 
+
+const MAX_PROVIDER_BODIES: usize = 64;
+const MAX_PROVIDER_HOUSES: usize = 32;
+
+/// Provider-owned labels cross into the WebView. Keep them short and printable;
+/// they are display metadata, not authenticated provenance.
+fn valid_provider_label(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+}
+
+fn valid_angle(value: f64) -> bool {
+    value.is_finite() && (0.0..360.0).contains(&value)
+}
+
+fn valid_provider_info(info: &ProviderInfoV1) -> bool {
+    valid_provider_label(info.id) && valid_provider_label(&info.engine_version)
+}
+
+
+/// Validate an adapter result before serializing it across the native boundary.
+/// This checks shape and numeric plausibility only; it does not certify astronomy.
+fn valid_snapshot(snapshot: &ChartSnapshotV1) -> bool {
+    if !snapshot.julian_day_ut.is_finite()
+        || snapshot.julian_day_ut <= 0.0
+        || snapshot.bodies.is_empty()
+        || snapshot.bodies.len() > MAX_PROVIDER_BODIES
+        || snapshot.houses.len() > MAX_PROVIDER_HOUSES
+        || snapshot.unavailable_bodies.len() > MAX_PROVIDER_BODIES
+        || snapshot.unavailable_house_systems.len() > MAX_PROVIDER_HOUSES
+    {
+        return false;
+    }
+
+    for (index, body) in snapshot.bodies.iter().enumerate() {
+        if !valid_provider_label(body.id)
+            || !valid_provider_label(body.ephemeris_source)
+            || !valid_angle(body.longitude_deg)
+            || !(-90.0..=90.0).contains(&body.latitude_deg)
+            || !body.latitude_deg.is_finite()
+            || !body.distance_au.is_finite()
+            || body.distance_au <= 0.0
+            || !body.longitude_speed.is_finite()
+            || !body.latitude_speed.is_finite()
+            || !body.distance_speed.is_finite()
+            || !valid_angle(body.right_ascension_deg)
+            || !(-90.0..=90.0).contains(&body.declination_deg)
+            || !body.declination_deg.is_finite()
+            || snapshot.bodies[..index].iter().any(|previous| previous.id == body.id)
+            || snapshot.unavailable_bodies.contains(&body.id)
+        {
+            return false;
+        }
+    }
+
+    for (index, house) in snapshot.houses.iter().enumerate() {
+        if !valid_provider_label(house.id)
+            || !house.cusps_deg.iter().copied().all(valid_angle)
+            || !valid_angle(house.ascendant_deg)
+            || !valid_angle(house.mc_deg)
+            || !valid_angle(house.armc_deg)
+            || !valid_angle(house.vertex_deg)
+            || snapshot.houses[..index].iter().any(|previous| previous.id == house.id)
+            || snapshot.unavailable_house_systems.contains(&house.id)
+        {
+            return false;
+        }
+    }
+
+    for (index, id) in snapshot.unavailable_bodies.iter().enumerate() {
+        if !valid_provider_label(id) || snapshot.unavailable_bodies[..index].contains(id) {
+            return false;
+        }
+    }
+    for (index, id) in snapshot.unavailable_house_systems.iter().enumerate() {
+        if !valid_provider_label(id) || snapshot.unavailable_house_systems[..index].contains(id) {
+            return false;
+        }
+    }
+    true
+}
+
 fn failure(status: &'static str) -> ChartResponseV1 {
     ChartResponseV1 { protocol_version: PROTOCOL_VERSION, status, provider: None, chart: None }
 }
@@ -194,13 +277,20 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
         return failure("provider_unavailable");
     };
     match provider.chart(&valid) {
-        Ok(chart) => ChartResponseV1 {
-            protocol_version: PROTOCOL_VERSION,
-            status: "ok",
-            provider: Some(provider.info()),
-            chart: Some(chart),
-        },
-        Err(ProviderError) => failure("calculation_failed"),
+        Ok(chart) if valid_snapshot(&chart) => {
+            let info = provider.info();
+            if valid_provider_info(&info) {
+                ChartResponseV1 {
+                    protocol_version: PROTOCOL_VERSION,
+                    status: "ok",
+                    provider: Some(info),
+                    chart: Some(chart),
+                }
+            } else {
+                failure("calculation_failed")
+            }
+        }
+        Ok(_) | Err(ProviderError) => failure("calculation_failed"),
     }
 }
 
@@ -242,10 +332,31 @@ mod tests {
         }
     }
 
+    struct InvalidInfoProvider;
+    impl EphemerisProvider for InvalidInfoProvider {
+        fn info(&self) -> ProviderInfoV1 {
+            ProviderInfoV1 { id: "synthetic_test", engine_version: "bad\\nversion".to_string() }
+        }
+        fn chart(&self, _request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
+            Ok(empty_chart())
+        }
+    }
+
     fn empty_chart() -> ChartSnapshotV1 {
         ChartSnapshotV1 {
             julian_day_ut: 2_451_545.0,
-            bodies: vec![],
+            bodies: vec![BodyPositionV1 {
+                id: "Mars",
+                longitude_deg: 42.0,
+                latitude_deg: 1.0,
+                distance_au: 1.5,
+                longitude_speed: 0.5,
+                latitude_speed: 0.0,
+                distance_speed: 0.001,
+                right_ascension_deg: 43.0,
+                declination_deg: 2.0,
+                ephemeris_source: "synthetic",
+            }],
             houses: vec![],
             unavailable_bodies: vec!["Chiron"],
             unavailable_house_systems: vec![],
@@ -316,6 +427,79 @@ mod tests {
         let response = respond(Some(&provider), &request("not a date"));
         assert_eq!(response.status, "invalid_request");
         assert!(response.chart.is_none());
+    }
+
+    #[test]
+    fn test_provider_metadata_must_be_bounded_and_printable() {
+        let response = respond(Some(&InvalidInfoProvider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.provider.is_none() && response.chart.is_none());
+    }
+
+    #[test]
+    fn test_provider_output_rejects_non_finite_and_out_of_range_values() {
+        let mut invalid = empty_chart();
+        invalid.bodies[0].longitude_deg = f64::NAN;
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.provider.is_none() && response.chart.is_none());
+
+        let mut invalid = empty_chart();
+        invalid.bodies[0].declination_deg = 90.01;
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.chart.is_none());
+    }
+
+    #[test]
+    fn test_provider_output_rejects_duplicate_and_contradictory_body_ids() {
+        let mut invalid = empty_chart();
+        let duplicate = invalid.bodies[0].clone();
+        invalid.bodies.push(duplicate);
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+
+        let mut invalid = empty_chart();
+        invalid.unavailable_bodies.push("Mars");
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+    }
+
+    #[test]
+    fn test_provider_output_rejects_invalid_house_angles() {
+        let mut invalid = empty_chart();
+        invalid.houses.push(HouseSystemV1 {
+            id: "egizia",
+            cusps_deg: [360.0; 12],
+            ascendant_deg: 15.0,
+            mc_deg: 285.0,
+            armc_deg: 286.0,
+            vertex_deg: 200.0,
+        });
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.chart.is_none());
+    }
+
+    #[test]
+    fn test_provider_output_rejects_excessive_arrays_and_invalid_source_labels() {
+        let mut invalid = empty_chart();
+        let repeated_body = invalid.bodies[0].clone();
+        invalid.bodies = vec![repeated_body; MAX_PROVIDER_BODIES + 1];
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+
+        let mut invalid = empty_chart();
+        invalid.bodies[0].ephemeris_source = "bad\\nsource";
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
     }
 
     #[test]
