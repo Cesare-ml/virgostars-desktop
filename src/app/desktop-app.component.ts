@@ -150,6 +150,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   readonly catalogSummary = summarizeCatalog();
   private transitChart: SessionChart | null = null;
   private calcTicket = 0;
+  liveChartId: number | null = null;
+  private liveMinute: number | null = null;
   private nextChartId = 1;
   private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
   // Charts saved in the local SQLite archive (inputs only, recalculated when opened).
@@ -333,8 +335,60 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     this.cd.markForCheck();
   }
+  /** Opt-in current-sky tracking: recalculate at most once per device-clock minute. */
+  toggleLiveSky(): void {
+    const chart = this.activeChart;
+    if (!chart || this.calcBusy || this.exporting) return;
+    if (this.liveChartId === chart.id) {
+      this.liveChartId = null;
+      this.liveMinute = null;
+    } else {
+      this.liveChartId = chart.id;
+      this.liveMinute = null;
+      void this.refreshLiveSky();
+    }
+    this.cd.markForCheck();
+  }
+  private async refreshLiveSky(): Promise<void> {
+    const chart = this.activeChart;
+    const iso = this.clockInstantIso;
+    if (!chart || chart.id !== this.liveChartId || !iso || this.calcBusy || this.exporting) return;
+    const minute = Math.floor(Date.parse(iso) / 60_000);
+    if (minute === this.liveMinute) return;
+    this.liveMinute = minute;
+    const ticket = ++this.calcTicket;
+    this.calcBusy = true;
+    this.calcMessage = 'calc.running';
+    this.cd.markForCheck();
+    let result: SessionChart | MessageKey;
+    try {
+      result = await this.computeChart({
+        name:chart.name, utcIso:iso, timeZone:chart.timeZone,
+        placeName:chart.placeName, latMicro:chart.latMicro, lngMicro:chart.lngMicro,
+      }, null);
+    } catch {
+      result = 'calc.failed';
+    }
+    if (this.destroyed || ticket !== this.calcTicket) return;
+    this.calcBusy = false;
+    if (typeof result === 'string') {
+      this.calcMessage = result;
+      // Retry on a later tick rather than endlessly repeating within this minute.
+      this.liveChartId = null;
+    } else if (this.liveChartId === chart.id && this.activeChartId === chart.id) {
+      const updated = {...result, id:chart.id, archiveId:chart.archiveId};
+      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? updated : item);
+      this.rowsCache = null;
+      this.aspectCache = null;
+      this.transitChart = null;
+      this.calcMessage = 'calc.ready';
+      if (this.initialized) void this.draw();
+    }
+    this.cd.markForCheck();
+  }
   private showChart(chart: SessionChart | null): void {
     this.activeChartId = chart ? chart.id : null;
+    if (this.liveChartId !== null && this.liveChartId !== this.activeChartId) this.liveChartId = null;
     this.transitChart = null;
     this.rowsCache = null;
     this.selectedPlanet = null;
@@ -351,6 +405,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   removeChart(id:number): void {
+    if (this.liveChartId === id) this.liveChartId = null;
     if (this.calcBusy || this.exporting) return;
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
     if (this.returnRadix?.chartId === id) this.closeReturns();
@@ -575,6 +630,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.deviceClock.start(() => {
       if (this.destroyed) return;
       this.updateCityClock();
+      if (this.liveChartId !== null) void this.refreshLiveSky();
       this.cd.markForCheck();
     });
     // Read-only capability check, distinct from account authentication.
@@ -605,6 +661,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.liveChartId = null;
+    ++this.calcTicket;
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
