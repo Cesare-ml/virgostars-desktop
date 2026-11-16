@@ -364,6 +364,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     try {
       result = await this.computeChart({
         name:chart.name, utcIso:iso, timeZone:chart.timeZone,
+        // Only the UTC instant and coordinates are consumed by computeChart.
+        localDate:iso.slice(0, 10), localTime:iso.slice(11, 19), offsetSeconds:0,
         placeName:chart.placeName, latMicro:chart.latMicro, lngMicro:chart.lngMicro,
       }, null);
     } catch {
