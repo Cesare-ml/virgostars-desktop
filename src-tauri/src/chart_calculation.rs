@@ -188,8 +188,16 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
     if !chart.julian_day_ut.is_finite() {
         return false;
     }
+    let angle = |value: f64| value.is_finite() && (0.0..360.0).contains(&value);
+    let latitude = |value: f64| value.is_finite() && (-90.0..=90.0).contains(&value);
     for (index, body) in chart.bodies.iter().enumerate() {
         if body.id.is_empty()
+            || !angle(body.longitude_deg)
+            || !latitude(body.latitude_deg)
+            || !angle(body.right_ascension_deg)
+            || !latitude(body.declination_deg)
+            || !body.distance_au.is_finite()
+            || body.distance_au < 0.0
             || chart.bodies[..index].iter().any(|other| other.id == body.id)
             || ![
                 body.longitude_deg,
@@ -209,6 +217,10 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
     }
     for (index, house) in chart.houses.iter().enumerate() {
         if house.id.is_empty()
+            || !house.cusps_deg.iter().all(|value| angle(*value))
+            || ![house.ascendant_deg, house.mc_deg, house.armc_deg, house.vertex_deg]
+                .iter()
+                .all(|value| angle(*value))
             || chart.houses[..index].iter().any(|other| other.id == house.id)
             || !house.cusps_deg.iter().all(|value| value.is_finite())
             || ![
@@ -392,6 +404,48 @@ mod tests {
         let response = respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z"));
         assert_eq!(response.status, "calculation_failed");
         assert!(response.chart.is_none());
+    }
+
+    #[test]
+    fn test_out_of_range_provider_angles_and_distances_fail_closed() {
+        let base = BodyPositionV1 {
+            id: "Sun",
+            longitude_deg: 10.0,
+            latitude_deg: 0.0,
+            distance_au: 1.0,
+            longitude_speed: 1.0,
+            latitude_speed: 0.0,
+            distance_speed: 0.0,
+            right_ascension_deg: 10.0,
+            declination_deg: 0.0,
+            ephemeris_source: "synthetic_test",
+        };
+        for invalid in [
+            BodyPositionV1 { longitude_deg: 360.0, ..base.clone() },
+            BodyPositionV1 { latitude_deg: 90.1, ..base.clone() },
+            BodyPositionV1 { right_ascension_deg: -1.0, ..base.clone() },
+            BodyPositionV1 { declination_deg: -90.1, ..base.clone() },
+            BodyPositionV1 { distance_au: -1.0, ..base.clone() },
+        ] {
+            let mut chart = empty_chart();
+            chart.bodies.push(invalid);
+            let response = respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z"));
+            assert_eq!(response.status, "calculation_failed");
+            assert!(response.chart.is_none());
+        }
+        let mut chart = empty_chart();
+        chart.houses.push(HouseSystemV1 {
+            id: "placido",
+            cusps_deg: [360.0; 12],
+            ascendant_deg: 0.0,
+            mc_deg: 0.0,
+            armc_deg: 0.0,
+            vertex_deg: 0.0,
+        });
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
     }
 
     #[test]
