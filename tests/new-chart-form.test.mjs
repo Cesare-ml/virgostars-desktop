@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart,
+  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveCurrentSky, resolveNewChart,
 } from '../src/app/new-chart-form.ts';
 import {resolveCivilTime} from '../src/app/native/civil-time.ts';
 
@@ -77,4 +77,61 @@ test('UTC offsets are labelled with sign, hours, minutes and historical seconds'
   assert.equal(formatUtcOffset(-12600), '-03:30');
   assert.equal(formatUtcOffset(0), '+00:00');
   assert.equal(formatUtcOffset(2996), '+00:49:56');
+});
+
+
+const CURRENT_FIELDS = Object.freeze({
+  name: '  Cielo attuale  ', timeZone: 'Europe/Rome',
+  latitude: '44.697805', longitude: '11,805778', placeName: 'Luogo di prova',
+});
+
+test('current sky captures one UTC instant and derives winter civil metadata', () => {
+  let reads = 0;
+  const result = resolveCurrentSky(CURRENT_FIELDS, () => {
+    reads++;
+    return new Date('2026-01-15T12:34:56.789Z');
+  });
+  assert.equal(reads, 1);
+  assert.equal(result.status, 'ready');
+  assert.deepEqual(result.input, {
+    name: 'Cielo attuale', utcIso: '2026-01-15T12:34:56.789Z',
+    localDate: '2026-01-15', localTime: '13:34:56', timeZone: 'Europe/Rome',
+    offsetSeconds: 3600, latMicro: 44_697_805, lngMicro: 11_805_778,
+    placeName: 'Luogo di prova',
+  });
+});
+
+test('current sky derives daylight-saving metadata without changing the UTC instant', () => {
+  const result = resolveCurrentSky(CURRENT_FIELDS, () => new Date('2026-07-15T12:34:56.789Z'));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.input.utcIso, '2026-07-15T12:34:56.789Z');
+  assert.equal(result.input.localDate, '2026-07-15');
+  assert.equal(result.input.localTime, '14:34:56');
+  assert.equal(result.input.offsetSeconds, 7200);
+});
+
+test('current sky uses UTC when the optional display timezone is blank', () => {
+  const result = resolveCurrentSky({...CURRENT_FIELDS, timeZone: '  '},
+    () => new Date('2026-11-16T08:09:10.123Z'));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.input.timeZone, 'UTC');
+  assert.equal(result.input.localDate, '2026-11-16');
+  assert.equal(result.input.localTime, '08:09:10');
+  assert.equal(result.input.offsetSeconds, 0);
+});
+
+test('current sky rejects invalid coordinates, zones and clock readings safely', () => {
+  let reads = 0;
+  assert.deepEqual(resolveCurrentSky({...CURRENT_FIELDS, latitude: '91'}, () => {
+    reads++;
+    return new Date();
+  }), {status: 'problem', problem: 'latitude_invalid'});
+  assert.equal(reads, 0);
+  assert.deepEqual(resolveCurrentSky({...CURRENT_FIELDS, timeZone: 'Mars/Olympus_Mons'},
+    () => new Date('2026-01-01T00:00:00Z')),
+  {status: 'problem', problem: 'zone_invalid'});
+  assert.deepEqual(resolveCurrentSky(CURRENT_FIELDS, () => new Date(Number.NaN)),
+    {status: 'problem', problem: 'zone_unavailable'});
+  assert.deepEqual(resolveCurrentSky(CURRENT_FIELDS, () => { throw new Error('clock unavailable'); }),
+    {status: 'problem', problem: 'zone_unavailable'});
 });
