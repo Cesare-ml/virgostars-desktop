@@ -268,6 +268,15 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
     true
 }
 
+/// Provider metadata is also untrusted: keep the renderer-facing string small
+/// and printable without leaking control characters through IPC.
+fn valid_provider_info(info: &ProviderInfoV1) -> bool {
+    !info.id.trim().is_empty()
+        && !info.engine_version.trim().is_empty()
+        && info.engine_version.len() <= 128
+        && !info.engine_version.chars().any(char::is_control)
+}
+
 fn failure(status: &'static str) -> ChartResponseV1 {
     ChartResponseV1 { protocol_version: PROTOCOL_VERSION, status, provider: None, chart: None }
 }
@@ -282,11 +291,17 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
     };
     match provider.chart(&valid) {
         Ok(chart) if !valid_snapshot(&chart) => failure("calculation_failed"),
-        Ok(chart) => ChartResponseV1 {
-            protocol_version: PROTOCOL_VERSION,
-            status: "ok",
-            provider: Some(provider.info()),
-            chart: Some(chart),
+        Ok(chart) => {
+            let info = provider.info();
+            if !valid_provider_info(&info) {
+                return failure("calculation_failed");
+            }
+            ChartResponseV1 {
+                protocol_version: PROTOCOL_VERSION,
+                status: "ok",
+                provider: Some(info),
+                chart: Some(chart),
+            }
         },
         Err(ProviderError) => failure("calculation_failed"),
     }
@@ -421,6 +436,24 @@ mod tests {
         let response = respond(Some(&provider), &request("not a date"));
         assert_eq!(response.status, "invalid_request");
         assert!(response.chart.is_none());
+    }
+
+    #[test]
+    fn test_provider_metadata_is_bounded_and_printable() {
+        assert!(valid_provider_info(&ProviderInfoV1 {
+            id: "synthetic_test",
+            engine_version: "0.1.0".to_string(),
+        }));
+        for version in ["", " ", "1.0\\nsecret", "1.0\\r", "1.0\\u{0000}"] {
+            assert!(!valid_provider_info(&ProviderInfoV1 {
+                id: "synthetic_test",
+                engine_version: version.to_string(),
+            }));
+        }
+        assert!(!valid_provider_info(&ProviderInfoV1 {
+            id: "synthetic_test",
+            engine_version: "x".repeat(129),
+        }));
     }
 
     #[test]
