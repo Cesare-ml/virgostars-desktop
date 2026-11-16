@@ -118,3 +118,40 @@ test('destroyed component cannot expose retry after a pending failure settles', 
   assert.equal(generations.isCurrent(ticket), false);
   assert.equal(canRetryChartRender(ui), false);
 });
+
+test('stale success cannot clear retry eligibility after the latest draw fails', async () => {
+  const generations = new RenderGeneration();
+  const ui = {...failed, busy: true, ready: false, hasError: false};
+  let resolveOld;
+  const oldDraw = new Promise(resolve => { resolveOld = resolve; });
+  const oldTicket = generations.begin();
+  const oldCompletion = oldDraw.then(() => {
+    if (generations.isCurrent(oldTicket)) {
+      ui.ready = true;
+      ui.hasError = false;
+    }
+  });
+  const latestTicket = generations.begin();
+  if (generations.isCurrent(latestTicket)) {
+    ui.busy = false;
+    ui.ready = false;
+    ui.hasError = true;
+  }
+  resolveOld();
+  await oldCompletion;
+  assert.equal(ui.ready, false);
+  assert.equal(ui.hasError, true);
+  assert.equal(canRetryChartRender(ui), true);
+});
+
+test('retry is disabled immediately when another draw starts', () => {
+  const generations = new RenderGeneration();
+  const ui = {...failed};
+  assert.equal(canRetryChartRender(ui), true);
+  const ticket = generations.begin();
+  assert.notEqual(ticket, null);
+  ui.busy = true;
+  ui.hasError = false;
+  assert.equal(canRetryChartRender(ui), false);
+  generations.dispose();
+});
