@@ -54,6 +54,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
   problem: NewChartProblem | null = null;
   choices: readonly CivilTimeChoice[] = [];
   locationMessage: MessageKey | null = null;
+  locationPending = false;
 
   t(key: MessageKey): string { return translate(this.locale, key); }
 
@@ -94,7 +95,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
 
   /** Explicit one-shot device location request; coordinates remain in this form's memory. */
   requestCurrentLocation(): void {
-    if (this.busy || this.destroyed) return;
+    if (this.busy || this.destroyed || this.locationPending) return;
     const request = ++this.locationRequest;
     if (!this.isLocationApiReady()) {
       this.locationMessage = typeof window !== 'undefined' && !window.isSecureContext
@@ -102,6 +103,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
       this.cd.markForCheck();
       return;
     }
+    this.locationPending = true;
     this.locationMessage = 'location.requesting';
     this.cd.markForCheck();
     try {
@@ -109,6 +111,7 @@ export class NewChartComponent implements OnInit, OnDestroy {
         if (this.destroyed || request !== this.locationRequest) return;
         const coordinates = normalizeCurrentCoordinates(position.coords.latitude, position.coords.longitude);
         if (!coordinates) {
+          this.locationPending = false;
           this.locationMessage = 'location.invalid';
           this.cd.markForCheck();
           return;
@@ -120,17 +123,20 @@ export class NewChartComponent implements OnInit, OnDestroy {
         this.city = null;
         this.problem = null;
         this.choices = [];
+        this.locationPending = false;
         this.locationMessage = 'location.success';
         this.submitNow();
         this.cd.markForCheck();
       }, error => {
         if (this.destroyed || request !== this.locationRequest) return;
+        this.locationPending = false;
         this.locationMessage = error.code === 1 ? 'location.denied' :
           error.code === 3 ? 'location.timeout' : 'location.unavailable';
         this.cd.markForCheck();
       }, {enableHighAccuracy: false, maximumAge: 60_000, timeout: 12_000});
     } catch {
       if (!this.destroyed && request === this.locationRequest) {
+        this.locationPending = false;
         this.locationMessage = 'location.unavailable';
         this.cd.markForCheck();
       }
