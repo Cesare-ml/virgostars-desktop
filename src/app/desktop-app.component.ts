@@ -22,7 +22,7 @@ import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } fro
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
-import type { NewChartInput } from './new-chart-form';
+import { resolveNowChart, type NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
 import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
@@ -465,10 +465,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
-    const chart = await this.computeChart({
-      name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:natal.timeZone,
-      offsetSeconds:0, latMicro:natal.latMicro, lngMicro:natal.lngMicro, placeName:'',
+    // Reuse the same strict instant/timezone resolver as the current-sky form.
+    // The transit calculation must not invent empty civil metadata or UTC offsets.
+    const now = resolveNowChart({
+      name: '', timeZone: natal.timeZone,
+      latitude: String(natal.latMicro / 1e6),
+      longitude: String(natal.lngMicro / 1e6),
+      placeName: natal.placeName,
     });
+    if (now.status !== 'ready') {
+      if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== natal.id) return;
+      this.calcBusy = false;
+      this.calcMessage = 'calc.invalid';
+      this.cd.markForCheck();
+      return;
+    }
+    const chart = await this.computeChart(now.input);
     if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== natal.id) return;
     this.calcBusy = false;
     if (typeof chart === 'string') {
