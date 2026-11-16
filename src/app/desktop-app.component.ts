@@ -320,7 +320,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   async onChartRequested(input: NewChartInput, archiveId: string | null = null, replaceSky = false): Promise<void> {
     if (this.destroyed) return;
-    if (!replaceSky) this.skyPendingTicket = null;
+    if (!replaceSky) {
+      // A user-requested natal chart takes precedence over live-sky polling.
+      this.skyAutoRefresh = false;
+      this.skyRefreshBucket = -1;
+      this.skyPendingTicket = null;
+    }
     const ticket = ++this.calcTicket;
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
