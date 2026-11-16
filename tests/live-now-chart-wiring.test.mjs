@@ -32,7 +32,8 @@ test('historical archive payload excludes the transient live marker', () => {
   const saveBlock = desktop.match(/async saveActiveChart\(\): Promise<void>[\s\S]*?\n  }/)?.[0] ?? '';
   assert.ok(saveBlock.length > 0);
   assert.match(saveBlock, /placeName:\s*chart\.placeName/);
-  assert.doesNotMatch(saveBlock, /liveNow/);
+  assert.match(saveBlock, /liveNow:false/);
+  assert.match(saveBlock, /this\.liveNowRefreshBusy/);
 });
 
 test('live-state label is paired in Italian and English', () => {
