@@ -68,7 +68,8 @@ export class NewChartComponent {
     this.city = place;
     this.latitude = (place.latMicro / 1e6).toFixed(6);
     this.longitude = (place.lngMicro / 1e6).toFixed(6);
-    if (place.timeZone) this.timeZone = place.timeZone;
+    // A city with no verified zone must not inherit the previous city's or host's zone.
+    this.timeZone = place.timeZone ?? '';
     this.placeName = place.name;
     this.problem = null;
     this.choices = [];
