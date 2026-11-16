@@ -120,8 +120,10 @@ The existing **Now at this place** action now goes through the pure
 - It rejects non-finite/out-of-range device-clock instants and invalid
   coordinates before any chart-calculation IPC is called.
 - It does not run a birth-time/DST-fold resolver: the instant is already UTC.
-  The time zone is retained for local display of the chart time, not used to
-  change the UTC instant.
+  The local date, local clock time and UTC offset are derived from that exact
+  same instant with the selected IANA timezone; they never replace or shift
+  the UTC value sent to the provider. Winter/summer offsets are therefore
+  handled by the device timezone database, without assuming a fixed offset.
 - The helper is deterministic under tests because the `Date` is injected.
   No new native command, astronomy implementation, network access or storage
   was introduced.
