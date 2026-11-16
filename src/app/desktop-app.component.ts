@@ -321,7 +321,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
-    const chart = await this.computeChart(input, archiveId);
+    let chart: SessionChart | MessageKey;
+    try {
+      chart = await this.computeChart(input, archiveId);
+    } catch {
+      chart = 'calc.failed';
+    }
     // Only the latest request may change what is on screen.
     if (this.destroyed || ticket !== this.calcTicket) return;
     this.calcBusy = false;
@@ -354,6 +359,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const chart = this.activeChart;
     if (!chart || this.calcBusy || this.exporting) return;
     if (this.liveChartId === chart.id) {
+      ++this.calcTicket;
       this.restoreLiveOriginal();
       if (this.initialized) void this.draw();
     } else {
@@ -406,7 +412,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   private showChart(chart: SessionChart | null): void {
-    if (this.liveChartId !== null && this.liveChartId !== (chart ? chart.id : null)) this.restoreLiveOriginal();
+    if (this.liveChartId !== null && this.liveChartId !== (chart ? chart.id : null)) {
+      ++this.calcTicket;
+      this.restoreLiveOriginal();
+    }
     this.activeChartId = chart ? chart.id : null;
     this.transitChart = null;
     this.rowsCache = null;
