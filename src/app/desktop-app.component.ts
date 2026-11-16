@@ -570,7 +570,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.lastLiveNowMinute = null;
       return;
     }
-    if (this.destroyed || document.visibilityState === 'hidden' || this.calcBusy ||
+    if (this.destroyed || document.visibilityState === 'hidden' || this.calcBusy || this.archiveBusy ||
         this.exporting || this.liveNowRefreshBusy) return;
     const minute = dueLiveNowMinute(this.deviceClock.timestamp, this.lastLiveNowMinute);
     if (minute === null) return;
