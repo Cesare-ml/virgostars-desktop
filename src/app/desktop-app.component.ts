@@ -368,9 +368,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.initialized) void this.draw();
   }
   activateChart(id:number): void {
-    if (this.skyAutoRefresh && id !== this.skyChartId) this.skyAutoRefresh = false;
     const chart = this.sessionCharts.find(item => item.id === id);
-    if (!chart || this.calcBusy || this.exporting || id === this.activeChartId) return;
+    if (!chart || this.exporting || id === this.activeChartId) return;
+    if (this.calcBusy && this.skyPendingTicket === null) return;
+    if (id !== this.skyChartId) {
+      this.skyAutoRefresh = false;
+      this.invalidatePendingSky();
+    }
     this.showChart(chart);
     this.cd.markForCheck();
   }
@@ -385,8 +389,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   showDemoChart(): void {
-    if (this.calcBusy || this.exporting || this.activeChartId === null) return;
+    if (this.exporting || this.activeChartId === null) return;
+    if (this.calcBusy && this.skyPendingTicket === null) return;
     this.skyAutoRefresh = false;
+    this.invalidatePendingSky();
     this.showChart(null);
     this.cd.markForCheck();
   }
@@ -597,6 +603,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   toggleSkyAutoRefresh(): void {
     this.skyAutoRefresh = !this.skyAutoRefresh;
+    if (!this.skyAutoRefresh) this.invalidatePendingSky();
     this.skyRefreshBucket = -1;
     if (this.skyAutoRefresh) this.refreshSkyIfDue();
     this.cd.markForCheck();
