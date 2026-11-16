@@ -133,8 +133,10 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 /// Strict parser: no offsets, no leap seconds, no lenient separators.
 pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
     if request.protocol_version != PROTOCOL_VERSION
-        || request.lat_micro.abs() > MAX_LAT_MICRO
-        || request.lng_micro.abs() > MAX_LNG_MICRO
+        // Avoid i32::abs(): i32::MIN overflows in debug builds and could
+        // panic before an untrusted IPC request is rejected.
+        || !(-MAX_LAT_MICRO..=MAX_LAT_MICRO).contains(&request.lat_micro)
+        || !(-MAX_LNG_MICRO..=MAX_LNG_MICRO).contains(&request.lng_micro)
     {
         return None;
     }
@@ -301,6 +303,32 @@ mod tests {
         pole.lat_micro = -90_000_000;
         pole.lng_micro = 180_000_000;
         assert!(validate(&pole).is_some());
+    }
+
+    #[test]
+    fn test_extreme_ipc_coordinates_fail_without_overflow() {
+        for (latitude, longitude) in [
+            (i32::MIN, 0),
+            (i32::MAX, 0),
+            (0, i32::MIN),
+            (0, i32::MAX),
+            (i32::MIN, i32::MIN),
+        ] {
+            let mut bad = request("2001-02-03T04:05:06Z");
+            bad.lat_micro = latitude;
+            bad.lng_micro = longitude;
+            assert!(validate(&bad).is_none(), "accepted {latitude}, {longitude}");
+            assert_eq!(respond(None, &bad).status, "invalid_request");
+        }
+        for (latitude, longitude) in [
+            (-MAX_LAT_MICRO, -MAX_LNG_MICRO),
+            (MAX_LAT_MICRO, MAX_LNG_MICRO),
+        ] {
+            let mut boundary = request("2001-02-03T04:05:06Z");
+            boundary.lat_micro = latitude;
+            boundary.lng_micro = longitude;
+            assert!(validate(&boundary).is_some(), "rejected valid bounds");
+        }
     }
 
     #[test]
