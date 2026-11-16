@@ -24,6 +24,7 @@ import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-p
 import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
 import { currentSkyInput } from './astro/current-sky-input';
+import {loadCurrentSkyCity, saveCurrentSkyCity} from './astro/current-sky-city';
 import { calculateChart } from './native/chart-calculation';
 import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
@@ -164,7 +165,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // Solar or lunar return panel; its radix is the chart that was active when it opened.
   returnTool: ReturnKind | null = null;
   returnRadix: ReturnRadix | null = null;
-  selectedCity: OfflinePlaceV1 | null = null;
+  selectedCity: OfflinePlaceV1 | null = loadCurrentSkyCity(this.uiPreferencesStorage);
   cityClock: SelectedCityClock = {kind: 'not_selected'};
   navCollapsed = false;
   inspectorCollapsed = false;
@@ -551,6 +552,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   onCitySelected(place: OfflinePlaceV1): void {
     this.selectedCity = place;
+    saveCurrentSkyCity(this.uiPreferencesStorage, place);
     this.updateCityClock();
     this.cd.markForCheck();
   }
@@ -570,6 +572,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   onCityEdited(): void {
     this.selectedCity = null;
+    saveCurrentSkyCity(this.uiPreferencesStorage, null);
     this.updateCityClock();
     this.cd.markForCheck();
   }
@@ -604,6 +607,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.resizeObserver = new ResizeObserver(() => this.fitStage());
       this.resizeObserver.observe(this.stage.nativeElement);
       void this.draw();
+      // Startup is opt-in via a previously selected city; no location guessing.
+      if (this.selectedCity) void this.showCurrentSky();
     } catch (error) {
       this.renderError(error);
     }
