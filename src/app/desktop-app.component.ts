@@ -127,6 +127,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
   private drawFailed = false;
+  skyAutoRefresh = false;
+  private skyRefreshBucket = -1;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
@@ -561,6 +563,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private updateCityClock(): void {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
   }
+  /** Uses the existing device-clock tick; no additional timer or background service. */
+  private refreshSkyIfDue(): void {
+    if (!this.skyAutoRefresh || !this.selectedCity || this.calcBusy || this.exporting || this.destroyed) return;
+    const now = this.deviceClock.timestamp;
+    if (!Number.isFinite(now) || now < 0) return;
+    const bucket = Math.floor(now / 300_000);
+    if (bucket === this.skyRefreshBucket) return;
+    this.skyRefreshBucket = bucket;
+    void this.showSkyNow();
+  }
+  toggleSkyAutoRefresh(): void {
+    this.skyAutoRefresh = !this.skyAutoRefresh;
+    this.skyRefreshBucket = -1;
+    if (this.skyAutoRefresh) this.refreshSkyIfDue();
+    this.cd.markForCheck();
+  }
   /** One-shot real sky at the selected city's coordinates; no polling or persistence. */
   async showSkyNow(): Promise<void> {
     const city = this.selectedCity;
@@ -575,14 +593,23 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       offsetSeconds: 0, latMicro: city.latMicro, lngMicro: city.lngMicro,
       placeName: city.name,
     });
+    if (this.calcMessage !== 'calc.ready') {
+      // No repeated IPC calls every five minutes when the provider is absent.
+      this.skyAutoRefresh = false;
+      this.cd.markForCheck();
+    }
   }
   onCitySelected(place: OfflinePlaceV1): void {
     this.selectedCity = place;
+    this.skyAutoRefresh = false;
+    this.skyRefreshBucket = -1;
     this.updateCityClock();
     this.cd.markForCheck();
   }
   onCityEdited(): void {
     this.selectedCity = null;
+    this.skyAutoRefresh = false;
+    this.skyRefreshBucket = -1;
     this.updateCityClock();
     this.cd.markForCheck();
   }
@@ -603,6 +630,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.deviceClock.start(() => {
       if (this.destroyed) return;
       this.updateCityClock();
+      this.refreshSkyIfDue();
       this.cd.markForCheck();
     });
     // Read-only capability check, distinct from account authentication.
