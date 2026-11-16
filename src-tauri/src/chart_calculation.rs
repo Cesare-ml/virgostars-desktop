@@ -185,6 +185,17 @@ pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
 /// Reject non-finite values before JSON serialization (which can otherwise turn
 /// NaN/Infinity into null) and never report an incomplete chart as ready.
 fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
+    // Bound IPC payload size independently of provider implementation. These
+    // ceilings leave headroom above the current 15 bodies and 5 house systems.
+    const MAX_BODIES: usize = 64;
+    const MAX_HOUSE_SYSTEMS: usize = 32;
+    if chart.bodies.len() > MAX_BODIES
+        || chart.unavailable_bodies.len() > MAX_BODIES
+        || chart.houses.len() > MAX_HOUSE_SYSTEMS
+        || chart.unavailable_house_systems.len() > MAX_HOUSE_SYSTEMS
+    {
+        return false;
+    }
     if !chart.julian_day_ut.is_finite() {
         return false;
     }
@@ -541,6 +552,22 @@ mod tests {
         );
         let mut chart = empty_chart();
         chart.unavailable_house_systems.push(" ");
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+    }
+
+    #[test]
+    fn test_oversized_provider_snapshot_is_rejected_before_ipc() {
+        let mut chart = empty_chart();
+        chart.unavailable_bodies = vec!["Chiron"; 65];
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+        let mut chart = empty_chart();
+        chart.unavailable_house_systems = vec!["koch"; 33];
         assert_eq!(
             respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
             "calculation_failed"
