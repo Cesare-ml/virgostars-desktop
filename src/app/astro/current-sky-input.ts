@@ -9,6 +9,10 @@ export function currentSkyInput(utcIso: string, place: OfflinePlaceV1): NewChart
   if (typeof utcIso !== 'string' || !place || typeof place !== 'object' ||
       typeof place.name !== 'string' || !place.name.trim() ||
       typeof place.timeZone !== 'string' || !place.timeZone.trim()) return null;
+  // Keep the quick action inside the native calculation engine's supported years.
+  const year = Number(utcIso.slice(0, 4));
+  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(utcIso) ||
+      year < 1600 || year > 2400) return null;
   const epoch = Date.parse(utcIso);
   if (!Number.isFinite(epoch) || new Date(epoch).toISOString() !== utcIso ||
       !Number.isSafeInteger(place.latMicro) || Math.abs(place.latMicro) > 90_000_000 ||
