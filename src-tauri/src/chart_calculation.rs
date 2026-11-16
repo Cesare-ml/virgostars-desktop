@@ -427,7 +427,8 @@ mod tests {
     #[test]
     fn test_provider_output_rejects_duplicate_and_contradictory_body_ids() {
         let mut invalid = empty_chart();
-        invalid.bodies.push(invalid.bodies[0].clone());
+        let duplicate = invalid.bodies[0].clone();
+        invalid.bodies.push(duplicate);
         let provider = FixedProvider(Ok(invalid));
         let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
         assert_eq!(response.status, "calculation_failed");
@@ -440,9 +441,27 @@ mod tests {
     }
 
     #[test]
+    fn test_provider_output_rejects_invalid_house_angles() {
+        let mut invalid = empty_chart();
+        invalid.houses.push(HouseSystemV1 {
+            id: "egizia",
+            cusps_deg: [360.0; 12],
+            ascendant_deg: 15.0,
+            mc_deg: 285.0,
+            armc_deg: 286.0,
+            vertex_deg: 200.0,
+        });
+        let provider = FixedProvider(Ok(invalid));
+        let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.chart.is_none());
+    }
+
+    #[test]
     fn test_provider_output_rejects_excessive_arrays_and_invalid_source_labels() {
         let mut invalid = empty_chart();
-        invalid.bodies = vec![invalid.bodies[0].clone(); MAX_PROVIDER_BODIES + 1];
+        let repeated_body = invalid.bodies[0].clone();
+        invalid.bodies = vec![repeated_body; MAX_PROVIDER_BODIES + 1];
         let provider = FixedProvider(Ok(invalid));
         let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
         assert_eq!(response.status, "calculation_failed");
