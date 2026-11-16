@@ -134,3 +134,18 @@ test('browser preview, missing provider and native failures stay distinct and op
   const throwingProbe = {isNative: () => { throw new Error('no bridge'); }, invoke: never};
   assert.deepEqual(await requestChart(throwingProbe, REQUEST), {kind: 'unavailable'});
 });
+
+test('native chart requests reject impossible UTC calendar dates and clock values', () => {
+  for (const utcIso of [
+    '2026-02-30T12:00:00Z',
+    '2025-02-29T12:00:00Z',
+    '2026-13-01T12:00:00Z',
+    '2026-01-01T24:00:00Z',
+    '2026-01-01T12:60:00Z',
+    '2026-01-01T12:00:60Z',
+  ]) {
+    assert.equal(validChartRequest({...REQUEST, utcIso}), false, utcIso);
+  }
+  assert.equal(validChartRequest({...REQUEST, utcIso: '2024-02-29T12:00:00Z'}), true);
+  assert.equal(validChartRequest({...REQUEST, utcIso: '2026-11-16T12:34:56.123Z'}), true);
+});
