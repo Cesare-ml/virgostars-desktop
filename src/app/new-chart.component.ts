@@ -1,5 +1,7 @@
 import {CommonModule} from '@angular/common';
-import {ChangeDetectorRef, Component, EventEmitter, Input, Output, inject} from '@angular/core';
+import {ChangeDetectorRef, Component, EventEmitter, Input, OnDestroy, OnInit, Output, inject} from '@angular/core';
+import {isTauri} from '@tauri-apps/api/core';
+import {normalizeCurrentCoordinates} from './current-location';
 import {OfflineCityPickerComponent} from './offline-city-picker.component';
 import {resolveCivilTime, type CivilTimeChoice} from './native/civil-time';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
@@ -30,11 +32,16 @@ function hostTimeZone(): string {
   templateUrl: './new-chart.component.html',
   styleUrls: ['./new-chart.component.css'],
 })
-export class NewChartComponent {
+export class NewChartComponent implements OnInit, OnDestroy {
   @Input() locale: Locale = 'it';
+  @Input() autoLocateCurrentSky = false;
   @Input() busy = false;
   @Output() readonly chartRequested = new EventEmitter<NewChartInput>();
+  @Output() readonly autoLocationCheckStarted = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);
+  private destroyed = false;
+  private locationRequest = 0;
+  private locationTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly maxNameLength = MAX_CHART_NAME_LENGTH;
   name = '';
@@ -47,8 +54,113 @@ export class NewChartComponent {
   city: OfflinePlaceV1 | null = null;
   problem: NewChartProblem | null = null;
   choices: readonly CivilTimeChoice[] = [];
+  locationMessage: MessageKey | null = null;
+  locationPending = false;
 
   t(key: MessageKey): string { return translate(this.locale, key); }
+
+  ngOnInit(): void {
+    if (!this.autoLocateCurrentSky) return;
+    this.autoLocationCheckStarted.emit();
+    // Reuse only an earlier explicit WebView grant. First-run users press the
+    // location button below; there is no silent first-run location request.
+    void this.resumePreviouslyGrantedLocation();
+  }
+
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    this.locationRequest++;
+    this.clearLocationTimer();
+  }
+
+  private clearLocationTimer(): void {
+    const timer = this.locationTimer;
+    this.locationTimer = null;
+    if (timer !== null) clearTimeout(timer);
+  }
+
+  private async resumePreviouslyGrantedLocation(): Promise<void> {
+    if (!isTauri() || !this.isLocationApiReady() || !navigator.permissions?.query) return;
+    try {
+      const permission = await navigator.permissions.query({name: 'geolocation'});
+      if (this.destroyed) return;
+      if (permission.state === 'granted') this.requestCurrentLocation();
+      else if (permission.state === 'denied') this.locationMessage = 'location.denied';
+      else this.locationMessage = 'location.choose';
+      this.cd.markForCheck();
+    } catch {
+      if (!this.destroyed) {
+        this.locationMessage = 'location.choose';
+        this.cd.markForCheck();
+      }
+    }
+  }
+
+  private isLocationApiReady(): boolean {
+    return typeof window !== 'undefined' && window.isSecureContext === true &&
+      typeof navigator !== 'undefined' && !!navigator.geolocation;
+  }
+
+  /** Explicit one-shot device location request; coordinates remain in this form's memory. */
+  requestCurrentLocation(): void {
+    if (this.busy || this.destroyed || this.locationPending) return;
+    const request = ++this.locationRequest;
+    if (!this.isLocationApiReady()) {
+      this.locationMessage = typeof window !== 'undefined' && !window.isSecureContext
+        ? 'location.secure' : 'location.unavailable';
+      this.cd.markForCheck();
+      return;
+    }
+    this.locationPending = true;
+    this.locationMessage = 'location.requesting';
+    this.locationTimer = setTimeout(() => {
+      if (this.destroyed || request !== this.locationRequest) return;
+      this.locationTimer = null;
+      this.locationRequest++;
+      this.locationPending = false;
+      this.locationMessage = 'location.timeout';
+      this.cd.markForCheck();
+    }, 13_000);
+    this.cd.markForCheck();
+    try {
+      navigator.geolocation.getCurrentPosition(position => {
+        if (this.destroyed || request !== this.locationRequest) return;
+        this.clearLocationTimer();
+        const coordinates = normalizeCurrentCoordinates(position.coords.latitude, position.coords.longitude);
+        if (!coordinates) {
+          this.locationPending = false;
+          this.locationMessage = 'location.invalid';
+          this.cd.markForCheck();
+          return;
+        }
+        this.latitude = (coordinates.latMicro / 1e6).toFixed(6);
+        this.longitude = (coordinates.lngMicro / 1e6).toFixed(6);
+        this.timeZone = hostTimeZone();
+        this.placeName = this.t('location.currentName');
+        this.city = null;
+        this.problem = null;
+        this.choices = [];
+        this.locationPending = false;
+        this.locationMessage = 'location.success';
+        this.submitNow();
+        this.cd.markForCheck();
+      }, error => {
+        if (this.destroyed || request !== this.locationRequest) return;
+        this.clearLocationTimer();
+        this.locationPending = false;
+        this.locationMessage = error.code === 1 ? 'location.denied' :
+          error.code === 3 ? 'location.timeout' : 'location.unavailable';
+        this.cd.markForCheck();
+      }, {enableHighAccuracy: false, maximumAge: 60_000, timeout: 12_000});
+    } catch {
+      if (!this.destroyed && request === this.locationRequest) {
+        this.clearLocationTimer();
+        this.locationPending = false;
+        this.locationMessage = 'location.unavailable';
+        this.cd.markForCheck();
+      }
+    }
+  }
   get problemText(): string { return this.problem ? this.t(PROBLEM_KEYS[this.problem]) : ''; }
   offsetLabel(choice: CivilTimeChoice): string { return 'UTC' + formatUtcOffset(choice.offsetSeconds); }
 
@@ -102,7 +214,7 @@ export class NewChartComponent {
       this.chartRequested.emit({
         name: cleanChartName(this.name), utcIso: new Date().toISOString(),
         localDate: '', localTime: '', timeZone: this.timeZone.trim() || 'UTC', offsetSeconds: 0,
-        latMicro, lngMicro, placeName: cleanChartName(this.placeName),
+        latMicro, lngMicro, placeName: cleanChartName(this.placeName), liveNow: true,
       });
     }
     this.cd.markForCheck();

@@ -144,7 +144,8 @@
           <div class="data-line static" *ngFor="let house of houses"><span>{{house.number}}</span><span class="numeric">{{formatDegrees(house.longitude)}}</span></div>
         </div>
         <div *ngIf="inspectorTab==='chart'">
-          <vs-new-chart [locale]="locale" [busy]="calcBusy" (chartRequested)="onChartRequested($event)"></vs-new-chart>
+          <vs-new-chart [locale]="locale" [busy]="calcBusy" [autoLocateCurrentSky]="autoLocateCurrentSky"
+            (autoLocationCheckStarted)="onAutoLocationCheckStarted()" (chartRequested)="onChartRequested($event)"></vs-new-chart>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
           <h3 class="panel-title">{{t('session.title')}}</h3>
           <p class="inspector-hint">{{t('session.note')}}</p>
@@ -171,7 +172,7 @@
           <button type="button" class="link-control" *ngIf="activeChart" [disabled]="calcBusy || busy" (click)="showDemoChart()">{{t('session.demo')}}</button>
           <h3 class="panel-title">{{t('archive.title')}}</h3>
           <p class="inspector-hint">{{t('archive.note')}}</p>
-          <button type="button" class="archive-save" *ngIf="activeChart as chart" [disabled]="archiveBusy || calcBusy || chart.archiveId !== null"
+          <button type="button" class="archive-save" *ngIf="activeChart as chart" [disabled]="archiveBusy || calcBusy || liveNowRefreshing || chart.archiveId !== null"
             (click)="saveActiveChart()">{{t(chart.archiveId === null ? 'archive.save' : 'archive.already')}}</button>
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
           <p class="inspector-hint" *ngIf="!savedCharts.length && !archiveMessage">{{t('archive.empty')}}</p>

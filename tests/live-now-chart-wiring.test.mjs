@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+
+const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+const formContract = read('../src/app/new-chart-form.ts');
+const formComponent = read('../src/app/new-chart.component.ts');
+const desktop = read('../src/app/desktop-app.component.ts');
+const translations = read('../src/app/translations.ts');
+
+test('only the explicit Now action marks a chart as live', () => {
+  assert.match(formContract, /liveNow\?: boolean/);
+  assert.match(formComponent, /submitNow\(\)[\s\S]*?liveNow:\s*true/);
+  assert.doesNotMatch(formContract, /resolveNewChart[\s\S]*?liveNow:\s*true/);
+});
+
+test('live refresh is minute-bounded and pauses while the WebView is hidden', () => {
+  assert.match(desktop, /dueLiveNowMinute\(this\.deviceClock\.timestamp, this\.lastLiveNowMinute\)/);
+  assert.match(desktop, /document\.visibilityState\s*===\s*'hidden'/);
+  assert.match(desktop, /this\.refreshLiveNowChart\(\);/);
+  assert.match(desktop, /private liveNowRefreshBusy\s*=\s*false/);
+  assert.match(desktop, /this\.archiveBusy/);
+});
+
+test('refresh uses the existing local provider path and preserves chart identity', () => {
+  assert.match(desktop, /this\.computeChart\(input, null\)/);
+  assert.match(desktop, /id:\s*previous\.id/);
+  assert.match(desktop, /this\.exporting \|\| this\.archiveBusy \|\| this\.calcBusy/);
+  assert.match(desktop, /archiveId:\s*previous\.archiveId/);
+  assert.match(desktop, /liveNow:\s*true/);
+});
+
+test('archive writes a snapshot and freezes the live session chart after success', () => {
+  const saveBlock = desktop.match(/async saveActiveChart\(\): Promise<void>[\s\S]*?\n  }/)?.[0] ?? '';
+  const saveRequest = saveBlock.match(/this\.runArchive\(\{operation:'save', chart:\{[\s\S]*?\}\}, 'archive\.saved'\)/)?.[0] ?? '';
+  assert.ok(saveBlock.length > 0);
+  assert.ok(saveRequest.length > 0);
+  assert.match(saveRequest, /placeName:\s*chart\.placeName/);
+  assert.doesNotMatch(saveRequest, /liveNow/);
+  assert.match(saveBlock, /liveNow:false/);
+  assert.match(saveBlock, /this\.liveNowRefreshBusy/);
+});
+
+test('live-state label is paired in Italian and English', () => {
+  assert.match(translations, /"live\.now":"Aggiornamento automatico ogni minuto"/);
+  assert.match(translations, /"live\.now":"Automatic refresh every minute"/);
+});
