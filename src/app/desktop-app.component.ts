@@ -129,6 +129,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private drawFailed = false;
   skyAutoRefresh = false;
   private skyRefreshBucket = -1;
+  private skyChartId: number | null = null;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
@@ -316,7 +317,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const systems = availableHouseSystems(chart.data);
     if (!systems.includes(this.houseSystem) && systems.length) this.houseSystem = systems[0];
   }
-  async onChartRequested(input: NewChartInput, archiveId: string | null = null): Promise<void> {
+  async onChartRequested(input: NewChartInput, archiveId: string | null = null, replaceSky = false): Promise<void> {
     if (this.destroyed) return;
     const ticket = ++this.calcTicket;
     this.calcBusy = true;
@@ -330,8 +331,19 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.calcMessage = chart;
     } else {
       const previous = this.activeChartId;
-      this.sessionCharts = [...this.sessionCharts, chart];
-      if (this.partnerChartId === null && previous !== null) this.partnerChartId = previous;
+      if (replaceSky) {
+        const oldSkyId = this.skyChartId;
+        // The live sky is transient: replace its previous snapshot, never archive it.
+        this.sessionCharts = [...this.sessionCharts.filter(item => item.id !== oldSkyId), chart];
+        if (this.partnerChartId === oldSkyId) this.partnerChartId = null;
+        if (this.returnRadix?.chartId === oldSkyId) this.closeReturns();
+        this.skyChartId = chart.id;
+      } else {
+        this.sessionCharts = [...this.sessionCharts, chart];
+        if (this.partnerChartId === null && previous !== null && previous !== this.skyChartId) {
+          this.partnerChartId = previous;
+        }
+      }
       this.showChart(chart);
       this.calcMessage = 'calc.ready';
     }
@@ -349,6 +361,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.initialized) void this.draw();
   }
   activateChart(id:number): void {
+    if (this.skyAutoRefresh && id !== this.skyChartId) this.skyAutoRefresh = false;
     const chart = this.sessionCharts.find(item => item.id === id);
     if (!chart || this.calcBusy || this.exporting || id === this.activeChartId) return;
     this.showChart(chart);
@@ -356,6 +369,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   removeChart(id:number): void {
     if (this.calcBusy || this.exporting) return;
+    if (id === this.skyChartId) { this.skyChartId = null; this.skyAutoRefresh = false; }
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
     if (this.returnRadix?.chartId === id) this.closeReturns();
     if (this.partnerChartId === id) this.partnerChartId = null;
@@ -365,6 +379,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   showDemoChart(): void {
     if (this.calcBusy || this.exporting || this.activeChartId === null) return;
+    this.skyAutoRefresh = false;
     this.showChart(null);
     this.cd.markForCheck();
   }
@@ -592,7 +607,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       localDate: '', localTime: '', timeZone: city.timeZone || 'UTC',
       offsetSeconds: 0, latMicro: city.latMicro, lngMicro: city.lngMicro,
       placeName: city.name,
-    });
+    }, null, true);
     if (this.calcMessage !== 'calc.ready') {
       // No repeated IPC calls every five minutes when the provider is absent.
       this.skyAutoRefresh = false;
