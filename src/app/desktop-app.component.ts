@@ -553,6 +553,27 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.updateCityClock();
     this.cd.markForCheck();
   }
+  /** Compute the actual sky at the device's current UTC instant for the selected offline city. */
+  async showCurrentSky(): Promise<void> {
+    if (this.destroyed || this.calcBusy || this.exporting) return;
+    const place = this.selectedCity;
+    const utcIso = this.clockInstantIso;
+    if (!place || !utcIso) {
+      this.inspectorCollapsed = false;
+      this.setInspectorTab('settings');
+      return;
+    }
+    const timeZone = place.timeZone || 'UTC';
+    const input: NewChartInput = {
+      name: '', utcIso,
+      localDate: utcIso.slice(0, 10),
+      localTime: utcIso.slice(11, 19),
+      timeZone, offsetSeconds: 0,
+      latMicro: place.latMicro, lngMicro: place.lngMicro,
+      placeName: place.name,
+    };
+    await this.onChartRequested(input);
+  }
   onCityEdited(): void {
     this.selectedCity = null;
     this.updateCityClock();
