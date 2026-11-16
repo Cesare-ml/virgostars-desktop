@@ -29,6 +29,15 @@ test('startup, teardown, healthy and cleared-error states never retry', () => {
   }
 });
 
+test('all 64 boolean state combinations admit only the single safe retry state', () => {
+  const keys = ['initialized', 'destroyed', 'busy', 'ready', 'exporting', 'hasError'];
+  for (let mask = 0; mask < 64; mask++) {
+    const state = Object.fromEntries(keys.map((key, index) => [key, Boolean(mask & (1 << index))]));
+    const expected = keys.every(key => state[key] === failed[key]);
+    assert.equal(canRetryChartRender(state), expected, `mask ${mask}`);
+  }
+});
+
 test('null, missing and coercible flags fail closed', () => {
   for (const state of [null, undefined, {}, [], '', 1]) {
     assert.equal(canRetryChartRender(state), false);
