@@ -29,7 +29,7 @@ export type NewChartInput = Readonly<{
 
 export type NewChartProblem =
   | 'date_invalid' | 'time_invalid' | 'zone_invalid' | 'zone_unavailable'
-  | 'latitude_invalid' | 'longitude_invalid' | 'time_nonexistent';
+  | 'latitude_invalid' | 'longitude_invalid' | 'time_nonexistent' | 'instant_unavailable';
 
 export type NewChartResolution =
   | Readonly<{status: 'ready'; input: NewChartInput}>
@@ -113,4 +113,60 @@ export function formatUtcOffset(offsetSeconds: number): string {
   const seconds = total % 60;
   const pad = (value: number) => String(value).padStart(2, '0');
   return sign + pad(hours) + ':' + pad(minutes) + (seconds ? ':' + pad(seconds) : '');
+}
+
+
+export type NewChartNowResolution =
+  | Readonly<{status: 'ready'; input: NewChartInput}>
+  | Readonly<{status: 'problem'; problem: NewChartProblem}>;
+
+/**
+ * Build a chart request for the current instant at the entered place.
+ * Unlike a birth-time form, it does not resolve local civil time: the current
+ * UTC instant is unambiguous. Coordinates and the display timezone must still
+ * be valid; an empty timezone is never silently replaced with UTC.
+ *
+ * The Date is injectable so tests can assert the exact instant without
+ * depending on the machine clock.
+ */
+export function resolveNowChart(
+  fields: Pick<NewChartFields, 'name' | 'timeZone' | 'latitude' | 'longitude' | 'placeName'>,
+  now: Date = new Date(),
+): NewChartNowResolution {
+  const latMicro = parseDegreesMicro(fields.latitude, 90);
+  if (latMicro === null) return {status: 'problem', problem: 'latitude_invalid'};
+  const lngMicro = parseDegreesMicro(fields.longitude, 180);
+  if (lngMicro === null) return {status: 'problem', problem: 'longitude_invalid'};
+
+  const milliseconds = now instanceof Date ? now.getTime() : Number.NaN;
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8_640_000_000_000_000) {
+    return {status: 'problem', problem: 'instant_unavailable'};
+  }
+
+  const timeZone = typeof fields.timeZone === 'string' ? fields.timeZone.trim() : '';
+  if (!timeZone || timeZone.length > 120) {
+    return {status: 'problem', problem: 'zone_invalid'};
+  }
+  try {
+    // Construction validates the supplied IANA zone without changing the
+    // UTC instant or substituting the host's timezone.
+    new Intl.DateTimeFormat('en-US', {timeZone});
+  } catch {
+    return {status: 'problem', problem: 'zone_invalid'};
+  }
+
+  return {
+    status: 'ready',
+    input: {
+      name: cleanChartName(fields.name),
+      utcIso: new Date(milliseconds).toISOString(),
+      localDate: '',
+      localTime: '',
+      timeZone,
+      offsetSeconds: 0,
+      latMicro,
+      lngMicro,
+      placeName: cleanChartName(fields.placeName),
+    },
+  };
 }
