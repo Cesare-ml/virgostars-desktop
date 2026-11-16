@@ -373,7 +373,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private async refreshLiveSky(): Promise<void> {
     const chart = this.activeChart;
     const iso = this.clockInstantIso;
-    if (!chart || chart.id !== this.liveChartId || !iso || this.calcBusy || this.exporting) return;
+    if (!chart || chart.id !== this.liveChartId || this.calcBusy || this.exporting) return;
+    if (!iso) {
+      // Do not leave a previously calculated live sky displayed as current
+      // when the device clock becomes invalid or exceeds the IPC date range.
+      ++this.calcTicket;
+      this.restoreLiveOriginal();
+      this.calcMessage = 'calc.invalid';
+      if (this.initialized) void this.draw();
+      this.cd.markForCheck();
+      return;
+    }
     const minute = Math.floor(Date.parse(iso) / 60_000);
     if (minute === this.liveMinute) return;
     this.liveMinute = minute;
