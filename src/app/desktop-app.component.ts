@@ -20,6 +20,7 @@ import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
+import { dueLiveNowMinute } from './live-now-refresh';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
@@ -86,6 +87,8 @@ type SessionChart = Readonly<{
   timeZone: string;
   /** Identity in the on-device archive; null while the chart exists only in memory. */
   archiveId: string | null;
+  /** True only for an explicit current-sky request; historical charts are immutable. */
+  liveNow: boolean;
   placeName: string;
   placeLabel: string;
   latMicro: number;
@@ -128,6 +131,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
+  private liveNowRefreshBusy = false;
+  private lastLiveNowMinute: number | null = null;
 
   readonly artworkStatus: MessageKey = PRIVATE_ARTWORK ? 'chart.status.private' : 'chart.status';
   readonly modes = CHART_MODES;
@@ -231,7 +236,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   get subjectCaption(): string {
     const chart = this.activeChart;
-    return chart ? this.chartWhen(chart) + ' · ' + chart.placeLabel : this.t('fixture');
+    return chart ? this.chartWhen(chart) + ' · ' + chart.placeLabel + (chart.liveNow ? ' · ' + this.t('live.now') : '') : this.t('fixture');
   }
   /** Says which engine and which data produced what is on screen. */
   get provenanceLabel(): string {
@@ -296,7 +301,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
     return {
       id:this.nextChartId++, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
-      archiveId, placeName:input.placeName,
+      archiveId, liveNow:input.liveNow === true, placeName:input.placeName,
       placeLabel:input.placeName ? input.placeName + ' (' + coordinates + ')' : coordinates,
       latMicro:input.latMicro, lngMicro:input.lngMicro,
       provider:result.provider,
@@ -335,6 +340,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private showChart(chart: SessionChart | null): void {
     this.activeChartId = chart ? chart.id : null;
+    this.lastLiveNowMinute = chart?.liveNow ? dueLiveNowMinute(Date.parse(chart.utcIso), null) : null;
     this.transitChart = null;
     this.rowsCache = null;
     this.selectedPlanet = null;
@@ -548,6 +554,70 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private updateCityClock(): void {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
   }
+
+  /**
+   * Recalculate an explicitly requested "Now" chart at minute boundaries.
+   * Uses the same local provider as manual calculations; no synthetic fallback,
+   * network call or historical/archive mutation is permitted.
+   */
+  private refreshLiveNowChart(): void {
+    const chart = this.activeChart;
+    if (!chart?.liveNow) {
+      this.lastLiveNowMinute = null;
+      return;
+    }
+    if (this.destroyed || document.visibilityState === 'hidden' || this.calcBusy ||
+        this.exporting || this.liveNowRefreshBusy) return;
+    const minute = dueLiveNowMinute(this.deviceClock.timestamp, this.lastLiveNowMinute);
+    if (minute === null) return;
+
+    this.lastLiveNowMinute = minute;
+    this.liveNowRefreshBusy = true;
+    const ticket = ++this.calcTicket;
+    const input: NewChartInput = {
+      name: chart.name,
+      utcIso: new Date(this.deviceClock.timestamp).toISOString(),
+      localDate: '',
+      localTime: '',
+      timeZone: chart.timeZone,
+      offsetSeconds: 0,
+      latMicro: chart.latMicro,
+      lngMicro: chart.lngMicro,
+      placeName: chart.placeName,
+      liveNow: true,
+    };
+    void this.finishLiveNowRefresh(chart, input, ticket);
+  }
+
+  private async finishLiveNowRefresh(
+    previous: SessionChart,
+    input: NewChartInput,
+    ticket: number,
+  ): Promise<void> {
+    try {
+      const refreshed = await this.computeChart(input, null);
+      if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== previous.id) return;
+      // A failed provider calculation leaves the last valid chart visible. The
+      // next minute is a fresh attempt; no rapid retry loop is started.
+      if (typeof refreshed === 'string') return;
+      const replacement: SessionChart = {
+        ...refreshed,
+        id: previous.id,
+        archiveId: previous.archiveId,
+        liveNow: true,
+      };
+      this.sessionCharts = this.sessionCharts.map(item => item.id === previous.id ? replacement : item);
+      this.rowsCache = null;
+      this.aspectCache = null;
+      this.useAvailableHouseSystem(replacement);
+      if (this.initialized) void this.draw();
+      this.cd.markForCheck();
+    } catch {
+      // Preserve the last valid wheel and retry at the next minute boundary.
+    } finally {
+      this.liveNowRefreshBusy = false;
+    }
+  }
   onCitySelected(place: OfflinePlaceV1): void {
     this.selectedCity = place;
     this.updateCityClock();
@@ -575,6 +645,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.deviceClock.start(() => {
       if (this.destroyed) return;
       this.updateCityClock();
+      this.refreshLiveNowChart();
       this.cd.markForCheck();
     });
     // Read-only capability check, distinct from account authentication.
