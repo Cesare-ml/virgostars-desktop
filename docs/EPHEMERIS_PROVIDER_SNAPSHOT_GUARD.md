@@ -33,7 +33,7 @@ The current optional Swiss provider remains a local-use prototype subject to its
 
 Rust unit tests cover:
 - non-finite and out-of-range coordinates;
-- duplicate/contradictory body identifiers;
+- duplicate/contradictory body identifiers and invalid house cusps;
 - excessive body counts and invalid source labels.
 
 The test fixture now includes a visibly synthetic valid body so the normal success path can be exercised after the guard.
