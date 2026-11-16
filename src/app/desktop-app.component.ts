@@ -566,6 +566,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     saveCurrentSkyCity(this.uiPreferencesStorage, place);
     this.updateCityClock();
     this.cd.markForCheck();
+    // The first explicit city selection is enough to render a real sky:
+    // no need to restart the app or click the quick action again.
+    if (this.initialized && !this.calcBusy && !this.exporting) void this.showCurrentSky();
   }
   /** Compute the actual sky at the device's current UTC instant for the selected offline city. */
   async showCurrentSky(): Promise<void> {
@@ -578,7 +581,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       return;
     }
     const input = currentSkyInput(utcIso, place);
-    if (!input) return;
+    if (!input) {
+      this.calcMessage = 'calc.invalid';
+      this.cd.markForCheck();
+      return;
+    }
     await this.onChartRequested(input, null, true);
   }
   onCityEdited(): void {
