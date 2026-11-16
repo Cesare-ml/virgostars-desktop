@@ -154,6 +154,13 @@ fn open(path: &Path) -> Result<Connection, Failure> {
     match version {
         SCHEMA_VERSION => {}
         0 => {
+            // Never initialize an unrelated version-zero SQLite database.
+            let existing_objects: i64 = connection
+                .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type IN ('table', 'view', 'index', 'trigger') AND name NOT LIKE 'sqlite_%'", [], |row| row.get(0))
+                .map_err(|error| classify(&error))?;
+            if existing_objects != 0 {
+                return Err("archive_unavailable");
+            }
             let transaction = connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(|error| classify(&error))?;
@@ -462,6 +469,31 @@ mod tests {
         handle(&archive.0, &save_request(record(ID_A, name)), 1000);
         let listed = handle(&archive.0, &list_request(), 2000).charts.unwrap();
         assert_eq!(listed[0].name, name);
+    }
+
+    #[test]
+    fn test_version_zero_database_with_existing_table_is_left_untouched() {
+        let archive = TempArchive::new("foreign-schema");
+        std::fs::create_dir_all(archive.0.parent().unwrap()).unwrap();
+        let connection = Connection::open(&archive.0).unwrap();
+        connection.execute_batch("CREATE TABLE unrelated (value TEXT NOT NULL); INSERT INTO unrelated VALUES ('keep');").unwrap();
+        drop(connection);
+
+        for request in [list_request(), save_request(record(ID_A, "Soggetto"))] {
+            assert_eq!(handle(&archive.0, &request, 1000).status, "archive_unavailable");
+        }
+
+        let connection = Connection::open(&archive.0).unwrap();
+        let value: String = connection.query_row("SELECT value FROM unrelated", [], |row| row.get(0)).unwrap();
+        assert_eq!(value, "keep");
+        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
+        assert_eq!(version, 0);
+        let saved_charts: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='saved_charts'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(saved_charts, 0);
     }
 
     #[test]
