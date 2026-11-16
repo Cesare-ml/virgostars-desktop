@@ -4,7 +4,7 @@ import {OfflineCityPickerComponent} from './offline-city-picker.component';
 import {resolveCivilTime, type CivilTimeChoice} from './native/civil-time';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {
-  MAX_CHART_NAME_LENGTH, cleanChartName, formatUtcOffset, resolveNewChart, resolveNowChart,
+  MAX_CHART_NAME_LENGTH, cleanChartName, formatUtcOffset, resolveNewChart, resolveNowChart, selectedPlaceTimeZone,
   type NewChartInput, type NewChartProblem,
 } from './new-chart-form';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -69,7 +69,7 @@ export class NewChartComponent {
     this.latitude = (place.latMicro / 1e6).toFixed(6);
     this.longitude = (place.lngMicro / 1e6).toFixed(6);
     // A city with no verified zone must not inherit the previous city's or host's zone.
-    this.timeZone = place.timeZone ?? '';
+    this.timeZone = selectedPlaceTimeZone(place.timeZone);
     this.placeName = place.name;
     this.problem = null;
     this.choices = [];
