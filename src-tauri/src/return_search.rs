@@ -273,7 +273,8 @@ mod tests {
         let start = year_start_julian_day(2001);
         let at_next_year = |time: f64| Ok((40.0 + (time - (start + 365.0))).rem_euclid(360.0));
         let previous = find_crossings(at_next_year, 40.0, start, start + 365.0, 1.0).unwrap();
-        assert!(previous.is_empty(), "boundary return must not appear in preceding year");
+        assert_eq!(previous.len(), 1, "only the prior 360-day cycle belongs to the preceding year");
+        assert!((previous[0] - (start + 5.0)).abs() < 2e-9);
         let following = find_crossings(at_next_year, 40.0, start + 365.0, start + 730.0, 1.0).unwrap();
         assert_eq!(following.len(), 2);
         assert!((following[0] - (start + 365.0)).abs() < 2e-9);
@@ -284,8 +285,8 @@ mod tests {
         let start = year_start_julian_day(2001);
         let at_last_second = |time: f64| Ok((40.0 + (time - (start + 365.0 - 1.0 / 86_400.0))).rem_euclid(360.0));
         let previous = find_crossings(at_last_second, 40.0, start, start + 365.0, 1.0).unwrap();
-        assert_eq!(previous.len(), 1);
-        assert!((previous[0] - (start + 365.0 - 1.0 / 86_400.0)).abs() < 2e-9);
+        assert_eq!(previous.len(), 2);
+        assert!((previous[1] - (start + 365.0 - 1.0 / 86_400.0)).abs() < 2e-9);
     }
 
     #[test]
