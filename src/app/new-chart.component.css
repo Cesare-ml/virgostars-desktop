@@ -1,5 +1,7 @@
 :host { display:block; }
 .new-chart { display:flex; flex-direction:column; gap:12px; }
+.location-start { display:flex; flex-direction:column; gap:6px; }
+.location-start .form-note { margin:0; }
 .form-note { margin:0; font-size:12px; line-height:1.5; color:var(--vs-text-secondary); }
 .field { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; font-size:12px; color:var(--vs-text-secondary); }
 .field input {
