@@ -126,6 +126,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
+  private lastDrawFailed = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
@@ -199,7 +200,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       busy:this.busy,
       ready:this.ready,
       exporting:this.exporting,
-      hasError:this.error.length > 0,
+      hasError:this.lastDrawFailed && this.error.length > 0,
     });
   }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
@@ -749,6 +750,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async draw(): Promise<void> {
     const ticket = this.drawGeneration.begin();
     if(ticket === null) return;
+    this.lastDrawFailed=false;
     this.busy=true; this.ready=false; this.error=''; this.status='chart.loading';
     this.cd.markForCheck();
     try {
@@ -764,7 +766,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
         if (this.activeChart) this.status='chart.ready.real';
       }
     } catch(error) {
-      if(this.drawGeneration.isCurrent(ticket)) this.renderError(error);
+      if(this.drawGeneration.isCurrent(ticket)) {
+        this.lastDrawFailed=true;
+        this.renderError(error);
+      }
     } finally {
       if(this.drawGeneration.isCurrent(ticket)) {
         this.busy=false;
