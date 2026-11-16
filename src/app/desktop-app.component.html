@@ -144,7 +144,8 @@
           <div class="data-line static" *ngFor="let house of houses"><span>{{house.number}}</span><span class="numeric">{{formatDegrees(house.longitude)}}</span></div>
         </div>
         <div *ngIf="inspectorTab==='chart'">
-          <vs-new-chart [locale]="locale" [busy]="calcBusy" (chartRequested)="onChartRequested($event)"></vs-new-chart>
+          <vs-new-chart [locale]="locale" [busy]="calcBusy" [autoLocateCurrentSky]="autoLocateCurrentSky"
+            (autoLocationCheckStarted)="onAutoLocationCheckStarted()" (chartRequested)="onChartRequested($event)"></vs-new-chart>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
           <h3 class="panel-title">{{t('session.title')}}</h3>
           <p class="inspector-hint">{{t('session.note')}}</p>
