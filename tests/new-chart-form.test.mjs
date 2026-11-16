@@ -208,3 +208,22 @@ test('current sky derives local calendar day across UTC midnight', () => {
   assert.equal(newYork.input.localTime, '21:30:00');
   assert.equal(newYork.input.offsetSeconds, -18000);
 });
+
+test('current sky preserves fractional-hour offsets without rounding to whole hours', () => {
+  const fields = {name: '', timeZone: 'Asia/Kathmandu', latitude: '27.7', longitude: '85.3', placeName: 'Kathmandu'};
+  const result = resolveNowChart(fields, new Date('2026-11-16T18:30:00.000Z'));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.input.utcIso, '2026-11-16T18:30:00.000Z');
+  assert.equal(result.input.localDate, '2026-11-17');
+  assert.equal(result.input.localTime, '00:15:00');
+  assert.equal(result.input.offsetSeconds, 20700);
+});
+
+test('current sky preserves negative half-hour offsets', () => {
+  const fields = {name: '', timeZone: 'America/St_Johns', latitude: '47.56', longitude: '-52.71', placeName: 'St Johns'};
+  const result = resolveNowChart(fields, new Date('2026-01-15T12:00:00.000Z'));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.input.localDate, '2026-01-15');
+  assert.equal(result.input.localTime, '08:30:00');
+  assert.equal(result.input.offsetSeconds, -12600);
+});
