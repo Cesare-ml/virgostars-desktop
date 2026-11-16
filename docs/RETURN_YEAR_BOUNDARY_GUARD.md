@@ -6,7 +6,7 @@ The return search promises a half-open UTC year `[January 1, next January 1)`. P
 
 The bracketing loop now excludes a crossing at `end` while retaining one that occurs just before `end`. It uses the unrounded native offsets, not formatted UTC milliseconds, to decide which year owns the event.
 
-Two new deterministic unit tests use a uniform synthetic longitude function to cover the exact endpoint and a crossing one second before it. They are not astronomical accuracy tests.
+Three new deterministic unit tests cover the exact endpoint, a crossing one second before it, and rejection of malformed provider longitude samples. The search now accepts only finite normalized longitudes in [0, 360); it does not silently wrap out-of-contract values. These are not astronomical accuracy tests.
 
 ## Manual verification before merge
 
