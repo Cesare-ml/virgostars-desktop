@@ -133,8 +133,8 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 /// Strict parser: no offsets, no leap seconds, no lenient separators.
 pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
     if request.protocol_version != PROTOCOL_VERSION
-        || request.lat_micro.abs() > MAX_LAT_MICRO
-        || request.lng_micro.abs() > MAX_LNG_MICRO
+        || !(-MAX_LAT_MICRO..=MAX_LAT_MICRO).contains(&request.lat_micro)
+        || !(-MAX_LNG_MICRO..=MAX_LNG_MICRO).contains(&request.lng_micro)
     {
         return None;
     }
@@ -377,6 +377,23 @@ mod tests {
         pole.lat_micro = -90_000_000;
         pole.lng_micro = 180_000_000;
         assert!(validate(&pole).is_some());
+    }
+
+    #[test]
+    fn test_extreme_coordinate_inputs_fail_closed_without_integer_overflow() {
+        for (latitude, longitude) in [
+            (i32::MIN, 0),
+            (0, i32::MIN),
+            (i32::MAX, 0),
+            (0, i32::MAX),
+            (i32::MIN, i32::MIN),
+        ] {
+            let mut input = request("2001-02-03T04:05:06Z");
+            input.lat_micro = latitude;
+            input.lng_micro = longitude;
+            assert!(validate(&input).is_none());
+            assert_eq!(respond(None, &input).status, "invalid_request");
+        }
     }
 
     #[test]
