@@ -768,6 +768,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     } catch(error) {
       if(this.drawGeneration.isCurrent(ticket)) {
         this.lastDrawFailed=true;
+        this.status='chart.failed';
         this.renderError(error);
       }
     } finally {
