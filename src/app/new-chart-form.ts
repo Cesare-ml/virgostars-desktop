@@ -25,6 +25,8 @@ export type NewChartInput = Readonly<{
   latMicro: number;
   lngMicro: number;
   placeName: string;
+  /** Explicit marker for the live current-sky request; not stored in the archive. */
+  liveNow?: boolean;
 }>;
 
 export type NewChartProblem =
