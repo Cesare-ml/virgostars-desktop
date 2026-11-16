@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {canRetryChartRender} from '../src/app/chart-render-retry.ts';
+import {RenderGeneration} from '../src/app/render-generation.ts';
 
 const failed = Object.freeze({
   initialized: true, destroyed: false, busy: false,
@@ -68,4 +69,43 @@ test('retry action has matching Italian and English labels', () => {
   assert.equal(keys.length, 2);
   assert.match(catalog, /"chart\.retry":"Riprova il disegno"/);
   assert.match(catalog, /"chart\.retry":"Retry chart rendering"/);
+});
+
+
+test('stale draw failure cannot reopen retry after a newer successful redraw', async () => {
+  const generations = new RenderGeneration();
+  const ui = {...failed, busy: true, ready: false, hasError: false};
+  let rejectOld;
+  const oldDraw = new Promise((_, reject) => { rejectOld = reject; });
+  const oldTicket = generations.begin();
+  const oldCompletion = oldDraw.catch(() => {
+    if (generations.isCurrent(oldTicket)) {
+      ui.busy = false;
+      ui.hasError = true;
+    }
+  });
+  const newTicket = generations.begin();
+  if (generations.isCurrent(newTicket)) {
+    ui.busy = false;
+    ui.ready = true;
+  }
+  rejectOld(new Error('synthetic old render failure'));
+  await oldCompletion;
+  assert.equal(ui.hasError, false);
+  assert.equal(canRetryChartRender(ui), false);
+});
+
+test('destroyed component cannot expose retry after a pending failure settles', async () => {
+  const generations = new RenderGeneration();
+  const ui = {...failed, busy: true, hasError: false};
+  const ticket = generations.begin();
+  generations.dispose();
+  ui.destroyed = true;
+  await Promise.resolve();
+  if (generations.isCurrent(ticket)) {
+    ui.busy = false;
+    ui.hasError = true;
+  }
+  assert.equal(generations.isCurrent(ticket), false);
+  assert.equal(canRetryChartRender(ui), false);
 });
