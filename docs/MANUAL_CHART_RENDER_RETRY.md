@@ -16,6 +16,10 @@ The action is available only when the renderer is initialized, the component is 
 - A persistent render failure may fail again; the UI must never report success unless the existing renderer completes successfully.
 - A separate `lastDrawFailed` state is set only by the current draw's failure, cleared at the start of each draw. A PNG export error or failed renderer initialization must not expose the redraw action.
 
+## Isolated behavior probe (2026-11-16)
+
+Node.js 22.16.0 executed a locally reconstructed copy of the exact pure `canRetryChartRender` helper shown in this PR: **64/64 boolean combinations** and **12/12 null, missing or invalid-state probes passed**. The probe was not run from a repository checkout, did not execute the committed `tests/chart-render-retry.test.mjs` file, and did not load Angular or WebView2. This evidence is narrower than a passing `npm test` or native build and must not be used to mark those gates complete.
+
 ## Verification
 
 Run on a complete authorized checkout:
