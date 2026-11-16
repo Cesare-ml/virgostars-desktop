@@ -105,3 +105,36 @@ network, persistence, Tauri IPC, extra dependencies, or new release capability.
 Verify with `node --experimental-strip-types --test tests/device-clock.test.mjs`
 and then the normal complete Windows/WebView2 acceptance gates. Do not infer
 native UI acceptance from a source-only review.
+
+
+## Current-moment chart input guard (2026-11-16)
+
+The existing **Now at this place** action now goes through the pure
+`resolveNowChart` validator before emitting a calculation request:
+
+- It captures one injectable, exact UTC instant and keeps the entered/selected
+  place coordinates unchanged.
+- It requires a non-empty timezone that the local `Intl.DateTimeFormat`
+  runtime recognizes. An empty zone is no longer silently converted to UTC;
+  an unsupported zone is reported in the form.
+- It rejects non-finite/out-of-range device-clock instants and invalid
+  coordinates before any chart-calculation IPC is called.
+- It does not run a birth-time/DST-fold resolver: the instant is already UTC.
+  The time zone is retained for local display of the chart time, not used to
+  change the UTC instant.
+- The helper is deterministic under tests because the `Date` is injected.
+  No new native command, astronomy implementation, network access or storage
+  was introduced.
+
+Focused regression coverage is in
+`tests/new-chart-form.test.mjs`. Run it with:
+
+```sh
+node --experimental-strip-types --test tests/new-chart-form.test.mjs
+```
+
+This is still a calculation request, not proof that the default build has an
+ephemeris provider. Without the optional local-use-only Swiss provider, the
+existing `provider_unavailable` state remains the expected result. The
+Swiss-enabled binary remains restricted to the maintainer's local use because
+of its AGPL licensing status; do not distribute it.
