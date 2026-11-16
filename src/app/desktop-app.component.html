@@ -51,6 +51,9 @@
         <div><h1>{{modeLabel(mode)}}</h1><p>{{t(artworkStatus)}}</p>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p></div>
         <div class="chart-header-controls">
+          <button type="button" class="toolbar-button" [disabled]="!selectedCity || calcBusy || exporting"
+            [attr.title]="t('sky.now.help')" [attr.aria-label]="t('sky.now')"
+            (click)="showSkyNow()">{{t('sky.now')}}</button>
           <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
             <span class="device-clock-caption">{{t('clock.now')}}</span>
             <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
