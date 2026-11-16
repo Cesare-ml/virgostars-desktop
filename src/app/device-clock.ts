@@ -68,11 +68,16 @@ export class DeviceClock {
     }
   }
 
+  /** Never let errors in the UI observer interrupt the live clock. */
+  private emitChanged(changed: () => void): void {
+    try { changed(); } catch { /* Keep observer errors private; continue sampling. */ }
+  }
+
   /** A clock without a working scheduler cannot safely display live time. */
   private invalidateTime(changed: () => void): void {
     if (this.disposed || Number.isNaN(this.timestamp)) return;
     this.timestamp = NaN;
-    changed();
+    this.emitChanged(changed);
   }
 
   refresh(changed: () => void): void {
@@ -83,7 +88,7 @@ export class DeviceClock {
       Math.floor(next / 1000) === Math.floor(this.timestamp / 1000);
     if (alreadyUnavailable || sameSecond) return;
     this.timestamp = next;
-    changed();
+    this.emitChanged(changed);
   }
 
   dispose(): void {

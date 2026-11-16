@@ -292,3 +292,79 @@ test('synchronous scheduler tick cannot reenter a second start', () => {
   clock.dispose();
   assert.equal(cancels, 1);
 });
+
+test('throwing initial notification does not prevent a live timer', () => {
+  let now = 0, tick = null, schedules = 0, cancels = 0, notices = 0;
+  const clock = new DeviceClock({
+    now: () => now,
+    schedule(fn) { tick = fn; schedules++; return 0; },
+    cancel(id) { assert.equal(id, 0); cancels++; tick = null; },
+  });
+  const notify = () => { notices++; throw new Error('private observer details'); };
+  now = 2_000;
+  assert.doesNotThrow(() => clock.start(notify));
+  assert.equal(schedules, 1);
+  now = 3_000;
+  assert.doesNotThrow(() => tick());
+  assert.equal(clock.timestamp, 3_000);
+  assert.equal(notices, 2);
+  clock.dispose();
+  assert.equal(cancels, 1);
+});
+
+test('throwing invalidation observer still hides stale time and recovers', () => {
+  let now = 10_000, tick, notices = 0;
+  const clock = new DeviceClock({
+    now: () => now,
+    schedule(fn) { tick = fn; return 0; },
+    cancel() { tick = null; },
+  });
+  const notify = () => { notices++; throw new Error('private observer details'); };
+  clock.start(notify);
+  now = NaN;
+  assert.doesNotThrow(() => tick());
+  assert.ok(Number.isNaN(clock.timestamp));
+  now = Infinity;
+  assert.doesNotThrow(() => tick());
+  assert.equal(notices, 1);
+  now = 11_000;
+  assert.doesNotThrow(() => tick());
+  assert.equal(clock.timestamp, 11_000);
+  assert.equal(notices, 2);
+  clock.dispose();
+});
+
+test('scheduler failure with throwing observer stays retryable', () => {
+  let now = 5_000, failing = true, tick, schedules = 0, notices = 0;
+  const clock = new DeviceClock({
+    now: () => now,
+    schedule(fn) { schedules++; if (failing) throw Error('private scheduler'); tick = fn; return 0; },
+    cancel() { tick = null; },
+  });
+  const notify = () => { notices++; throw Error('private observer'); };
+  assert.doesNotThrow(() => clock.start(notify));
+  assert.ok(Number.isNaN(clock.timestamp));
+  assert.equal(notices, 1);
+  failing = false;
+  now = 6_000;
+  assert.doesNotThrow(() => clock.start(notify));
+  assert.equal(schedules, 2);
+  now = 7_000;
+  assert.doesNotThrow(() => tick());
+  assert.equal(clock.timestamp, 7_000);
+  assert.equal(notices, 3);
+  clock.dispose();
+});
+
+test('observer disposing and throwing during first refresh starts no timer', () => {
+  let now = 1_000, schedules = 0;
+  const clock = new DeviceClock({
+    now: () => now,
+    schedule() { schedules++; return 0; },
+    cancel() { assert.fail('no interval should exist'); },
+  });
+  now = 2_000;
+  assert.doesNotThrow(() => clock.start(() => { clock.dispose(); throw Error('private UI teardown'); }));
+  assert.equal(schedules, 0);
+  assert.equal(clock.timestamp, 2_000);
+});

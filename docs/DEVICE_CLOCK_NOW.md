@@ -105,3 +105,20 @@ network, persistence, Tauri IPC, extra dependencies, or new release capability.
 Verify with `node --experimental-strip-types --test tests/device-clock.test.mjs`
 and then the normal complete Windows/WebView2 acceptance gates. Do not infer
 native UI acceptance from a source-only review.
+
+## Observer exception boundary (13 November 2026)
+
+The UI callback supplied to `DeviceClock.start()` is an external observer.
+If it throws during the first refresh, a scheduled tick, or a transition to
+unavailable time, the clock must not stop scheduling, leave a stale plausible
+timestamp, or leak exception details. Both live refresh and fail-closed
+invalidation now use `emitChanged` to isolate observer exceptions after
+writing the timestamp. Reentrant start and synchronous disposal protections
+remain intact. This does not retry failed observers or hide invalid timestamps.
+
+Four additional synthetic tests exercise a throwing initial observer, failed
+clock readings and recovery, scheduler retry, and disposal plus observer failure.
+Run `node --experimental-strip-types --test tests/device-clock.test.mjs`,
+then `npm test`, `npm run build:ui`, and native Windows WebView2 smoke.
+No new dependency, astronomical algorithm, real chart, native IPC, personal
+data, authentication, migration, network, protected asset or release.
