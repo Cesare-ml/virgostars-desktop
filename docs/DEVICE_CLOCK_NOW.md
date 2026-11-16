@@ -151,3 +151,7 @@ This is opt-in rather than automatic at application startup. Full Angular, Tauri
 ## Async calculation failure handling
 
 Both a newly requested chart and the transit overlay catch unexpected native calculation rejections and report the existing `calc.failed` status. When a tracked live chart is removed, the calculation generation is invalidated so a late native response cannot repopulate the deleted chart. These are defensive UI guards; they do not replace full provider integration tests or a Windows smoke test.
+
+## Natal archive and return safety
+
+While live tracking is enabled, the archive-save control is disabled and `saveActiveChart()` rejects attempts to persist the changing sky as a birth chart, including direct method calls. The solar/lunar return tool likewise rejects a live sky as its fixed natal radix. Stop tracking to restore the original natal chart before saving or calculating returns.
