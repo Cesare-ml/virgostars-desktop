@@ -67,14 +67,55 @@ function microDegrees(x: unknown, limit: number): x is number {
   return typeof x === 'number' && Number.isSafeInteger(x) && Math.abs(x) <= limit;
 }
 
-/** The same rules the Rust side enforces, checked before anything is sent. */
-export function validChartRecord(chart: ChartRecordV1): boolean {
-  return plainObject(chart) &&
+const CHART_FIELDS = ['id', 'name', 'utcIso', 'timeZone', 'latMicro', 'lngMicro', 'placeName'] as const;
+
+/**
+ * Copy only own, enumerable data properties. Never evaluate a getter supplied
+ * by a caller and never trust an inherited field or a Proxy trap failure.
+ * Extra fields are deliberately ignored so UI-only metadata cannot cross IPC.
+ */
+function ownDataFields(source: unknown, names: readonly string[]): Record<string, unknown> | null {
+  try {
+    if (!plainObject(source)) return null;
+    const snapshot: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const name of names) {
+      const descriptor = Object.getOwnPropertyDescriptor(source, name);
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) return null;
+      snapshot[name] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function validChartSnapshot(chart: Record<string, unknown> | null): chart is Record<typeof CHART_FIELDS[number], unknown> {
+  return chart !== null &&
     typeof chart.id === 'string' && ID_PATTERN.test(chart.id) &&
     label(chart.name, 80) && label(chart.placeName, 160) &&
     typeof chart.utcIso === 'string' && UTC_PATTERN.test(chart.utcIso) &&
     typeof chart.timeZone === 'string' && chart.timeZone.length <= 120 && ZONE_PATTERN.test(chart.timeZone) &&
     microDegrees(chart.latMicro, 90_000_000) && microDegrees(chart.lngMicro, 180_000_000);
+}
+
+/** The same rules the Rust side enforces, checked before anything is sent. */
+export function validChartRecord(chart: ChartRecordV1): boolean {
+  return validChartSnapshot(ownDataFields(chart, CHART_FIELDS));
+}
+
+/** Return an immutable, whitelisted copy suitable for the native boundary. */
+function snapshotChartRecord(chart: unknown): ChartRecordV1 | null {
+  const snapshot = ownDataFields(chart, CHART_FIELDS);
+  if (!validChartSnapshot(snapshot)) return null;
+  return {
+    id: snapshot.id as string,
+    name: snapshot.name as string,
+    utcIso: snapshot.utcIso as string,
+    timeZone: snapshot.timeZone as string,
+    latMicro: snapshot.latMicro as number,
+    lngMicro: snapshot.lngMicro as number,
+    placeName: snapshot.placeName as string,
+  };
 }
 
 function decodeSavedChart(raw: unknown, seen: Set<string>): SavedChartV1 {
@@ -126,14 +167,22 @@ export function decodeArchiveResponse(raw: unknown): DecodedArchive {
 }
 
 function wireRequest(operation: ArchiveOperation): WireRequest | null {
-  if (!plainObject(operation)) return null;
-  if (operation.operation === 'list') return {protocolVersion: 1, operation: 'list'};
-  if (operation.operation === 'save' && validChartRecord(operation.chart)) {
-    const {id, name, utcIso, timeZone, latMicro, lngMicro, placeName} = operation.chart;
-    return {protocolVersion: 1, operation: 'save', chart: {id, name, utcIso, timeZone, latMicro, lngMicro, placeName}};
+  const tag = ownDataFields(operation, ['operation']);
+  if (!tag) return null;
+  if (tag.operation === 'list') return {protocolVersion: 1, operation: 'list'};
+
+  if (tag.operation === 'save') {
+    const request = ownDataFields(operation, ['operation', 'chart']);
+    const chart = request && request.operation === 'save' ? snapshotChartRecord(request.chart) : null;
+    return chart ? {protocolVersion: 1, operation: 'save', chart} : null;
   }
-  if (operation.operation === 'delete' && typeof operation.id === 'string' && ID_PATTERN.test(operation.id)) {
-    return {protocolVersion: 1, operation: 'delete', id: operation.id};
+
+  if (tag.operation === 'delete') {
+    const request = ownDataFields(operation, ['operation', 'id']);
+    const id = request?.id;
+    return request && request.operation === 'delete' && typeof id === 'string' && ID_PATTERN.test(id)
+      ? {protocolVersion: 1, operation: 'delete', id}
+      : null;
   }
   return null;
 }
