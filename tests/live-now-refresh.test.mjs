@@ -5,7 +5,7 @@ import {dueLiveNowMinute, LIVE_NOW_REFRESH_INTERVAL_MS} from '../src/app/live-no
 test('returns one stable minute bucket and waits inside the same minute', () => {
   assert.equal(dueLiveNowMinute(60_001, null), 1);
   assert.equal(dueLiveNowMinute(89_999, 1), null);
-  assert.equal(dueLiveNowMinute(90_000, 1), 1);
+  assert.equal(dueLiveNowMinute(90_000, 1), null);
 });
 
 test('refreshes immediately after crossing a minute boundary', () => {
