@@ -24,3 +24,10 @@ test('current sky preserves calendar rollover and refuses invalid zones or coord
   assert.equal(currentSkyInput('not-a-date', city), null);
   assert.equal(currentSkyInput('2026-12-31T23:30:00.000Z', {...city, latMicro:100_000_000}), null);
 });
+
+test('current sky rejects unknown zones and preserves subsecond UTC offsets', () => {
+  assert.equal(currentSkyInput('2026-07-15T12:00:00.000Z', {...city, timeZone:null}), null);
+  const subsecond = currentSkyInput('2026-07-15T12:00:00.999Z', city);
+  assert.equal(subsecond.offsetSeconds, 7200);
+  assert.equal(subsecond.utcIso, '2026-07-15T12:00:00.999Z');
+});
