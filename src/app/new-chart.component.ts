@@ -13,6 +13,7 @@ const PROBLEM_KEYS: Record<NewChartProblem, MessageKey> = {
   date_invalid: 'problem.date', time_invalid: 'problem.time', zone_invalid: 'problem.zone',
   zone_unavailable: 'problem.zoneUnavailable', latitude_invalid: 'problem.latitude',
   longitude_invalid: 'problem.longitude', time_nonexistent: 'problem.nonexistent',
+  instant_unavailable: 'problem.instantUnavailable',
 };
 
 function hostTimeZone(): string {
