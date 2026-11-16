@@ -106,7 +106,13 @@ fn find_crossings(
 ) -> Result<Vec<f64>, ProviderError> {
     let read = |time: f64| -> Result<f64, ProviderError> {
         let longitude = longitude_at(time)?;
-        if longitude.is_finite() { Ok(offset(longitude, target)) } else { Err(ProviderError) }
+        // The provider contract requires a normalized longitude. Remapping
+        // arbitrary finite values here could conceal an upstream engine bug.
+        if (0.0..360.0).contains(&longitude) {
+            Ok(offset(longitude, target))
+        } else {
+            Err(ProviderError)
+        }
     };
     let mut crossings = Vec::new();
     let mut left = start;
@@ -287,6 +293,17 @@ mod tests {
         let previous = find_crossings(at_last_second, 40.0, start, start + 365.0, 1.0).unwrap();
         assert_eq!(previous.len(), 2);
         assert!((previous[1] - (start + 365.0 - 1.0 / 86_400.0)).abs() < 2e-9);
+    }
+
+    #[test]
+    fn test_unbounded_provider_longitudes_fail_closed() {
+        let start = year_start_julian_day(2001);
+        for bad in [-0.01, 360.0, 720.0, f64::NAN, f64::INFINITY] {
+            let result = find_crossings(|_| Ok(bad), 40.0, start, start + 1.0, 0.25);
+            assert_eq!(result, Err(ProviderError), "accepted longitude {bad:?}");
+        }
+        assert!(find_crossings(|_| Ok(0.0), 40.0, start, start + 1.0, 0.25).is_ok());
+        assert!(find_crossings(|_| Ok(359.999), 40.0, start, start + 1.0, 0.25).is_ok());
     }
 
     #[test]
