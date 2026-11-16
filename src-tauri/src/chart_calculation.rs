@@ -181,6 +181,51 @@ pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
     })
 }
 
+/// A provider is a trust boundary, including when it runs in the same process.
+/// Reject non-finite values before JSON serialization (which can otherwise turn
+/// NaN/Infinity into null) and never report an incomplete chart as ready.
+fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
+    if !chart.julian_day_ut.is_finite() {
+        return false;
+    }
+    for (index, body) in chart.bodies.iter().enumerate() {
+        if body.id.is_empty()
+            || chart.bodies[..index].iter().any(|other| other.id == body.id)
+            || ![
+                body.longitude_deg,
+                body.latitude_deg,
+                body.distance_au,
+                body.longitude_speed,
+                body.latitude_speed,
+                body.distance_speed,
+                body.right_ascension_deg,
+                body.declination_deg,
+            ]
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return false;
+        }
+    }
+    for (index, house) in chart.houses.iter().enumerate() {
+        if house.id.is_empty()
+            || chart.houses[..index].iter().any(|other| other.id == house.id)
+            || !house.cusps_deg.iter().all(|value| value.is_finite())
+            || ![
+                house.ascendant_deg,
+                house.mc_deg,
+                house.armc_deg,
+                house.vertex_deg,
+            ]
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return false;
+        }
+    }
+    true
+}
+
 fn failure(status: &'static str) -> ChartResponseV1 {
     ChartResponseV1 { protocol_version: PROTOCOL_VERSION, status, provider: None, chart: None }
 }
@@ -194,6 +239,7 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
         return failure("provider_unavailable");
     };
     match provider.chart(&valid) {
+        Ok(chart) if !valid_snapshot(&chart) => failure("calculation_failed"),
         Ok(chart) => ChartResponseV1 {
             protocol_version: PROTOCOL_VERSION,
             status: "ok",
@@ -322,6 +368,49 @@ mod tests {
     fn test_provider_failure_stays_opaque() {
         let provider = FixedProvider(Err(ProviderError));
         let response = respond(Some(&provider), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.provider.is_none() && response.chart.is_none());
+    }
+
+    #[test]
+    fn test_non_finite_provider_values_fail_closed_before_serialization() {
+        let mut chart = empty_chart();
+        chart.julian_day_ut = f64::NAN;
+        let response = respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.chart.is_none());
+
+        let mut chart = empty_chart();
+        chart.houses.push(HouseSystemV1 {
+            id: "placido",
+            cusps_deg: [f64::INFINITY; 12],
+            ascendant_deg: 0.0,
+            mc_deg: 0.0,
+            armc_deg: 0.0,
+            vertex_deg: 0.0,
+        });
+        let response = respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z"));
+        assert_eq!(response.status, "calculation_failed");
+        assert!(response.chart.is_none());
+    }
+
+    #[test]
+    fn test_duplicate_provider_body_ids_are_not_reported_as_ready() {
+        let body = BodyPositionV1 {
+            id: "Sun",
+            longitude_deg: 10.0,
+            latitude_deg: 0.0,
+            distance_au: 1.0,
+            longitude_speed: 1.0,
+            latitude_speed: 0.0,
+            distance_speed: 0.0,
+            right_ascension_deg: 10.0,
+            declination_deg: 0.0,
+            ephemeris_source: "synthetic_test",
+        };
+        let mut chart = empty_chart();
+        chart.bodies = vec![body.clone(), body];
+        let response = respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z"));
         assert_eq!(response.status, "calculation_failed");
         assert!(response.provider.is_none() && response.chart.is_none());
     }
