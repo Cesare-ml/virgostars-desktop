@@ -4,7 +4,7 @@ import {OfflineCityPickerComponent} from './offline-city-picker.component';
 import {resolveCivilTime, type CivilTimeChoice} from './native/civil-time';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {
-  MAX_CHART_NAME_LENGTH, cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart,
+  MAX_CHART_NAME_LENGTH, cleanChartName, formatUtcOffset, resolveNewChart, resolveNowChart, selectedPlaceTimeZone,
   type NewChartInput, type NewChartProblem,
 } from './new-chart-form';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -13,6 +13,7 @@ const PROBLEM_KEYS: Record<NewChartProblem, MessageKey> = {
   date_invalid: 'problem.date', time_invalid: 'problem.time', zone_invalid: 'problem.zone',
   zone_unavailable: 'problem.zoneUnavailable', latitude_invalid: 'problem.latitude',
   longitude_invalid: 'problem.longitude', time_nonexistent: 'problem.nonexistent',
+  instant_unavailable: 'problem.instantUnavailable',
 };
 
 function hostTimeZone(): string {
@@ -67,7 +68,8 @@ export class NewChartComponent {
     this.city = place;
     this.latitude = (place.latMicro / 1e6).toFixed(6);
     this.longitude = (place.lngMicro / 1e6).toFixed(6);
-    if (place.timeZone) this.timeZone = place.timeZone;
+    // A city with no verified zone must not inherit the previous city's or host's zone.
+    this.timeZone = selectedPlaceTimeZone(place.timeZone);
     this.placeName = place.name;
     this.problem = null;
     this.choices = [];
@@ -95,16 +97,12 @@ export class NewChartComponent {
   submitNow(): void {
     if (this.busy) return;
     this.choices = [];
-    const latMicro = parseDegreesMicro(this.latitude, 90);
-    const lngMicro = parseDegreesMicro(this.longitude, 180);
-    this.problem = latMicro === null ? 'latitude_invalid' : lngMicro === null ? 'longitude_invalid' : null;
-    if (latMicro !== null && lngMicro !== null) {
-      this.chartRequested.emit({
-        name: cleanChartName(this.name), utcIso: new Date().toISOString(),
-        localDate: '', localTime: '', timeZone: this.timeZone.trim() || 'UTC', offsetSeconds: 0,
-        latMicro, lngMicro, placeName: cleanChartName(this.placeName),
-      });
-    }
+    const result = resolveNowChart({
+      name: this.name, timeZone: this.timeZone, latitude: this.latitude,
+      longitude: this.longitude, placeName: this.placeName,
+    });
+    this.problem = result.status === 'problem' ? result.problem : null;
+    if (result.status === 'ready') this.chartRequested.emit(result.input);
     this.cd.markForCheck();
   }
 }

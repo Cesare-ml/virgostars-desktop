@@ -105,3 +105,53 @@ network, persistence, Tauri IPC, extra dependencies, or new release capability.
 Verify with `node --experimental-strip-types --test tests/device-clock.test.mjs`
 and then the normal complete Windows/WebView2 acceptance gates. Do not infer
 native UI acceptance from a source-only review.
+
+
+## Current-moment chart input guard (2026-11-16)
+
+The existing **Now at this place** action now goes through the pure
+`resolveNowChart` validator before emitting a calculation request:
+
+- It captures one injectable, exact UTC instant and keeps the entered/selected
+  place coordinates unchanged.
+- It requires a non-empty timezone that the local `Intl.DateTimeFormat`
+  runtime recognizes. An empty zone is no longer silently converted to UTC;
+  an unsupported zone is reported in the form.
+- It rejects non-finite/out-of-range device-clock instants and invalid
+  coordinates before any chart-calculation IPC is called.
+- It does not run a birth-time/DST-fold resolver: the instant is already UTC.
+  The local date, local clock time and UTC offset are derived from that exact
+  same instant with the selected IANA timezone; they never replace or shift
+  the UTC value sent to the provider. Winter/summer offsets are therefore
+  handled by the device timezone database, without assuming a fixed offset.
+- The helper is deterministic under tests because the `Date` is injected.
+  No new native command, astronomy implementation, network access or storage
+  was introduced.
+
+Focused regression coverage is in
+`tests/new-chart-form.test.mjs`. Run it with:
+
+```sh
+node --experimental-strip-types --test tests/new-chart-form.test.mjs
+```
+
+This is still a calculation request, not proof that the default build has an
+ephemeris provider. Without the optional local-use-only Swiss provider, the
+existing `provider_unavailable` state remains the expected result. The
+Swiss-enabled binary remains restricted to the maintainer's local use because
+of its AGPL licensing status; do not distribute it.
+
+
+## Opt-in live chart tracking (MVP)
+
+The calculated-chart toolbar offers **Track current sky / Segui il cielo attuale** only when a calculated chart is active. It uses the same place coordinates and the device's current UTC instant, recalculating no more than once per clock minute via the existing native provider. Tracking stops when switching away from that chart, removing it, destroying the component, or on a calculation failure. The original natal/session chart is restored on stop, chart switch or provider failure; a live recalculation is never treated as a saved birth chart. A browser preview or a Tauri build without an astronomical provider reports the existing calculation error; it does **not** silently display synthetic positions as current sky. The existing chart remains visible after a failure. No network, background process, archive write, or new native IPC permission is introduced.
+
+This is opt-in rather than automatic at application startup. Full Angular, Tauri and Windows GUI verification remains required before release.
+
+## Async calculation failure handling
+
+Both a newly requested chart and the transit overlay catch unexpected native calculation rejections and report the existing `calc.failed` status. When a tracked live chart is removed, the calculation generation is invalidated so a late native response cannot repopulate the deleted chart. These are defensive UI guards; they do not replace full provider integration tests or a Windows smoke test.
+
+## Natal archive and return safety
+
+While live tracking is enabled, the archive-save control is disabled and `saveActiveChart()` rejects attempts to persist the changing sky as a birth chart, including direct method calls. The solar/lunar return tool likewise rejects a live sky as its fixed natal radix. Stop tracking to restore the original natal chart before saving or calculating returns.

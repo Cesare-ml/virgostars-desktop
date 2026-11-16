@@ -75,6 +75,9 @@
         <button type="button" class="toolbar-button fit-button" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
         <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && mode==='transits'"
           [disabled]="busy||calcBusy" (click)="showTransits()">{{t('transits.refresh')}}</button>
+        <button type="button" class="toolbar-button fit-button" *ngIf="activeChart"
+          [disabled]="busy||calcBusy" [attr.aria-pressed]="liveChartId===activeChartId"
+          (click)="toggleLiveSky()">{{t(liveChartId===activeChartId ? 'live.stop' : 'live.start')}}</button>
         <div class="toolbar-spacer"></div>
         <span class="status-message" role="status">{{t(status)}}</span>
         <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
@@ -171,7 +174,7 @@
           <button type="button" class="link-control" *ngIf="activeChart" [disabled]="calcBusy || busy" (click)="showDemoChart()">{{t('session.demo')}}</button>
           <h3 class="panel-title">{{t('archive.title')}}</h3>
           <p class="inspector-hint">{{t('archive.note')}}</p>
-          <button type="button" class="archive-save" *ngIf="activeChart as chart" [disabled]="archiveBusy || calcBusy || chart.archiveId !== null"
+          <button type="button" class="archive-save" *ngIf="activeChart as chart" [disabled]="archiveBusy || calcBusy || liveChartId === chart.id || chart.archiveId !== null"
             (click)="saveActiveChart()">{{t(chart.archiveId === null ? 'archive.save' : 'archive.already')}}</button>
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
           <p class="inspector-hint" *ngIf="!savedCharts.length && !archiveMessage">{{t('archive.empty')}}</p>

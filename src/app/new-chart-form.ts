@@ -29,7 +29,7 @@ export type NewChartInput = Readonly<{
 
 export type NewChartProblem =
   | 'date_invalid' | 'time_invalid' | 'zone_invalid' | 'zone_unavailable'
-  | 'latitude_invalid' | 'longitude_invalid' | 'time_nonexistent';
+  | 'latitude_invalid' | 'longitude_invalid' | 'time_nonexistent' | 'instant_unavailable';
 
 export type NewChartResolution =
   | Readonly<{status: 'ready'; input: NewChartInput}>
@@ -113,4 +113,113 @@ export function formatUtcOffset(offsetSeconds: number): string {
   const seconds = total % 60;
   const pad = (value: number) => String(value).padStart(2, '0');
   return sign + pad(hours) + ':' + pad(minutes) + (seconds ? ':' + pad(seconds) : '');
+}
+
+
+export type NewChartNowResolution =
+  | Readonly<{status: 'ready'; input: NewChartInput}>
+  | Readonly<{status: 'problem'; problem: NewChartProblem}>;
+
+/**
+ * Build a chart request for the current instant at the entered place.
+ * The current UTC instant is unambiguous, so civil date, clock time and offset
+ * are derived solely for metadata from that instant in the selected timezone.
+ * Coordinates and the display timezone must still be valid; an empty timezone
+ * is never silently replaced with UTC.
+ *
+ * The Date is injectable so tests can assert the exact instant without
+ * depending on the machine clock.
+ */
+export function resolveNowChart(
+  fields: Pick<NewChartFields, 'name' | 'timeZone' | 'latitude' | 'longitude' | 'placeName'>,
+  now: Date = new Date(),
+): NewChartNowResolution {
+  const latMicro = parseDegreesMicro(fields.latitude, 90);
+  if (latMicro === null) return {status: 'problem', problem: 'latitude_invalid'};
+  const lngMicro = parseDegreesMicro(fields.longitude, 180);
+  if (lngMicro === null) return {status: 'problem', problem: 'longitude_invalid'};
+
+  const milliseconds = now instanceof Date ? now.getTime() : Number.NaN;
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8_640_000_000_000_000) {
+    return {status: 'problem', problem: 'instant_unavailable'};
+  }
+
+  const timeZone = typeof fields.timeZone === 'string' ? fields.timeZone.trim() : '';
+  if (!timeZone || timeZone.length > 120) {
+    return {status: 'problem', problem: 'zone_invalid'};
+  }
+  let utcIso: string;
+  let localParts: Intl.DateTimeFormatPart[];
+  try {
+    // Keep the captured UTC instant authoritative and derive civil metadata
+    // from that same instant; never round-trip through an ambiguous local time.
+    utcIso = new Date(milliseconds).toISOString();
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(utcIso)) {
+      return {status: 'problem', problem: 'instant_unavailable'};
+    }
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      calendar: 'gregory',
+      numberingSystem: 'latn',
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    localParts = formatter.formatToParts(new Date(milliseconds));
+  } catch {
+    return {status: 'problem', problem: 'zone_invalid'};
+  }
+
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    localParts.find(item => item.type === type)?.value ?? '';
+  const year = Number(part('year'));
+  const month = Number(part('month'));
+  const day = Number(part('day'));
+  const hour = Number(part('hour'));
+  const minute = Number(part('minute'));
+  const second = Number(part('second'));
+  if (!Number.isInteger(year) || year < 1 || year > 9999 ||
+      !Number.isInteger(month) || month < 1 || month > 12 ||
+      !Number.isInteger(day) || day < 1 || day > 31 ||
+      !Number.isInteger(hour) || hour < 0 || hour > 23 ||
+      !Number.isInteger(minute) || minute < 0 || minute > 59 ||
+      !Number.isInteger(second) || second < 0 || second > 59) {
+    return {status: 'problem', problem: 'zone_unavailable'};
+  }
+
+  // Interpret the formatted civil fields as UTC only to calculate their
+  // difference from the captured UTC second. This preserves historic
+  // second-level offsets and avoids DST assumptions or host-zone fallbacks.
+  const localWallTime = new Date(0);
+  localWallTime.setUTCFullYear(year, month - 1, day);
+  localWallTime.setUTCHours(hour, minute, second, 0);
+  const offsetSeconds = Math.round(
+    (localWallTime.getTime() - Math.floor(milliseconds / 1000) * 1000) / 1000,
+  );
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return {
+    status: 'ready',
+    input: {
+      name: cleanChartName(fields.name),
+      utcIso,
+      localDate: `${String(year).padStart(4, '0')}-${pad(month)}-${pad(day)}`,
+      localTime: `${pad(hour)}:${pad(minute)}:${pad(second)}`,
+      timeZone,
+      offsetSeconds,
+      latMicro,
+      lngMicro,
+      placeName: cleanChartName(fields.placeName),
+    },
+  };
+}
+
+
+/** Never inherit a prior place's zone when a catalog entry lacks one. */
+export function selectedPlaceTimeZone(timeZone: string | null | undefined): string {
+  return typeof timeZone === 'string' ? timeZone.trim() : '';
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart,
+  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart, resolveNowChart, selectedPlaceTimeZone,
 } from '../src/app/new-chart-form.ts';
 import {resolveCivilTime} from '../src/app/native/civil-time.ts';
 
@@ -77,4 +77,153 @@ test('UTC offsets are labelled with sign, hours, minutes and historical seconds'
   assert.equal(formatUtcOffset(-12600), '-03:30');
   assert.equal(formatUtcOffset(0), '+00:00');
   assert.equal(formatUtcOffset(2996), '+00:49:56');
+});
+
+
+test('current-moment chart uses the injected UTC instant and the exact selected place', () => {
+  const result = resolveNowChart({
+    name: '  Cielo presente  ', timeZone: ' Europe/Rome ',
+    latitude: '44.697805', longitude: '11,805778', placeName: ' Bologna ',
+  }, new Date('2026-11-16T11:28:42.123Z'));
+  assert.equal(result.status, 'ready');
+  assert.deepEqual(result.input, {
+    name: 'Cielo presente',
+    utcIso: '2026-11-16T11:28:42.123Z',
+    localDate: '2026-11-16',
+    localTime: '12:28:42',
+    timeZone: 'Europe/Rome',
+    offsetSeconds: 3600,
+    latMicro: 44_697_805,
+    lngMicro: 11_805_778,
+    placeName: 'Bologna',
+  });
+});
+
+test('current-moment chart refuses missing or unsupported time zones', () => {
+  const fields = {name: '', timeZone: '', latitude: '0', longitude: '0', placeName: ''};
+  assert.deepEqual(resolveNowChart(fields, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'zone_invalid'});
+  assert.deepEqual(resolveNowChart({...fields, timeZone: 'Mars/Olympus_Mons'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'zone_invalid'});
+  assert.deepEqual(resolveNowChart({...fields, timeZone: 'UTC'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'ready', input: {
+      name: '', utcIso: '2026-01-01T00:00:00.000Z', localDate: '2026-01-01', localTime: '00:00:00',
+      timeZone: 'UTC', offsetSeconds: 0, latMicro: 0, lngMicro: 0, placeName: '',
+    }});
+});
+
+test('current-moment chart never emits an invalid or fabricated instant', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  assert.deepEqual(resolveNowChart(fields, new Date(Number.NaN)),
+    {status: 'problem', problem: 'instant_unavailable'});
+  assert.deepEqual(resolveNowChart({...fields, latitude: '91'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'latitude_invalid'});
+  assert.deepEqual(resolveNowChart({...fields, longitude: '181'}, new Date('2026-01-01T00:00:00Z')),
+    {status: 'problem', problem: 'longitude_invalid'});
+});
+
+test('selected offline place never inherits an earlier or host timezone', () => {
+  assert.equal(selectedPlaceTimeZone(' Europe/Rome '), 'Europe/Rome');
+  assert.equal(selectedPlaceTimeZone(null), '');
+  assert.equal(selectedPlaceTimeZone(undefined), '');
+  assert.equal(selectedPlaceTimeZone(''), '');
+  const fields = {name: '', timeZone: selectedPlaceTimeZone(null), latitude: '44', longitude: '11', placeName: 'Catalog entry'};
+  assert.deepEqual(resolveNowChart(fields, new Date('2026-11-16T12:00:00Z')),
+    {status: 'problem', problem: 'zone_invalid'});
+});
+
+
+test('current-moment metadata follows daylight-saving changes while preserving UTC', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  const winter = resolveNowChart(fields, new Date('2026-01-15T12:34:56.789Z'));
+  assert.equal(winter.status, 'ready');
+  assert.equal(winter.input.utcIso, '2026-01-15T12:34:56.789Z');
+  assert.equal(winter.input.localDate, '2026-01-15');
+  assert.equal(winter.input.localTime, '13:34:56');
+  assert.equal(winter.input.offsetSeconds, 3600);
+
+  const summer = resolveNowChart(fields, new Date('2026-07-15T12:34:56.789Z'));
+  assert.equal(summer.status, 'ready');
+  assert.equal(summer.input.utcIso, '2026-07-15T12:34:56.789Z');
+  assert.equal(summer.input.localDate, '2026-07-15');
+  assert.equal(summer.input.localTime, '14:34:56');
+  assert.equal(summer.input.offsetSeconds, 7200);
+});
+
+test('UTC is explicit and stable; extended ISO instants are rejected before IPC', () => {
+  const fields = {name: '', timeZone: 'UTC', latitude: '0', longitude: '0', placeName: ''};
+  const utc = resolveNowChart(fields, new Date('2026-11-16T08:09:10.123Z'));
+  assert.equal(utc.status, 'ready');
+  assert.equal(utc.input.localDate, '2026-11-16');
+  assert.equal(utc.input.localTime, '08:09:10');
+  assert.equal(utc.input.offsetSeconds, 0);
+
+  assert.deepEqual(resolveNowChart(fields, new Date(8_640_000_000_000_000)),
+    {status: 'problem', problem: 'instant_unavailable'});
+});
+
+test('current sky uses the exact UTC instant across the spring DST jump', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  const before = resolveNowChart(fields, new Date('2026-03-29T00:59:59.000Z'));
+  const after = resolveNowChart(fields, new Date('2026-03-29T01:00:00.000Z'));
+  assert.equal(before.status, 'ready');
+  assert.equal(after.status, 'ready');
+  assert.equal(before.input.localTime, '01:59:59');
+  assert.equal(before.input.offsetSeconds, 3600);
+  assert.equal(after.input.localTime, '03:00:00');
+  assert.equal(after.input.offsetSeconds, 7200);
+  assert.equal(after.input.utcIso, '2026-03-29T01:00:00.000Z');
+});
+
+test('current sky distinguishes repeated local clock times at the autumn DST fold', () => {
+  const fields = {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''};
+  const earlier = resolveNowChart(fields, new Date('2026-10-25T00:30:00.000Z'));
+  const later = resolveNowChart(fields, new Date('2026-10-25T01:30:00.000Z'));
+  assert.equal(earlier.status, 'ready');
+  assert.equal(later.status, 'ready');
+  assert.equal(earlier.input.localTime, '02:30:00');
+  assert.equal(later.input.localTime, '02:30:00');
+  assert.equal(earlier.input.offsetSeconds, 7200);
+  assert.equal(later.input.offsetSeconds, 3600);
+  assert.notEqual(earlier.input.utcIso, later.input.utcIso);
+});
+
+test('current sky derives local calendar day across UTC midnight', () => {
+  const rome = resolveNowChart(
+    {name: '', timeZone: 'Europe/Rome', latitude: '0', longitude: '0', placeName: ''},
+    new Date('2026-11-16T23:30:00.000Z'),
+  );
+  assert.equal(rome.status, 'ready');
+  assert.equal(rome.input.utcIso, '2026-11-16T23:30:00.000Z');
+  assert.equal(rome.input.localDate, '2026-11-17');
+  assert.equal(rome.input.localTime, '00:30:00');
+  assert.equal(rome.input.offsetSeconds, 3600);
+
+  const newYork = resolveNowChart(
+    {name: '', timeZone: 'America/New_York', latitude: '0', longitude: '0', placeName: ''},
+    new Date('2026-11-16T02:30:00.000Z'),
+  );
+  assert.equal(newYork.status, 'ready');
+  assert.equal(newYork.input.localDate, '2026-11-15');
+  assert.equal(newYork.input.localTime, '21:30:00');
+  assert.equal(newYork.input.offsetSeconds, -18000);
+});
+
+test('current sky preserves fractional-hour offsets without rounding to whole hours', () => {
+  const fields = {name: '', timeZone: 'Asia/Kathmandu', latitude: '27.7', longitude: '85.3', placeName: 'Kathmandu'};
+  const result = resolveNowChart(fields, new Date('2026-11-16T18:30:00.000Z'));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.input.utcIso, '2026-11-16T18:30:00.000Z');
+  assert.equal(result.input.localDate, '2026-11-17');
+  assert.equal(result.input.localTime, '00:15:00');
+  assert.equal(result.input.offsetSeconds, 20700);
+});
+
+test('current sky preserves negative half-hour offsets', () => {
+  const fields = {name: '', timeZone: 'America/St_Johns', latitude: '47.56', longitude: '-52.71', placeName: 'St Johns'};
+  const result = resolveNowChart(fields, new Date('2026-01-15T12:00:00.000Z'));
+  assert.equal(result.status, 'ready');
+  assert.equal(result.input.localDate, '2026-01-15');
+  assert.equal(result.input.localTime, '08:30:00');
+  assert.equal(result.input.offsetSeconds, -12600);
 });

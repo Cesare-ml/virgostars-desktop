@@ -194,8 +194,13 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
 }
 
 export function validChartRequest(request: ChartRequestV1): boolean {
-  return typeof request?.utcIso === 'string' && UTC_PATTERN.test(request.utcIso) &&
-    Number.isSafeInteger(request.latMicro) && Math.abs(request.latMicro) <= 90_000_000 &&
+  if (typeof request?.utcIso !== 'string' || !UTC_PATTERN.test(request.utcIso)) return false;
+  // A regex alone accepts impossible dates (e.g. February 30) and invalid
+  // hours. Reject them before crossing the native calculation boundary.
+  const milliseconds = Date.parse(request.utcIso);
+  if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString() !==
+      (request.utcIso.includes('.') ? request.utcIso : request.utcIso.replace('Z', '.000Z'))) return false;
+  return Number.isSafeInteger(request.latMicro) && Math.abs(request.latMicro) <= 90_000_000 &&
     Number.isSafeInteger(request.lngMicro) && Math.abs(request.lngMicro) <= 180_000_000;
 }
 
