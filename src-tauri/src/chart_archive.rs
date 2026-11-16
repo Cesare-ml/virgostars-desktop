@@ -119,6 +119,7 @@ fn valid_record(chart: &ChartRecordV1) -> bool {
         lng_micro: chart.lng_micro,
     };
     valid_id(&chart.id)
+        && !chart.name.is_empty()
         && valid_text(&chart.name, MAX_NAME_CHARS)
         && valid_text(&chart.place_name, MAX_PLACE_CHARS)
         && valid_zone(&chart.time_zone)
@@ -327,6 +328,16 @@ mod tests {
     }
     fn delete_request(id: &str) -> ArchiveRequestV1 {
         ArchiveRequestV1 { protocol_version: 1, operation: "delete".into(), chart: None, id: Some(id.into()) }
+    }
+
+    #[test]
+    fn test_empty_chart_name_is_rejected_without_touching_disk() {
+        let archive = TempArchive::new("empty-name");
+        for name in ["", " ", "\\t"] {
+            let response = handle(&archive.0, &save_request(record(ID_A, name)), 1000);
+            assert_eq!(response.status, "invalid_request");
+            assert!(!archive.0.exists());
+        }
     }
 
     #[test]
