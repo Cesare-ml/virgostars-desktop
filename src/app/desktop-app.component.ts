@@ -674,7 +674,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   get clockInstantIso(): string | null {
     const ms = this.deviceClock.timestamp;
-    return Number.isFinite(ms) && Math.abs(ms) <= 8_640_000_000_000_000 ? new Date(ms).toISOString() : null;
+    if (!Number.isFinite(ms) || Math.abs(ms) > 8_640_000_000_000_000) return null;
+    // Native chart requests require a four-digit Gregorian year. An extended
+    // ISO year is valid JavaScript but not valid for the chart IPC contract.
+    const iso = new Date(ms).toISOString();
+    return /^\d{4}-\d{2}-\d{2}T/.test(iso) ? iso : null;
   }
   private persistUiPreferences(): void {
     // Best effort: storing theme/language never blocks offline interaction.
