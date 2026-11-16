@@ -546,7 +546,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   async saveActiveChart(): Promise<void> {
     const chart = this.activeChart;
-    if (!chart || this.archiveBusy) return;
+    // A moving sky must never be persisted as the user's birth chart.
+    if (!chart || this.archiveBusy || this.calcBusy || this.liveChartId === chart.id) return;
     const archiveId = chart.archiveId ?? newChartId();
     const saved = await this.runArchive({operation:'save', chart:{
       id:archiveId, name:chart.name, utcIso:chart.utcIso, timeZone:chart.timeZone,
@@ -588,6 +589,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   /** Returns start from a calculated chart; without one, point the user to the chart form. */
   openReturns(kind: ReturnKind): void {
+    // Returns require a fixed radix, never a live transit snapshot.
+    if (this.liveChartId !== null) {
+      this.calcMessage = 'returns.needchart';
+      return;
+    }
     const chart = this.activeChart;
     const sun = chart?.data.planets['Sun'];
     const moon = chart?.data.planets['Moon'];
