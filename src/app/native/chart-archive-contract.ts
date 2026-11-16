@@ -172,15 +172,15 @@ function wireRequest(operation: ArchiveOperation): WireRequest | null {
   if (tag.operation === 'list') return {protocolVersion: 1, operation: 'list'};
 
   if (tag.operation === 'save') {
-    const request = ownDataFields(operation, ['operation', 'chart']);
-    const chart = request && request.operation === 'save' ? snapshotChartRecord(request.chart) : null;
+    const request = ownDataFields(operation, ['chart']);
+    const chart = request ? snapshotChartRecord(request.chart) : null;
     return chart ? {protocolVersion: 1, operation: 'save', chart} : null;
   }
 
   if (tag.operation === 'delete') {
-    const request = ownDataFields(operation, ['operation', 'id']);
+    const request = ownDataFields(operation, ['id']);
     const id = request?.id;
-    return request && request.operation === 'delete' && typeof id === 'string' && ID_PATTERN.test(id)
+    return request && typeof id === 'string' && ID_PATTERN.test(id)
       ? {protocolVersion: 1, operation: 'delete', id}
       : null;
   }
