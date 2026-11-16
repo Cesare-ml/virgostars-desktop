@@ -5,7 +5,7 @@ import {canRetryChartRender} from '../src/app/chart-render-retry.ts';
 import {RenderGeneration} from '../src/app/render-generation.ts';
 
 const failed = Object.freeze({
-  initialized: true, destroyed: false, busy: false,
+  initialized: true, destroyed: false, busy: false, calcBusy: false,
   ready: false, exporting: false, hasError: true,
 });
 const withField = (field, value) => ({...failed, [field]: value});
@@ -17,6 +17,7 @@ test('initialized chart with a visible failure permits explicit retry', () => {
 
 test('a draw or export in progress blocks retry', () => {
   assert.equal(canRetryChartRender(withField('busy', true)), false);
+  assert.equal(canRetryChartRender(withField('calcBusy', true)), false);
   assert.equal(canRetryChartRender(withField('exporting', true)), false);
 });
 
@@ -29,9 +30,9 @@ test('startup, teardown, healthy and cleared-error states never retry', () => {
   }
 });
 
-test('all 64 boolean state combinations admit only the single safe retry state', () => {
-  const keys = ['initialized', 'destroyed', 'busy', 'ready', 'exporting', 'hasError'];
-  for (let mask = 0; mask < 64; mask++) {
+test('all 128 boolean state combinations admit only the single safe retry state', () => {
+  const keys = ['initialized', 'destroyed', 'busy', 'calcBusy', 'ready', 'exporting', 'hasError'];
+  for (let mask = 0; mask < 128; mask++) {
     const state = Object.fromEntries(keys.map((key, index) => [key, Boolean(mask & (1 << index))]));
     const expected = keys.every(key => state[key] === failed[key]);
     assert.equal(canRetryChartRender(state), expected, `mask ${mask}`);
@@ -44,7 +45,7 @@ test('null, missing and coercible flags fail closed', () => {
   }
   for (const [field, value] of [
     ['initialized', 1], ['destroyed', undefined], ['busy', 0],
-    ['ready', null], ['exporting', 'false'], ['hasError', 'true'],
+    ['ready', null], ['calcBusy', 'false'], ['exporting', 'false'], ['hasError', 'true'],
   ]) {
     assert.equal(canRetryChartRender(withField(field, value)), false, field);
   }
@@ -55,6 +56,7 @@ test('retry is a guarded user action using the existing generation-owned draw pa
   const html = readFileSync(new URL('../src/app/desktop-app.component.html', import.meta.url), 'utf8');
   assert.match(src, /import \{ canRetryChartRender \} from '\.\/chart-render-retry'/);
   assert.match(src, /get canRetryChart\(\): boolean \{/);
+  assert.match(src, /calcBusy:this\.calcBusy/);
   assert.match(src, /hasError:this\.lastDrawFailed && this\.error\.length > 0/);
   assert.match(src, /if \(!this\.canRetryChart\) return;\s*void this\.draw\(\);/);
   assert.match(src, /this\.drawGeneration\.isCurrent\(ticket\)/);
