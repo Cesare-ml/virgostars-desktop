@@ -102,7 +102,7 @@ export class NewChartComponent {
       this.chartRequested.emit({
         name: cleanChartName(this.name), utcIso: new Date().toISOString(),
         localDate: '', localTime: '', timeZone: this.timeZone.trim() || 'UTC', offsetSeconds: 0,
-        latMicro, lngMicro, placeName: cleanChartName(this.placeName),
+        latMicro, lngMicro, placeName: cleanChartName(this.placeName), liveNow: true,
       });
     }
     this.cd.markForCheck();
