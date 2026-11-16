@@ -1,5 +1,5 @@
 /** Canonical UTC instant accepted by the Rust chart calculation port (1600–2400). */
-const UTC_PATTERN = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{3})?Z$/;
+const UTC_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{3})?Z$/;
 
 /** Validate the proleptic Gregorian date without Date.parse normalization. */
 export function validChartUtcIso(value: unknown): value is string {
