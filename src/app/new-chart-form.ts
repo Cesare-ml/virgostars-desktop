@@ -114,3 +114,94 @@ export function formatUtcOffset(offsetSeconds: number): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return sign + pad(hours) + ':' + pad(minutes) + (seconds ? ':' + pad(seconds) : '');
 }
+
+
+export type CurrentSkyFields = Pick<NewChartFields, 'name' | 'timeZone' | 'latitude' | 'longitude' | 'placeName'>;
+
+/**
+ * Resolve a "sky now" request from one captured wall-clock instant.
+ * Local civil fields and offset are metadata only; utcIso remains the
+ * authoritative instant sent to the astronomical provider.
+ */
+export function resolveCurrentSky(
+  fields: CurrentSkyFields,
+  readNow: () => Date = () => new Date(),
+): NewChartResolution {
+  const latMicro = parseDegreesMicro(fields.latitude, 90);
+  if (latMicro === null) return {status: 'problem', problem: 'latitude_invalid'};
+  const lngMicro = parseDegreesMicro(fields.longitude, 180);
+  if (lngMicro === null) return {status: 'problem', problem: 'longitude_invalid'};
+
+  let instant: Date;
+  let epochMs: number;
+  let utcIso: string;
+  try {
+    instant = readNow();
+    if (!(instant instanceof Date)) return {status: 'problem', problem: 'zone_unavailable'};
+    epochMs = instant.getTime();
+    if (!Number.isFinite(epochMs)) return {status: 'problem', problem: 'zone_unavailable'};
+    utcIso = instant.toISOString();
+  } catch {
+    return {status: 'problem', problem: 'zone_unavailable'};
+  }
+
+  const timeZone = fields.timeZone.trim() || 'UTC';
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      calendar: 'gregory',
+      numberingSystem: 'latn',
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    parts = formatter.formatToParts(instant);
+  } catch {
+    return {status: 'problem', problem: 'zone_invalid'};
+  }
+
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find(item => item.type === type)?.value ?? '';
+  const year = Number(part('year'));
+  const month = Number(part('month'));
+  const day = Number(part('day'));
+  const hour = Number(part('hour'));
+  const minute = Number(part('minute'));
+  const second = Number(part('second'));
+  if (!Number.isInteger(year) || year < 1 || year > 9999 ||
+      !Number.isInteger(month) || month < 1 || month > 12 ||
+      !Number.isInteger(day) || day < 1 || day > 31 ||
+      !Number.isInteger(hour) || hour < 0 || hour > 23 ||
+      !Number.isInteger(minute) || minute < 0 || minute > 59 ||
+      !Number.isInteger(second) || second < 0 || second > 59) {
+    return {status: 'problem', problem: 'zone_unavailable'};
+  }
+
+  // Treat the formatted local fields as UTC solely to derive the zone offset.
+  // setUTCFullYear avoids Date.UTC's special handling of years 0–99.
+  const localWallTime = new Date(0);
+  localWallTime.setUTCFullYear(year, month - 1, day);
+  localWallTime.setUTCHours(hour, minute, second, 0);
+  const offsetSeconds = Math.round((localWallTime.getTime() - Math.floor(epochMs / 1000) * 1000) / 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return {
+    status: 'ready',
+    input: {
+      name: cleanChartName(fields.name),
+      utcIso,
+      localDate: `${String(year).padStart(4, '0')}-${pad(month)}-${pad(day)}`,
+      localTime: `${pad(hour)}:${pad(minute)}:${pad(second)}`,
+      timeZone,
+      offsetSeconds,
+      latMicro,
+      lngMicro,
+      placeName: cleanChartName(fields.placeName),
+    },
+  };
+}
