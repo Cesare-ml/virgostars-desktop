@@ -531,7 +531,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.archiveBusy || this.destroyed) return false;
     this.archiveBusy = true;
     this.cd.markForCheck();
-    const result = await chartArchive(operation);
+    let result: ArchiveResult;
+    try {
+      result = await chartArchive(operation);
+    } catch {
+      // Preserve saved chart data if the native SQLite command rejects.
+      if (this.destroyed) return false;
+      this.archiveBusy = false;
+      this.archiveMessage = 'archive.unavailable';
+      this.cd.markForCheck();
+      return false;
+    }
     if (this.destroyed) return false;
     this.archiveBusy = false;
     const ok = this.applyArchive(result, success);
