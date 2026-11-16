@@ -123,3 +123,56 @@ test('chart ids are canonical lowercase UUIDs from the platform generator', () =
   assert.equal(newChartId(() => ID_A.toUpperCase()), ID_A);
   assert.throws(() => newChartId(() => 'not-a-uuid'), /Invalid chart id source/);
 });
+
+
+test('request boundary reads only own data properties and never invokes caller getters', async () => {
+  const transport = native(okResponse);
+  let reads = 0;
+  const chart = record();
+  Object.defineProperty(chart, 'name', {
+    enumerable: true,
+    get() { reads += 1; return 'must not be read'; },
+  });
+  assert.equal(validChartRecord(chart), false);
+  assert.deepEqual(await requestArchive(transport, {operation: 'save', chart}), {kind: 'invalid_request'});
+  assert.equal(reads, 0);
+  assert.equal(transport.calls.length, 0);
+
+  const operation = {};
+  Object.defineProperty(operation, 'operation', {
+    enumerable: true,
+    get() { reads += 1; return 'list'; },
+  });
+  assert.deepEqual(await requestArchive(transport, operation), {kind: 'invalid_request'});
+  assert.equal(reads, 0);
+  assert.equal(transport.calls.length, 0);
+});
+
+test('archive requests reject inherited fields and hostile proxy failures without leaking details', async () => {
+  const transport = native(okResponse);
+  const inherited = Object.create({operation: 'list'});
+  assert.deepEqual(await requestArchive(transport, inherited), {kind: 'invalid_request'});
+
+  const hostile = new Proxy({}, {
+    getPrototypeOf() { throw new Error('private filesystem path'); },
+  });
+  assert.deepEqual(await requestArchive(transport, hostile), {kind: 'invalid_request'});
+  assert.equal(transport.calls.length, 0);
+});
+
+test('archive requests whitelist chart fields while ignoring unrelated UI metadata', async () => {
+  const transport = native(okResponse);
+  let ignoredReads = 0;
+  const chart = record();
+  Object.defineProperty(chart, 'debugLabel', {
+    enumerable: true,
+    get() { ignoredReads += 1; throw new Error('must not be evaluated'); },
+  });
+  const result = await requestArchive(transport, {operation: 'save', chart});
+  assert.equal(result.kind, 'ready');
+  assert.equal(ignoredReads, 0);
+  assert.deepEqual(transport.calls[0], [
+    'chart_archive',
+    {request: {protocolVersion: 1, operation: 'save', chart: record()}},
+  ]);
+});
