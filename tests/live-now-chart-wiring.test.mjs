@@ -42,6 +42,6 @@ test('archive writes a snapshot and freezes the live session chart after success
 });
 
 test('live-state label is paired in Italian and English', () => {
-  assert.match(translations, /"live\.now":"Cielo aggiornato in tempo reale"/);
-  assert.match(translations, /"live\.now":"Live current sky"/);
+  assert.match(translations, /"live\.now":"Aggiornamento automatico ogni minuto"/);
+  assert.match(translations, /"live\.now":"Automatic refresh every minute"/);
 });
