@@ -30,6 +30,8 @@ There are no accounts, profiles, groups, notes, outbox or synchronisation yet. D
 
 Rules enforced on both sides: lowercase UUID id; name up to 80 characters and place up to 160, trimmed, without control or invisible direction characters; strict UTC instant (same parser as `calculate_chart`); IANA-shaped zone; coordinates in range. All values are bound as SQL parameters.
 
+Schema initialization is limited to an empty version-zero SQLite database. If a version-zero file already contains application tables, indexes, views or triggers, the command returns `archive_unavailable` rather than installing the chart schema into an unknown database. The existing objects are preserved; this is not an automatic repair or migration.
+
 Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 1); there is no automatic repair, deletion or downgrade.
 
 ## Interface
