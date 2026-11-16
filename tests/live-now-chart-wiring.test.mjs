@@ -25,6 +25,7 @@ test('live refresh is minute-bounded and pauses while the WebView is hidden', ()
 test('refresh uses the existing local provider path and preserves chart identity', () => {
   assert.match(desktop, /this\.computeChart\(input, null\)/);
   assert.match(desktop, /id:\s*previous\.id/);
+  assert.match(desktop, /this\.exporting \|\| this\.archiveBusy \|\| this\.calcBusy/);
   assert.match(desktop, /archiveId:\s*previous\.archiveId/);
   assert.match(desktop, /liveNow:\s*true/);
 });
