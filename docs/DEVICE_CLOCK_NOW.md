@@ -140,3 +140,10 @@ ephemeris provider. Without the optional local-use-only Swiss provider, the
 existing `provider_unavailable` state remains the expected result. The
 Swiss-enabled binary remains restricted to the maintainer's local use because
 of its AGPL licensing status; do not distribute it.
+
+
+## Opt-in live chart tracking (MVP)
+
+The calculated-chart toolbar offers **Track current sky / Segui il cielo attuale** only when a calculated chart is active. It uses the same place coordinates and the device's current UTC instant, recalculating no more than once per clock minute via the existing native provider. Tracking stops when switching away from that chart, removing it, destroying the component, or on a calculation failure. A browser preview or a Tauri build without an astronomical provider reports the existing calculation error; it does **not** silently display synthetic positions as current sky. The existing chart remains visible after a failure. No network, background process, archive write, or new native IPC permission is introduced.
+
+This is opt-in rather than automatic at application startup. Full Angular, Tauri and Windows GUI verification remains required before release.
