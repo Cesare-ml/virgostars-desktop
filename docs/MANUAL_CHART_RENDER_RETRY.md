@@ -6,7 +6,7 @@
 
 After the renderer has initialized and a chart draw has completed with an error, the toolbar offers **Riprova il disegno / Retry chart rendering**. It is a user-triggered action and calls the existing `draw()` method. The normal `RenderGeneration` ticket still owns asynchronous completion, so stale draws cannot replace current UI state.
 
-The action is available only when the renderer is initialized, the component is alive, no draw or PNG export is active, the chart is not ready, and an error is visible. The click handler checks the same gate again. A retry clears the previous error and enters the ordinary loading state; a second click is unavailable while that draw is active.
+The action is available only when the renderer is initialized, the component is alive, no draw or PNG export is active, the chart is not ready, and an error is visible. The click handler checks the same gate again. A retry clears the previous error and enters the ordinary loading state; a second click is unavailable while that draw is active. If the latest draw fails, the status switches to the localized chart-failed label rather than leaving the stale rendering-in-progress label.
 
 ## Explicit limitations
 
