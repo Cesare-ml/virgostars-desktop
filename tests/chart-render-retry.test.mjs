@@ -59,6 +59,17 @@ test('retry text exists in both locales', () => {
   assert.match(catalog, /"chart\.retry":"Retry chart rendering"/);
 });
 
+test('only draw failure sets retry eligibility; export and initialization errors do not', () => {
+  const source = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
+  assert.match(source, /private drawFailed = false;/);
+  assert.match(source, /this.drawFailed=false;\\s*this.busy=true;/);
+  const drawStart = source.indexOf('  async draw(): Promise<void> {');
+  const exportStart = source.indexOf('  async exportPng(): Promise<void> {', drawStart);
+  const draw = source.slice(drawStart, exportStart);
+  assert.match(draw, /if\\(this.drawGeneration.isCurrent\\(ticket\\)\\) \\{\\s*this.drawFailed=true;\\s*this.renderError\\(error\\);/);
+  assert.doesNotMatch(source.slice(exportStart), /this.drawFailed=true/);
+});
+
 test('retry is not automatic and introduces no timer or native IPC call', () => {
   const source = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
   const start = source.indexOf('  retryChart(): void {');
