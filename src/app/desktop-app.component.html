@@ -54,6 +54,9 @@
           <button type="button" class="toolbar-button" [disabled]="!selectedCity || calcBusy || exporting"
             [attr.title]="t('sky.now.help')" [attr.aria-label]="t('sky.now')"
             (click)="showSkyNow()">{{t('sky.now')}}</button>
+          <button type="button" class="toolbar-button" [disabled]="!selectedCity"
+            [attr.aria-pressed]="skyAutoRefresh" [attr.title]="t('sky.auto.help')"
+            (click)="toggleSkyAutoRefresh()">{{t(skyAutoRefresh ? 'sky.auto.on' : 'sky.auto.off')}}</button>
           <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
             <span class="device-clock-caption">{{t('clock.now')}}</span>
             <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
