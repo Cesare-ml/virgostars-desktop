@@ -67,7 +67,7 @@ test('retry only follows a failed draw, never a failed PNG export or failed init
   const src = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
   assert.match(src, /private lastDrawFailed = false/);
   assert.match(src, /this\.lastDrawFailed=false;\s*this\.busy=true; this\.ready=false/);
-  assert.match(src, /if\(this\.drawGeneration\.isCurrent\(ticket\)\) \{\s*this\.lastDrawFailed=true;\s*this\.renderError\(error\);/);
+  assert.match(src, /if\(this\.drawGeneration\.isCurrent\(ticket\)\) \{\s*this\.lastDrawFailed=true;\s*this\.status='chart\.failed';\s*this\.renderError\(error\);/);
   assert.match(src, /catch\(error\) \{ if\(!this\.destroyed\) this\.renderError\(error\); \}/);
   assert.match(src, /this\.initialized = true;/);
 });
@@ -154,4 +154,13 @@ test('retry is disabled immediately when another draw starts', () => {
   ui.hasError = false;
   assert.equal(canRetryChartRender(ui), false);
   generations.dispose();
+});
+
+
+test('draw failure uses failed status instead of leaving a stale loading label', () => {
+  const src = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
+  assert.match(src, /this\.status='chart\.loading'/);
+  assert.match(src, /this\.lastDrawFailed=true;\s*this\.status='chart\.failed';\s*this\.renderError\(error\)/);
+  const catalog = readFileSync(new URL('../src/app/translations.ts', import.meta.url), 'utf8');
+  assert.equal((catalog.match(/"chart\.failed":/g) ?? []).length, 2);
 });
