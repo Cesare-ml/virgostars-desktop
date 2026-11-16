@@ -444,14 +444,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   async saveActiveChart(): Promise<void> {
     const chart = this.activeChart;
-    if (!chart || this.archiveBusy) return;
+    if (!chart || this.archiveBusy || this.liveNowRefreshBusy) return;
     const archiveId = chart.archiveId ?? newChartId();
     const saved = await this.runArchive({operation:'save', chart:{
       id:archiveId, name:chart.name, utcIso:chart.utcIso, timeZone:chart.timeZone,
       latMicro:chart.latMicro, lngMicro:chart.lngMicro, placeName:chart.placeName,
     }}, 'archive.saved');
     if (saved) {
-      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...item, archiveId} : item);
+      // Saving a live chart records a point-in-time snapshot and freezes this session view.
+      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id
+        ? {...item, archiveId, liveNow:false} : item);
+      if (this.activeChartId === chart.id) this.lastLiveNowMinute = null;
       this.cd.markForCheck();
     }
   }
@@ -551,6 +554,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
   get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
   get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
+  get liveNowRefreshing(): boolean { return this.liveNowRefreshBusy; }
   private updateCityClock(): void {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
   }
