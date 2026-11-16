@@ -122,9 +122,10 @@ export type NewChartNowResolution =
 
 /**
  * Build a chart request for the current instant at the entered place.
- * Unlike a birth-time form, it does not resolve local civil time: the current
- * UTC instant is unambiguous. Coordinates and the display timezone must still
- * be valid; an empty timezone is never silently replaced with UTC.
+ * The current UTC instant is unambiguous, so civil date, clock time and offset
+ * are derived solely for metadata from that instant in the selected timezone.
+ * Coordinates and the display timezone must still be valid; an empty timezone
+ * is never silently replaced with UTC.
  *
  * The Date is injectable so tests can assert the exact instant without
  * depending on the machine clock.
