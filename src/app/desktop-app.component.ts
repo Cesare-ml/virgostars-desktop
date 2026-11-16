@@ -23,6 +23,7 @@ import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityC
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
+import { currentSkyInput } from './astro/current-sky-input';
 import { calculateChart } from './native/chart-calculation';
 import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
@@ -563,15 +564,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.setInspectorTab('settings');
       return;
     }
-    const timeZone = place.timeZone || 'UTC';
-    const input: NewChartInput = {
-      name: '', utcIso,
-      localDate: utcIso.slice(0, 10),
-      localTime: utcIso.slice(11, 19),
-      timeZone, offsetSeconds: 0,
-      latMicro: place.latMicro, lngMicro: place.lngMicro,
-      placeName: place.name,
-    };
+    const input = currentSkyInput(utcIso, place);
+    if (!input) return;
     await this.onChartRequested(input);
   }
   onCityEdited(): void {
