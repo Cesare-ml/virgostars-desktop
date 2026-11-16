@@ -18,7 +18,6 @@ test('initialized chart with a visible failure permits explicit retry', () => {
 test('a draw or export in progress blocks retry', () => {
   assert.equal(canRetryChartRender(withField('busy', true)), false);
   assert.equal(canRetryChartRender(withField('calcBusy', true)), false);
-  assert.equal(canRetryChartRender(withField('calcBusy', true)), false);
   assert.equal(canRetryChartRender(withField('exporting', true)), false);
 });
 
