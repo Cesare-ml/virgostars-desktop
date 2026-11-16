@@ -13,6 +13,7 @@ import { fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet 
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { canRetryChartRender } from './chart-render-retry';
 import {validatePngDataUrl, syntheticPngFilename, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
@@ -190,6 +191,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       canvas: this.canvas.nativeElement,
     });
     this.cd.markForCheck();
+  }
+  get canRetryChart(): boolean {
+    return canRetryChartRender({
+      initialized:this.initialized,
+      destroyed:this.destroyed,
+      busy:this.busy,
+      ready:this.ready,
+      exporting:this.exporting,
+      hasError:this.error.length > 0,
+    });
   }
   modeLabel(mode:ChartMode): string { return this.t(MODE_KEYS[mode]); }
   planetLabel(planet:string): string {
@@ -729,6 +740,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.mode==='synastry' && synastry ? synastry : noOverlay,
       this.mode==='latitude' ? 'latitudini' : 'carta-astrale'];
   }
+  /** Retry only a completed failure on an already initialized renderer. */
+  retryChart(): void {
+    if (!this.canRetryChart) return;
+    void this.draw();
+  }
+
   async draw(): Promise<void> {
     const ticket = this.drawGeneration.begin();
     if(ticket === null) return;
