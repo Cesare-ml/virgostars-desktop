@@ -308,6 +308,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       render:Object.assign(new TemaRender(), structuredClone(data)),
     };
   }
+  /** Renderer-data conversion can throw even when native IPC returned a valid envelope.
+   * Keep such failures opaque and always release the calculation busy state. */
+  private async computeChartSafely(input: NewChartInput, archiveId: string | null = null): Promise<SessionChart | MessageKey> {
+    try {
+      return await this.computeChart(input, archiveId);
+    } catch {
+      return 'calc.failed';
+    }
+  }
   private useAvailableHouseSystem(chart: SessionChart): void {
     const systems = availableHouseSystems(chart.data);
     if (!systems.includes(this.houseSystem) && systems.length) this.houseSystem = systems[0];
@@ -318,7 +327,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
-    const chart = await this.computeChart(input, archiveId);
+    const chart = await this.computeChartSafely(input, archiveId);
     // Only the latest request may change what is on screen.
     if (this.destroyed || ticket !== this.calcTicket) return;
     this.calcBusy = false;
@@ -389,7 +398,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
-    const chart = await this.computeChart({
+    const chart = await this.computeChartSafely({
       name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:natal.timeZone,
       offsetSeconds:0, latMicro:natal.latMicro, lngMicro:natal.lngMicro, placeName:'',
     });
