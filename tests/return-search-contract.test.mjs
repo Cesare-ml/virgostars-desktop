@@ -120,3 +120,30 @@ test('years, zones and instants are validated and formatted without guessing', (
   assert.match(formatReturnInstant('2000-01-01T10:00:00.000Z', 'Europe/Rome', 'en'), /11:00:00/);
   assert.equal(formatReturnInstant('2000-01-01T10:00:00.000Z', 'Not/AZone', 'it'), '2000-01-01T10:00:00.000Z');
 });
+
+test('native return results cannot escape the requested UTC calendar year', async () => {
+  const transport = response => ({
+    isNative: () => true,
+    invoke: async () => response,
+  });
+  const valid = await requestReturns(transport(okResponse()), REQUEST);
+  assert.equal(valid.kind, 'ready');
+
+  for (const utcIso of ['1999-12-31T23:59:59.999Z', '2001-01-01T00:00:00.000Z']) {
+    const response = okResponse();
+    const millis = Date.parse(utcIso);
+    response.instants = [{
+      utcIso,
+      julianDayUt: 2_440_587.5 + millis / 86_400_000,
+    }];
+    assert.deepEqual(
+      await requestReturns(transport(response), REQUEST),
+      {kind: 'unavailable'},
+      utcIso,
+    );
+    assert.throws(
+      () => decodeReturnResponse(response, 2000),
+      {message: 'Invalid return search protocol'},
+    );
+  }
+});
