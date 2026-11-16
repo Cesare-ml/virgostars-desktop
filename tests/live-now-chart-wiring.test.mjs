@@ -19,6 +19,7 @@ test('live refresh is minute-bounded and pauses while the WebView is hidden', ()
   assert.match(desktop, /document\.visibilityState\s*===\s*'hidden'/);
   assert.match(desktop, /this\.refreshLiveNowChart\(\);/);
   assert.match(desktop, /private liveNowRefreshBusy\s*=\s*false/);
+  assert.match(desktop, /this\.archiveBusy/);
 });
 
 test('refresh uses the existing local provider path and preserves chart identity', () => {
