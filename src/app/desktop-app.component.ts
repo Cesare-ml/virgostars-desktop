@@ -561,6 +561,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private updateCityClock(): void {
     this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
   }
+  /** One-shot real sky at the selected city's coordinates; no polling or persistence. */
+  async showSkyNow(): Promise<void> {
+    const city = this.selectedCity;
+    if (!city || this.calcBusy || this.destroyed || this.exporting) return;
+    const now = this.deviceClock.timestamp;
+    if (!Number.isFinite(now) || Math.abs(now) > 8_640_000_000_000_000) return;
+    const utcIso = new Date(now).toISOString();
+    await this.onChartRequested({
+      name: this.t('sky.now'),
+      utcIso,
+      localDate: '', localTime: '', timeZone: city.timeZone || 'UTC',
+      offsetSeconds: 0, latMicro: city.latMicro, lngMicro: city.lngMicro,
+      placeName: city.name,
+    });
+  }
   onCitySelected(place: OfflinePlaceV1): void {
     this.selectedCity = place;
     this.updateCityClock();
