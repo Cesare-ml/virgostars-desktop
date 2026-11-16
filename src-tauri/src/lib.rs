@@ -1,6 +1,6 @@
 // Local-only IPC: a read-only runtime probe, an offline place search, a chart calculation,
-// a local chart archive and a solar/lunar return search. The WebView geolocation grant is
-// reached only after the explicit location action in Angular; no coordinates are returned by
+// a local chart archive and a solar/lunar return search. Angular requests geolocation only
+// after a user action or a previously stored WebView grant; coordinates are not returned by
 // IPC or persisted by this permission handler.
 mod runtime_probe;
 mod offline_places;
