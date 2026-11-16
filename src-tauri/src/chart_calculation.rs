@@ -191,7 +191,8 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
     let angle = |value: f64| value.is_finite() && (0.0..360.0).contains(&value);
     let latitude = |value: f64| value.is_finite() && (-90.0..=90.0).contains(&value);
     for (index, body) in chart.bodies.iter().enumerate() {
-        if body.id.is_empty()
+        if body.id.trim().is_empty()
+            || body.ephemeris_source.trim().is_empty()
             || !angle(body.longitude_deg)
             || !latitude(body.latitude_deg)
             || !angle(body.right_ascension_deg)
@@ -218,7 +219,7 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
     // A body or house system cannot be simultaneously available and unavailable.
     // Keep unavailable lists unique so the UI never receives contradictory status.
     for (index, id) in chart.unavailable_bodies.iter().enumerate() {
-        if id.is_empty()
+        if id.trim().is_empty()
             || chart.unavailable_bodies[..index].contains(id)
             || chart.bodies.iter().any(|body| body.id == *id)
         {
@@ -226,7 +227,7 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
         }
     }
     for (index, id) in chart.unavailable_house_systems.iter().enumerate() {
-        if id.is_empty()
+        if id.trim().is_empty()
             || chart.unavailable_house_systems[..index].contains(id)
             || chart.houses.iter().any(|house| house.id == *id)
         {
@@ -234,7 +235,7 @@ fn valid_snapshot(chart: &ChartSnapshotV1) -> bool {
         }
     }
     for (index, house) in chart.houses.iter().enumerate() {
-        if house.id.is_empty()
+        if house.id.trim().is_empty()
             || !house.cusps_deg.iter().all(|value| angle(*value))
             || ![house.ascendant_deg, house.mc_deg, house.armc_deg, house.vertex_deg]
                 .iter()
@@ -513,6 +514,33 @@ mod tests {
             vertex_deg: 0.0,
         });
         chart.unavailable_house_systems.push("placido");
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+    }
+
+    #[test]
+    fn test_blank_provider_identifiers_and_provenance_are_rejected() {
+        let mut chart = empty_chart();
+        chart.bodies.push(BodyPositionV1 {
+            id: "Sun",
+            longitude_deg: 10.0,
+            latitude_deg: 0.0,
+            distance_au: 1.0,
+            longitude_speed: 1.0,
+            latitude_speed: 0.0,
+            distance_speed: 0.0,
+            right_ascension_deg: 10.0,
+            declination_deg: 0.0,
+            ephemeris_source: " ",
+        });
+        assert_eq!(
+            respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
+            "calculation_failed"
+        );
+        let mut chart = empty_chart();
+        chart.unavailable_house_systems.push(" ");
         assert_eq!(
             respond(Some(&FixedProvider(Ok(chart))), &request("2001-02-03T04:05:06Z")).status,
             "calculation_failed"
