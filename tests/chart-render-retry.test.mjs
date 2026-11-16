@@ -45,11 +45,21 @@ test('retry is a guarded user action using the existing generation-owned draw pa
   const html = readFileSync(new URL('../src/app/desktop-app.component.html', import.meta.url), 'utf8');
   assert.match(src, /import \{ canRetryChartRender \} from '\.\/chart-render-retry'/);
   assert.match(src, /get canRetryChart\(\): boolean \{/);
+  assert.match(src, /hasError:this\.lastDrawFailed && this\.error\.length > 0/);
   assert.match(src, /if \(!this\.canRetryChart\) return;\s*void this\.draw\(\);/);
   assert.match(src, /this\.drawGeneration\.isCurrent\(ticket\)/);
   assert.match(html, /\*ngIf="canRetryChart"/);
   assert.match(html, /\(click\)="retryChart\(\)"/);
   assert.match(html, /aria-label\]\s*=\s*"t\('chart\.retry'\)"/);
+});
+
+test('retry only follows a failed draw, never a failed PNG export or failed init', () => {
+  const src = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
+  assert.match(src, /private lastDrawFailed = false/);
+  assert.match(src, /this\.lastDrawFailed=false;\s*this\.busy=true; this\.ready=false/);
+  assert.match(src, /if\(this\.drawGeneration\.isCurrent\(ticket\)\) \{\s*this\.lastDrawFailed=true;\s*this\.renderError\(error\);/);
+  assert.match(src, /catch\(error\) \{ if\(!this\.destroyed\) this\.renderError\(error\); \}/);
+  assert.match(src, /this\.initialized = true;/);
 });
 
 test('retry action has matching Italian and English labels', () => {
