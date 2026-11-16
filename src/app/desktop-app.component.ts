@@ -336,14 +336,26 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     this.cd.markForCheck();
   }
+  /** Restore the immutable birth/session chart when live tracking ends. */
+  private restoreLiveOriginal(): void {
+    const original = this.liveOriginalChart;
+    if (original) {
+      this.sessionCharts = this.sessionCharts.map(item => item.id === original.id ? original : item);
+      this.rowsCache = null;
+      this.aspectCache = null;
+      this.transitChart = null;
+    }
+    this.liveChartId = null;
+    this.liveOriginalChart = null;
+    this.liveMinute = null;
+  }
   /** Opt-in current-sky tracking: recalculate at most once per device-clock minute. */
   toggleLiveSky(): void {
     const chart = this.activeChart;
     if (!chart || this.calcBusy || this.exporting) return;
     if (this.liveChartId === chart.id) {
-      this.liveChartId = null;
-      this.liveMinute = null;
-      this.liveOriginalChart = null;
+      this.restoreLiveOriginal();
+      if (this.initialized) void this.draw();
     } else {
       this.liveOriginalChart = chart;
       this.liveChartId = chart.id;
@@ -379,8 +391,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (typeof result === 'string') {
       this.calcMessage = result;
       // Retry on a later tick rather than endlessly repeating within this minute.
-      this.liveChartId = null;
-      this.liveOriginalChart = null;
+      this.restoreLiveOriginal();
+      if (this.initialized) void this.draw();
     } else if (this.liveChartId === chart.id && this.activeChartId === chart.id) {
       // A live sky is not the archived birth chart; never retain its archive identity.
       const updated = {...result, id:chart.id, archiveId:null};
@@ -394,12 +406,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   private showChart(chart: SessionChart | null): void {
+    if (this.liveChartId !== null && this.liveChartId !== (chart ? chart.id : null)) this.restoreLiveOriginal();
     this.activeChartId = chart ? chart.id : null;
-    if (this.liveChartId !== null && this.liveChartId !== this.activeChartId) {
-      this.liveChartId = null;
-      this.liveOriginalChart = null;
-      this.liveMinute = null;
-    }
     this.transitChart = null;
     this.rowsCache = null;
     this.selectedPlanet = null;
@@ -418,9 +426,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   removeChart(id:number): void {
     if (this.calcBusy || this.exporting) return;
     if (this.liveChartId === id) {
-      this.liveChartId = null;
-      this.liveOriginalChart = null;
-      this.liveMinute = null;
+      this.restoreLiveOriginal();
     }
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
     if (this.returnRadix?.chartId === id) this.closeReturns();
