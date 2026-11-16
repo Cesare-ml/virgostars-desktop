@@ -32,6 +32,15 @@ Rules enforced on both sides: lowercase UUID id; name up to 80 characters and pl
 
 Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 1); there is no automatic repair, deletion or downgrade.
 
+## TypeScript request boundary
+
+Before IPC, the TypeScript adapter copies the seven chart fields from own,
+enumerable data properties only. It rejects inherited required fields and
+accessor-backed required fields without invoking getters; unrelated UI metadata
+is ignored and never forwarded. A malformed object or a throwing Proxy trap is
+reduced to `invalid_request`. The native Rust command independently validates
+its versioned request and remains the authority for persistence.
+
 ## Interface
 
 - **Tema** tab: "Save the active chart to the archive", the list of saved charts (click to open and recalculate), and delete with an explicit confirmation step.
