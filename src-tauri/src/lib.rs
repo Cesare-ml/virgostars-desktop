@@ -14,11 +14,11 @@ mod swiss_provider;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // The frontend calls geolocation only from an explicit user action or after a
-        // previous grant. Do not auto-grant camera, microphone or other WebView permissions.
+        // Leave geolocation consent to WebView2's own permission flow. Do not
+        // silently grant it here, and deny unrelated WebView permission kinds.
         .on_permission_request(|_, kind| match kind {
-            tauri::webview::PermissionKind::Geolocation => tauri::webview::PermissionResponse::Allow,
-            _ => tauri::webview::PermissionResponse::Default,
+            tauri::webview::PermissionKind::Geolocation => tauri::webview::PermissionResponse::Default,
+            _ => tauri::webview::PermissionResponse::Deny,
         })
         .manage(offline_places::PlaceSearchGate::default())
         .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns])
