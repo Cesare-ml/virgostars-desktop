@@ -89,10 +89,10 @@ test('current-moment chart uses the injected UTC instant and the exact selected 
   assert.deepEqual(result.input, {
     name: 'Cielo presente',
     utcIso: '2026-11-16T11:28:42.123Z',
-    localDate: '',
-    localTime: '',
+    localDate: '2026-11-16',
+    localTime: '12:28:42',
     timeZone: 'Europe/Rome',
-    offsetSeconds: 0,
+    offsetSeconds: 3600,
     latMicro: 44_697_805,
     lngMicro: 11_805_778,
     placeName: 'Bologna',
