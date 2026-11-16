@@ -14,7 +14,7 @@ The action is available only when the renderer is initialized, the component is 
 - It does not restore a lost WebGL context or repair GPU/WebView2/asset failures.
 - It adds no timer, polling, automatic retries, native IPC, network request, persistence, or astronomy.
 - A persistent render failure may fail again; the UI must never report success unless the existing renderer completes successfully.
-- Because export failures share the component's generic error path, a failed export can also expose the manual redraw after the export operation has fully settled. This is not an export retry.
+- A separate `lastDrawFailed` state is set only by the current draw's failure, cleared at the start of each draw. A PNG export error or failed renderer initialization must not expose the redraw action.
 
 ## Verification
 
