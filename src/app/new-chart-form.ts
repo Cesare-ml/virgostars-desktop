@@ -153,7 +153,7 @@ export function resolveNowChart(
     // Keep the captured UTC instant authoritative and derive civil metadata
     // from that same instant; never round-trip through an ambiguous local time.
     utcIso = new Date(milliseconds).toISOString();
-    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(utcIso)) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(utcIso)) {
       return {status: 'problem', problem: 'instant_unavailable'};
     }
     const formatter = new Intl.DateTimeFormat('en-US', {
