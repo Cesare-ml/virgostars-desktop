@@ -120,3 +120,21 @@ test('years, zones and instants are validated and formatted without guessing', (
   assert.match(formatReturnInstant('2000-01-01T10:00:00.000Z', 'Europe/Rome', 'en'), /11:00:00/);
   assert.equal(formatReturnInstant('2000-01-01T10:00:00.000Z', 'Not/AZone', 'it'), '2000-01-01T10:00:00.000Z');
 });
+
+test('native returns outside the requested UTC year are not displayed', async () => {
+  const transport = response => ({
+    isNative: () => true,
+    invoke: async () => response,
+  });
+  const previous = {...okResponse(), instants: [instant(-0.5)]};
+  const next = {...okResponse(), instants: [instant(366)]};
+  const mixed = {...okResponse(), instants: [instant(10), instant(366)]};
+  for (const response of [previous, next, mixed]) {
+    assert.deepEqual(await requestReturns(transport(response), REQUEST), {kind: 'unavailable'});
+    // Structural decoding remains request-independent; the year guard belongs
+    // at the transport boundary, where the requested year is available.
+    assert.equal(decodeReturnResponse(response).status, 'ok');
+  }
+  assert.equal((await requestReturns(transport(okResponse()), REQUEST)).kind, 'ready');
+  assert.equal((await requestReturns(transport({...okResponse(), instants: []}), REQUEST)).kind, 'ready');
+});
