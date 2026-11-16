@@ -4,7 +4,7 @@ import {OfflineCityPickerComponent} from './offline-city-picker.component';
 import {resolveCivilTime, type CivilTimeChoice} from './native/civil-time';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {
-  MAX_CHART_NAME_LENGTH, cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart,
+  MAX_CHART_NAME_LENGTH, cleanChartName, formatUtcOffset, resolveNewChart, resolveNowChart,
   type NewChartInput, type NewChartProblem,
 } from './new-chart-form';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -95,16 +95,12 @@ export class NewChartComponent {
   submitNow(): void {
     if (this.busy) return;
     this.choices = [];
-    const latMicro = parseDegreesMicro(this.latitude, 90);
-    const lngMicro = parseDegreesMicro(this.longitude, 180);
-    this.problem = latMicro === null ? 'latitude_invalid' : lngMicro === null ? 'longitude_invalid' : null;
-    if (latMicro !== null && lngMicro !== null) {
-      this.chartRequested.emit({
-        name: cleanChartName(this.name), utcIso: new Date().toISOString(),
-        localDate: '', localTime: '', timeZone: this.timeZone.trim() || 'UTC', offsetSeconds: 0,
-        latMicro, lngMicro, placeName: cleanChartName(this.placeName),
-      });
-    }
+    const result = resolveNowChart({
+      name: this.name, timeZone: this.timeZone, latitude: this.latitude,
+      longitude: this.longitude, placeName: this.placeName,
+    });
+    this.problem = result.status === 'problem' ? result.problem : null;
+    if (result.status === 'ready') this.chartRequested.emit(result.input);
     this.cd.markForCheck();
   }
 }
