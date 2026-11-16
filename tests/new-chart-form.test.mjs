@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart, resolveNowChart,
+  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart, resolveNowChart, selectedPlaceTimeZone,
 } from '../src/app/new-chart-form.ts';
 import {resolveCivilTime} from '../src/app/native/civil-time.ts';
 
@@ -120,4 +120,14 @@ test('current-moment chart never emits an invalid or fabricated instant', () => 
     {status: 'problem', problem: 'latitude_invalid'});
   assert.deepEqual(resolveNowChart({...fields, longitude: '181'}, new Date('2026-01-01T00:00:00Z')),
     {status: 'problem', problem: 'longitude_invalid'});
+});
+
+test('selected offline place never inherits an earlier or host timezone', () => {
+  assert.equal(selectedPlaceTimeZone(' Europe/Rome '), 'Europe/Rome');
+  assert.equal(selectedPlaceTimeZone(null), '');
+  assert.equal(selectedPlaceTimeZone(undefined), '');
+  assert.equal(selectedPlaceTimeZone(''), '');
+  const fields = {name: '', timeZone: selectedPlaceTimeZone(null), latitude: '44', longitude: '11', placeName: 'Catalog entry'};
+  assert.deepEqual(resolveNowChart(fields, new Date('2026-11-16T12:00:00Z')),
+    {status: 'problem', problem: 'zone_invalid'});
 });
