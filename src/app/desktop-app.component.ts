@@ -440,6 +440,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   removeChart(id:number): void {
     if (this.calcBusy || this.exporting) return;
     if (this.liveChartId === id) {
+      ++this.calcTicket;
       this.restoreLiveOriginal();
     }
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
@@ -494,7 +495,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.cd.markForCheck();
       return;
     }
-    const chart = await this.computeChart(now.input);
+    let chart: SessionChart | MessageKey;
+    try {
+      chart = await this.computeChart(now.input);
+    } catch {
+      chart = 'calc.failed';
+    }
     if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== natal.id) return;
     this.calcBusy = false;
     if (typeof chart === 'string') {
