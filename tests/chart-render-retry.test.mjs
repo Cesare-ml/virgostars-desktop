@@ -80,3 +80,14 @@ test('retry is not automatic and introduces no timer or native IPC call', () => 
   assert.match(method, /void this\.draw\(\);/);
   assert.doesNotMatch(method, /setTimeout|setInterval|invoke\(/);
 });
+
+test('PNG export errors preserve the rendered chart and do not call renderError', () => {
+  const source = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
+  const start = source.indexOf('  async exportPng(): Promise<void> {');
+  const end = source.indexOf('  private renderError(', start);
+  assert.ok(start >= 0 && end > start);
+  const method = source.slice(start, end);
+  assert.doesNotMatch(method, /this\\.renderError\\(/);
+  assert.match(method, /PNG export does not invalidate an already rendered, usable chart/);
+  assert.doesNotMatch(method, /this\\.ready=false/);
+});
