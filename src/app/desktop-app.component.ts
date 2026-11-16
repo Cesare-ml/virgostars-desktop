@@ -13,6 +13,7 @@ import { fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet 
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
+import { canRetryChartRender } from './chart-render-retry';
 import {validatePngDataUrl, syntheticPngFilename, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
 import { PRIVATE_ARTWORK } from './asset-mode';
@@ -125,6 +126,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
+  private drawFailed = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
   private readonly deviceClock = new DeviceClock();
@@ -542,6 +544,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.t(this.theme === 'light' ? 'theme.current.light' : 'theme.current.dark'); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
+  /** Manual recovery is available only after a failed draw on an initialized renderer. */
+  get canRetryChart(): boolean {
+    return canRetryChartRender({
+      initialized: this.initialized,
+      destroyed: this.destroyed,
+      busy: this.busy,
+      ready: this.ready,
+      exporting: this.exporting,
+      hasError: this.drawFailed && this.error.length > 0,
+    });
+  }
   get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
   get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
   get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
@@ -729,9 +742,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.mode==='synastry' && synastry ? synastry : noOverlay,
       this.mode==='latitude' ? 'latitudini' : 'carta-astrale'];
   }
+  retryChart(): void {
+    // User-triggered only; draw() retains latest-generation ownership and error reset.
+    if (!this.canRetryChart) return;
+    void this.draw();
+  }
   async draw(): Promise<void> {
     const ticket = this.drawGeneration.begin();
     if(ticket === null) return;
+    this.drawFailed=false;
     this.busy=true; this.ready=false; this.error=''; this.status='chart.loading';
     this.cd.markForCheck();
     try {
@@ -747,7 +766,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
         if (this.activeChart) this.status='chart.ready.real';
       }
     } catch(error) {
-      if(this.drawGeneration.isCurrent(ticket)) this.renderError(error);
+      if(this.drawGeneration.isCurrent(ticket)) {
+        this.drawFailed=true;
+        this.renderError(error);
+      }
     } finally {
       if(this.drawGeneration.isCurrent(ticket)) {
         this.busy=false;
