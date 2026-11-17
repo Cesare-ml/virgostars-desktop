@@ -1,4 +1,17 @@
 <div class="desktop-app" #shell [attr.data-theme]="theme">
+  <!-- Erigi elettiva: asks for the name of the chart to save, over everything. -->
+  <div class="overlay" *ngIf="electiveOpen" (click)="cancelElective()" (keydown.escape)="cancelElective()">
+    <div class="overlay-card" role="dialog" aria-modal="true" [attr.aria-label]="t('nav.elective.title')" (click)="$event.stopPropagation()">
+      <h2>{{t('nav.elective.title')}}</h2>
+      <input id="elective-name" type="text" class="overlay-input" autocomplete="off" spellcheck="false" maxlength="80"
+        [value]="electiveName" (input)="setElectiveName($event)" (keydown.enter)="confirmElective()" (keydown.escape)="cancelElective()">
+      <p class="overlay-problem" role="alert" *ngIf="electiveInvalid">{{t('nav.elective.invalid')}}</p>
+      <div class="overlay-actions">
+        <button type="button" class="overlay-ok" [disabled]="archiveBusy" (click)="confirmElective()">{{t('nav.elective.ok')}}</button>
+        <button type="button" class="overlay-cancel" (click)="cancelElective()">{{t('nav.elective.cancel')}}</button>
+      </div>
+    </div>
+  </div>
   <div class="workspace" #workspace [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed">
     <nav class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
@@ -42,6 +55,10 @@
           <button type="button" class="nav-item" [class.selected]="!inspectorCollapsed && inspectorTab==='aspects'" [attr.title]="t('tab.aspects')"
             [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='aspects'" (click)="toggleInspectorTab('aspects')">
             <span class="nav-mark" aria-hidden="true">△</span><span class="nav-label">{{t('tab.aspects')}}</span>
+          </button>
+          <button type="button" class="nav-item" [class.selected]="!inspectorCollapsed && inspectorTab==='navigate'" [attr.title]="t('nav.title')"
+            [disabled]="!activeChart" [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='navigate'" (click)="toggleInspectorTab('navigate')">
+            <span class="nav-mark" aria-hidden="true">◷</span><span class="nav-label">{{t('nav.title')}}</span>
           </button>
           <button type="button" class="nav-item" [class.selected]="view==='functions'" [attr.title]="t('tab.functions')" (click)="openFunctions()">
             <span class="nav-mark" aria-hidden="true">≣</span><span class="nav-label">{{t('tab.functions')}}</span>
@@ -293,7 +310,7 @@
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
       <div class="inspector-head">
-        <h2 class="inspector-title" id="inspector-title">{{t(inspectorTab==='planets' ? 'nav.planets' : 'tab.aspects')}}</h2>
+        <h2 class="inspector-title" id="inspector-title">{{t(inspectorTitleKey)}}</h2>
         <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
       </div>
       <div class="inspector-body" id="inspector-content" aria-labelledby="inspector-title">
@@ -329,6 +346,48 @@
             </tbody>
           </table>
           <p class="inspector-hint missing-note" *ngIf="chart.unavailableBodies.length">{{t('bodies.missing')}} {{namesOf(chart.unavailableBodies)}}</p>
+        </div>
+        <!-- Naviga cielo: move the chart in time and place and watch it change. -->
+        <div class="navigator" *ngIf="inspectorTab==='navigate' && activeChart && nav">
+          <div class="nav-clock" role="group" [attr.aria-label]="t('nav.title')">
+            <ng-container *ngFor="let field of navFields">
+              <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
+              <div class="nav-field">
+                <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (click)="adjustNav(field.key, 1)">▲</button>
+                <span class="nav-value">{{field.text}}</span>
+                <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (click)="adjustNav(field.key, -1)">▼</button>
+              </div>
+            </ng-container>
+          </div>
+          <p class="nav-place">{{navPlaceLabel}}</p>
+          <div class="nav-moves">
+            <button type="button" class="nav-back" (click)="stepNav(-1)">{{t('nav.back')}}</button>
+            <button type="button" class="nav-forward" (click)="stepNav(1)">{{t('nav.forward')}}</button>
+          </div>
+          <div class="step-grid" role="group" [attr.aria-label]="t('nav.step')">
+            <div class="step-row" *ngFor="let row of stepRows">
+              <button type="button" *ngFor="let value of row.values" [class.selected]="navStepUnit===row.unit && navStepValue===value"
+                [attr.aria-pressed]="navStepUnit===row.unit && navStepValue===value" (click)="selectStep(row.unit, value)">{{value}}</button>
+              <span class="step-unit">{{stepUnitLabel(row.unit)}}</span>
+            </div>
+          </div>
+          <p class="nav-status" role="status" *ngIf="navStatus">{{t(navStatus)}}</p>
+          <p class="nav-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
+          <div class="nav-actions">
+            <button type="button" class="nav-action" (click)="navNow()">{{t('nav.now')}}</button>
+            <button type="button" class="nav-action" [attr.aria-expanded]="cityChangeOpen" (click)="toggleCityChange()">{{t('nav.city')}}</button>
+            <vs-offline-city-picker *ngIf="cityChangeOpen" [locale]="locale" (locationSelected)="onNavCitySelected($event)"></vs-offline-city-picker>
+            <!-- Only a subject's chart can be saved over; the sky of the moment has no data to overwrite. -->
+            <button type="button" class="nav-action" *ngIf="activeChart.kind === 'chart'" [disabled]="archiveBusy || (!navDirty && activeChart.archiveId !== null)"
+              (click)="askNavSave()">{{t('nav.save')}}</button>
+            <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('nav.save.confirm')" *ngIf="navConfirmSave">
+              <p>{{t('nav.save.confirm')}}</p>
+              <button type="button" class="danger-control" [disabled]="archiveBusy" (click)="confirmNavSave()">{{t('nav.save.yes')}}</button>
+              <button type="button" class="small-control wide" (click)="cancelNavSave()">{{t('archive.confirm.no')}}</button>
+            </div>
+            <button type="button" class="nav-action" [disabled]="!navDirty" (click)="navRestore()">{{t('nav.restore')}}</button>
+            <button type="button" class="nav-action" [disabled]="archiveBusy" (click)="openElective()">{{t('nav.elective')}}</button>
+          </div>
         </div>
         <div *ngIf="inspectorTab==='aspects' && activeChart">
           <p class="inspector-hint" *ngIf="!chartSettings.showAspects">{{t('aspects.hidden')}}</p>

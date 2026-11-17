@@ -10,6 +10,14 @@ The unmodified full [LICENSE](../LICENSE) contains the Common Public Attribution
 
 CPAL permissions are not a trademark license for the VirgoStars name, visual identity or associated services. Do not claim that third-party software, data or imagery is licensed by the Desktop CPAL merely because it is referenced in documentation.
 
+## Maintainer rights decisions (2026-11-17)
+
+Recorded as the maintainer stated them in the project chat; this repository cannot verify them and they are not legal advice.
+
+- **Artwork.** The approved artwork pack (the symbol, wheel and texture images listed in `approved-assets.json` with their rights holder and approval evidence) is stated to be fully owned or licensed by the maintainer, **who approves including it in public builds**. This covers redistribution inside a built application; it does not by itself put those files in this repository, and it does not change the pinned manifest.
+- **City catalog.** The maintainer **approves the publication rights of the world-city catalog**. The catalog remains attached to the protected `places-20261112-v2` release; moving it, deciding how a public build obtains it, and any change of repository visibility are separate steps that still need the maintainer's explicit go-ahead (see [Publication checklist](PUBLICATION_CHECKLIST.md)).
+- **Not covered by these decisions:** Swiss Ephemeris (AGPL-3.0 or commercial; no professional licence is held, so it must not ship in a distributed binary), NASA/JPL kernels, fonts and third-party dependencies.
+
 ## Materials outside this code license
 
 - Original branded artwork, fonts, imported icons and privately approved visual packs are subject to separate permission/provenance reviews.

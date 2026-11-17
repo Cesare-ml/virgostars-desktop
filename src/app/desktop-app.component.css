@@ -120,6 +120,51 @@
 .sky-live { display:inline-flex; align-items:center; gap:8px; padding:0 12px; font-size:14px; }
 .sky-dot { width:10px; height:10px; border-radius:50%; background:#E0A800; box-shadow:0 0 0 3px rgba(224,168,0,.28); }
 .sky-live.live .sky-dot { background:#1FAE55; box-shadow:0 0 0 3px rgba(31,174,85,.28); }
+/* Naviga cielo */
+.navigator { display:flex; flex-direction:column; gap:14px; }
+.nav-clock { display:flex; align-items:center; justify-content:center; gap:6px; padding:6px 0; }
+.nav-field { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.nav-value { min-width:38px; text-align:center; font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
+.nav-field:nth-of-type(3) .nav-value { min-width:62px; }
+.nav-sep { font-size:20px; color:var(--vs-text-secondary); padding-top:2px; }
+.nav-arrow { width:34px; height:22px; padding:0; border:0; background:transparent; font-size:15px; line-height:1; cursor:pointer; }
+.nav-arrow.up { color:#E91E63; }
+.nav-arrow.down { color:#0E9F9A; }
+.nav-arrow:hover { background:var(--vs-surface-muted); border-radius:6px; }
+.nav-place { margin:0; text-align:center; font-size:12px; color:var(--vs-text-secondary); overflow-wrap:anywhere; }
+.nav-moves { display:grid; grid-template-columns:1fr 1fr; }
+.nav-back,.nav-forward { height:42px; border:0; color:#FFFFFF; font-size:14px; font-weight:650; cursor:pointer; }
+.nav-back { background:#0E9F9A; border-radius:8px 0 0 8px; }
+.nav-forward { background:#E91E63; border-radius:0 8px 8px 0; }
+.nav-back:hover,.nav-forward:hover { filter:brightness(1.08); }
+.step-grid { display:flex; flex-direction:column; border:1px solid var(--vs-border); border-radius:6px; overflow:hidden; }
+.step-row { display:flex; border-bottom:1px solid var(--vs-border); }
+.step-row:last-child { border-bottom:0; }
+.step-row button { flex:1; height:34px; border:0; border-right:1px solid var(--vs-border); background:var(--vs-surface-muted);
+  color:var(--vs-text); font-size:13px; cursor:pointer; }
+.step-row button.selected { background:#F28C28; color:#FFFFFF; font-weight:700; }
+.step-unit { flex:0 0 52px; display:flex; align-items:center; justify-content:center; background:var(--vs-surface-muted);
+  font-size:12px; color:var(--vs-text-secondary); }
+.nav-actions { display:flex; flex-direction:column; gap:8px; }
+.nav-action { height:40px; border:1px solid var(--vs-border); border-radius:8px; background:var(--vs-surface-muted);
+  color:var(--vs-text); font-size:13px; cursor:pointer; }
+.nav-action:disabled { opacity:.5; cursor:default; }
+.nav-action:not(:disabled):hover { background:var(--vs-surface); }
+.nav-status { margin:0; font-size:12px; font-weight:650; color:var(--vs-accent); text-align:center; }
+/* Erigi elettiva: a small dialog over the whole window. */
+.overlay { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.5); }
+.overlay-card { width:min(420px,calc(100vw - 32px)); padding:22px; border-radius:14px; background:var(--vs-surface); color:var(--vs-text);
+  box-shadow:0 18px 50px rgba(0,0,0,.4); }
+.overlay-card h2 { margin:0 0 14px; font-size:17px; font-weight:700; }
+.overlay-input { width:100%; height:42px; padding:0 12px; font-size:14px; color:var(--vs-text); background:var(--vs-surface);
+  border:2px solid #E0A800; border-radius:8px; }
+.overlay-input:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
+.overlay-problem { margin:10px 0 0; font-size:12px; color:#B3261E; }
+.overlay-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:16px; }
+.overlay-ok,.overlay-cancel { min-width:84px; height:38px; border:0; border-radius:8px; color:#FFFFFF; font-size:14px; font-weight:650; cursor:pointer; }
+.overlay-ok { background:#3FA34D; }
+.overlay-cancel { background:#E5483D; }
+.overlay-ok:disabled { opacity:.6; }
 .settings-top { padding:2px 0 6px; border-bottom:1px solid var(--vs-border); margin-bottom:2px; }
 .info-button { padding:0 12px; font-size:12px; font-weight:650; }
 .info-button.selected { background:var(--vs-surface-muted); color:var(--vs-accent); }

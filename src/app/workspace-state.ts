@@ -3,7 +3,7 @@ export type ChartMode = 'natal' | 'transits' | 'synastry' | 'latitude';
 export type UiTheme = 'light' | 'dark';
 /** What the centre of the window shows over the chart: nothing, the new-chart form or the archive. */
 export type WorkspaceView = 'chart' | 'new' | 'archive' | 'functions' | 'settings';
-export type InspectorTab = 'planets' | 'aspects';
+export type InspectorTab = 'planets' | 'aspects' | 'navigate';
 export type Locale = 'it' | 'en';
 
 export const CHART_MODES: ReadonlyArray<ChartMode> = Object.freeze(['natal', 'transits', 'synastry', 'latitude']);

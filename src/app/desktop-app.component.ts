@@ -18,6 +18,12 @@ import {requestSyntheticPngDownload} from './png-download';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock } from './device-clock';
 import { aspectSymbol } from './aspect-symbols';
+import { OfflineCityPickerComponent } from './offline-city-picker.component';
+import type { OfflinePlaceV1 } from './native/offline-places-contract';
+import {
+  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, isoFromMs, localParts, shiftInstant, stepInstant, utcFromLocal,
+  type NavField, type StepUnit
+} from './sky-navigator';
 import {
   DEFAULT_SKY_PLACE, loadStartupPreference, saveStartupPreference, type StartupMode, type StartupPreference
 } from './startup-preference';
@@ -32,7 +38,7 @@ import {
 } from './astro/tema-render-data';
 import { functionMenu, pendingSettings, type FunctionEntry, type FunctionGroup, type FunctionStatus } from './function-catalog';
 import { chartArchive } from './native/chart-archive';
-import { newChartId, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
+import { newChartId, validChartRecord, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
 import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
@@ -101,6 +107,16 @@ type SessionChart = Readonly<{
   render: TemaRender;
 }>;
 
+/** The instant and place a chart is shown at while it is being navigated. */
+type NavPoint = Readonly<{utcMs: number; latMicro: number; lngMicro: number; timeZone: string; placeName: string}>;
+type NavState = Readonly<{chartId: number; base: NavPoint; current: NavPoint}>;
+const NAV_FIELD_LABELS: Record<NavField,MessageKey> = {
+  day:'nav.day', month:'nav.month', year:'nav.year', hour:'nav.hour', minute:'nav.minute',
+};
+const NAV_UNIT_LABELS: Record<StepUnit,MessageKey> = {min:'nav.unit.min', h:'nav.unit.h', d:'nav.unit.d'};
+/** A change of the clock redraws the chart after this pause, so holding an arrow stays smooth. */
+const NAV_RECOMPUTE_MS = 70;
+
 const MODE_KEYS: Record<ChartMode,MessageKey> = {
   natal:'mode.natal',transits:'mode.transits',synastry:'mode.synastry',latitude:'mode.latitude',
 };
@@ -108,7 +124,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -182,6 +198,19 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   skyLive = true;
   private skyTimer: ReturnType<typeof setInterval> | null = null;
   private skyRefreshing = false;
+  /** "Naviga cielo": the chart on screen is moved in time and place; the chart is redrawn as it moves. */
+  nav: NavState | null = null;
+  navStepUnit: StepUnit = DEFAULT_STEP.unit;
+  navStepValue = DEFAULT_STEP.value;
+  navStatus: MessageKey | null = null;
+  navConfirmSave = false;
+  cityChangeOpen = false;
+  electiveOpen = false;
+  electiveName = '';
+  electiveInvalid = false;
+  readonly stepRows = STEP_ROWS;
+  private navTimer: ReturnType<typeof setTimeout> | null = null;
+  private navTicket = 0;
   busy = false;
   ready = false;
   status: MessageKey = 'chart.loading';
@@ -257,7 +286,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   get transitChartAvailable(): boolean { return this.transitChart !== null; }
   get isSkyActive(): boolean { return this.activeChart?.kind === 'sky'; }
-  get stageTitle(): string { return this.isSkyActive && this.mode === 'natal' ? this.t('sky.title') : this.modeLabel(this.mode); }
+  get stageTitle(): string {
+    if (this.isSkyActive && this.mode === 'natal') return this.t(this.navDirty ? 'sky.navigated' : 'sky.title');
+    return this.modeLabel(this.mode);
+  }
+  get inspectorTitleKey(): MessageKey {
+    return this.inspectorTab === 'planets' ? 'nav.planets' : this.inspectorTab === 'aspects' ? 'tab.aspects' : 'nav.title';
+  }
   get subjectTitle(): string {
     const chart = this.activeChart;
     return chart ? this.chartName(chart) : '';
@@ -409,6 +444,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     // Overlays belong to the previous chart; start again from the plain wheel.
     if (this.mode === 'transits' || this.mode === 'synastry') this.mode = 'natal';
     if (this.initialized) void this.draw();
+    // The navigator follows the chart on screen.
+    if (this.inspectorTab === 'navigate' && !this.inspectorCollapsed) this.initNav();
   }
   activateChart(id:number): void {
     const chart = this.sessionCharts.find(item => item.id === id);
@@ -462,12 +499,210 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     this.cd.markForCheck();
   }
+  // ---- Naviga cielo -------------------------------------------------------------------------------
+  private initNav(): void {
+    const chart = this.activeChart;
+    const utcMs = chart ? Date.parse(chart.utcIso) : Number.NaN;
+    this.navConfirmSave = false;
+    this.cityChangeOpen = false;
+    this.navStatus = null;
+    if (!chart || !Number.isFinite(utcMs)) { this.nav = null; return; }
+    const point: NavPoint = {utcMs, latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone, placeName:chart.placeName};
+    this.nav = {chartId:chart.id, base:point, current:point};
+  }
+  /** The chart's local date and time, one editable field each. */
+  get navFields(): ReadonlyArray<{key: NavField; text: string; sep: string; label: string}> {
+    const texts = this.nav ? fieldTexts(this.nav.current.utcMs, this.nav.current.timeZone) : null;
+    if (!texts) return [];
+    const seps: Record<NavField,string> = {day:'', month:'/', year:'/', hour:'', minute:':'};
+    return (['day','month','year','hour','minute'] as const).map(key =>
+      ({key, text:texts[key], sep:seps[key], label:this.t(NAV_FIELD_LABELS[key])}));
+  }
+  get navPlaceLabel(): string {
+    const point = this.nav?.current;
+    if (!point) return '';
+    return point.placeName || (point.latMicro / 1e6).toFixed(4) + '°, ' + (point.lngMicro / 1e6).toFixed(4) + '°';
+  }
+  /** True once the clock or the place differs from where navigation started. */
+  get navDirty(): boolean {
+    const nav = this.nav;
+    if (!nav || !this.activeChart || nav.chartId !== this.activeChart.id) return false;
+    const a = nav.base, b = nav.current;
+    return a.utcMs !== b.utcMs || a.latMicro !== b.latMicro || a.lngMicro !== b.lngMicro || a.timeZone !== b.timeZone;
+  }
+  stepUnitLabel(unit: StepUnit): string { return this.t(NAV_UNIT_LABELS[unit]); }
+  private moveNav(next: number | null): void {
+    const nav = this.nav;
+    if (!nav) return;
+    if (next === null) { this.navStatus = 'nav.limit'; this.cd.markForCheck(); return; }
+    this.navStatus = null;
+    this.navConfirmSave = false;
+    this.nav = {...nav, current:{...nav.current, utcMs:next}};
+    this.scheduleNavRecompute();
+  }
+  adjustNav(field: NavField, delta: number): void {
+    const point = this.nav?.current;
+    if (point) this.moveNav(shiftInstant(point.utcMs, point.timeZone, field, delta));
+  }
+  stepNav(direction: 1 | -1): void {
+    const point = this.nav?.current;
+    if (point) this.moveNav(stepInstant(point.utcMs, point.timeZone, this.navStepUnit, this.navStepValue, direction));
+  }
+  selectStep(unit: StepUnit, value: number): void {
+    this.navStepUnit = unit;
+    this.navStepValue = value;
+    this.cd.markForCheck();
+  }
+  /** The present moment, whole seconds. */
+  navNow(): void {
+    const nav = this.nav;
+    if (!nav) return;
+    this.navStatus = null;
+    this.navConfirmSave = false;
+    this.nav = {...nav, current:{...nav.current, utcMs:Math.floor(Date.now() / 1000) * 1000}};
+    this.scheduleNavRecompute();
+  }
+  /** Back to the instant and place the chart had when navigation started (or was last saved). */
+  navRestore(): void {
+    const nav = this.nav;
+    if (!nav) return;
+    this.navStatus = null;
+    this.navConfirmSave = false;
+    this.cityChangeOpen = false;
+    this.nav = {...nav, current:nav.base};
+    this.scheduleNavRecompute();
+  }
+  toggleCityChange(): void {
+    this.cityChangeOpen = !this.cityChangeOpen;
+    this.cd.markForCheck();
+  }
+  /**
+   * A subject's chart keeps its local date and time in the new place (the birth place is being
+   * corrected); the sky keeps its instant (it is the same sky seen from elsewhere).
+   */
+  onNavCitySelected(place: OfflinePlaceV1): void {
+    const nav = this.nav;
+    const chart = this.activeChart;
+    if (!nav || !chart) return;
+    const timeZone = place.timeZone ?? nav.current.timeZone;
+    let utcMs = nav.current.utcMs;
+    if (chart.kind === 'chart' && timeZone !== nav.current.timeZone) {
+      const wall = localParts(utcMs, nav.current.timeZone);
+      const moved = wall ? utcFromLocal(wall, timeZone) : null;
+      if (moved !== null) utcMs = moved;
+    }
+    this.navStatus = null;
+    this.navConfirmSave = false;
+    this.cityChangeOpen = false;
+    this.nav = {...nav, current:{utcMs, latMicro:place.latMicro, lngMicro:place.lngMicro, timeZone, placeName:place.name}};
+    this.scheduleNavRecompute();
+  }
+  private scheduleNavRecompute(): void {
+    if (this.navTimer !== null) clearTimeout(this.navTimer);
+    this.navTimer = setTimeout(() => { this.navTimer = null; void this.recomputeNav(); }, NAV_RECOMPUTE_MS);
+    this.cd.markForCheck();
+  }
+  /** Calculates the chart again at the navigated instant and place; only the latest request is shown. */
+  private async recomputeNav(): Promise<void> {
+    const nav = this.nav;
+    const chart = this.activeChart;
+    if (!nav || !chart || chart.id !== nav.chartId || this.destroyed) return;
+    const ticket = ++this.navTicket;
+    const point = nav.current;
+    const next = await this.computeChart({
+      name:chart.name, utcIso:isoFromMs(point.utcMs), localDate:'', localTime:'', timeZone:point.timeZone,
+      offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName,
+    }, chart.archiveId, chart.kind);
+    if (this.destroyed || ticket !== this.navTicket || this.nav?.chartId !== chart.id) return;
+    if (typeof next === 'string') {
+      // The chart on screen stays as it was; say why the move did not show.
+      this.navStatus = next;
+    } else {
+      this.navStatus = null;
+      // Same identity, new data: the partner, the returns and the navigator keep pointing at it.
+      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id} : item);
+      this.rowsCache = null;
+      this.aspectCache = null;
+      this.crossAspectCache = null;
+      this.useAvailableHouseSystem(next);
+      if (this.initialized) void this.draw();
+    }
+    this.cd.markForCheck();
+  }
+  /** Overwriting a saved chart's data asks first; a chart not saved yet is simply saved. */
+  askNavSave(): void {
+    const chart = this.activeChart;
+    if (!chart || chart.kind !== 'chart' || !this.nav) return;
+    if (chart.archiveId === null) { void this.confirmNavSave(); return; }
+    this.navConfirmSave = true;
+    this.cd.markForCheck();
+  }
+  cancelNavSave(): void {
+    this.navConfirmSave = false;
+    this.cd.markForCheck();
+  }
+  async confirmNavSave(): Promise<void> {
+    const chart = this.activeChart;
+    const nav = this.nav;
+    if (!chart || chart.kind !== 'chart' || !nav || this.archiveBusy) return;
+    this.navConfirmSave = false;
+    const archiveId = chart.archiveId ?? newChartId();
+    const point = nav.current;
+    const saved = await this.runArchive({operation:'save', chart:{
+      id:archiveId, name:chart.name, utcIso:isoFromMs(point.utcMs), timeZone:point.timeZone,
+      latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName,
+    }}, 'nav.saved');
+    if (saved && this.nav?.chartId === chart.id) {
+      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...item, archiveId} : item);
+      // What was saved is the new starting point for "Ripristina".
+      this.nav = {...this.nav, base:this.nav.current};
+    }
+    this.cd.markForCheck();
+  }
+  openElective(): void {
+    const nav = this.nav;
+    if (!nav) return;
+    this.electiveName = defaultElectiveName(this.t('nav.elective.default'), nav.current.utcMs, nav.current.timeZone);
+    this.electiveInvalid = false;
+    this.electiveOpen = true;
+    this.cd.markForCheck();
+    setTimeout(() => {
+      const input = document.getElementById('elective-name') as HTMLInputElement | null;
+      input?.focus();
+      input?.select();
+    }, 30);
+  }
+  cancelElective(): void {
+    this.electiveOpen = false;
+    this.cd.markForCheck();
+  }
+  setElectiveName(event: Event): void {
+    this.electiveName = (event.target as HTMLInputElement).value;
+    this.electiveInvalid = false;
+  }
+  /** A new chart for the navigated instant and place, saved in the archive under the name given. */
+  async confirmElective(): Promise<void> {
+    const nav = this.nav;
+    if (!nav || this.archiveBusy) return;
+    const point = nav.current;
+    const record = {
+      id:newChartId(), name:this.electiveName.trim(), utcIso:isoFromMs(point.utcMs), timeZone:point.timeZone,
+      latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName,
+    };
+    if (!record.name || !validChartRecord(record)) { this.electiveInvalid = true; this.cd.markForCheck(); return; }
+    this.electiveOpen = false;
+    await this.runArchive({operation:'save', chart:record}, 'nav.elective.saved');
+    this.cd.markForCheck();
+  }
+
   toggleSkyLive(): void {
     this.skyLive = !this.skyLive;
     this.cd.markForCheck();
   }
   private async skyTick(): Promise<void> {
     if (!this.skyLive || this.destroyed || !this.isSkyActive || this.mode !== 'natal') return;
+    // While the sky is being navigated by hand, nothing moves it on its own.
+    if (this.nav && this.inspectorTab === 'navigate' && !this.inspectorCollapsed) return;
     if (this.calcBusy || this.busy || this.exporting || this.skyRefreshing) return;
     this.skyRefreshing = true;
     try { await this.showSky(true); } finally { this.skyRefreshing = false; }
@@ -721,6 +956,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   openInspector(tab: InspectorTab): void {
     this.inspectorTab = tab;
     this.inspectorCollapsed = false;
+    if (tab === 'navigate') {
+      // Moving the sky by hand stops its own refresh; the play button restarts it.
+      this.skyLive = false;
+      this.initNav();
+    }
     this.cd.markForCheck();
   }
   /** The left-menu and toolbar buttons for the planet and aspect tables open them, or close them when already showing. */
@@ -787,6 +1027,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
+    if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();

@@ -6,6 +6,8 @@ This checklist is for a future, separately approved source-publication event. A 
 
 ## Confirmed blocker: protected city database in a GitHub Release
 
+> 2026-11-17: the maintainer states that the city catalog's publication rights are approved (see [Licensing and publication](LICENSING_AND_PUBLICATION.md)). The items below stay open until the asset's release/channel is actually decided and checked; nothing here has been ticked on that statement alone.
+
 - [ ] Move, remove or otherwise legally clear the `world-cities.zip` asset on the **published prerelease** tag `places-20261112-v2`. At review time this asset was present in the repository's releases (approximately 69 MB). Repository visibility also controls release-asset visibility.
 - [ ] If the dataset is moved to a restricted channel, update `scripts/places/fetch_catalog.py`, packaging docs, and any download scripts **before** publicizing source.
 - [ ] Verify the database license and rights of the underlying purchased source material; access via a GitHub Release is not authorization for general redistribution.
