@@ -15,12 +15,12 @@ The preference stores only a mode and the identity of a saved chart, on this dev
 
 - **Chart first.** No top bar, header or footer. The wheel is as tall as the window (99 % at 1360×880, 98.9 % at 1280×720 and 1100×700, 99.3 % at 1920×1080). Zoom, fit, refresh, save and PNG export float over the empty corners; the title, the chart's date and place and the device clock sit in the top corners.
 - **Left menu** (folds to an icon rail by itself when the centre column would be narrower than the window is tall, until the user decides): *Nuovo tema*, *Archivio*; *Cielo del momento* and the four chart modes; *Info pianeti*, *Aspetti*; *Funzioni*, *Impostazioni*; language and light/dark; the licence attribution.
-  - *Funzioni* and *Impostazioni* open as a drawer from the left menu over the chart. Functions are grouped; groups with something to run are open lists, everything not built yet waits in one closed list.
-  - *Impostazioni*: the start preference, aspects/orbs/points, appearance. There is no city search.
 - **New chart** and **Archive** are two separate panels over the chart ([Chart archive](CHART_ARCHIVE.md)).
-- **Right panel**, two tabs, opened from the left menu or from the *Info pianeti* button on the chart:
-  - *Info pianeti*: house system and one table — glyph, Lng (degrees, sign, minutes, seconds), Casa (Roman numeral for angular houses, coloured by element), Vel. (longitude, degrees per day), Lat, Vel. Lat (latitude speed). The four angles lead it; house cusps are not listed.
-  - *Aspetti*: each row is *symbol, symbol, symbol* (point, aspect, point) with the names on hover, then the orb and, where meaningful, **appl.** (applying: getting closer to exact) or **disappl.** (separating: moving away), explained on hover. Transit and synastry tables follow the same form. Glyphs of the points are the wheel's own; an aspect without a drawn glyph uses a written symbol (☌ ☍ △ □ ⚹ …).
+- **Right panel**, no tab strip: the left menu (or the *Info pianeti* button on the chart) chooses what it shows, and its title says which.
+  - *Info pianeti*: one table — glyph, Lng (degrees, sign, minutes, seconds), Casa (Roman numeral for angular houses, coloured by element), Vel. (longitude, degrees per day), Lat, Vel. Lat (latitude speed). The four angles lead it; house cusps are not listed.
+  - *Aspetti*: each row is *symbol, symbol, symbol* (point, aspect, point) with the names on hover, then the orb and, where meaningful, **appl.** (applying: getting closer to exact) or **disappl.** (separating: moving away), explained on hover. Transit and synastry tables follow the same form.
+- **Funzioni** (drawer from the left menu) lists only what the left menu does not already offer: today the solar and lunar returns, then everything not built yet in one closed list (`functionMenu()` in `function-catalog.ts`).
+- **Impostazioni** (drawer from the left menu) holds every setting, each in a spoiler of its own with its title aligned to the left, none repeated: *All'avvio mostra*, *Aspetto* (language, theme), *Domificazione*, *Aspetti* (which aspects are drawn, their orbs), *Elementi celesti* (which points are shown, take part in aspects, their orbs) and *Non ancora disponibili* (the settings of the old menu that are not built yet, disabled). There is no city search.
 
 ## Captions
 
@@ -28,4 +28,4 @@ The technical captions (renderer, assets, runtime, cloud, account, laboratory, d
 
 ## Verification
 
-Node tests (850, 12 skipped) and the offline bundle, privacy, security and IPC gates pass. In the native local build driven through WebView2's DevTools port: the default start shows the current sky; the left menu, the drawers, the planet table (with latitude speed) and the symbol aspect lists render; choosing a saved chart as start chart shows it with the transits of the moment after a restart. In the dark theme the renderer paints its own grey square behind the wheel (renderer-owned, not changed). Not covered: an accessibility review, a visual comparison against the older program.
+Node tests (856, 12 skipped) and the offline bundle, privacy, security and IPC gates pass. In the native local build driven through WebView2's DevTools port: the default start shows the current sky; the left menu, the drawers, the planet table (with latitude speed) and the symbol aspect lists render; choosing a saved chart as start chart shows it with the transits of the moment after a restart. In the dark theme the renderer paints its own grey square behind the wheel (renderer-owned, not changed). Not covered: an accessibility review, a visual comparison against the older program.

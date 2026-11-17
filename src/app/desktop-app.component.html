@@ -252,14 +252,31 @@
             </div>
           </details>
           <details class="settings-section">
-            <summary>{{t('chartsettings.title')}}</summary>
-            <vs-chart-settings [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
-              (settingsChange)="onChartSettingsChanged($event)"></vs-chart-settings>
-          </details>
-          <details class="settings-section">
             <summary>{{t('settings.appearance')}}</summary>
             <div class="setting-line"><span>{{t('language')}}</span><button type="button" class="small-control wide" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button></div>
             <div class="setting-line"><span>{{t('settings.theme')}}</span><button type="button" class="small-control wide" (click)="toggleTheme()">{{activeThemeLabel}}</button></div>
+          </details>
+          <details class="settings-section">
+            <summary>{{t('houses.system')}}</summary>
+            <ng-container *ngIf="activeChart as chart; else noChartForHouses">
+              <label class="setting-line select-line">
+                <span>{{t('houses.system')}}</span>
+                <select class="inline-select" [disabled]="busy" (change)="setHouseSystem($event)">
+                  <option *ngFor="let system of houseSystems" [value]="system" [selected]="system===houseSystem">{{houseSystemLabel(system)}}</option>
+                </select>
+              </label>
+              <p class="inspector-hint missing-note" *ngIf="chart.unavailableHouseSystems.length">{{t('houses.missing')}} {{systemsOf(chart.unavailableHouseSystems)}}</p>
+            </ng-container>
+            <ng-template #noChartForHouses><p class="inspector-hint">{{t('inspector.nochart')}}</p></ng-template>
+          </details>
+          <!-- Aspects and celestial elements are two spoilers of their own, written by the component. -->
+          <vs-chart-settings [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
+            (settingsChange)="onChartSettingsChanged($event)"></vs-chart-settings>
+          <details class="settings-section" *ngIf="pendingSettingEntries.length">
+            <summary>{{t('functions.soon')}}</summary>
+            <button type="button" class="data-line function-line" *ngFor="let entry of pendingSettingEntries" disabled>
+              <span>{{entryLabel(entry)}}</span>
+            </button>
           </details>
         </section>
       </section>
@@ -267,24 +284,12 @@
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
       <div class="inspector-head">
-        <div class="inspector-tabs" role="tablist">
-          <button type="button" role="tab" id="tab-planets" aria-controls="inspector-content"
-            [attr.aria-selected]="inspectorTab==='planets'" (click)="setInspectorTab('planets')">{{t('nav.planets')}}</button>
-          <button type="button" role="tab" id="tab-aspects" aria-controls="inspector-content"
-            [attr.aria-selected]="inspectorTab==='aspects'" (click)="setInspectorTab('aspects')">{{t('tab.aspects')}}</button>
-        </div>
+        <h2 class="inspector-title" id="inspector-title">{{t(inspectorTab==='planets' ? 'nav.planets' : 'tab.aspects')}}</h2>
         <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
       </div>
-      <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
+      <div class="inspector-body" id="inspector-content" aria-labelledby="inspector-title">
         <p class="inspector-hint" *ngIf="!activeChart">{{t('inspector.nochart')}}</p>
         <div *ngIf="inspectorTab==='planets' && activeChart as chart">
-          <label class="setting-line select-line">
-            <span>{{t('houses.system')}}</span>
-            <select class="inline-select" [disabled]="busy" (change)="setHouseSystem($event)">
-              <option *ngFor="let system of houseSystems" [value]="system" [selected]="system===houseSystem">{{houseSystemLabel(system)}}</option>
-            </select>
-          </label>
-          <p class="inspector-hint missing-note" *ngIf="chart.unavailableHouseSystems.length">{{t('houses.missing')}} {{systemsOf(chart.unavailableHouseSystems)}}</p>
           <table class="planet-table">
             <thead>
               <tr>

@@ -1,12 +1,12 @@
-<section class="chart-settings" [attr.aria-label]="t('chartsettings.title')">
-  <label class="settings-check">
-    <input type="checkbox" [checked]="settings.showAspects" [disabled]="disabled" (change)="setShowAspects($event)">
-    <span>{{t('chartsettings.show')}}</span>
-  </label>
+<div class="chart-settings">
   <p class="settings-problem" role="alert" *ngIf="invalidOrb">{{t('chartsettings.orb.invalid')}}</p>
 
-  <details class="settings-group" open>
-    <summary>{{t('chartsettings.aspects')}}</summary>
+  <details class="settings-section">
+    <summary>{{t('settings.aspects')}}</summary>
+    <label class="settings-check">
+      <input type="checkbox" [checked]="settings.showAspects" [disabled]="disabled" (change)="setShowAspects($event)">
+      <span>{{t('chartsettings.show')}}</span>
+    </label>
     <p class="settings-note">{{t('chartsettings.aspects.note')}}</p>
     <div class="settings-head"><span>{{t('chartsettings.aspect')}}</span><span>{{t('chartsettings.orb')}}</span></div>
     <div class="settings-row" *ngFor="let id of aspectIds">
@@ -20,8 +20,8 @@
     </div>
   </details>
 
-  <details class="settings-group">
-    <summary>{{t('chartsettings.points')}}</summary>
+  <details class="settings-section">
+    <summary>{{t('settings.points')}}</summary>
     <p class="settings-note">{{t('chartsettings.points.note')}}</p>
     <div class="settings-head three"><span>{{t('chartsettings.point')}}</span><span>{{t('chartsettings.shown')}}</span><span>{{t('chartsettings.aspected')}}</span><span>{{t('chartsettings.orb')}}</span></div>
     <div class="settings-row three" *ngFor="let id of pointIds">
@@ -37,4 +37,4 @@
   </details>
 
   <button type="button" class="settings-reset" [disabled]="disabled" (click)="reset()">{{t('chartsettings.reset')}}</button>
-</section>
+</div>

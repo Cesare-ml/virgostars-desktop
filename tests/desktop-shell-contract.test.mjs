@@ -28,7 +28,7 @@ test('UI shows no technical, account or placeholder captions; the archive and th
   assert.match(html,/subjectCaption/);
   assert.match(html,/\[attr.title\]="t\('archive'\)" \(click\)="openArchive\(\)"/);
   assert.match(html,/\[attr.title\]="t\('newchart'\)" \(click\)="openNewChart\(\)"/);
-  assert.match(html,/role="tabpanel"/);
+  assert.match(html,/class="inspector-body" id="inspector-content"/);
   for (const removed of ['noaccount','research','lab','footer','footerKey','artworkStatus','runtimeStatus','provenanceLabel']) {
     assert.doesNotMatch(html,new RegExp("t\\(['\"]?" + removed + "['\"]?\\)|\\b" + removed + "\\b"),removed);
   }

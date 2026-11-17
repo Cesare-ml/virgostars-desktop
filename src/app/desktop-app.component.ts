@@ -30,7 +30,7 @@ import {
   availableHouseSystems, buildTemaRenderData, formatDegreeInSign, formatLatitudeDms, formatLongitudeDms,
   formatSpeed, houseDisplay, planetRows, type HouseDisplay, type PlanetRow, type TemaRenderData
 } from './astro/tema-render-data';
-import { FUNCTION_CATALOG, type FunctionEntry, type FunctionGroup, type FunctionStatus } from './function-catalog';
+import { functionMenu, pendingSettings, type FunctionEntry, type FunctionGroup, type FunctionStatus } from './function-catalog';
 import { chartArchive } from './native/chart-archive';
 import { newChartId, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
 import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
@@ -148,10 +148,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   houseSystem: HouseSystemId = 'egizia';
   calcBusy = false;
   calcMessage: MessageKey | null = null;
-  /** Groups with something to run come first; the rest wait in one closed list, and out-of-scope entries are not shown. */
-  readonly catalog = FUNCTION_CATALOG.filter(group => group.entries.some(entry => entry.status === 'available'));
-  readonly pendingCatalog = FUNCTION_CATALOG.filter(group =>
-    !group.entries.some(entry => entry.status === 'available') && group.entries.some(entry => entry.status === 'planned'));
+  /** The Functions drawer: groups with something to run first, the rest in one closed list. */
+  private readonly menu = functionMenu();
+  readonly catalog = this.menu.active;
+  readonly pendingCatalog = this.menu.pending;
+  /** Settings of the old menu that are not built yet. */
+  readonly pendingSettingEntries = pendingSettings();
   private transitChart: SessionChart | null = null;
   private calcTicket = 0;
   private nextChartId = 1;

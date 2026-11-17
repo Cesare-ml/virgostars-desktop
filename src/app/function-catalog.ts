@@ -124,6 +124,43 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
   ]),
 ]);
 
+/**
+ * Entries reached from the left menu. The Functions drawer does not repeat them; they stay in the
+ * catalog so the Regolo menu remains traceable.
+ */
+const IN_LEFT_MENU: ReadonlySet<FunctionAction> = new Set<FunctionAction>([
+  'new_chart', 'session_charts', 'archive', 'now_chart',
+  'mode_natal', 'mode_transits', 'mode_synastry', 'mode_latitude',
+]);
+/** The group whose entries are settings; they are shown in the Settings drawer, not here. */
+export const SETTINGS_GROUP_ID = 'settings';
+
+export type FunctionMenu = Readonly<{
+  /** Groups with something to run; their entries not built yet are listed after them. */
+  active: readonly FunctionGroup[];
+  /** Groups with nothing to run yet. */
+  pending: readonly FunctionGroup[];
+}>;
+
+/** What the Functions drawer lists: no left-menu entries, no settings, no out-of-scope entries. */
+export function functionMenu(catalog: readonly FunctionGroup[] = FUNCTION_CATALOG): FunctionMenu {
+  const groups = catalog
+    .filter(item => item.id !== SETTINGS_GROUP_ID)
+    .map(item => group(item.id, item.it, item.en,
+      item.entries.filter(entry => entry.status !== 'excluded' && !(entry.action && IN_LEFT_MENU.has(entry.action)))))
+    .filter(item => item.entries.length > 0);
+  return Object.freeze({
+    active: Object.freeze(groups.filter(item => item.entries.some(entry => entry.status === 'available'))),
+    pending: Object.freeze(groups.filter(item => !item.entries.some(entry => entry.status === 'available'))),
+  });
+}
+
+/** Settings of the old menu that are not built yet; the Settings drawer lists them, disabled. */
+export function pendingSettings(catalog: readonly FunctionGroup[] = FUNCTION_CATALOG): readonly FunctionEntry[] {
+  return Object.freeze((catalog.find(item => item.id === SETTINGS_GROUP_ID)?.entries ?? [])
+    .filter(entry => entry.status === 'planned'));
+}
+
 export type CatalogSummary = Readonly<{available: number; planned: number; excluded: number}>;
 
 export function summarizeCatalog(catalog: readonly FunctionGroup[] = FUNCTION_CATALOG): CatalogSummary {

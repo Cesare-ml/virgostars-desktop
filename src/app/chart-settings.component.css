@@ -2,9 +2,16 @@
 .chart-settings { display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
 .settings-check { display:flex; align-items:center; gap:8px; min-width:0; font-size:13px; color:var(--vs-text); }
 .settings-check.grow,.grow { flex:1; min-width:0; }
-.settings-group { border:1px solid var(--vs-border); border-radius:10px; padding:8px 10px; background:var(--vs-surface); }
-.settings-group summary { cursor:pointer; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--vs-text-secondary); }
-.settings-group summary:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
+/* Same look as the other spoilers of the settings drawer; titles are aligned to the left. */
+.chart-settings { gap:0; margin-bottom:0; }
+.settings-section { border-bottom:1px solid var(--vs-border); padding:2px 0 8px; }
+.settings-section > summary { display:flex; justify-content:flex-start; align-items:center; cursor:pointer; list-style:none;
+  padding:11px 4px; font-size:13px; font-weight:700; color:var(--vs-text); }
+.settings-section > summary::-webkit-details-marker { display:none; }
+.settings-section > summary::before { content:"▸"; color:var(--vs-text-secondary); margin-right:8px; font-size:11px; }
+.settings-section[open] > summary::before { content:"▾"; }
+.settings-section > summary:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
+.settings-reset { margin-top:14px; }
 .settings-note { margin:8px 0; font-size:12px; line-height:1.5; color:var(--vs-text-secondary); }
 .settings-head,.settings-row { display:flex; align-items:center; gap:8px; }
 .settings-head { justify-content:space-between; padding-bottom:6px; border-bottom:1px solid var(--vs-border);
