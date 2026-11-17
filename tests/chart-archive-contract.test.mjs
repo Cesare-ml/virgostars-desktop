@@ -12,7 +12,7 @@ const record = (id = ID_A, name = 'Soggetto di prova') => ({
   latMicro: 44_697_805, lngMicro: 11_805_778, placeName: 'Luogo di prova',
 });
 const saved = (id, name) => ({...record(id, name), createdAtMs: 1000, updatedAtMs: 2000});
-const okResponse = () => ({protocolVersion: 1, status: 'ok', charts: [saved(ID_A, 'Alfa'), saved(ID_B, 'Beta')]});
+const okResponse = () => ({protocolVersion: 1, status: 'ok', charts: [saved(ID_A, 'Alfa'), saved(ID_B, 'Beta')], legacyPresent: false});
 const native = reply => {
   const calls = [];
   return {calls, isNative: () => true, invoke: async (...args) => { calls.push(args); return reply(); }};
@@ -26,11 +26,13 @@ test('a native list is copied into detached frozen records', () => {
   assert.ok(Object.isFrozen(decoded.charts) && Object.isFrozen(decoded.charts[0]));
   raw.charts[0].name = 'changed later';
   assert.equal(decoded.charts[0].name, 'Alfa');
-  assert.deepEqual(decodeArchiveResponse({protocolVersion: 1, status: 'ok', charts: []}).charts, []);
+  assert.deepEqual(decodeArchiveResponse({protocolVersion: 1, status: 'ok', charts: [], legacyPresent: false}).charts, []);
+  assert.equal(decoded.legacyPresent, false);
+  assert.equal(decodeArchiveResponse({...okResponse(), legacyPresent: true}).legacyPresent, true);
 });
 
 test('every archive failure state is passed through without details', () => {
-  for (const status of ['invalid_request', 'not_found', 'archive_full', 'archive_unavailable', 'archive_corrupt', 'archive_newer']) {
+  for (const status of ['invalid_request', 'not_found', 'archive_full', 'archive_unavailable', 'archive_corrupt', 'archive_newer', 'archive_locked']) {
     assert.deepEqual(decodeArchiveResponse({protocolVersion: 1, status, charts: null}), {status});
   }
 });
@@ -40,6 +42,8 @@ test('malformed or hostile archive contents are rejected with one generic error'
     r => { r.protocolVersion = 2; },
     r => { r.status = 'fine'; },
     r => { r.charts = null; },
+    r => { delete r.legacyPresent; },
+    r => { r.legacyPresent = 'yes'; },
     r => { r.charts[1].id = ID_A; },
     r => { r.charts[0].id = '../../secret'; },
     r => { r.charts[0].id = 'AAAAAAAA-1111-4111-8111-111111111111'; },
@@ -87,10 +91,12 @@ test('each operation makes one native call carrying only reviewed fields', async
   assert.equal(result.kind, 'ready');
   assert.equal(result.charts.length, 2);
   await requestArchive(transport, {operation: 'delete', id: ID_B});
+  await requestArchive(transport, {operation: 'remove_legacy', path: 'C:/never-forwarded'});
   assert.deepEqual(transport.calls, [
     ['chart_archive', {request: {protocolVersion: 1, operation: 'list'}}],
     ['chart_archive', {request: {protocolVersion: 1, operation: 'save', chart: record()}}],
     ['chart_archive', {request: {protocolVersion: 1, operation: 'delete', id: ID_B}}],
+    ['chart_archive', {request: {protocolVersion: 1, operation: 'remove_legacy'}}],
   ]);
 });
 
@@ -108,7 +114,7 @@ test('invalid operations never reach the native side', async () => {
 test('browser preview, archive states and native failures stay distinct and opaque', async () => {
   const never = async () => { throw new Error('must not be called'); };
   assert.deepEqual(await requestArchive({isNative: () => false, invoke: never}, {operation: 'list'}), {kind: 'not_native'});
-  for (const status of ['not_found', 'archive_full', 'archive_corrupt', 'archive_newer', 'archive_unavailable']) {
+  for (const status of ['not_found', 'archive_full', 'archive_corrupt', 'archive_newer', 'archive_unavailable', 'archive_locked']) {
     const transport = native(() => ({protocolVersion: 1, status, charts: null}));
     assert.deepEqual(await requestArchive(transport, {operation: 'list'}), {kind: status});
   }

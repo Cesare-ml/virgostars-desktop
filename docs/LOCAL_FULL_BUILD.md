@@ -20,5 +20,5 @@ The result is `src-tauri/target/release/virgostars-desktop-spike.exe`, without a
 
 - **Never distribute this executable.** The artwork, the city catalog and Swiss Ephemeris (AGPL-3.0 or commercial; no professional licence is held) are all local-use only. See [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md) and [Licensing and publication](LICENSING_AND_PUBLICATION.md).
 - The default `npm run build:ui` / `npm run tauri:build` stay synthetic, so the public-source build still works with no private material.
-- The chart archive is an unencrypted SQLite file ([Chart archive](CHART_ARCHIVE.md)).
+- The chart archive is encrypted at rest with a key in the OS credential store; there is no recovery key ([Encrypted archive](ENCRYPTED_ARCHIVE.md)).
 - Charts shown without a calculated chart are the demonstration wheel and keep their label.

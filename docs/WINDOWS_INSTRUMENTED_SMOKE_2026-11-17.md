@@ -32,6 +32,6 @@ Tauri documents `ipc: http://ipc.localhost` as the allowance for that channel. I
 ## Still open for the MVP
 
 - Real astronomical output: only the optional local-use Swiss provider exists; the canonical VirgoStars-Ephemeris provider is not integrated.
-- The chart archive is an unencrypted SQLite file; account and cloud sync are not implemented.
+- The chart archive was an unencrypted SQLite file when this was written; it is encrypted since the same day ([Encrypted archive](ENCRYPTED_ARCHIVE.md)). Account and cloud sync are not implemented.
 - No installer, no signature, no updater; the executable was only run from the build directory.
 - Many unmerged stacked branches overlap `main`; none was merged here.

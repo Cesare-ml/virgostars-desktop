@@ -133,6 +133,9 @@
 .sheet-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
 .sheet-head h2 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.03em; }
 .autosave { display:flex; align-items:center; gap:8px; margin-top:14px; font-size:13px; }
+.legacy-warning { margin:12px 0; padding:12px; border:1px solid var(--vs-border); border-left:4px solid #E0A800;
+  border-radius:8px; background:var(--vs-surface-muted); }
+.legacy-warning p { margin:0 0 10px; font-size:12px; line-height:1.5; color:var(--vs-text); }
 .archive-search { width:100%; height:38px; padding:0 10px; margin:4px 0 10px; font-size:13px; color:var(--vs-text);
   background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:8px; }
 .archive-search:focus-visible { outline:2px solid var(--vs-focus); outline-offset:1px; }

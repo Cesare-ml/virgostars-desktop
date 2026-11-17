@@ -57,7 +57,7 @@ The command was exercised in the native release window on 2026-11-15 through Web
 - **Storage location:** fixed by the host (application local data folder, fixed file name). No path is accepted from, or returned to, the WebView.
 - **Output:** the saved records only. No path, SQL text or OS error crosses IPC; failures are reduced to named states.
 - **Side effects:** creates, updates or deletes rows in one SQLite file. A damaged or newer-format file is reported and never modified, recreated or deleted.
-- **Threat considered:** a compromised WebView can read, overwrite or delete every saved chart (up to 5000 rows). It cannot reach other files. The archive is **not encrypted**, so any process running as the same Windows user can read it without the application; see [Chart archive](CHART_ARCHIVE.md).
+- **Threat considered:** a compromised WebView can read, overwrite or delete every saved chart (up to 5000 rows). It cannot reach other files. The archive is encrypted at rest, but a process running as the same Windows user can ask the credential store for the key; see [Encrypted archive](ENCRYPTED_ARCHIVE.md). The request carries no path and the response no key.
 - **Not covered:** secure deletion, multi-instance locking behaviour, account isolation.
 
 ## Return search command (2026-11-15)

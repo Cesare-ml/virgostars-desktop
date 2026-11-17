@@ -1,35 +1,53 @@
-//! Local archive of saved charts in a SQLite file inside the app's data folder.
+//! Local, **encrypted** archive of saved charts inside the app's data folder.
 //!
-//! Only what the user typed is stored: name, UTC instant, time zone, position
-//! and place label. Positions are recalculated when a chart is opened, so the
-//! archive does not depend on any ephemeris provider.
+//! Only what the user typed is stored: name, UTC instant, time zone, position and place label.
+//! Positions are recalculated when a chart is opened, so the archive does not depend on any
+//! ephemeris provider.
 //!
-//! The file is **plain SQLite, not encrypted**. It is protected only by the
-//! operating-system account that owns the folder. Encryption at rest, account
-//! profiles and synchronisation are separate, still open work.
+//! On disk there is one sealed file (`archive_vault`): a SQLite database encrypted and
+//! authenticated as a whole with a random key kept by the operating system's credential store
+//! (`archive_keys`). While the app works, the database lives in memory; every change is sealed to a
+//! staging file and moved over the archive atomically, so no plain page, journal or temporary copy is
+//! ever written. If the key is unavailable or wrong the archive stays locked: there is no plaintext
+//! fallback.
 //!
-//! The WebView never supplies a path. A damaged or newer-format file is
-//! reported and left untouched; nothing is deleted or recreated automatically.
+//! The first prototype kept a plain SQLite file (`charts-v1.sqlite3`). It is migrated once, after
+//! validation and a read-back check, and is **not** deleted automatically: removing it is an explicit
+//! request (`remove_legacy`), because ordinary deletion is not secure erasure.
+//!
+//! The WebView never supplies a path or sees a key. A damaged or newer-format file is reported and
+//! left untouched; nothing is repaired or recreated automatically.
+use crate::archive_keys::{new_key, Key, KeyError, KeyStore, OsKeyStore};
+use crate::archive_vault::{self, VaultError};
 use crate::chart_calculation::{self, ChartRequestV1};
-use rusqlite::{params, Connection, ErrorCode, OpenFlags, TransactionBehavior};
+use rusqlite::serialize::OwnedData;
+use rusqlite::{params, Connection, DatabaseName, ErrorCode, OpenFlags, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 const PROTOCOL_VERSION: u8 = 1;
 const SCHEMA_VERSION: i64 = 1;
-const FILE_NAME: &str = "charts-v1.sqlite3";
+const LEGACY_FILE_NAME: &str = "charts-v1.sqlite3";
+const SEALED_FILE_NAME: &str = "charts-v2.vsarchive";
+const STAGING_FILE_NAME: &str = "charts-v2.vsarchive.tmp";
 const MAX_CHARTS: i64 = 5000;
 const MAX_NAME_CHARS: usize = 80;
 const MAX_PLACE_CHARS: usize = 160;
 const MAX_ZONE_BYTES: usize = 120;
 
+/// One reader-writer at a time: every change is a read, a change and a rewrite of the sealed file.
+static ARCHIVE_LOCK: Mutex<()> = Mutex::new(());
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArchiveRequestV1 {
     pub protocol_version: u8,
-    /// `list`, `save` or `delete`.
+    /// `list`, `save`, `delete` or `remove_legacy`.
     pub operation: String,
     pub chart: Option<ChartRecordV1>,
     pub id: Option<String>,
@@ -67,17 +85,26 @@ pub struct SavedChartV1 {
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveResponseV1 {
     pub protocol_version: u8,
-    /// `ok`, `invalid_request`, `not_found`, `archive_full`,
-    /// `archive_unavailable`, `archive_corrupt` or `archive_newer`.
+    /// `ok`, `invalid_request`, `not_found`, `archive_full`, `archive_unavailable`,
+    /// `archive_corrupt`, `archive_newer` or `archive_locked`.
     pub status: &'static str,
     /// The whole archive after the operation, present only with `ok`.
     pub charts: Option<Vec<SavedChartV1>>,
+    /// The old plain-text file of the first prototype is still on disk.
+    pub legacy_present: bool,
 }
 
 type Failure = &'static str;
 
+/// What a successful operation hands back.
+#[derive(Debug, Clone, PartialEq)]
+struct Outcome {
+    charts: Vec<SavedChartV1>,
+    legacy_present: bool,
+}
+
 fn failure(status: Failure) -> ArchiveResponseV1 {
-    ArchiveResponseV1 { protocol_version: PROTOCOL_VERSION, status, charts: None }
+    ArchiveResponseV1 { protocol_version: PROTOCOL_VERSION, status, charts: None, legacy_present: false }
 }
 
 /// Lowercase canonical UUID text, e.g. from `crypto.randomUUID()`.
@@ -132,17 +159,28 @@ fn classify(error: &rusqlite::Error) -> Failure {
     }
 }
 
-/// Opens the archive and brings an empty file to the current schema.
-fn open(path: &Path) -> Result<Connection, Failure> {
-    if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder).map_err(|_| "archive_unavailable")?;
-    }
-    let mut connection = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| classify(&error))?;
-    connection.busy_timeout(Duration::from_secs(2)).map_err(|error| classify(&error))?;
+const SCHEMA: &str = "CREATE TABLE saved_charts (
+       id TEXT PRIMARY KEY NOT NULL CHECK (length(id) = 36),
+       name TEXT NOT NULL,
+       utc_iso TEXT NOT NULL,
+       time_zone TEXT NOT NULL,
+       lat_micro INTEGER NOT NULL CHECK (lat_micro BETWEEN -90000000 AND 90000000),
+       lng_micro INTEGER NOT NULL CHECK (lng_micro BETWEEN -180000000 AND 180000000),
+       place_name TEXT NOT NULL,
+       created_at_ms INTEGER NOT NULL,
+       updated_at_ms INTEGER NOT NULL
+     ) STRICT;
+     PRAGMA user_version = 1;";
+
+/// An empty database at the current schema, in memory only.
+fn fresh_connection() -> Result<Connection, Failure> {
+    let connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
+    connection.execute_batch(SCHEMA).map_err(|error| classify(&error))?;
+    Ok(connection)
+}
+
+/// Checks health and schema of a database opened by either path.
+fn check_connection(connection: &Connection) -> Result<(), Failure> {
     let health: String =
         connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     if health != "ok" {
@@ -151,33 +189,34 @@ fn open(path: &Path) -> Result<Connection, Failure> {
     let version: i64 =
         connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     match version {
-        SCHEMA_VERSION => {}
-        0 => {
-            let transaction = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(|error| classify(&error))?;
-            transaction
-                .execute_batch(
-                    "CREATE TABLE saved_charts (
-                       id TEXT PRIMARY KEY NOT NULL CHECK (length(id) = 36),
-                       name TEXT NOT NULL,
-                       utc_iso TEXT NOT NULL,
-                       time_zone TEXT NOT NULL,
-                       lat_micro INTEGER NOT NULL CHECK (lat_micro BETWEEN -90000000 AND 90000000),
-                       lng_micro INTEGER NOT NULL CHECK (lng_micro BETWEEN -180000000 AND 180000000),
-                       place_name TEXT NOT NULL,
-                       created_at_ms INTEGER NOT NULL,
-                       updated_at_ms INTEGER NOT NULL
-                     ) STRICT;
-                     PRAGMA user_version = 1;",
-                )
-                .map_err(|error| classify(&error))?;
-            transaction.commit().map_err(|error| classify(&error))?;
-        }
+        SCHEMA_VERSION => Ok(()),
         // Written by a newer application: reading it with old rules could lose data.
-        _ => return Err("archive_newer"),
+        newer if newer > SCHEMA_VERSION => Err("archive_newer"),
+        _ => Err("archive_corrupt"),
     }
+}
+
+/// Hands decrypted database bytes to SQLite as an in-memory database.
+fn connection_from_bytes(bytes: &[u8]) -> Result<Connection, Failure> {
+    if bytes.is_empty() {
+        return Err("archive_corrupt");
+    }
+    // SQLite takes ownership of memory it allocated itself.
+    let data = unsafe {
+        let pointer = rusqlite::ffi::sqlite3_malloc64(bytes.len() as u64) as *mut u8;
+        let pointer = NonNull::new(pointer).ok_or("archive_unavailable")?;
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer.as_ptr(), bytes.len());
+        OwnedData::from_raw_nonnull(pointer, bytes.len())
+    };
+    let mut connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
+    connection.deserialize(DatabaseName::Main, data, false).map_err(|error| classify(&error))?;
+    check_connection(&connection)?;
     Ok(connection)
+}
+
+fn bytes_from_connection(connection: &Connection) -> Result<zeroize::Zeroizing<Vec<u8>>, Failure> {
+    let data = connection.serialize(DatabaseName::Main).map_err(|error| classify(&error))?;
+    Ok(zeroize::Zeroizing::new(data.to_vec()))
 }
 
 fn list(connection: &Connection) -> Result<Vec<SavedChartV1>, Failure> {
@@ -242,31 +281,255 @@ fn delete(connection: &Connection, id: &str) -> Result<(), Failure> {
     }
 }
 
-fn run(path: &Path, request: &ArchiveRequestV1, now_ms: i64, limit: i64) -> Result<Vec<SavedChartV1>, Failure> {
+/// Where the archive files live: all inside the one folder the application owns.
+#[derive(Debug, Clone)]
+pub struct ArchivePaths {
+    legacy: PathBuf,
+    sealed: PathBuf,
+    staging: PathBuf,
+}
+
+impl ArchivePaths {
+    pub fn in_folder(folder: &Path) -> Self {
+        Self {
+            legacy: folder.join(LEGACY_FILE_NAME),
+            sealed: folder.join(SEALED_FILE_NAME),
+            staging: folder.join(STAGING_FILE_NAME),
+        }
+    }
+}
+
+fn key_failure(_: KeyError) -> Failure {
+    "archive_locked"
+}
+
+fn vault_failure(error: VaultError) -> Failure {
+    match error {
+        VaultError::NotAnArchive => "archive_corrupt",
+        VaultError::Newer => "archive_newer",
+        // Wrong key and altered file look the same: the archive stays locked.
+        VaultError::Authentication => "archive_locked",
+    }
+}
+
+/// The key of this device's archive, created on first use. A key that was stored must read back
+/// identically before anything is encrypted with it.
+fn key_for_writing(keys: &dyn KeyStore) -> Result<Key, Failure> {
+    match keys.load().map_err(key_failure)? {
+        Some(key) => Ok(key),
+        None => {
+            let key = new_key().map_err(key_failure)?;
+            keys.store(&key).map_err(key_failure)?;
+            match keys.load().map_err(key_failure)? {
+                Some(back) if *back == *key => Ok(back),
+                _ => Err("archive_locked"),
+            }
+        }
+    }
+}
+
+/// Writes ciphertext to the staging file, flushes it, and moves it over the archive. Until the move
+/// the previous archive is intact; the staging file holds only ciphertext.
+fn write_sealed(paths: &ArchivePaths, sealed: &[u8]) -> Result<(), Failure> {
+    use std::io::Write;
+    let written = (|| -> std::io::Result<()> {
+        let mut file = fs::OpenOptions::new().write(true).create(true).truncate(true).open(&paths.staging)?;
+        file.write_all(sealed)?;
+        file.sync_all()?;
+        Ok(())
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&paths.staging);
+        return Err("archive_unavailable");
+    }
+    fs::rename(&paths.staging, &paths.sealed).map_err(|_| {
+        let _ = fs::remove_file(&paths.staging);
+        "archive_unavailable"
+    })
+}
+
+fn persist(paths: &ArchivePaths, keys: &dyn KeyStore, connection: &Connection) -> Result<(), Failure> {
+    let key = key_for_writing(keys)?;
+    let plain = bytes_from_connection(connection)?;
+    let sealed = archive_vault::seal(&key, &plain).map_err(key_failure)?;
+    write_sealed(paths, &sealed)
+}
+
+fn load_sealed(paths: &ArchivePaths, keys: &dyn KeyStore) -> Result<Connection, Failure> {
+    // An existing archive needs its own key: a missing key is never replaced by a new one.
+    let key = keys.load().map_err(key_failure)?.ok_or("archive_locked")?;
+    let sealed = fs::read(&paths.sealed).map_err(|_| "archive_unavailable")?;
+    let plain = archive_vault::open(&key, &sealed).map_err(vault_failure)?;
+    connection_from_bytes(&plain)
+}
+
+/// Reads the legacy plain file without altering it, and checks every row with today's rules.
+fn read_legacy(path: &Path) -> Result<Vec<SavedChartV1>, Failure> {
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
+        .map_err(|error| classify(&error))?;
+    let health: String =
+        connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0)).map_err(|error| classify(&error))?;
+    if health != "ok" {
+        return Err("archive_corrupt");
+    }
+    let version: i64 =
+        connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
+    match version {
+        // An empty file of the first prototype: nothing to bring over.
+        0 => return Ok(Vec::new()),
+        SCHEMA_VERSION => {}
+        newer if newer > SCHEMA_VERSION => return Err("archive_newer"),
+        _ => return Err("archive_corrupt"),
+    }
+    let rows = list(&connection)?;
+    let count: i64 =
+        connection.query_row("SELECT COUNT(*) FROM saved_charts", [], |row| row.get(0)).map_err(|error| classify(&error))?;
+    if count as usize != rows.len() {
+        return Err("archive_corrupt");
+    }
+    for row in &rows {
+        let record = ChartRecordV1 {
+            id: row.id.clone(),
+            name: row.name.clone(),
+            utc_iso: row.utc_iso.clone(),
+            time_zone: row.time_zone.clone(),
+            lat_micro: row.lat_micro,
+            lng_micro: row.lng_micro,
+            place_name: row.place_name.clone(),
+        };
+        if !valid_record(&record) {
+            return Err("archive_corrupt");
+        }
+    }
+    Ok(rows)
+}
+
+/// Brings the legacy file into a new sealed archive: validate, stage, read back, then move. The
+/// legacy file is never changed, and a crash at any step leaves it readable.
+fn migrate(paths: &ArchivePaths, keys: &dyn KeyStore) -> Result<(), Failure> {
+    let rows = read_legacy(&paths.legacy)?;
+    let key = key_for_writing(keys)?;
+    let connection = fresh_connection()?;
+    for row in &rows {
+        connection
+            .execute(
+                "INSERT INTO saved_charts
+                   (id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![row.id, row.name, row.utc_iso, row.time_zone, row.lat_micro, row.lng_micro, row.place_name, row.created_at_ms, row.updated_at_ms],
+            )
+            .map_err(|error| classify(&error))?;
+    }
+    let plain = bytes_from_connection(&connection)?;
+    let sealed = archive_vault::seal(&key, &plain).map_err(key_failure)?;
+    // Stage only; the archive is switched after the read-back below.
+    {
+        use std::io::Write;
+        let written = (|| -> std::io::Result<()> {
+            let mut file = fs::OpenOptions::new().write(true).create(true).truncate(true).open(&paths.staging)?;
+            file.write_all(&sealed)?;
+            file.sync_all()?;
+            Ok(())
+        })();
+        if written.is_err() {
+            let _ = fs::remove_file(&paths.staging);
+            return Err("archive_unavailable");
+        }
+    }
+    // Reopen with the key as the credential store gives it back, and compare with what was validated.
+    let verified = (|| -> Result<bool, Failure> {
+        let key_again = keys.load().map_err(key_failure)?.ok_or("archive_locked")?;
+        let staged = fs::read(&paths.staging).map_err(|_| "archive_unavailable")?;
+        let opened = archive_vault::open(&key_again, &staged).map_err(vault_failure)?;
+        let reread = list(&connection_from_bytes(&opened)?)?;
+        Ok(reread == rows)
+    })();
+    match verified {
+        Ok(true) => fs::rename(&paths.staging, &paths.sealed).map_err(|_| {
+            let _ = fs::remove_file(&paths.staging);
+            "archive_unavailable"
+        }),
+        Ok(false) => {
+            let _ = fs::remove_file(&paths.staging);
+            Err("archive_unavailable")
+        }
+        Err(failure) => {
+            let _ = fs::remove_file(&paths.staging);
+            Err(failure)
+        }
+    }
+}
+
+/// The archive in memory, and whether a sealed file already exists for it.
+struct Session {
+    connection: Connection,
+}
+
+fn open_session(paths: &ArchivePaths, keys: &dyn KeyStore) -> Result<Session, Failure> {
+    if let Some(folder) = paths.sealed.parent() {
+        fs::create_dir_all(folder).map_err(|_| "archive_unavailable")?;
+    }
+    // A staging file left by an interrupted write holds only ciphertext and is disposable.
+    let _ = fs::remove_file(&paths.staging);
+    if paths.sealed.exists() {
+        return Ok(Session { connection: load_sealed(paths, keys)? });
+    }
+    if paths.legacy.exists() {
+        migrate(paths, keys)?;
+        return Ok(Session { connection: load_sealed(paths, keys)? });
+    }
+    // First use: nothing is written (and no key is made) until the first chart is saved.
+    Ok(Session { connection: fresh_connection()? })
+}
+
+fn outcome(paths: &ArchivePaths, connection: &Connection) -> Result<Outcome, Failure> {
+    Ok(Outcome { charts: list(connection)?, legacy_present: paths.legacy.exists() })
+}
+
+fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, now_ms: i64, limit: i64) -> Result<Outcome, Failure> {
     if request.protocol_version != PROTOCOL_VERSION {
         return Err("invalid_request");
     }
     // Validate completely before touching the disk.
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     match (request.operation.as_str(), &request.chart, &request.id) {
-        ("list", None, None) => list(&open(path)?),
+        ("list", None, None) => {
+            let session = open_session(paths, keys)?;
+            outcome(paths, &session.connection)
+        }
         ("save", Some(chart), None) if valid_record(chart) => {
-            let mut connection = open(path)?;
-            save(&mut connection, chart, now_ms, limit)?;
-            list(&connection)
+            let mut session = open_session(paths, keys)?;
+            save(&mut session.connection, chart, now_ms, limit)?;
+            persist(paths, keys, &session.connection)?;
+            outcome(paths, &session.connection)
         }
         ("delete", None, Some(id)) if valid_id(id) => {
-            let connection = open(path)?;
-            delete(&connection, id)?;
-            list(&connection)
+            let session = open_session(paths, keys)?;
+            delete(&session.connection, id)?;
+            persist(paths, keys, &session.connection)?;
+            outcome(paths, &session.connection)
+        }
+        ("remove_legacy", None, None) => {
+            // Only once the sealed archive has been opened successfully (migration included).
+            let session = open_session(paths, keys)?;
+            if paths.legacy.exists() && paths.sealed.exists() {
+                fs::remove_file(&paths.legacy).map_err(|_| "archive_unavailable")?;
+            }
+            outcome(paths, &session.connection)
         }
         _ => Err("invalid_request"),
     }
 }
 
 /// Pure entry point, separated from Tauri so it can be unit tested.
-pub fn handle(path: &Path, request: &ArchiveRequestV1, now_ms: i64) -> ArchiveResponseV1 {
-    match run(path, request, now_ms, MAX_CHARTS) {
-        Ok(charts) => ArchiveResponseV1 { protocol_version: PROTOCOL_VERSION, status: "ok", charts: Some(charts) },
+pub fn handle(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, now_ms: i64) -> ArchiveResponseV1 {
+    match run(paths, keys, request, now_ms, MAX_CHARTS) {
+        Ok(outcome) => ArchiveResponseV1 {
+            protocol_version: PROTOCOL_VERSION,
+            status: "ok",
+            charts: Some(outcome.charts),
+            legacy_present: outcome.legacy_present,
+        },
         Err(status) => failure(status),
     }
 }
@@ -277,33 +540,43 @@ pub fn chart_archive(app: AppHandle, request: ArchiveRequestV1) -> ArchiveRespon
         return failure("archive_unavailable");
     };
     let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|elapsed| elapsed.as_millis() as i64).unwrap_or(0);
-    handle(&folder.join(FILE_NAME), &request, now_ms)
+    handle(&ArchivePaths::in_folder(&folder), &OsKeyStore, &request, now_ms)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::archive_keys::fake::FakeKeyStore;
 
     const ID_A: &str = "11111111-1111-4111-8111-111111111111";
     const ID_B: &str = "22222222-2222-4222-8222-222222222222";
+    const SENTINEL: &str = "Sentinella Fittizia Ottanta";
 
-    /// A unique file in the system temp folder, removed when the test ends.
-    struct TempArchive(PathBuf);
+    /// A unique folder in the system temp directory, removed when the test ends.
+    struct TempArchive {
+        folder: PathBuf,
+        paths: ArchivePaths,
+    }
     impl TempArchive {
         fn new(label: &str) -> Self {
             let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-            let mut path = std::env::temp_dir();
-            path.push(format!("vs-chart-archive-{label}-{}-{unique}", std::process::id()));
-            path.push(FILE_NAME);
-            Self(path)
+            let mut folder = std::env::temp_dir();
+            folder.push(format!("vs-chart-archive-{label}-{}-{unique}", std::process::id()));
+            let paths = ArchivePaths::in_folder(&folder);
+            Self { folder, paths }
+        }
+        fn files(&self) -> Vec<String> {
+            let mut names: Vec<String> = match fs::read_dir(&self.folder) {
+                Ok(entries) => entries.map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect(),
+                Err(_) => Vec::new(),
+            };
+            names.sort();
+            names
         }
     }
     impl Drop for TempArchive {
         fn drop(&mut self) {
-            if let Some(folder) = self.0.parent() {
-                let _ = std::fs::remove_dir_all(folder);
-            }
+            let _ = fs::remove_dir_all(&self.folder);
         }
     }
 
@@ -319,35 +592,75 @@ mod tests {
             place_name: "Luogo di prova".to_string(),
         }
     }
-    fn list_request() -> ArchiveRequestV1 {
-        ArchiveRequestV1 { protocol_version: 1, operation: "list".into(), chart: None, id: None }
+    fn request(operation: &str) -> ArchiveRequestV1 {
+        ArchiveRequestV1 { protocol_version: 1, operation: operation.into(), chart: None, id: None }
     }
+    fn list_request() -> ArchiveRequestV1 { request("list") }
     fn save_request(chart: ChartRecordV1) -> ArchiveRequestV1 {
-        ArchiveRequestV1 { protocol_version: 1, operation: "save".into(), chart: Some(chart), id: None }
+        ArchiveRequestV1 { chart: Some(chart), ..request("save") }
     }
     fn delete_request(id: &str) -> ArchiveRequestV1 {
-        ArchiveRequestV1 { protocol_version: 1, operation: "delete".into(), chart: None, id: Some(id.into()) }
+        ArchiveRequestV1 { id: Some(id.into()), ..request("delete") }
+    }
+    fn go(archive: &TempArchive, keys: &FakeKeyStore, request: &ArchiveRequestV1, now_ms: i64) -> ArchiveResponseV1 {
+        handle(&archive.paths, keys, request, now_ms)
+    }
+
+    /// A plain SQLite archive of the first prototype, as it was written then.
+    fn write_legacy(archive: &TempArchive, rows: &[(&str, &str, i64, i64)], extra: &str) {
+        fs::create_dir_all(&archive.folder).unwrap();
+        let connection = Connection::open(&archive.paths.legacy).unwrap();
+        connection.execute_batch(SCHEMA).unwrap();
+        for (id, name, created, updated) in rows {
+            connection
+                .execute(
+                    "INSERT INTO saved_charts VALUES (?1,?2,'2001-02-03T04:05:06.000Z','Europe/Rome',44697805,11805778,'Luogo di prova',?3,?4)",
+                    params![id, name, created, updated],
+                )
+                .unwrap();
+        }
+        if !extra.is_empty() {
+            connection.execute_batch(extra).unwrap();
+        }
     }
 
     #[test]
-    fn test_first_use_creates_an_empty_archive_at_schema_version_one() {
-        let archive = TempArchive::new("create");
-        let response = handle(&archive.0, &list_request(), 1000);
+    fn test_first_use_writes_nothing_and_makes_no_key() {
+        let archive = TempArchive::new("first");
+        let keys = FakeKeyStore::empty();
+        let response = go(&archive, &keys, &list_request(), 1000);
         assert_eq!(response.status, "ok");
         assert_eq!(response.charts, Some(vec![]));
-        let connection = Connection::open(&archive.0).unwrap();
-        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
-        assert_eq!(version, 1);
+        assert!(!response.legacy_present);
+        assert!(archive.files().is_empty());
+        assert!(keys.key.borrow().is_none());
+    }
+
+    #[test]
+    fn test_saving_creates_one_sealed_file_and_no_plain_text_anywhere() {
+        let archive = TempArchive::new("sealed");
+        let keys = FakeKeyStore::empty();
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_A, SENTINEL)), 1000).status, "ok");
+        // Exactly the sealed file: no journal, no staging copy, no legacy file.
+        assert_eq!(archive.files(), [SEALED_FILE_NAME]);
+        let bytes = fs::read(&archive.paths.sealed).unwrap();
+        assert_eq!(&bytes[..8], archive_vault::MAGIC);
+        assert!(!bytes.starts_with(b"SQLite format 3"));
+        for needle in [SENTINEL, "Luogo di prova", "Europe/Rome", "saved_charts", "2001-02-03"] {
+            assert!(!bytes.windows(needle.len()).any(|window| window == needle.as_bytes()), "plain text found: {needle}");
+        }
+        assert!(keys.key.borrow().is_some(), "the key is made when the first chart is saved");
     }
 
     #[test]
     fn test_saved_charts_survive_reopening_and_are_listed_by_name() {
         let archive = TempArchive::new("persist");
-        assert_eq!(handle(&archive.0, &save_request(record(ID_B, "Zeta di prova")), 1000).status, "ok");
-        let after = handle(&archive.0, &save_request(record(ID_A, "alfa di prova")), 2000);
+        let keys = FakeKeyStore::empty();
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_B, "Zeta di prova")), 1000).status, "ok");
+        let after = go(&archive, &keys, &save_request(record(ID_A, "alfa di prova")), 2000);
         assert_eq!(after.charts.as_ref().unwrap().len(), 2);
-        // A fresh connection, as after restarting the application.
-        let listed = handle(&archive.0, &list_request(), 3000).charts.unwrap();
+        // A new call opens the file again, as after restarting the application.
+        let listed = go(&archive, &keys, &list_request(), 3000).charts.unwrap();
         assert_eq!(listed.iter().map(|chart| chart.name.as_str()).collect::<Vec<_>>(), ["alfa di prova", "Zeta di prova"]);
         assert_eq!(listed[0].id, ID_A);
         assert_eq!(listed[0].utc_iso, "2001-02-03T04:05:06.000Z");
@@ -358,10 +671,11 @@ mod tests {
     #[test]
     fn test_saving_the_same_id_again_updates_in_place_and_keeps_the_creation_time() {
         let archive = TempArchive::new("update");
-        handle(&archive.0, &save_request(record(ID_A, "Prima versione")), 1000);
+        let keys = FakeKeyStore::empty();
+        go(&archive, &keys, &save_request(record(ID_A, "Prima versione")), 1000);
         let mut edited = record(ID_A, "Seconda versione");
         edited.lat_micro = -33_868_800;
-        let listed = handle(&archive.0, &save_request(edited), 5000).charts.unwrap();
+        let listed = go(&archive, &keys, &save_request(edited), 5000).charts.unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].name, "Seconda versione");
         assert_eq!(listed[0].lat_micro, -33_868_800);
@@ -371,22 +685,27 @@ mod tests {
     #[test]
     fn test_delete_removes_one_chart_and_reports_an_unknown_id() {
         let archive = TempArchive::new("delete");
-        handle(&archive.0, &save_request(record(ID_A, "Da tenere")), 1000);
-        handle(&archive.0, &save_request(record(ID_B, "Da eliminare")), 1000);
-        let listed = handle(&archive.0, &delete_request(ID_B), 2000).charts.unwrap();
+        let keys = FakeKeyStore::empty();
+        go(&archive, &keys, &save_request(record(ID_A, "Da tenere")), 1000);
+        go(&archive, &keys, &save_request(record(ID_B, "Da eliminare")), 1000);
+        let listed = go(&archive, &keys, &delete_request(ID_B), 2000).charts.unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].id, ID_A);
-        assert_eq!(handle(&archive.0, &delete_request(ID_B), 3000).status, "not_found");
-        assert_eq!(handle(&archive.0, &list_request(), 4000).charts.unwrap().len(), 1);
+        assert_eq!(go(&archive, &keys, &delete_request(ID_B), 3000).status, "not_found");
+        assert_eq!(go(&archive, &keys, &list_request(), 4000).charts.unwrap().len(), 1);
+        // The deleted chart is gone from the sealed bytes too (a fresh file was written).
+        assert_eq!(archive.files(), [SEALED_FILE_NAME]);
     }
 
     #[test]
-    fn test_invalid_requests_are_rejected_without_creating_a_file() {
+    fn test_invalid_requests_are_rejected_without_touching_disk_or_key() {
         let archive = TempArchive::new("invalid");
+        let keys = FakeKeyStore::empty();
         let mut bad_requests = vec![
             ArchiveRequestV1 { protocol_version: 2, ..list_request() },
             ArchiveRequestV1 { operation: "drop".into(), ..list_request() },
             ArchiveRequestV1 { id: Some(ID_A.into()), ..list_request() },
+            ArchiveRequestV1 { chart: Some(record(ID_A, "x")), ..request("remove_legacy") },
             ArchiveRequestV1 { chart: None, ..save_request(record(ID_A, "x")) },
             delete_request("not-an-id"),
             delete_request("11111111-1111-4111-8111-11111111111G"),
@@ -414,63 +733,232 @@ mod tests {
             mutate(|chart| chart.lat_micro = 90_000_001),
             mutate(|chart| chart.lng_micro = -180_000_001),
         ]);
-        for (index, request) in bad_requests.iter().enumerate() {
-            assert_eq!(handle(&archive.0, request, 1000).status, "invalid_request", "request {index}");
+        for (index, bad) in bad_requests.iter().enumerate() {
+            assert_eq!(go(&archive, &keys, bad, 1000).status, "invalid_request", "request {index}");
         }
-        assert!(!archive.0.exists(), "validation must happen before any disk access");
+        assert!(archive.files().is_empty(), "validation must happen before any disk access");
+        assert!(keys.key.borrow().is_none(), "and before any key is made");
         // An empty name is allowed: the interface shows "unnamed chart".
-        assert_eq!(handle(&archive.0, &save_request(record(ID_A, "")), 1000).status, "ok");
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_A, "")), 1000).status, "ok");
     }
 
     #[test]
     fn test_text_that_looks_like_sql_is_stored_as_text() {
         let archive = TempArchive::new("literal");
+        let keys = FakeKeyStore::empty();
         let name = "Robert'); DROP TABLE saved_charts;--";
-        handle(&archive.0, &save_request(record(ID_A, name)), 1000);
-        let listed = handle(&archive.0, &list_request(), 2000).charts.unwrap();
+        go(&archive, &keys, &save_request(record(ID_A, name)), 1000);
+        let listed = go(&archive, &keys, &list_request(), 2000).charts.unwrap();
         assert_eq!(listed[0].name, name);
-    }
-
-    #[test]
-    fn test_a_damaged_file_is_reported_and_left_untouched() {
-        let archive = TempArchive::new("corrupt");
-        std::fs::create_dir_all(archive.0.parent().unwrap()).unwrap();
-        let garbage = b"this is not a SQLite database, it is a damaged archive ".repeat(40);
-        std::fs::write(&archive.0, &garbage).unwrap();
-        for request in [list_request(), save_request(record(ID_A, "Soggetto")), delete_request(ID_A)] {
-            assert_eq!(handle(&archive.0, &request, 1000).status, "archive_corrupt");
-        }
-        assert_eq!(std::fs::read(&archive.0).unwrap(), garbage);
-    }
-
-    #[test]
-    fn test_an_archive_from_a_newer_application_is_not_opened() {
-        let archive = TempArchive::new("newer");
-        handle(&archive.0, &save_request(record(ID_A, "Soggetto")), 1000);
-        Connection::open(&archive.0).unwrap().execute_batch("PRAGMA user_version = 2;").unwrap();
-        assert_eq!(handle(&archive.0, &list_request(), 2000).status, "archive_newer");
-        assert_eq!(handle(&archive.0, &delete_request(ID_A), 2000).status, "archive_newer");
-        let connection = Connection::open(&archive.0).unwrap();
-        let count: i64 = connection.query_row("SELECT COUNT(*) FROM saved_charts", [], |row| row.get(0)).unwrap();
-        assert_eq!(count, 1);
     }
 
     #[test]
     fn test_a_full_archive_refuses_new_charts_but_still_updates_existing_ones() {
         let archive = TempArchive::new("full");
-        assert!(run(&archive.0, &save_request(record(ID_A, "Primo")), 1000, 1).is_ok());
-        assert_eq!(run(&archive.0, &save_request(record(ID_B, "Secondo")), 2000, 1), Err("archive_full"));
-        let updated = run(&archive.0, &save_request(record(ID_A, "Primo modificato")), 3000, 1).unwrap();
-        assert_eq!(updated.len(), 1);
-        assert_eq!(updated[0].name, "Primo modificato");
+        let keys = FakeKeyStore::empty();
+        assert!(run(&archive.paths, &keys, &save_request(record(ID_A, "Primo")), 1000, 1).is_ok());
+        assert_eq!(run(&archive.paths, &keys, &save_request(record(ID_B, "Secondo")), 2000, 1), Err("archive_full"));
+        let updated = run(&archive.paths, &keys, &save_request(record(ID_A, "Primo modificato")), 3000, 1).unwrap();
+        assert_eq!(updated.charts.len(), 1);
+        assert_eq!(updated.charts[0].name, "Primo modificato");
+    }
+
+    #[test]
+    fn test_an_unavailable_key_store_locks_the_archive_and_never_falls_back_to_plain_text() {
+        let archive = TempArchive::new("nokey-first");
+        let keys = FakeKeyStore::empty();
+        *keys.unavailable.borrow_mut() = true;
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_A, SENTINEL)), 1000).status, "archive_locked");
+        assert!(archive.files().is_empty(), "no file of any kind is written without a key");
+        // And an archive that exists stays closed, byte for byte.
+        *keys.unavailable.borrow_mut() = false;
+        go(&archive, &keys, &save_request(record(ID_A, SENTINEL)), 2000);
+        let before = fs::read(&archive.paths.sealed).unwrap();
+        *keys.unavailable.borrow_mut() = true;
+        for operation in [list_request(), save_request(record(ID_B, "Altro")), delete_request(ID_A)] {
+            assert_eq!(go(&archive, &keys, &operation, 3000).status, "archive_locked");
+        }
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), before);
+        assert_eq!(archive.files(), [SEALED_FILE_NAME]);
+    }
+
+    #[test]
+    fn test_a_missing_or_wrong_key_keeps_the_archive_locked_and_untouched() {
+        let archive = TempArchive::new("wrongkey");
+        let keys = FakeKeyStore::empty();
+        go(&archive, &keys, &save_request(record(ID_A, SENTINEL)), 1000);
+        let before = fs::read(&archive.paths.sealed).unwrap();
+        let original = *keys.key.borrow();
+        // The credential is gone: a new key must NOT be made over an existing archive.
+        *keys.key.borrow_mut() = None;
+        assert_eq!(go(&archive, &keys, &list_request(), 2000).status, "archive_locked");
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_B, "Altro")), 2000).status, "archive_locked");
+        assert!(keys.key.borrow().is_none());
+        // A different key opens nothing.
+        *keys.key.borrow_mut() = Some(*new_key().unwrap());
+        assert_eq!(go(&archive, &keys, &list_request(), 3000).status, "archive_locked");
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), before);
+        // The right key still opens it.
+        *keys.key.borrow_mut() = original;
+        assert_eq!(go(&archive, &keys, &list_request(), 4000).charts.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_a_tampered_truncated_or_foreign_file_is_reported_and_left_untouched() {
+        let archive = TempArchive::new("tamper");
+        let keys = FakeKeyStore::empty();
+        go(&archive, &keys, &save_request(record(ID_A, SENTINEL)), 1000);
+        let good = fs::read(&archive.paths.sealed).unwrap();
+        let mut flipped = good.clone();
+        let middle = flipped.len() / 2;
+        flipped[middle] ^= 0x01;
+        let mut newer = good.clone();
+        newer[8] = archive_vault::FORMAT_VERSION + 1;
+        let cases: Vec<(&str, Vec<u8>, &str)> = vec![
+            ("flipped", flipped, "archive_locked"),
+            ("truncated", good[..20].to_vec(), "archive_corrupt"),
+            ("foreign", b"this is not a sealed archive, it is a damaged file ".repeat(40), "archive_corrupt"),
+            ("newer", newer, "archive_newer"),
+        ];
+        for (label, bytes, expected) in cases {
+            fs::write(&archive.paths.sealed, &bytes).unwrap();
+            for operation in [list_request(), save_request(record(ID_B, "Altro")), delete_request(ID_A)] {
+                assert_eq!(go(&archive, &keys, &operation, 2000).status, expected, "{label}");
+            }
+            assert_eq!(fs::read(&archive.paths.sealed).unwrap(), bytes, "{label}: file must not change");
+        }
+    }
+
+    #[test]
+    fn test_an_interrupted_write_leaves_a_disposable_staging_file_and_the_archive_intact() {
+        let archive = TempArchive::new("staging");
+        let keys = FakeKeyStore::empty();
+        go(&archive, &keys, &save_request(record(ID_A, "Prima")), 1000);
+        let before = fs::read(&archive.paths.sealed).unwrap();
+        // A crash after staging and before the move.
+        fs::write(&archive.paths.staging, b"half-written ciphertext").unwrap();
+        let listed = go(&archive, &keys, &list_request(), 2000).charts.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(archive.files(), [SEALED_FILE_NAME], "the stale staging file is removed");
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), before);
+    }
+
+    #[test]
+    fn test_the_plain_prototype_archive_migrates_exactly_and_is_kept() {
+        let archive = TempArchive::new("migrate");
+        let keys = FakeKeyStore::empty();
+        write_legacy(&archive, &[(ID_B, "Zeta di prova", 1_000, 9_000), (ID_A, SENTINEL, 2_000, 2_500)], "");
+        let legacy_before = fs::read(&archive.paths.legacy).unwrap();
+        let response = go(&archive, &keys, &list_request(), 5_000);
+        assert_eq!(response.status, "ok");
+        assert!(response.legacy_present, "the plain file is still there");
+        let charts = response.charts.unwrap();
+        assert_eq!(charts.iter().map(|chart| chart.id.as_str()).collect::<Vec<_>>(), [ID_A, ID_B]);
+        let by_id = |id: &str| charts.iter().find(|chart| chart.id == id).unwrap();
+        assert_eq!((by_id(ID_B).created_at_ms, by_id(ID_B).updated_at_ms), (1_000, 9_000));
+        assert_eq!((by_id(ID_A).created_at_ms, by_id(ID_A).updated_at_ms), (2_000, 2_500));
+        assert_eq!(by_id(ID_A).utc_iso, "2001-02-03T04:05:06.000Z");
+        assert_eq!((by_id(ID_A).lat_micro, by_id(ID_A).lng_micro), (44_697_805, 11_805_778));
+        // The sealed file exists, holds no plain text, and the legacy file is byte-identical.
+        let sealed = fs::read(&archive.paths.sealed).unwrap();
+        assert!(!sealed.windows(SENTINEL.len()).any(|window| window == SENTINEL.as_bytes()));
+        assert_eq!(fs::read(&archive.paths.legacy).unwrap(), legacy_before);
+        assert_eq!(archive.files(), [LEGACY_FILE_NAME, SEALED_FILE_NAME]);
+        // A second start opens the sealed archive and does not migrate again.
+        assert_eq!(go(&archive, &keys, &list_request(), 6_000).charts.unwrap(), charts);
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), sealed);
+    }
+
+    #[test]
+    fn test_migration_stops_without_a_key_and_changes_nothing() {
+        let archive = TempArchive::new("migrate-nokey");
+        let keys = FakeKeyStore::empty();
+        write_legacy(&archive, &[(ID_A, SENTINEL, 1, 1)], "");
+        let legacy_before = fs::read(&archive.paths.legacy).unwrap();
+        *keys.unavailable.borrow_mut() = true;
+        assert_eq!(go(&archive, &keys, &list_request(), 1000).status, "archive_locked");
+        assert_eq!(archive.files(), [LEGACY_FILE_NAME]);
+        assert_eq!(fs::read(&archive.paths.legacy).unwrap(), legacy_before);
+    }
+
+    #[test]
+    fn test_a_corrupt_newer_or_invalid_legacy_archive_is_refused_and_left_untouched() {
+        let corrupt = TempArchive::new("legacy-corrupt");
+        let keys = FakeKeyStore::empty();
+        fs::create_dir_all(&corrupt.folder).unwrap();
+        let garbage = b"this is not a SQLite database, it is a damaged archive ".repeat(40);
+        fs::write(&corrupt.paths.legacy, &garbage).unwrap();
+        assert_eq!(go(&corrupt, &keys, &list_request(), 1000).status, "archive_corrupt");
+        assert_eq!(fs::read(&corrupt.paths.legacy).unwrap(), garbage);
+        assert_eq!(corrupt.files(), [LEGACY_FILE_NAME]);
+
+        let newer = TempArchive::new("legacy-newer");
+        write_legacy(&newer, &[(ID_A, SENTINEL, 1, 1)], "PRAGMA user_version = 2;");
+        let newer_before = fs::read(&newer.paths.legacy).unwrap();
+        assert_eq!(go(&newer, &keys, &list_request(), 1000).status, "archive_newer");
+        assert_eq!(fs::read(&newer.paths.legacy).unwrap(), newer_before);
+        assert_eq!(newer.files(), [LEGACY_FILE_NAME]);
+
+        // A row that today's rules would never accept stops the whole migration.
+        let invalid = TempArchive::new("legacy-invalid");
+        write_legacy(&invalid, &[(ID_A, SENTINEL, 1, 1)], "UPDATE saved_charts SET time_zone='Europe/../Rome';");
+        let invalid_before = fs::read(&invalid.paths.legacy).unwrap();
+        assert_eq!(go(&invalid, &keys, &list_request(), 1000).status, "archive_corrupt");
+        assert_eq!(fs::read(&invalid.paths.legacy).unwrap(), invalid_before);
+        assert_eq!(invalid.files(), [LEGACY_FILE_NAME]);
+        assert!(keys.key.borrow().is_none(), "no key is made for an archive that is refused");
+    }
+
+    #[test]
+    fn test_an_empty_prototype_archive_migrates_to_an_empty_sealed_one() {
+        let archive = TempArchive::new("legacy-empty");
+        let keys = FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        drop(Connection::open(&archive.paths.legacy).unwrap());
+        let response = go(&archive, &keys, &list_request(), 1000);
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.charts, Some(vec![]));
+        assert!(archive.paths.sealed.exists());
+    }
+
+    #[test]
+    fn test_when_both_exist_the_sealed_archive_wins_and_the_legacy_file_is_ignored() {
+        let archive = TempArchive::new("both");
+        let keys = FakeKeyStore::empty();
+        go(&archive, &keys, &save_request(record(ID_A, "Nel sigillato")), 1000);
+        write_legacy(&archive, &[(ID_B, "Solo nel vecchio file", 1, 1)], "");
+        let response = go(&archive, &keys, &list_request(), 2000);
+        assert_eq!(response.charts.unwrap().iter().map(|chart| chart.name.as_str()).collect::<Vec<_>>(), ["Nel sigillato"]);
+        assert!(response.legacy_present);
+    }
+
+    #[test]
+    fn test_removing_the_legacy_file_is_explicit_and_only_after_the_sealed_archive_opens() {
+        let archive = TempArchive::new("remove-legacy");
+        let keys = FakeKeyStore::empty();
+        write_legacy(&archive, &[(ID_A, SENTINEL, 1, 1)], "");
+        // Without the key the migration cannot happen, so nothing may be removed.
+        *keys.unavailable.borrow_mut() = true;
+        assert_eq!(go(&archive, &keys, &request("remove_legacy"), 1000).status, "archive_locked");
+        assert!(archive.paths.legacy.exists());
+        *keys.unavailable.borrow_mut() = false;
+        let removed = go(&archive, &keys, &request("remove_legacy"), 2000);
+        assert_eq!(removed.status, "ok");
+        assert!(!removed.legacy_present);
+        assert_eq!(removed.charts.unwrap().len(), 1, "the charts survive in the sealed archive");
+        assert_eq!(archive.files(), [SEALED_FILE_NAME]);
+        // Asking again is harmless.
+        assert_eq!(go(&archive, &keys, &request("remove_legacy"), 3000).status, "ok");
     }
 
     #[test]
     fn test_wire_format_matches_the_typescript_contract() {
         let archive = TempArchive::new("wire");
-        let raw = serde_json::to_value(handle(&archive.0, &save_request(record(ID_A, "Soggetto")), 1234)).unwrap();
+        let keys = FakeKeyStore::empty();
+        let raw = serde_json::to_value(go(&archive, &keys, &save_request(record(ID_A, "Soggetto")), 1234)).unwrap();
         assert_eq!(raw["protocolVersion"], 1);
         assert_eq!(raw["status"], "ok");
+        assert_eq!(raw["legacyPresent"], false);
         let chart = &raw["charts"][0];
         for key in ["id", "name", "utcIso", "timeZone", "latMicro", "lngMicro", "placeName", "createdAtMs", "updatedAtMs"] {
             assert!(!chart[key].is_null(), "missing key {key}");
@@ -479,7 +967,8 @@ mod tests {
         assert!(serde_json::from_str::<ArchiveRequestV1>(extra).is_err());
         let minimal = r#"{"protocolVersion":1,"operation":"list"}"#;
         assert!(serde_json::from_str::<ArchiveRequestV1>(minimal).is_ok());
-        let failed = serde_json::to_value(failure("archive_corrupt")).unwrap();
+        let failed = serde_json::to_value(failure("archive_locked")).unwrap();
         assert!(failed["charts"].is_null());
+        assert_eq!(failed["status"], "archive_locked");
     }
 }

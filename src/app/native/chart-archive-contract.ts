@@ -1,7 +1,8 @@
 /**
  * Local chart archive contract shared with the Rust `chart_archive` command.
  * The archive stores what the user typed (name, instant, zone, position, place),
- * never calculated positions. The WebView cannot choose where the file lives.
+ * never calculated positions. It is encrypted on disk by the Rust host, which alone holds the
+ * key; the WebView cannot choose where the file lives and never sees a path or a key.
  */
 export type ChartRecordV1 = Readonly<{
   id: string;
@@ -18,14 +19,16 @@ export type SavedChartV1 = ChartRecordV1 & Readonly<{createdAtMs: number; update
 export type ArchiveOperation =
   | Readonly<{operation: 'list'}>
   | Readonly<{operation: 'save'; chart: ChartRecordV1}>
-  | Readonly<{operation: 'delete'; id: string}>;
+  | Readonly<{operation: 'delete'; id: string}>
+  /** Deletes the old plain-text file of the first prototype, once its charts are in the encrypted archive. */
+  | Readonly<{operation: 'remove_legacy'}>;
 
 export type ArchiveFailure =
   | 'not_native' | 'invalid_request' | 'not_found' | 'archive_full'
-  | 'archive_unavailable' | 'archive_corrupt' | 'archive_newer' | 'unavailable';
+  | 'archive_unavailable' | 'archive_corrupt' | 'archive_newer' | 'archive_locked' | 'unavailable';
 
 export type ArchiveResult =
-  | Readonly<{kind: 'ready'; charts: readonly SavedChartV1[]}>
+  | Readonly<{kind: 'ready'; charts: readonly SavedChartV1[]; legacyPresent: boolean}>
   | Readonly<{kind: ArchiveFailure}>;
 
 type WireRequest = {protocolVersion: 1; operation: string; chart?: ChartRecordV1; id?: string};
@@ -43,7 +46,7 @@ const ZONE_PATTERN = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
 const UNSAFE_TEXT = /[\p{Cc}​-‏‪-‮⁦-⁩﻿]/u;
 const MAX_CHARTS = 5000;
 const FAILURES: readonly string[] = [
-  'invalid_request', 'not_found', 'archive_full', 'archive_unavailable', 'archive_corrupt', 'archive_newer',
+  'invalid_request', 'not_found', 'archive_full', 'archive_unavailable', 'archive_corrupt', 'archive_newer', 'archive_locked',
 ];
 
 function plainObject(x: unknown): x is Record<string, unknown> {
@@ -100,7 +103,7 @@ function decodeSavedChart(raw: unknown, seen: Set<string>): SavedChartV1 {
 }
 
 type DecodedArchive =
-  | Readonly<{status: 'ok'; charts: readonly SavedChartV1[]}>
+  | Readonly<{status: 'ok'; charts: readonly SavedChartV1[]; legacyPresent: boolean}>
   | Readonly<{status: Exclude<ArchiveFailure, 'not_native' | 'unavailable'>}>;
 
 /** Detached, frozen values from one native response; throws a generic error otherwise. */
@@ -116,9 +119,11 @@ export function decodeArchiveResponse(raw: unknown): DecodedArchive {
         charts.length > MAX_CHARTS || Reflect.ownKeys(charts).length !== charts.length + 1) {
       throw new Error(PROTOCOL_ERROR);
     }
+    const legacyPresent = field(raw, 'legacyPresent');
+    if (typeof legacyPresent !== 'boolean') throw new Error(PROTOCOL_ERROR);
     const seen = new Set<string>();
     const decoded = Array.from({length: charts.length}, (_, index) => decodeSavedChart(field(charts, String(index)), seen));
-    return Object.freeze({status: 'ok', charts: Object.freeze(decoded)});
+    return Object.freeze({status: 'ok', charts: Object.freeze(decoded), legacyPresent});
   } catch {
     // Never surface native details, accessor or Proxy trap messages.
     throw new Error(PROTOCOL_ERROR);
@@ -128,6 +133,7 @@ export function decodeArchiveResponse(raw: unknown): DecodedArchive {
 function wireRequest(operation: ArchiveOperation): WireRequest | null {
   if (!plainObject(operation)) return null;
   if (operation.operation === 'list') return {protocolVersion: 1, operation: 'list'};
+  if (operation.operation === 'remove_legacy') return {protocolVersion: 1, operation: 'remove_legacy'};
   if (operation.operation === 'save' && validChartRecord(operation.chart)) {
     const {id, name, utcIso, timeZone, latMicro, lngMicro, placeName} = operation.chart;
     return {protocolVersion: 1, operation: 'save', chart: {id, name, utcIso, timeZone, latMicro, lngMicro, placeName}};
@@ -148,7 +154,9 @@ export async function requestArchive(
   try {
     if (!transport.isNative()) return {kind: 'not_native'};
     const decoded = decodeArchiveResponse(await transport.invoke('chart_archive', {request}));
-    return decoded.status === 'ok' ? {kind: 'ready', charts: decoded.charts} : {kind: decoded.status};
+    return decoded.status === 'ok'
+      ? {kind: 'ready', charts: decoded.charts, legacyPresent: decoded.legacyPresent}
+      : {kind: decoded.status};
   } catch {
     return {kind: 'unavailable'};
   }

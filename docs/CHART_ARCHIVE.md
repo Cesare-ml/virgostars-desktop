@@ -6,11 +6,11 @@
 
 One row per saved chart, holding only what the user entered: a client-generated UUID, name, UTC instant, IANA time zone, latitude and longitude in micro-degrees, place label, and creation/update times. Calculated positions are never stored; a chart is recalculated when opened, so the archive does not depend on the ephemeris provider in use.
 
-File: `charts-v1.sqlite3` in the application's local data folder (on Windows, under `%LOCALAPPDATA%\it.virgostars.desktop.rendererlab\`). The WebView cannot choose or learn the path.
+File: `charts-v2.vsarchive` (encrypted; see [Encrypted archive](ENCRYPTED_ARCHIVE.md)) in the application's local data folder (on Windows, under `%LOCALAPPDATA%\it.virgostars.desktop.rendererlab\`). The WebView cannot choose or learn the path.
 
-## Not encrypted — open gate
+## Encrypted at rest
 
-The file is **plain SQLite**. Anyone who can read the Windows account's files can read the saved birth data. The interface says so next to the archive. Before any beta this must be replaced or wrapped by the encrypted design required by `SECURITY_AND_PRIVACY.md` rule 3 (SQLCipher or envelope encryption with OS key wrapping), together with a migration from this file. Do not describe the archive as protected storage.
+Since 2026-11-17 the archive is a single file encrypted and authenticated as a whole, with a random key kept by the operating system's credential store ([Encrypted archive](ENCRYPTED_ARCHIVE.md)). The first prototype's plain file (`charts-v1.sqlite3`) is migrated once and then kept until the user deletes it from the archive panel. Encryption protects the file at rest only; there is no recovery key, so a lost credential means a lost archive. The design has not had a separate security review.
 
 There are no accounts, profiles, groups, notes, outbox or synchronisation yet. Deleting a chart removes the row; it does not securely erase disk blocks.
 
@@ -37,7 +37,7 @@ Saving the same id again updates the row in place and keeps its creation time, s
 - The sidebar **Archivio** button opens the archive as its own panel over the chart: charts open in this session (with a Save button for unsaved ones and the partner choice for synastry), the saved charts with a search box, **Open** (recalculates) and delete with an explicit confirmation step. It is separate from the new-chart panel.
 - The sidebar **Nuovo tema** button opens the new-chart panel. Its checkbox **Save the chart in the local archive** is on by default: the typed inputs are written to the archive first, so a chart is kept even if the calculation then fails or no provider is built in. Untick it to keep a chart in memory only.
 - The chart toolbar shows **Save chart** for an active chart that is not yet in the archive.
-- The archive remains an unencrypted SQLite file; the panel says so.
+- The archive is encrypted; the panel says so. If the old plain file is still on disk, the panel warns and offers to delete it after a confirmation. A locked archive (key missing or different, file altered) is reported as such and never shown as empty.
 
 ## Verification on 2026-11-15 (Windows 11)
 

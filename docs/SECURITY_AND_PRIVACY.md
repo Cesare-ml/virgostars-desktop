@@ -21,9 +21,9 @@ Status: **DESIGN / required gates**. User birth data can be sensitive personal i
 9. Dependency supply-chain controls, license review, pinned lockfiles and vulnerability audit before public build.
 10. The client must not silently upload synthetic fixtures, local scripts, personal comments or local-only research notes unless user-approved sync scope includes them.
 
-## Known deviation (2026-11-15)
+## Chart archive: deviation resolved, review pending (2026-11-17)
 
-The prototype chart archive stores user-entered birth data in a **plain, unencrypted SQLite file** in the application's local data folder ([Chart archive](CHART_ARCHIVE.md)). This does not satisfy rule 3. It was added at the maintainer's request to make the prototype usable on his own machine, is labelled as unencrypted in the interface, and must be replaced by the encrypted design, with a migration, before any beta or distribution.
+The prototype chart archive first stored user-entered birth data in a plain SQLite file (deviation of 2026-11-15). It is now an encrypted, authenticated single file with a random key held by the OS credential store, migrated from the old file with a read-back check and fail-closed behaviour ([Encrypted archive](ENCRYPTED_ARCHIVE.md)). Rule 3 is met for the archive at rest, with a documented deviation from "evaluate SQLCipher" (whole-file AEAD instead), no recovery key, and **no separate security review yet**: that review is still required before any beta. The old plain file stays on disk until the user deletes it, and ordinary deletion is not secure erasure.
 
 ## Threats to test
 - Stolen laptop / offline attacker; unprotected unlocked session; database copied from disk.

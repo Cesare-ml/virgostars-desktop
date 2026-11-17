@@ -73,7 +73,7 @@ const CALCULATION_FAILURES: Record<Exclude<ChartCalculationResult['kind'],'ready
 const ARCHIVE_FAILURES: Record<ArchiveFailure,MessageKey> = {
   not_native:'archive.browser', invalid_request:'archive.invalid', not_found:'archive.notfound',
   archive_full:'archive.full', archive_unavailable:'archive.unavailable', archive_corrupt:'archive.corrupt',
-  archive_newer:'archive.newer', unavailable:'archive.unavailable',
+  archive_newer:'archive.newer', archive_locked:'archive.locked', unavailable:'archive.unavailable',
 };
 const STATUS_KEYS: Record<FunctionStatus,MessageKey> = {
   available:'functions.available', planned:'functions.planned', excluded:'functions.excluded',
@@ -163,6 +163,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   archiveBusy = false;
   archiveMessage: MessageKey | null = null;
   pendingDeleteId: string | null = null;
+  /** The plain-text file of the first prototype is still on disk next to the encrypted archive. */
+  legacyPresent = false;
+  pendingLegacyRemoval = false;
   // Aspects, orbs and points: device-only display preferences, no personal data.
   chartSettings: ChartSettings = loadChartSettings(this.uiPreferencesStorage);
   private aspectCache: {chartId: number; settings: ChartSettings; rows: AspectRow[]} | null = null;
@@ -547,6 +550,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private applyArchive(result: ArchiveResult, success: MessageKey | null): boolean {
     if (result.kind === 'ready') {
       this.savedCharts = result.charts;
+      this.legacyPresent = result.legacyPresent;
       this.archiveMessage = success;
       return true;
     }
@@ -615,6 +619,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   cancelDeleteSaved(): void {
     this.pendingDeleteId = null;
     this.cd.markForCheck();
+  }
+  askRemoveLegacy(): void {
+    this.pendingLegacyRemoval = true;
+    this.cd.markForCheck();
+  }
+  cancelRemoveLegacy(): void {
+    this.pendingLegacyRemoval = false;
+    this.cd.markForCheck();
+  }
+  /** Permanent: removes the old plain file only after the explicit confirmation step. */
+  async confirmRemoveLegacy(): Promise<void> {
+    if (!this.pendingLegacyRemoval || this.archiveBusy) return;
+    this.pendingLegacyRemoval = false;
+    await this.runArchive({operation:'remove_legacy'}, 'archive.legacy.removed');
   }
   /** Permanent: runs only after the explicit confirmation step. */
   async confirmDeleteSaved(): Promise<void> {

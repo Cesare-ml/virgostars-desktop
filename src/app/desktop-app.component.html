@@ -141,6 +141,17 @@
             <p class="inspector-hint">{{t('archive.note')}}</p>
             <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
             <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
+            <!-- The first prototype kept a plain file; the encrypted archive replaced it but never deletes it on its own. -->
+            <div class="legacy-warning" *ngIf="legacyPresent" role="alert">
+              <p>{{t('archive.legacy')}}</p>
+              <button type="button" class="small-control wide" *ngIf="!pendingLegacyRemoval" [disabled]="archiveBusy"
+                (click)="askRemoveLegacy()">{{t('archive.legacy.remove')}}</button>
+              <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.legacy.confirm')" *ngIf="pendingLegacyRemoval">
+                <p>{{t('archive.legacy.confirm')}}</p>
+                <button type="button" class="danger-control" [disabled]="archiveBusy" (click)="confirmRemoveLegacy()">{{t('archive.confirm.yes')}}</button>
+                <button type="button" class="small-control wide" (click)="cancelRemoveLegacy()">{{t('archive.confirm.no')}}</button>
+              </div>
+            </div>
 
             <ng-container *ngIf="sessionCharts.length">
               <h3 class="panel-title">{{t('archive.session')}}</h3>

@@ -4,6 +4,8 @@
 mod runtime_probe;
 mod offline_places;
 mod chart_calculation;
+mod archive_keys;
+mod archive_vault;
 mod chart_archive;
 mod return_search;
 // Temporary astronomy provider, compiled only on request. The canonical Rust
