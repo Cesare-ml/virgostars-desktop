@@ -1,3 +1,5 @@
+import { validChartUtcIso } from './chart-utc';
+
 /**
  * Local chart archive contract shared with the Rust `chart_archive` command.
  * The archive stores what the user typed (name, instant, zone, position, place),
@@ -40,7 +42,6 @@ export interface ChartArchiveTransport {
 
 const PROTOCOL_ERROR = 'Invalid chart archive protocol';
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const ZONE_PATTERN = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
 // Control characters and invisible direction/format marks never belong in a label.
 const UNSAFE_TEXT = /[\p{Cc}​-‏‪-‮⁦-⁩﻿]/u;
@@ -75,7 +76,7 @@ export function validChartRecord(chart: ChartRecordV1): boolean {
   return plainObject(chart) &&
     typeof chart.id === 'string' && ID_PATTERN.test(chart.id) &&
     label(chart.name, 80) && label(chart.placeName, 160) &&
-    typeof chart.utcIso === 'string' && UTC_PATTERN.test(chart.utcIso) &&
+    validChartUtcIso(chart.utcIso) &&
     typeof chart.timeZone === 'string' && chart.timeZone.length <= 120 && ZONE_PATTERN.test(chart.timeZone) &&
     microDegrees(chart.latMicro, 90_000_000) && microDegrees(chart.lngMicro, 180_000_000);
 }

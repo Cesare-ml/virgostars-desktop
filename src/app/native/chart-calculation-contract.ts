@@ -1,3 +1,5 @@
+import { validChartUtcIso } from './chart-utc';
+
 /**
  * Chart-calculation contract shared with the Rust `calculate_chart` command.
  * One UTC instant and one position go in; positions and house cusps come out.
@@ -61,7 +63,6 @@ export interface ChartCalculationTransport {
 }
 
 const PROTOCOL_ERROR = 'Invalid chart calculation protocol';
-const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const SOURCES: readonly string[] = ['moshier', 'swiss_files', 'jpl'];
 
 function plainObject(x: unknown): x is Record<string, unknown> {
@@ -194,7 +195,7 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
 }
 
 export function validChartRequest(request: ChartRequestV1): boolean {
-  return typeof request?.utcIso === 'string' && UTC_PATTERN.test(request.utcIso) &&
+  return validChartUtcIso(request?.utcIso) &&
     Number.isSafeInteger(request.latMicro) && Math.abs(request.latMicro) <= 90_000_000 &&
     Number.isSafeInteger(request.lngMicro) && Math.abs(request.lngMicro) <= 180_000_000;
 }
