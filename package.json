@@ -21,6 +21,7 @@
     "tauri:build:swiss:private:local": "npm run verify:version && npm run verify:ipc && npm run build:ui:private && npm run prepare:icon && tauri build --features swiss-ephemeris",
     "tauri:build:places:swiss:private:local": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run places:fetch:windows && py -3 scripts/places/prepare_tauri_bundle.py && npm run verify:ipc && npm run verify:places-override && npm run build:ui:private && npm run prepare:icon && tauri build --no-bundle --config .local/places/tauri-places.conf.json --features swiss-ephemeris",
     "verify:bundle": "node scripts/verify-offline-bundle.mjs && npm run verify:privacy && node scripts/verify-tauri-security-config.mjs",
+    "smoke:native": "node scripts/smoke-windows-instrumented.mjs",
     "doctor": "node scripts/desktop-doctor.mjs --stage=setup",
     "doctor:json": "node scripts/desktop-doctor.mjs --stage=setup --json",
     "doctor:build": "node scripts/desktop-doctor.mjs --stage=build --strict",
@@ -33,6 +34,7 @@
     "verify:bundle:private": "node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy && node scripts/verify-tauri-security-config.mjs",
     "tauri:build:private": "npm run verify:version && npm run verify:ipc && npm run build:ui:private && npm run prepare:icon && tauri build",
     "tauri:build:places:private:windows": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run places:fetch:windows && py -3 scripts/places/prepare_tauri_bundle.py && npm run verify:ipc && npm run verify:places-override && npm run build:ui:private && npm run prepare:icon && tauri build --config .local/places/tauri-places.conf.json",
+    "build:local": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run verify:ipc && npm run verify:places-override && npm run build:ui:private && npm run prepare:icon && tauri build --no-bundle --config .local/places/tauri-places.conf.json --features swiss-ephemeris",
     "verify:places-override": "node scripts/verify-places-tauri-override.mjs",
     "verify:privacy": "node scripts/verify-build-privacy.mjs"
   },

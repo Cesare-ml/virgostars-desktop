@@ -22,14 +22,34 @@ test('Tauri references the owned offline Angular build with no privileged IPC ca
   assert.equal(angular.projects.desktop.architect.build.options.browser,'src/main.ts');
   assert.equal(angular.projects.desktop.architect.build.options.assets[0].input,'.local/frontend/assets');
 });
-test('UI keeps unimplemented account and research flows disabled; the archive opens its panel',()=>{
+test('UI shows no technical, account or placeholder captions; the archive and the new chart have their own panels',()=>{
   const html=read('src/app/desktop-app.component.html');
-  assert.match(html,/t\('noaccount'\)/);
-  assert.match(html,/t\('fixture'\)/);
+  // Only the demonstration wheel keeps a label, so fictional positions are never mistaken for a calculated chart.
+  assert.match(html,/subjectCaption/);
   assert.match(html,/\[attr.title\]="t\('archive'\)" \(click\)="openArchive\(\)"/);
-  assert.doesNotMatch(html,/disabled \[attr.title\]="t\('archive'\)"/);
-  assert.match(html,/disabled \[attr.title\]="t\('research'\)"/);
+  assert.match(html,/\[attr.title\]="t\('newchart'\)" \(click\)="openNewChart\(\)"/);
   assert.match(html,/role="tabpanel"/);
+  for (const removed of ['noaccount','research','lab','footer','footerKey','artworkStatus','runtimeStatus','provenanceLabel']) {
+    assert.doesNotMatch(html,new RegExp("t\\(['\"]?" + removed + "['\"]?\\)|\\b" + removed + "\\b"),removed);
+  }
+  assert.doesNotMatch(html,/<footer/);
+  // The archive is not part of the new-chart panel, and the new-chart panel is not part of the archive.
+  const newSheet=html.match(/<section class="sheet" \*ngIf="view==='new'"[\s\S]*?<\/section>/)?.[0] ?? '';
+  const archiveSheet=html.match(/<section class="sheet" \*ngIf="view==='archive'"[\s\S]*?<\/section>\s*<\/section>/)?.[0] ?? '';
+  assert.ok(newSheet.includes('<vs-new-chart'));
+  assert.doesNotMatch(newSheet,/savedCharts|visibleSavedCharts|archive\.title/);
+  assert.ok(archiveSheet.includes('visibleSavedCharts'));
+  assert.doesNotMatch(archiveSheet,/<vs-new-chart/);
+});
+test('the chart owns the full window height: no top bar, header or footer around it',()=>{
+  const html=read('src/app/desktop-app.component.html');
+  const css=read('src/app/desktop-app.component.css');
+  assert.doesNotMatch(html,/class="topbar"|class="chart-header"/);
+  assert.match(css,/\.chart-panel\s*\{[^}]*padding:0;/s);
+  assert.match(css,/\.chart-stage\s*\{[^}]*margin:0;/s);
+  assert.match(css,/\.desktop-app\s*\{[^}]*grid-template-rows:minmax\(0,1fr\);/s);
+  const component=read('src/app/desktop-app.component.ts');
+  assert.match(component,/chartSide\(bounds\.width,bounds\.height,4\)/);
 });
 test('light and dark tokens exist, and the chart has a central flex stage',()=>{
   const css=read('src/app/desktop-app.component.css');

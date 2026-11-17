@@ -34,9 +34,10 @@ Saving the same id again updates the row in place and keeps its creation time, s
 
 ## Interface
 
-- **Tema** tab: "Save the active chart to the archive", the list of saved charts (click to open and recalculate), and delete with an explicit confirmation step.
-- The sidebar **Archivio** button opens that panel.
-- Charts are never saved automatically.
+- The sidebar **Archivio** button opens the archive as its own panel over the chart: charts open in this session (with a Save button for unsaved ones and the partner choice for synastry), the saved charts with a search box, **Open** (recalculates) and delete with an explicit confirmation step. It is separate from the new-chart panel.
+- The sidebar **Nuovo tema** button opens the new-chart panel. Its checkbox **Save the chart in the local archive** is on by default: the typed inputs are written to the archive first, so a chart is kept even if the calculation then fails or no provider is built in. Untick it to keep a chart in memory only.
+- The chart toolbar shows **Save chart** for an active chart that is not yet in the archive.
+- The archive remains an unencrypted SQLite file; the panel says so.
 
 ## Verification on 2026-11-15 (Windows 11)
 
