@@ -11,7 +11,7 @@
     "verify:ipc": "node scripts/verify-native-ipc.mjs",
     "check": "npm run test && npm run verify:ipc && npm run build:ui",
     "prepare:frontend": "npm run verify:translations && node scripts/prepare-synthetic-frontend.mjs",
-    "prepare:icon": "node scripts/generate-spike-icon.mjs",
+    "prepare:icon": "node scripts/verify-brand-icon.mjs",
     "start": "node scripts/verify-angular-source-config.mjs && npm run prepare:frontend && ng serve desktop --host 127.0.0.1 --port 4200",
     "build:ui": "node scripts/verify-angular-source-config.mjs && npm run prepare:frontend && ng build desktop && npm run verify:bundle",
     "tauri:dev": "npm run verify:version && node scripts/verify-angular-source-config.mjs && node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && tauri dev",
