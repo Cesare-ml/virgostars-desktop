@@ -1,6 +1,14 @@
 # Public visibility release gate
 
-**Current status: BLOCKED — do not change this repository's GitHub visibility yet.**
+**Status on 2026-11-17: the repository is already public** (anonymous access to the code, the README and the releases was observed that day, including the `places-20261112-v2` prerelease with `world-cities.zip`). The maintainer gave his explicit go-ahead for the visibility change on the same day; nothing was changed by this checklist's author because there was nothing left to change. The items below were written as a gate *before* publication and are kept as an audit list, not as a statement that each is done.
+
+Checked on 2026-11-17 over all 2450 commits of every branch and the tag, searching the whole history (not only the current tree):
+
+- no private keys, GitHub, AWS, OpenAI, Slack or Google API tokens (pattern search, 0 hits);
+- no committed `.env`, key, certificate or credential files, and no real birth record or personal name of the maintainer (0 hits); the only data files ever committed are build artefacts (`.angular/cache/…/angular-compiler.db`, `dist/…/main.js`, both under 3 MB), which hold no secrets;
+- the README links only to public repositories (`astrological-charts`, `astrological-functions`, `VirgoStars-Ephemeris`, this one); the private `virgo-stars` repository is mentioned by name in `docs/ARCHITECTURE.md`, `scripts/prepare-private-assets.mjs` and one test, never linked.
+
+Not done: the dependency-license inventory, the clean-machine `npm ci` / build test from a public-only checkout, and a legal review of the city catalog's source data (the maintainer states its publication rights are approved).
 
 This checklist is for a future, separately approved source-publication event. A source-license PR, even if merged, does not remove these blockers.
 
