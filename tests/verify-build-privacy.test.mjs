@@ -46,7 +46,7 @@ test('rejects source map directive embedded in minified JavaScript', () => withB
 }));
 
 test('rejects source map directive embedded in CSS', () => withBundle(({ bundle, add }) => {
-  add('chunk-B.css', 'a{color:red}/*# sourceMappingURL=chunk-B.css.map */');
+  add('styles-LOCAL123.css', 'a{color:red}/*# sourceMappingURL=styles-LOCAL123.css.map */');
   assert.throws(() => auditBuildPrivacy(bundle), /source map directive/);
 }));
 

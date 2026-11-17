@@ -25,7 +25,7 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 
 ## Gate 3 — Astronomical/astrological libraries
 - [ ] Establish versioned Rust EphemerisProvider boundary; do not duplicate astronomical algorithms. **Partial (prototype, 2026-11-15):** `calculate_chart` v1 and the provider trait exist with Rust and Node tests. The only adapter is the optional, local-use-only Swiss Ephemeris feature ([details](SWISS_EPHEMERIS_PROVIDER.md)); the canonical VirgoStars-Ephemeris adapter and numerical comparison against it are still to do.
-- [ ] Integrate supported astrological-functions operations with numerical regression tests. **Partial (prototype, 2026-11-15):** sign index, dodecatemoria and house placement are used through a sibling `file:` dependency. Solar and lunar returns ([Returns](RETURNS.md)) are searched in the Rust host on top of the provider. Natal aspects use its angular arithmetic, with the pairing rule still in the desktop ([Aspects and orbs](ASPECTS_AND_ORBS.md)). Cross-chart aspects, lots and every method listed as planned in `src/app/function-catalog.ts` are not integrated.
+- [ ] Integrate supported astrological-functions operations with numerical regression tests. **Partial (prototype):** sign index, dodecatemoria and house placement are used through a sibling `file:` dependency. Solar and lunar returns ([Returns](RETURNS.md)) are searched in the Rust host on top of the provider. Natal and cross-chart aspect tables use its angular arithmetic, with pairing rules still in the desktop ([Aspects and orbs](ASPECTS_AND_ORBS.md)). Lots and every method listed as planned in `src/app/function-catalog.ts` are not integrated; cross-chart tables are not validated against renderer lines.
 - [ ] Integrate approved/redistributable assets only after rights review.
 - [ ] Explicitly mark unavailable bodies, houses, time ranges and precision; no silent fallback.
 - [ ] Optional independent event dataset/index after VirgoStars-Event-Ephemeris becomes valid and distributable.
@@ -58,3 +58,9 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 
 ## Definition of done for each PR
 Reproducible change, synthetic tests where meaningful, docs updated, security/rights impact discussed, no invented scientific accuracy, no production or deployments, no automatic GitHub Actions, no merge without review/authorization.
+
+## Local verification checkpoint — 2026-11-17
+
+On Windows, `npm run check` passed: 813 Node tests passed, 12 were skipped, the native IPC inventory check passed, and the synthetic Angular bundle and its offline/privacy gates passed. Stale source-contract tests were reconciled with the existing guarded clock, delegated Windows launcher, build preflights and stylesheet allowlist. These checks do not establish native WebView2 behavior, a Rust/Tauri build, scientific accuracy, or release readiness.
+
+Follow-up on the same Windows checkout: `cargo test --locked --offline` passed 34 Rust unit tests with default features; `CARGO_NET_OFFLINE=true` and `npm exec --offline -- tauri build --no-bundle` compiled a local release-mode executable from the verified synthetic UI. The strict verification doctor and Windows PE header check passed. This build has no optional Swiss provider, installer or signature. The executable was not launched in this verification; WebView2, offline operation and astronomical accuracy remain unverified.

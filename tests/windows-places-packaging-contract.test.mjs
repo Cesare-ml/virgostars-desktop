@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs';
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const scripts = pkg.scripts;
 const common = [
+  'npm run verify:version',
+  'node scripts/verify-angular-source-config.mjs',
   'npm run places:fetch:windows',
   'py -3 scripts/places/prepare_tauri_bundle.py',
   'npm run verify:ipc',

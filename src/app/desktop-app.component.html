@@ -203,6 +203,16 @@
                 [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{row.applying ? 'A' : 'S'}}</span></span>
             </div>
             <p class="inspector-hint missing-note">{{t('aspects.legend')}}</p>
+            <ng-container *ngIf="(mode === 'transits' && transitChartAvailable) || (mode === 'synastry' && partnerChart)">
+              <div class="data-head"><span>{{t(mode === 'transits' ? 'aspects.transits' : 'aspects.synastry')}} ({{crossAspectRows.length}})</span><span>{{t('aspects.orb')}}</span></div>
+              <p class="inspector-hint">{{t(mode === 'transits' ? 'aspects.transits.help' : 'aspects.synastry.help')}}</p>
+              <p class="inspector-hint missing-note" *ngIf="!crossAspectRows.length">{{t('aspects.none')}}</p>
+              <div class="data-line static aspect-line" *ngFor="let row of crossAspectRows">
+                <span>{{planetLabel(row.from)}} <em>{{aspectLabel(row.aspect)}}</em> {{planetLabel(row.to)}}</span>
+                <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
+                  [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{row.applying ? 'A' : 'S'}}</span></span>
+              </div>
+            </ng-container>
           </ng-container>
           <button type="button" class="link-control" (click)="setInspectorTab('settings')">{{t('aspects.settings')}}</button>
         </div>

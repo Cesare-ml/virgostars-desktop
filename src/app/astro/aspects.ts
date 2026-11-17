@@ -140,6 +140,48 @@ export function computeAspects(
   return rows;
 }
 
+/**
+ * Ordered cross-chart pairs. Unlike pairs within one chart, equal names,
+ * opposite points and pairs of axes represent distinct chart positions.
+ * In a transit comparison only the sky moves; synastry has no common clock.
+ */
+export function computeCrossAspects(
+  from: readonly AspectPoint[],
+  to: readonly AspectPoint[],
+  settings: ChartSettings,
+  definitions: readonly AspectDefinition[],
+  comparison: 'transits' | 'synastry',
+): AspectRow[] {
+  const rows: AspectRow[] = [];
+  const pointSettings: PointSettings = settings.points;
+  const aspectSettings: Readonly<Record<string, {active: boolean; orb: number | null} | undefined>> = settings.aspects;
+  for (const definition of definitions) {
+    const setting = aspectSettings[definition.id];
+    if (!setting?.active) continue;
+    for (const first of from) {
+      if (!pointSettings[first.name]?.aspects) continue;
+      for (const second of to) {
+        const pointSetting = pointSettings[second.name];
+        if (!pointSetting?.aspects) continue;
+        // from = moving sky, to = fixed natal chart for transits.
+        const measured = measure(definition, first,
+          comparison === 'transits' ? {...second, speed: null} : second);
+        if (!measured) continue;
+        const allowed = definition.kind === 'parallel' || definition.kind === 'contraparallel'
+          ? PARALLEL_ORB_DEG
+          : setting.orb !== null && setting.orb < pointSetting.orb ? setting.orb : pointSetting.orb;
+        const orbDeg = Math.abs(measured.deviation);
+        if (!(orbDeg < allowed)) continue;
+        const applying = comparison === 'synastry' || first.speed === null || measured.rate === null || measured.rate === 0 || measured.deviation === 0
+          ? null : measured.deviation * measured.rate < 0;
+        rows.push(Object.freeze({aspect: definition.id, kind: definition.kind, from: first.name, to: second.name,
+          orbDeg, allowedOrbDeg: allowed, applying}));
+      }
+    }
+  }
+  return rows;
+}
+
 /** `2°05'`; minutes are truncated, never rounded up to 60. */
 export function formatOrb(orbDeg: number): string {
   const totalMinutes = Math.floor(Math.abs(orbDeg) * 60 + 1e-9);

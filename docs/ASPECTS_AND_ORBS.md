@@ -8,8 +8,9 @@ Five entries of the Regolo Alpha Leonis settings menu: **Aspetti**, **Orbite Asp
 
 - **Parametri** tab: switch each of the 17 aspects on or off and give it an orb; for each point choose whether it is drawn, whether it takes part in aspects, and its orb; hide or show the aspect lines; restore the defaults.
 - **Aspetti** tab: the aspect table of the active calculated chart, with the distance from exactness and an A/S mark for applying or separating.
+- **Prototype:** in transit and synastry modes, a separate cross-chart table uses the current aspect/point settings. It compares **sky → active chart** for transits and **active chart → second chart** for synastry. The second point supplies the orb, capped by the aspect orb; equal point names and axes may be paired across charts. The tables do not claim parity with the renderer's lines.
 
-Not covered: Focus Aspetti, the applying/separating drawing style of Regolo's "Applicazioni", "Transaturnini se in congiunzione", aspects between two charts (transits, synastry) in the table, and the lots.
+Not covered: Focus Aspetti, the applying/separating drawing style of Regolo's "Applicazioni", "Transaturnini se in congiunzione", and the lots.
 
 ## Defaults
 
@@ -30,6 +31,8 @@ The table uses the same rule as the Charts renderer, so that it describes the li
 Point 3 means that with unequal point orbs the result depends on the order of the pair. That is the renderer's behaviour, reproduced here on purpose and stated in the interface.
 
 **Applying or separating** is derived from the daily motions in longitude; axes are treated as fixed, so a planet near an axis is "applying to" it. It is not stated for exact aspects, for pairs with no relative motion, or for declination aspects (declination motion is not part of the chart data).
+
+For transit comparisons the natal point is fixed and only the sky point moves; an A/S mark is omitted for a sky axis because its speed is unavailable. Synastry compares two independent snapshots and never assigns an A/S mark. These are prototype presentation rules, not independently validated astrological methods.
 
 Angular arithmetic comes from `astrological-functions`. The pairing rule and the applying test live in `src/app/astro/aspects.ts`; they are astrological method and should move to `astrological-functions` in a separate, authorized change.
 

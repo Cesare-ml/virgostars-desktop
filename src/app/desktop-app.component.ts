@@ -39,7 +39,7 @@ import {
   ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
   type ChartSettings
 } from './chart-settings';
-import { aspectPoints, computeAspects, formatOrb, type AspectRow } from './astro/aspects';
+import { aspectPoints, computeAspects, computeCrossAspects, formatOrb, type AspectRow } from './astro/aspects';
 import { ASPECT_LABEL_KEYS, POINT_LABEL_KEYS } from './point-labels';
 
 const BODY_KEYS: Record<DemoPlanet,MessageKey> = {
@@ -160,6 +160,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // Aspects, orbs and points: device-only display preferences, no personal data.
   chartSettings: ChartSettings = loadChartSettings(this.uiPreferencesStorage);
   private aspectCache: {chartId: number; settings: ChartSettings; rows: AspectRow[]} | null = null;
+  private crossAspectCache: {from: SessionChart; to: SessionChart; mode: 'transits' | 'synastry'; settings: ChartSettings; rows: AspectRow[]} | null = null;
   // Solar or lunar return panel; its radix is the chart that was active when it opened.
   returnTool: ReturnKind | null = null;
   returnRadix: ReturnRadix | null = null;
@@ -211,6 +212,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.aspectCache = {chartId:chart.id, settings:this.chartSettings, rows};
     return rows;
   }
+  get crossAspectRows(): AspectRow[] {
+    const active = this.activeChart;
+    const mode = this.mode;
+    if (!active || (mode !== 'transits' && mode !== 'synastry')) return [];
+    const overlay = mode === 'transits' ? this.transitChart : this.partnerChart;
+    if (!overlay) return [];
+    const from = mode === 'transits' ? overlay : active;
+    const to = mode === 'transits' ? active : overlay;
+    const cache = this.crossAspectCache;
+    if (cache && cache.from === from && cache.to === to && cache.mode === mode && cache.settings === this.chartSettings) return cache.rows;
+    const rows = computeCrossAspects(aspectPoints(from.data, this.chartSettings.points),
+      aspectPoints(to.data, this.chartSettings.points), this.chartSettings, ASPECT_DEFINITIONS, mode);
+    this.crossAspectCache = {from, to, mode, settings: this.chartSettings, rows};
+    return rows;
+  }
   onChartSettingsChanged(next: ChartSettings): void {
     if (this.destroyed || this.exporting) return;
     this.chartSettings = sanitizeChartSettings(next);
@@ -225,6 +241,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get partnerChart(): SessionChart | null {
     return this.sessionCharts.find(chart => chart.id === this.partnerChartId) ?? null;
   }
+  get transitChartAvailable(): boolean { return this.transitChart !== null; }
   get subjectTitle(): string {
     const chart = this.activeChart;
     return chart ? this.chartName(chart) : this.t('subject');

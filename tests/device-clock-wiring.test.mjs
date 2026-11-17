@@ -11,11 +11,12 @@ test('the clock is mounted and disposed with the Angular workstation lifecycle',
   assert.match(app, /this\.deviceClock\.start\(/);
   assert.match(app, /this\.deviceClock\.dispose\(\)/);
   assert.match(app, /formatDeviceClock\(this\.deviceClock\.timestamp, this\.locale/);
-  assert.match(app, /if \(!this\.destroyed\) this\.cd\.markForCheck\(\)/);
   const start = app.indexOf('this.deviceClock.start(');
   const after = app.indexOf('\n    // Read-only capability check', start);
   assert.ok(after > start);
-  assert.doesNotMatch(app.slice(start, after), /this\.draw\(|this\.renderer\./);
+  const callback = app.slice(start, after);
+  assert.match(callback, /if \(this\.destroyed\) return;\s*this\.updateCityClock\(\);\s*this\.cd\.markForCheck\(\);/);
+  assert.doesNotMatch(callback, /this\.draw\(|this\.renderer\./);
 });
 
 test('clock has a semantic time element and explicitly device-only UI label', () => {

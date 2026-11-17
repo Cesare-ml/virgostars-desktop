@@ -134,6 +134,11 @@ test('CLI is fixed-path only and never logs a missing local absolute executable 
 
 test('Windows build launchers invoke the standalone read-only validator after the native build', () => {
   const read = name => readFileSync(new URL('../scripts/'+name, import.meta.url), 'utf8');
-  assert.match(read('build-windows.cmd'), /node scripts\\verify-windows-pe\.mjs\s*\r?\nif errorlevel 1 goto :failed/);
-  assert.match(read('build-windows-spike.ps1'), /Invoke-Step 'Verify Windows x64 PE header' 'node' @\('scripts\/verify-windows-pe.mjs'\)/);
+  const launcher = read('build-windows.cmd');
+  const bootstrap = read('build-windows-spike.ps1');
+  assert.match(launcher, /"%VS_SYSTEM_POWERSHELL%" -NoProfile -NonInteractive -File "%~dp0build-windows-spike\.ps1"/);
+  assert.match(launcher, /set "VS_BUILD_EXIT=%ERRORLEVEL%"\s+exit \/b %VS_BUILD_EXIT%/);
+  const build = bootstrap.indexOf("Invoke-Step 'Compile previously verified Angular/Tauri prototype'");
+  const pe = bootstrap.indexOf("Invoke-Step 'Verify Windows x64 PE header' 'node' @('scripts/verify-windows-pe.mjs')");
+  assert.ok(build >= 0 && pe > build, 'PE validation must follow the native build');
 });

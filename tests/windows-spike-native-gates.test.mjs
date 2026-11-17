@@ -68,10 +68,9 @@ test('a missing or misordered native audit fails the acceptance stage contract',
   };
   expectSequence(bootstrap);
   assert.throws(()=>expectSequence(bootstrap.replace("'run', 'verify:ipc'","'run', 'doctor'")));
-  assert.throws(()=>expectSequence(bootstrap.replace(
-    "    Invoke-Step 'Audit native IPC commands and Tauri capabilities' 'npm.cmd' @('run', 'verify:ipc')\n",
-    ""
-  )));
+  const withoutAudit = bootstrap.replace(/^\s*Invoke-Step 'Audit native IPC commands and Tauri capabilities' 'npm\.cmd' @\('run', 'verify:ipc'\)\r?\n/m, '');
+  assert.notEqual(withoutAudit, bootstrap, 'mutation must remove the audit on Windows and Unix');
+  assert.throws(()=>expectSequence(withoutAudit));
 });
 
 test('Windows build instructions explicitly require native and CSS source gates',()=>{

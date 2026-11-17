@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RENDER_POINT_ORDER, aspectPoints, computeAspects, formatOrb} from '../src/app/astro/aspects.ts';
+import {RENDER_POINT_ORDER, aspectPoints, computeAspects, computeCrossAspects, formatOrb} from '../src/app/astro/aspects.ts';
 import {ASPECT_DEFINITIONS, defaultChartSettings} from '../src/app/chart-settings.ts';
 
 // Visibly fictional positions chosen so each aspect is obvious.
@@ -11,6 +11,45 @@ const run = (points, change) => {
   change?.(settings);
   return computeAspects(points, settings, ASPECT_DEFINITIONS);
 };
+
+test('cross-chart comparisons keep chart order and allow identical points and axes', () => {
+  const settings = defaultChartSettings();
+  const first = [point('Sun', 359), point('Moon', 120), point('AS', 0, null, null)];
+  const second = [point('Sun', 1), point('Moon', 120), point('AS', 2, null, null)];
+  const rows = computeCrossAspects(first, second, settings, ASPECT_DEFINITIONS, 'synastry');
+  assert.equal(find(rows, 'Sun', 'Sun', 'congiunzione').orbDeg, 2);
+  assert.ok(find(rows, 'AS', 'AS', 'congiunzione'));
+  assert.ok(find(rows, 'Moon', 'Moon', 'congiunzione'));
+  assert.ok(rows.every(row => row.applying === null));
+  settings.points.Sun.orb = 1;
+  assert.equal(find(computeCrossAspects(first, second, settings, ASPECT_DEFINITIONS, 'synastry'), 'Sun', 'Sun', 'congiunzione'), undefined);
+});
+
+test('transits use moving sky against fixed natal positions and do not invent axis motion', () => {
+  const settings = defaultChartSettings();
+  const sky = [point('Moon', 118, 13), point('AS', 118, null, null)];
+  const natal = [point('Sun', 0, 50)];
+  const rows = computeCrossAspects(sky, natal, settings, ASPECT_DEFINITIONS, 'transits');
+  assert.equal(find(rows, 'Moon', 'Sun', 'trigono').applying, true);
+  assert.equal(find(rows, 'AS', 'Sun', 'trigono').applying, null);
+  assert.equal(find(computeCrossAspects([point('Moon', 122, 13)], natal, settings, ASPECT_DEFINITIONS, 'transits'), 'Moon', 'Sun', 'trigono').applying, false);
+  settings.points.Sun.aspects = false;
+  assert.equal(computeCrossAspects(sky, natal, settings, ASPECT_DEFINITIONS, 'transits').length, 0);
+});
+
+test('cross-chart orbs and directed aspects respect the order of the two charts', () => {
+  const settings = defaultChartSettings();
+  settings.points.Sun.orb = 2;
+  settings.points.Moon.orb = 6;
+  settings.aspects.philunare.active = true;
+  const sun = [point('Sun', 0)];
+  const moon = [point('Moon', 64)];
+  assert.ok(find(computeCrossAspects(sun, moon, settings, ASPECT_DEFINITIONS, 'synastry'), 'Sun', 'Moon', 'sestile'));
+  assert.equal(find(computeCrossAspects(moon, sun, settings, ASPECT_DEFINITIONS, 'synastry'), 'Moon', 'Sun', 'sestile'), undefined);
+  const phi = [point('Moon', 137.5)];
+  assert.ok(find(computeCrossAspects(sun, phi, settings, ASPECT_DEFINITIONS, 'synastry'), 'Sun', 'Moon', 'philunare'));
+  assert.equal(find(computeCrossAspects(phi, sun, settings, ASPECT_DEFINITIONS, 'synastry'), 'Moon', 'Sun', 'philunare'), undefined);
+});
 
 test('major aspects are found within the orb of the second point', () => {
   const rows = run([point('Sun', 10), point('Moon', 132), point('Mars', 190), point('Saturn', 105.5)]);
