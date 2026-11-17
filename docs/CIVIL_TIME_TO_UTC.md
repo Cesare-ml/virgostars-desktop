@@ -49,3 +49,13 @@ tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler
 ```
 
 **Not run:** complete desktop `npm test`, Angular package build, native Rust/Cargo, Windows or macOS WebView2, external tzdb parity, authentic ephemeris/Horizons comparisons. No production data, distribution, GitHub Actions or licensing changes.
+
+## Hardened civil field capture (2026-11-13)
+
+The *direct* `resolveCivilTime` boundary now reads `date`, `time` and `timeZone` exactly once each into local values, using those captured values for syntax/range validation and the `Intl.DateTimeFormat` call. This closes a time-of-check/time-of-use inconsistency: a getter could previously return an accepted IANA time zone for validation but a different zone for conversion. Throwing getters and revoked proxies return sanitized `INVALID_LOCAL_DATE`, `INVALID_LOCAL_TIME` or `INVALID_TIME_ZONE` errors instead of leaking exceptions. Validation order remains progressive; a syntactically invalid date does not read later fields.
+
+This complements the higher-level civil-choice snapshot in draft PR #160 but is independently useful for direct resolver clients. No timezone algorithm, probe count, DST choice or data-provenance policy is changed.
+
+**Executed locally:** Node.js 22.16.0 ran the *exact GitHub `main`* `tests/civil-time.test.mjs` (blob `9aecbba90ea0c305d19d70d6dc3ba51b686e1fcb`) together with the seven new `tests/civil-time-input-snapshot.test.mjs` cases: **23/23 PASS**. TypeScript 5.8.3 `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM src/app/native/civil-time.ts`: **PASS**. Exact locally executed file blobs match the branch: source `e515384ac303e7091ad15ade311a7a552b93baae`, tests `9bccbfdd469dc813e50a6ae0b8de3be7e426c10b`.
+
+**Not executed:** complete repository `npm test`, Angular/Charts production build, Rust/Tauri integration, Windows WebView2, independent pinned IANA tzdb checks or numerical ephemeris acceptance. No native IPC or personal data, private city catalog, auth, storage, production network, dependencies, licensing, public release, GitHub Actions or main merge.
