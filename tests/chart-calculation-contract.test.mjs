@@ -134,3 +134,40 @@ test('browser preview, missing provider and native failures stay distinct and op
   const throwingProbe = {isNative: () => { throw new Error('no bridge'); }, invoke: never};
   assert.deepEqual(await requestChart(throwingProbe, REQUEST), {kind: 'unavailable'});
 });
+
+test('request validation matches the Rust Gregorian UTC calendar', async () => {
+  const never = {isNative: () => true, invoke: async () => { throw new Error('unexpected native call'); }};
+  for (const utcIso of [
+    '2001-02-29T00:00:00Z', '1900-02-29T00:00:00Z', '2001-13-01T00:00:00Z',
+    '2001-04-31T00:00:00Z', '2001-02-03T24:00:00Z', '2001-02-03T04:60:00Z',
+    '2001-02-03T04:05:60Z', '1599-12-31T23:59:59Z', '2401-01-01T00:00:00Z',
+  ]) {
+    assert.equal(validChartRequest({...REQUEST, utcIso}), false, utcIso);
+    assert.deepEqual(await requestChart(never, {...REQUEST, utcIso}), {kind: 'invalid_request'});
+  }
+  for (const utcIso of ['1600-02-29T00:00:00Z', '2000-02-29T00:00:00Z', '2400-12-31T23:59:59.999Z']) {
+    assert.equal(validChartRequest({...REQUEST, utcIso}), true, utcIso);
+  }
+});
+
+test('chart calculation request never executes getters or forwards mutable input fields', async () => {
+  let accessed = 0;
+  const withGetter = {...REQUEST};
+  Object.defineProperty(withGetter, 'utcIso', {enumerable: true, get() { accessed++; throw Error('private'); }});
+  assert.deepEqual(await requestChart({isNative: () => true, invoke: async () => { throw Error('called'); }}, withGetter),
+    {kind: 'invalid_request'});
+  assert.equal(accessed, 0);
+  const calls = [];
+  const request = {...REQUEST};
+  const transport = {isNative: () => true, invoke: async (_, args) => {
+    calls.push(args.request);
+    request.utcIso = 'not a date';
+    return okResponse();
+  }};
+  assert.equal((await requestChart(transport, request)).kind, 'ready');
+  assert.equal(calls[0].utcIso, REQUEST.utcIso);
+  const inherited = Object.create(REQUEST);
+  assert.equal(validChartRequest(inherited), false);
+  const proxy = new Proxy({...REQUEST}, {getOwnPropertyDescriptor() { throw Error('trap'); }});
+  assert.equal(validChartRequest(proxy), false);
+});
