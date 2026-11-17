@@ -81,8 +81,9 @@ test('Erigi elettiva asks for a name in an overlay and saves a new chart under i
   assert.match(confirm, /id:newChartId\(\)/, 'a new chart, never an overwrite');
   assert.match(confirm, /!record\.name \|\| !validChartRecord\(record\)/);
   assert.match(confirm, /runArchive\(\{operation:'save', chart:record\}, 'nav\.elective\.saved'\)/);
-  assert.match(css, /\.overlay-ok \{ background:#3FA34D; \}/);
-  assert.match(css, /\.overlay-cancel \{ background:#E5483D; \}/);
+  // Neither button is green or red: the confirm button takes the accent, the cancel button is an outline.
+  assert.match(css, /\.overlay-ok \{ border:0; background:var\(--vs-accent\);/);
+  assert.match(css, /\.overlay-cancel \{ border:1\.5px solid var\(--vs-border\); background:transparent;/);
 });
 
 test('every label of the panel exists in both languages', () => {
@@ -94,4 +95,25 @@ test('every label of the panel exists in both languages', () => {
   assert.equal(STRINGS.it['nav.back'], 'Indietro');
   assert.equal(STRINGS.it['nav.forward'], 'Avanti');
   assert.equal(STRINGS.it['nav.elective'], 'Erigi elettiva');
+});
+
+test('Naviga cielo sits first in its group of the left menu, above Aspetti, and Info pianeti is not there', () => {
+  const nav = html.match(/<nav class="sidebar"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  const order = ["toggleInspectorTab('navigate')", "toggleInspectorTab('aspects')", 'openFunctions()', 'openSettings()'].map(call => nav.indexOf(call));
+  assert.ok(order.every(index => index > 0), 'all four are in the left menu');
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'in this order');
+  assert.ok(!nav.includes("t('nav.planets')"));
+});
+
+test('the panel is narrow and has its own look: no wide stacked buttons, no green or red', () => {
+  assert.match(html, /\[class\.inspector-narrow\]="inspectorTab==='navigate'"/);
+  const width = Number(css.match(/\.workspace\.inspector-narrow \{ --inspector-width:(\d+)px; \}/)?.[1]);
+  assert.ok(width <= 300 && width >= 240, 'narrower than the 400 px tables');
+  // The five actions are small icon tiles in one row, not a column of wide buttons.
+  assert.equal((panel.match(/class="nav-tool[ "]/g) ?? []).length, 5);
+  assert.doesNotMatch(panel, /class="nav-action"/);
+  assert.match(css, /\.nav-tools \{ display:flex; gap:4px; \}/);
+  const look = css.slice(css.indexOf('/* Naviga cielo'), css.indexOf('/* Erigi elettiva'));
+  for (const old of ['#0E9F9A', '#E91E63', '#F28C28', '#3FA34D', '#E5483D']) assert.ok(!look.includes(old), old);
+  assert.match(look, /\.nav-forward \{ background:var\(--vs-accent\);/);
 });

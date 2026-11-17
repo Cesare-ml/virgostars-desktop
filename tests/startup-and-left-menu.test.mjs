@@ -57,7 +57,7 @@ test('there is no demonstration chart: nothing is drawn without a calculated cha
 
 test('functions and settings open from the left menu, not from the right panel', () => {
   const nav = html.match(/<nav class="sidebar"[\s\S]*?<\/nav>/)?.[0] ?? '';
-  for (const call of ['openFunctions()', 'openSettings()', "toggleInspectorTab('planets')", 'showSky()', 'openArchive()', 'openNewChart()']) {
+  for (const call of ['openFunctions()', 'openSettings()', "toggleInspectorTab('navigate')", "toggleInspectorTab('aspects')", 'showSky()', 'openArchive()', 'openNewChart()']) {
     assert.ok(nav.includes(call), call);
   }
   const inspector = html.match(/<aside class="inspector"[\s\S]*?<\/aside>/)?.[0] ?? '';
@@ -66,8 +66,10 @@ test('functions and settings open from the left menu, not from the right panel',
   assert.match(html, /<section class="drawer" \*ngIf="view==='settings'"/);
 });
 
-test('planet info is one button away: in the left menu and on the chart', () => {
+test('planet info is one button away, on the chart; it is no longer in the left menu', () => {
   assert.match(html, /class="toolbar-button info-button"[\s\S]*?toggleInspectorTab\('planets'\)/);
+  const nav = html.match(/<nav class="sidebar"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  assert.doesNotMatch(nav, /toggleInspectorTab\('planets'\)/);
   assert.match(html, /<th class="num">\{\{t\('column\.latspeed'\)\}\}<\/th>/);
   assert.match(html, /latitudeSpeedText\(row\.latitudeSpeed\)/);
   assert.equal(formatSpeed(0.0123, 'it', 3), '0,012');
