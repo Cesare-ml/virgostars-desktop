@@ -2,7 +2,7 @@
 
 **Status:** local developer verification only (13 November 2026). This is not a native security audit, penetration test or a proof that a released Windows application is safe.
 
-> **Update 2026-11-15 — five commands.** The reviewed registry now also contains `chart_calculation::calculate_chart`, `chart_archive::chart_archive` and `return_search::find_returns`, each with its own protocol (`chart-calculation-contract.ts`, `chart-archive-contract.ts`, `return-search-contract.ts`) and adapter (`chart-calculation.ts`, `chart-archive.ts`, `return-search.ts`) under `src/app/native/`. Where the text below says "two" commands, protocols or adapters, read five. See the sections at the end, [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md), [Chart archive](CHART_ARCHIVE.md) and [Returns](RETURNS.md).
+> **Update 2026-11-15 — five commands.** The reviewed registry now also contains `chart_calculation::calculate_chart`, `chart_archive::chart_archive` and `return_search::find_returns`, each with its own protocol (`chart-calculation-contract.ts`, `chart-archive-contract.ts`, `return-search-contract.ts`) and adapter (`chart-calculation.ts`, `chart-archive.ts`, `return-search.ts`) under `src/app/native/`. Where the text below says "two" commands, protocols or adapters, read five. See the sections at the end, [VirgoStars-Ephemeris provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md), [Chart archive](CHART_ARCHIVE.md) and [Returns](RETURNS.md).
 
 ## Why this gate exists
 
@@ -45,7 +45,7 @@ This is a **read-only static gate**, not proof of compiled capabilities, runtime
 - **Side effects:** none. No file is written, nothing is logged, no network connection is opened. The request is not retained after the call returns.
 - **Failure states:** `provider_unavailable` (default build), `invalid_request`, `calculation_failed`. Provider diagnostics are discarded because they may echo paths.
 - **Threat considered:** a compromised WebView can ask for positions at arbitrary instants and places. That discloses nothing stored on the device and costs a few milliseconds of CPU per call; the command is synchronous and bounded (15 bodies, 5 house systems).
-- **Not covered:** the C library linked by the optional `swiss-ephemeris` feature is third-party code running in the host process. It has not been audited here.
+- **Not covered:** `virgostars-ephemeris-core` (pinned git revision) runs in the host process and reads the local DE441, USNO and Chiron files; neither the engine nor the data files have been audited here, and their paths never cross IPC.
 
 The command was exercised in the native release window on 2026-11-15 through WebView2's local DevTools port (valid and malformed requests).
 

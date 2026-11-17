@@ -44,7 +44,7 @@ test('angular houses are Roman, the others Arabic, and the colour follows the el
 
 test('planet rows carry the speed and latitude the provider gave, nothing else', () => {
   const body = (id, longitudeDeg, latitudeDeg, longitudeSpeed) => ({id, longitudeDeg, latitudeDeg, distanceAu: 1,
-    longitudeSpeed, latitudeSpeed: 0, distanceSpeed: 0, rightAscensionDeg: 0, declinationDeg: 0, ephemerisSource: 'moshier'});
+    longitudeSpeed, latitudeSpeed: 0, distanceSpeed: 0, rightAscensionDeg: 0, declinationDeg: 0, ephemerisSource: 'jpl'});
   const cusps = Array.from({length: 12}, (_, i) => i * 30);
   const data = buildTemaRenderData({julianDayUt: 2451545, unavailableBodies: [], unavailableHouseSystems: [],
     bodies: [body('Sun', 45, 0.0003, 0.99), body('Neptune', 340, -0.1, -0.01)],

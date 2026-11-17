@@ -9,7 +9,7 @@ function body(id, index) {
   return {
     id, longitudeDeg: index * 20 + 0.5, latitudeDeg: index % 2 ? -1 : 1, distanceAu: 1 + index,
     longitudeSpeed: index === 4 ? -0.3 : 0.9, latitudeSpeed: 0.01, distanceSpeed: 0.001,
-    rightAscensionDeg: index * 20 + 1.5, declinationDeg: index - 7, ephemerisSource: 'moshier',
+    rightAscensionDeg: index * 20 + 1.5, declinationDeg: index - 7, ephemerisSource: 'jpl',
   };
 }
 function houseSystem(id) {
@@ -22,7 +22,7 @@ function okResponse() {
   const computed = CHART_BODY_IDS.filter(id => id !== 'Chiron');
   return {
     protocolVersion: 1, status: 'ok',
-    provider: {id: 'swiss_ephemeris', engineVersion: '2.10.03'},
+    provider: {id: 'virgostars_ephemeris', engineVersion: 'test'},
     chart: {
       julianDayUt: 2451545.0,
       bodies: computed.map(body),
@@ -38,7 +38,7 @@ test('a complete native response is copied into detached frozen values', () => {
   const raw = okResponse();
   const decoded = decodeChartResponse(raw);
   assert.equal(decoded.status, 'ok');
-  assert.deepEqual(decoded.provider, {id: 'swiss_ephemeris', engineVersion: '2.10.03'});
+  assert.deepEqual(decoded.provider, {id: 'virgostars_ephemeris', engineVersion: 'test'});
   assert.equal(decoded.chart.bodies.length, 14);
   assert.equal(decoded.chart.houses.length, 5);
   assert.deepEqual(decoded.chart.unavailableBodies, ['Chiron']);
@@ -58,7 +58,7 @@ test('malformed, out-of-range or contradictory responses are rejected with one g
   const mutations = [
     r => { r.protocolVersion = 2; },
     r => { r.status = 'fine'; },
-    r => { r.provider.id = 'Swiss Ephemeris; rm'; },
+    r => { r.provider.id = 'VirgoStars Ephemeris; rm'; },
     r => { r.provider.engineVersion = 'C:\\Users\\someone'; },
     r => { r.chart.julianDayUt = Number.NaN; },
     r => { r.chart.julianDayUt = 1_699_999; },
@@ -116,7 +116,7 @@ test('one native call carries only the versioned instant and position', async ()
   const transport = {isNative: () => true, invoke: async (...args) => { calls.push(args); return okResponse(); }};
   const result = await requestChart(transport, {...REQUEST, name: 'never forwarded'});
   assert.equal(result.kind, 'ready');
-  assert.equal(result.provider.id, 'swiss_ephemeris');
+  assert.equal(result.provider.id, 'virgostars_ephemeris');
   assert.deepEqual(calls, [['calculate_chart', {
     request: {protocolVersion: 1, utcIso: REQUEST.utcIso, latMicro: REQUEST.latMicro, lngMicro: REQUEST.lngMicro},
   }]]);
@@ -137,15 +137,15 @@ test('browser preview, missing provider and native failures stay distinct and op
   assert.deepEqual(await requestChart(throwingProbe, REQUEST), {kind: 'unavailable'});
 });
 
-test('charts of the whole supported range are accepted: year 0 and year 5000 are inside, far outside is not', () => {
+test('charts of the whole supported range are accepted: 1900 and 2100 are inside, far outside is not', () => {
   const at = julianDayUt => {
     const raw = okResponse();
     raw.chart.julianDayUt = julianDayUt;
     return raw;
   };
-  // 1 January of year 0 and 31 December of year 5000 (JD 1 721 059.5 and 3 547 312.5, rounded).
-  for (const jd of [1_721_059.5, 2_451_545, 2_816_000, 3_547_312.5]) {
+  // 1 January 1900 and 31 December 2100 (JD 2 415 020.5 and 2 488 069.5).
+  for (const jd of [2_415_020.5, 2_451_545, 2_488_069.5]) {
     assert.equal(decodeChartResponse(at(jd)).chart.julianDayUt, jd);
   }
-  for (const jd of [0, 1_000_000, 4_000_000]) assert.throws(() => decodeChartResponse(at(jd)));
+  for (const jd of [0, 1_721_059.5, 2_000_000, 3_547_312.5]) assert.throws(() => decodeChartResponse(at(jd)));
 });

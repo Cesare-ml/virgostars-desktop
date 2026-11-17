@@ -8,7 +8,7 @@ import {
 function body(id, longitudeDeg, extra = {}) {
   return {
     id, longitudeDeg, latitudeDeg: 2, distanceAu: 1, longitudeSpeed: 1, latitudeSpeed: 0.1,
-    distanceSpeed: 0.01, rightAscensionDeg: 200, declinationDeg: -5, ephemerisSource: 'moshier', ...extra,
+    distanceSpeed: 0.01, rightAscensionDeg: 200, declinationDeg: -5, ephemerisSource: 'jpl', ...extra,
   };
 }
 function snapshot() {

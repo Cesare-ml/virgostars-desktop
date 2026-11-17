@@ -3242,15 +3242,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "sweph-sys"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e09076a262af442f92d0a02519cc6f34a9d42fe0b698be78fe5663bde509e16"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "swift-rs"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4021,11 +4012,16 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sweph-sys",
  "tauri",
  "tauri-build",
+ "virgostars-ephemeris-core",
  "zeroize",
 ]
+
+[[package]]
+name = "virgostars-ephemeris-core"
+version = "0.1.0"
+source = "git+https://github.com/Cesare-ml/VirgoStars-Ephemeris?rev=6835e00e4b4ba5fc52d882a793e2dfa2b2a436aa#6835e00e4b4ba5fc52d882a793e2dfa2b2a436aa"
 
 [[package]]
 name = "vswhom"

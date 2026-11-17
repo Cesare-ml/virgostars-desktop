@@ -48,31 +48,29 @@ test('UTC resolves without a time zone offset', () => {
   assert.equal(x.choice?.offsetSeconds, 0);
   assert.equal(x.choice?.instantUtc, '2000-02-29T00:00:00.000Z');
 });
-test('the years 0 to 5000 are accepted, with proleptic Gregorian leap years and no 1900 shift for years 0 to 99', () => {
+test('the years 1900 to 2100 are accepted, with Gregorian leap years', () => {
   const utcDay = date => resolve(date, '12:00', 'UTC');
   for (const [date, instant] of [
-    ['0000-01-01', '0000-01-01T12:00:00.000Z'], ['0000-02-29', '0000-02-29T12:00:00.000Z'],
-    ['0050-06-15', '0050-06-15T12:00:00.000Z'], ['0099-12-31', '0099-12-31T12:00:00.000Z'],
-    ['0100-01-01', '0100-01-01T12:00:00.000Z'], ['1500-03-01', '1500-03-01T12:00:00.000Z'],
-    ['3000-07-04', '3000-07-04T12:00:00.000Z'], ['5000-12-31', '5000-12-31T12:00:00.000Z'],
+    ['1900-01-01', '1900-01-01T12:00:00.000Z'], ['1904-02-29', '1904-02-29T12:00:00.000Z'],
+    ['1999-12-31', '1999-12-31T12:00:00.000Z'], ['2000-02-29', '2000-02-29T12:00:00.000Z'],
+    ['2026-11-17', '2026-11-17T12:00:00.000Z'], ['2100-12-31', '2100-12-31T12:00:00.000Z'],
   ]) {
     const result = utcDay(date);
     assert.equal(result.status, 'resolved', date);
     assert.equal(result.choice?.instantUtc, instant, date);
   }
-  // Year 1 is not a leap year; year 4 and year 0 are.
-  assert.deepEqual(utcDay('0001-02-29'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'});
-  assert.equal(utcDay('0004-02-29').status, 'resolved');
+  // 1900 and 2100 are not leap years; 2000 is.
+  assert.deepEqual(utcDay('1900-02-29'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'});
+  assert.deepEqual(utcDay('2100-02-29'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'});
+  assert.equal(utcDay('2000-02-29').status, 'resolved');
 });
-test('before the clocks were standardised the local offset is the zone\'s historical mean time, to the second', () => {
-  // Rome used local mean time (+00:49:56) until 1866; year 0 uses the zone's earliest offset.
-  const old = resolve('1800-06-01', '12:00', 'Europe/Rome');
-  assert.equal(old.status, 'resolved');
-  assert.equal(old.choice?.offsetSeconds, 49 * 60 + 56);
-  assert.equal(resolve('0000-06-01', '12:00', 'Europe/Rome').status, 'resolved');
+test('dates outside the supported years are refused, not approximated', () => {
+  for (const date of ['1899-12-31', '2101-01-01', '0000-06-01', '1800-06-01', '5000-12-31']) {
+    assert.deepEqual(resolve(date, '12:00', 'Europe/Rome'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'}, date);
+  }
 });
 test('invalid calendar dates fail instead of overflowing into another month', () => {
-  for (const date of ['2026-02-29', '1900-02-29', '2026-04-31', '2026-00-12', '2026-13-01', '5001-01-01', '0000-02-30', '0001-02-29', '2026-1-01']) {
+  for (const date of ['2026-02-29', '1900-02-29', '2026-04-31', '2026-00-12', '2026-13-01', '2101-01-01', '1899-12-31', '2026-1-01']) {
     assert.deepEqual(resolve(date, '12:00'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'}, date);
   }
 });

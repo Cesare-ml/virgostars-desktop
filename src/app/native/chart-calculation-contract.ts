@@ -12,7 +12,7 @@ export type ChartBodyId = typeof CHART_BODY_IDS[number];
 export const HOUSE_SYSTEM_IDS = Object.freeze(['egizia', 'placido', 'koch', 'regio-montano', 'porfirio'] as const);
 export type HouseSystemId = typeof HOUSE_SYSTEM_IDS[number];
 
-export type EphemerisSource = 'moshier' | 'swiss_files' | 'jpl';
+export type EphemerisSource = 'jpl';
 
 export type ChartBodyV1 = Readonly<{
   id: ChartBodyId;
@@ -61,10 +61,10 @@ export interface ChartCalculationTransport {
 }
 
 const PROTOCOL_ERROR = 'Invalid chart calculation protocol';
-const JD_MIN = 1_700_000;
-const JD_MAX = 3_600_000;
+const JD_MIN = 2_410_000;
+const JD_MAX = 2_490_000;
 const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
-const SOURCES: readonly string[] = ['moshier', 'swiss_files', 'jpl'];
+const SOURCES: readonly string[] = ['jpl'];
 
 function plainObject(x: unknown): x is Record<string, unknown> {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
@@ -182,7 +182,7 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
       status: 'ok',
       provider: Object.freeze({id: providerId, engineVersion}),
       chart: Object.freeze({
-        // Calendar years 0 to 5000 (JD about 1 721 060 to 3 547 000), with some margin.
+        // Calendar years 1900 to 2100 (JD about 2 415 020 to 2 488 070), with some margin.
         julianDayUt: finite(field(chart, 'julianDayUt'), JD_MIN, JD_MAX),
         bodies: Object.freeze(bodies),
         houses: Object.freeze(houses),

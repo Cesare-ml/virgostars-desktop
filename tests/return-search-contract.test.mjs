@@ -15,7 +15,7 @@ const instant = days => ({
 });
 const okResponse = () => ({
   protocolVersion: 1, status: 'ok',
-  provider: {id: 'swiss_ephemeris', engineVersion: '2.10.03'},
+  provider: {id: 'virgostars_ephemeris', engineVersion: 'test'},
   instants: [instant(10), instant(37.25), instant(64.5)],
 });
 const REQUEST = Object.freeze({body: 'Moon', targetLongitudeDeg: 223.3238, year: 2000});
@@ -43,7 +43,7 @@ test('malformed, unordered or self-contradictory responses are rejected', () => 
     r => { r.protocolVersion = 2; },
     r => { r.status = 'fine'; },
     r => { r.provider = null; },
-    r => { r.provider.id = 'Swiss Ephemeris'; },
+    r => { r.provider.id = 'VirgoStars Ephemeris'; },
     r => { r.instants = null; },
     r => { r.instants[1].julianDayUt = r.instants[0].julianDayUt; },
     r => { r.instants.reverse(); },

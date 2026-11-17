@@ -314,40 +314,42 @@ mod tests {
         assert!(serde_json::from_str::<ReturnRequestV1>(exact).is_ok());
     }
 
-    #[cfg(feature = "swiss-ephemeris")]
-    mod with_swiss_ephemeris {
+    #[cfg(feature = "virgostars-ephemeris")]
+    mod with_virgostars_ephemeris {
         use super::*;
-        use crate::swiss_provider::SwissEphemeris;
+        use crate::virgostars_provider::{data_available, VirgoStarsEphemeris};
 
         #[test]
         fn test_the_sun_returns_to_its_j2000_longitude_one_tropical_year_later() {
-            let target = SwissEphemeris.luminary_longitude(Luminary::Sun, J2000).unwrap();
+            if !data_available() { return; } // needs the local DE441 file
+            let target = VirgoStarsEphemeris.luminary_longitude(Luminary::Sun, J2000).unwrap();
             // 2000 holds two returns: the reference instant itself and the next one,
             // which falls on 31 December because a tropical year is 365.2422 days.
-            let instants = respond(Some(&SwissEphemeris), &request("Sun", target, 2000)).instants.unwrap();
+            let instants = respond(Some(&VirgoStarsEphemeris), &request("Sun", target, 2000)).instants.unwrap();
             assert_eq!(instants.len(), 2, "{instants:?}");
             assert!((instants[0].julian_day_ut - J2000).abs() < 1.0 / 86_400.0);
             let year_length = instants[1].julian_day_ut - instants[0].julian_day_ut;
             assert!((year_length - 365.2422).abs() < 0.01, "year of {year_length} days");
             assert!(instants[1].utc_iso.starts_with("2000-12-31T17:"), "{}", instants[1].utc_iso);
             for instant in &instants {
-                let found = SwissEphemeris.luminary_longitude(Luminary::Sun, instant.julian_day_ut).unwrap();
+                let found = VirgoStarsEphemeris.luminary_longitude(Luminary::Sun, instant.julian_day_ut).unwrap();
                 assert!(offset(found, target).abs() < 1e-6);
             }
-            assert_eq!(respond(Some(&SwissEphemeris), &request("Sun", target, 2001)).instants.unwrap().len(), 1);
+            assert_eq!(respond(Some(&VirgoStarsEphemeris), &request("Sun", target, 2001)).instants.unwrap().len(), 1);
         }
 
         #[test]
         fn test_lunar_returns_recur_about_every_sidereal_month() {
-            let target = SwissEphemeris.luminary_longitude(Luminary::Moon, J2000).unwrap();
-            let instants = respond(Some(&SwissEphemeris), &request("Moon", target, 2001)).instants.unwrap();
+            if !data_available() { return; } // needs the local DE441 file
+            let target = VirgoStarsEphemeris.luminary_longitude(Luminary::Moon, J2000).unwrap();
+            let instants = respond(Some(&VirgoStarsEphemeris), &request("Moon", target, 2001)).instants.unwrap();
             assert!(instants.len() == 13 || instants.len() == 14, "found {}", instants.len());
             for pair in instants.windows(2) {
                 let gap = pair[1].julian_day_ut - pair[0].julian_day_ut;
                 assert!((26.5..28.5).contains(&gap), "gap of {gap} days");
             }
             for instant in &instants {
-                let found = SwissEphemeris.luminary_longitude(Luminary::Moon, instant.julian_day_ut).unwrap();
+                let found = VirgoStarsEphemeris.luminary_longitude(Luminary::Moon, instant.julian_day_ut).unwrap();
                 assert!(offset(found, target).abs() < 1e-5);
             }
         }

@@ -7,14 +7,25 @@ mod chart_calculation;
 mod archive_keys;
 mod archive_vault;
 mod chart_archive;
+mod houses;
 mod return_search;
-// Temporary astronomy provider, compiled only on request. The canonical Rust
-// ephemeris bridge replaces it after upstream validation.
-#[cfg(feature = "swiss-ephemeris")]
-mod swiss_provider;
+// The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
+#[cfg(feature = "virgostars-ephemeris")]
+mod virgostars_provider;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|_app| {
+            // The ephemeris data files are found by the host (environment or ephemeris.json), never by the WebView.
+            #[cfg(feature = "virgostars-ephemeris")]
+            {
+                use tauri::Manager;
+                if let Ok(folder) = _app.path().app_local_data_dir() {
+                    virgostars_provider::configure(folder);
+                }
+            }
+            Ok(())
+        })
         .manage(offline_places::PlaceSearchGate::default())
         .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns])
         .run(tauri::generate_context!())

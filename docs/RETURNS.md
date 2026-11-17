@@ -1,6 +1,6 @@
 # Solar and lunar returns
 
-**Status: Prototype / locally tested (2026-11-15).** Works only in a host built with an ephemeris provider (today the optional, local-use-only [Swiss Ephemeris provider](SWISS_EPHEMERIS_PROVIDER.md)). Not released.
+**Status: Prototype / locally tested (2026-11-15).** Works only when the host finds the local DE441 data for the [VirgoStars-Ephemeris provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md). Not released.
 
 ## What it does
 
@@ -28,7 +28,7 @@ The search is plain numerics on top of the provider: it samples the longitude (d
 
 ## Verification on 2026-11-15 (Windows 11)
 
-- Rust: 8 search tests against uniform motion with a known answer (analytic instant, even spacing, half-open year boundaries, invalid input, missing or failing provider, calendar conversions) and 2 with Swiss Ephemeris (the Sun returns to its J2000 longitude after 365.2422 ± 0.01 days and 2000 holds two returns; lunar returns are 26.5–28.5 days apart; residual longitude under 1e-6° and 1e-5°).
+- Rust: 8 search tests against uniform motion with a known answer (analytic instant, even spacing, half-open year boundaries, invalid input, missing or failing provider, calendar conversions) and 2 with the VirgoStars-Ephemeris provider and the real data files (skipped when they are absent) (the Sun returns to its J2000 longitude after 365.2422 ± 0.01 days and 2000 holds two returns; lunar returns are 26.5–28.5 days apart; residual longitude under 1e-6° and 1e-5°).
 - Node: 8 contract and helper tests; the IPC allowlist reports 5 commands and 5 adapters.
 - Native release build, driven through WebView2's local DevTools port with a fictional radix: the 2026 solar return's Sun longitude equalled the radix Sun to six decimals in an independent `calculate_chart` call; 14 lunar returns were found for 2026 and 13 for 2027; a solar and a lunar return were cast from the panel and drawn in synastry with the radix without renderer errors; an invalid year and an unknown body were refused.
 - **Not done:** comparison with an independent ephemeris or with Regolo's own output for the same chart, relocated returns in the native window, years near the ends of the supported range, and a manual click-through by a person.

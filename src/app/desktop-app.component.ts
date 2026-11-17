@@ -70,7 +70,7 @@ const HOUSE_SYSTEM_KEYS: Record<HouseSystemId,MessageKey> = {
   'regio-montano':'house.regiomontano', porfirio:'house.porfirio',
 };
 const SOURCE_KEYS: Record<string,MessageKey> = {
-  moshier:'source.moshier', swiss_files:'source.swissFiles', jpl:'source.jpl',
+  jpl:'source.jpl',
 };
 const CALCULATION_FAILURES: Record<Exclude<ChartCalculationResult['kind'],'ready'>,MessageKey> = {
   not_native:'calc.browser', provider_unavailable:'calc.noprovider', invalid_request:'calc.invalid',
@@ -561,7 +561,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   /**
    * Pressing a move button steps once at once and, while it stays pressed, keeps stepping, so the planets can be
-   * watched moving. The pointer is captured, so letting go anywhere stops it; reaching the edge of the years 0–5000 stops it too.
+   * watched moving. The pointer is captured, so letting go anywhere stops it; reaching the edge of the years 1900–2100 stops it too.
    */
   private beginHold(event: PointerEvent, move: () => boolean): void {
     if (event.button !== 0) return;
