@@ -6,6 +6,7 @@
 
 - Rust command `chart_calculation::calculate_chart` (third reviewed IPC command). Input: protocol version, one UTC instant, latitude and longitude in micro-degrees. Output: apparent geocentric positions of Sun–Pluto, mean/true node, mean/osculating apogee, Chiron when data allows, and five house systems (`egizia` = Swiss `V`, `placido`, `koch`, `regio-montano`, `porfirio`).
 - No file path, name or account data crosses IPC. Nothing is stored or logged. Charts live in WebView memory for the session only.
+- **Date range.** The app accepts calendar years 0 to 5000. The built-in Moshier ephemeris calculates roughly 3000 BC to **28 April 3003** (Swiss `MOSHPLEPH_END`, JD 2 818 000.5); later dates are answered `out_of_range` ("beyond the range the current calculation engine can calculate") instead of a failure, and the interface keeps the chart it has. Swiss `.se1` files, when configured, are not subject to that limit here. Checked natively: calculations succeed from year 0 through 28 April 3003 and fail after it.
 - Anything not computable is listed as unavailable (Chiron with the built-in Moshier ephemeris; Placidus and Koch near the poles). Nothing is substituted.
 - The default build has **no provider**: the command answers `provider_unavailable` and the UI keeps the labelled synthetic fixture.
 

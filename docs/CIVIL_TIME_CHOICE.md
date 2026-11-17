@@ -12,7 +12,7 @@ Before enabling actual chart calculation:
 
 1. Add a UI that distinguishes ambiguous early/late instants and requires a user selection. Changing input must clear previous selection.
 2. Forward the chosen UTC plus original civil inputs and timezone metadata to a reviewed native provider only after validation; store explicit provenance. Do not use `Date.parse()` of a local date string as a fallback.
-3. Check the separate Rust provider's UTC/model/kernels/timezone limits. The experimental DE441 `first_sky` window is presently narrower than the 1900–2100 civil-time parser.
+3. Check the separate Rust provider's UTC/model/kernels/timezone limits. The experimental DE441 `first_sky` window is presently narrower than the 0–5000 civil-time parser.
 4. Validate historical offsets against a pinned IANA tzdb across Windows/macOS and test genuine birth form flows with fictional fixtures.
 
 ## Verification

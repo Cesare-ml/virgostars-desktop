@@ -49,7 +49,7 @@ test('a complete native response is copied into detached frozen values', () => {
 });
 
 test('failure statuses carry no provider or chart', () => {
-  for (const status of ['provider_unavailable', 'invalid_request', 'calculation_failed']) {
+  for (const status of ['provider_unavailable', 'invalid_request', 'out_of_range', 'calculation_failed']) {
     assert.deepEqual(decodeChartResponse({protocolVersion: 1, status, provider: null, chart: null}), {status});
   }
 });
@@ -61,6 +61,8 @@ test('malformed, out-of-range or contradictory responses are rejected with one g
     r => { r.provider.id = 'Swiss Ephemeris; rm'; },
     r => { r.provider.engineVersion = 'C:\\Users\\someone'; },
     r => { r.chart.julianDayUt = Number.NaN; },
+    r => { r.chart.julianDayUt = 1_699_999; },
+    r => { r.chart.julianDayUt = 3_600_001; },
     r => { r.chart.bodies[0].longitudeDeg = 360; },
     r => { r.chart.bodies[0].longitudeDeg = -0.1; },
     r => { r.chart.bodies[1].latitudeDeg = 91; },
@@ -123,7 +125,7 @@ test('one native call carries only the versioned instant and position', async ()
 test('browser preview, missing provider and native failures stay distinct and opaque', async () => {
   const never = async () => { throw new Error('must not be called'); };
   assert.deepEqual(await requestChart({isNative: () => false, invoke: never}, REQUEST), {kind: 'not_native'});
-  for (const status of ['provider_unavailable', 'invalid_request', 'calculation_failed']) {
+  for (const status of ['provider_unavailable', 'invalid_request', 'out_of_range', 'calculation_failed']) {
     const transport = {isNative: () => true, invoke: async () => ({protocolVersion: 1, status, provider: null, chart: null})};
     assert.deepEqual(await requestChart(transport, REQUEST), {kind: status});
   }
@@ -133,4 +135,17 @@ test('browser preview, missing provider and native failures stay distinct and op
   assert.deepEqual(await requestChart(garbage, REQUEST), {kind: 'unavailable'});
   const throwingProbe = {isNative: () => { throw new Error('no bridge'); }, invoke: never};
   assert.deepEqual(await requestChart(throwingProbe, REQUEST), {kind: 'unavailable'});
+});
+
+test('charts of the whole supported range are accepted: year 0 and year 5000 are inside, far outside is not', () => {
+  const at = julianDayUt => {
+    const raw = okResponse();
+    raw.chart.julianDayUt = julianDayUt;
+    return raw;
+  };
+  // 1 January of year 0 and 31 December of year 5000 (JD 1 721 059.5 and 3 547 312.5, rounded).
+  for (const jd of [1_721_059.5, 2_451_545, 2_816_000, 3_547_312.5]) {
+    assert.equal(decodeChartResponse(at(jd)).chart.julianDayUt, jd);
+  }
+  for (const jd of [0, 1_000_000, 4_000_000]) assert.throws(() => decodeChartResponse(at(jd)));
 });

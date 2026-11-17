@@ -50,7 +50,7 @@ export type ChartRequestV1 = Readonly<{utcIso: string; latMicro: number; lngMicr
 
 export type ChartCalculationResult =
   | Readonly<{kind: 'ready'; provider: ChartProviderV1; chart: ChartSnapshotV1}>
-  | Readonly<{kind: 'not_native' | 'provider_unavailable' | 'invalid_request' | 'calculation_failed' | 'unavailable'}>;
+  | Readonly<{kind: 'not_native' | 'provider_unavailable' | 'invalid_request' | 'out_of_range' | 'calculation_failed' | 'unavailable'}>;
 
 export interface ChartCalculationTransport {
   isNative(): boolean;
@@ -61,6 +61,8 @@ export interface ChartCalculationTransport {
 }
 
 const PROTOCOL_ERROR = 'Invalid chart calculation protocol';
+const JD_MIN = 1_700_000;
+const JD_MAX = 3_600_000;
 const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const SOURCES: readonly string[] = ['moshier', 'swiss_files', 'jpl'];
 
@@ -139,14 +141,14 @@ function decodeHouseSystem(raw: unknown, seen: Set<string>): ChartHouseSystemV1 
 
 type DecodedResponse =
   | Readonly<{status: 'ok'; provider: ChartProviderV1; chart: ChartSnapshotV1}>
-  | Readonly<{status: 'provider_unavailable' | 'invalid_request' | 'calculation_failed'}>;
+  | Readonly<{status: 'provider_unavailable' | 'invalid_request' | 'out_of_range' | 'calculation_failed'}>;
 
 /** Detached, frozen values from one native response; throws a generic error otherwise. */
 export function decodeChartResponse(raw: unknown): DecodedResponse {
   try {
     if (!plainObject(raw) || field(raw, 'protocolVersion') !== 1) throw new Error(PROTOCOL_ERROR);
     const status = field(raw, 'status');
-    if (status === 'provider_unavailable' || status === 'invalid_request' || status === 'calculation_failed') {
+    if (status === 'provider_unavailable' || status === 'invalid_request' || status === 'out_of_range' || status === 'calculation_failed') {
       return Object.freeze({status});
     }
     if (status !== 'ok') throw new Error(PROTOCOL_ERROR);
@@ -180,7 +182,8 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
       status: 'ok',
       provider: Object.freeze({id: providerId, engineVersion}),
       chart: Object.freeze({
-        julianDayUt: finite(field(chart, 'julianDayUt'), 2_300_000, 2_600_000),
+        // Calendar years 0 to 5000 (JD about 1 721 060 to 3 547 000), with some margin.
+        julianDayUt: finite(field(chart, 'julianDayUt'), JD_MIN, JD_MAX),
         bodies: Object.freeze(bodies),
         houses: Object.freeze(houses),
         unavailableBodies: Object.freeze(unavailableBodies),

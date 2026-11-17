@@ -141,6 +141,7 @@
 .nav-place svg { flex:0 0 12px; width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .nav-place span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .nav-moves { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--vs-border); border-radius:12px; overflow:hidden; }
+.nav-back,.nav-forward,.nav-arrow { touch-action:none; user-select:none; -webkit-user-select:none; }
 .nav-back,.nav-forward { display:flex; align-items:center; justify-content:center; gap:6px; height:38px; padding:0; border:0;
   font-size:13px; font-weight:600; cursor:pointer; transition:background-color .12s ease, filter .12s ease; }
 .nav-back { background:transparent; color:var(--vs-text); }

@@ -4,8 +4,8 @@
  *
  * Hours and minutes move the instant by elapsed time. Days, months and years move the local
  * calendar date of the chart's own time zone and keep its local clock time, so a day step across a
- * daylight-saving change still lands on the same wall-clock hour. Dates outside 1900–2100 (the
- * range the rest of the program accepts) are refused with `null`.
+ * daylight-saving change still lands on the same wall-clock hour. Dates outside the years 0 to 5000
+ * (astronomical numbering: year 0 is 1 BC) are refused with `null`.
  */
 export type StepUnit = 'min' | 'h' | 'd';
 export type NavField = 'day' | 'month' | 'year' | 'hour' | 'minute';
@@ -19,8 +19,8 @@ export const STEP_ROWS: readonly StepRow[] = Object.freeze([
 ] as const);
 export const DEFAULT_STEP = Object.freeze({unit: 'min' as StepUnit, value: 4 as number});
 
-export const MIN_YEAR = 1900;
-export const MAX_YEAR = 2100;
+export const MIN_YEAR = 0;
+export const MAX_YEAR = 5000;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
@@ -31,8 +31,9 @@ function formatter(timeZone: string): Intl.DateTimeFormat | null {
   const known = formatters.get(timeZone);
   if (known) return known;
   try {
+    // The era is asked for because year 0 is written "1 BC" and years before it count down.
     const created = new Intl.DateTimeFormat('en-GB', {
-      timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+      timeZone, hourCycle: 'h23', era: 'short', year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
     });
     formatters.set(timeZone, created);
@@ -47,14 +48,25 @@ export function localParts(utcMs: number, timeZone: string): LocalParts | null {
   const format = formatter(timeZone);
   if (!format || !Number.isFinite(utcMs) || Math.abs(utcMs) > 8_640_000_000_000_000) return null;
   const values: Record<string, number> = {};
+  let before = false;
   for (const {type, value} of format.formatToParts(new Date(utcMs))) {
-    if (type !== 'literal') values[type] = Number(value);
+    if (type === 'era') before = /^b/i.test(value);
+    else if (type !== 'literal') values[type] = Number(value);
   }
   const parts = {
-    year: values['year'], month: values['month'], day: values['day'],
+    // Astronomical year: 1 BC is 0, 2 BC is -1.
+    year: before ? 1 - values['year'] : values['year'], month: values['month'], day: values['day'],
     hour: values['hour'] === 24 ? 0 : values['hour'], minute: values['minute'], second: values['second'],
   };
   return Object.values(parts).every(Number.isFinite) ? parts : null;
+}
+
+/** UTC milliseconds of a calendar reading. Unlike Date.UTC, the years 0 to 99 stay the years 0 to 99. */
+function utcOfParts(year: number, monthIndex: number, day: number, hour = 0, minute = 0, second = 0): number {
+  const date = new Date(0);
+  date.setUTCFullYear(year, monthIndex, day);
+  date.setUTCHours(hour, minute, second, 0);
+  return date.getTime();
 }
 
 const pad = (value: number, length = 2): string => String(value).padStart(length, '0');
@@ -66,12 +78,12 @@ const sameWall = (a: LocalParts, b: LocalParts): boolean =>
 /** Offset of the zone from UTC at an instant, in ms (east positive). */
 function offsetAt(utcMs: number, timeZone: string): number | null {
   const parts = localParts(utcMs, timeZone);
-  return parts ? Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - utcMs : null;
+  return parts ? utcOfParts(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - utcMs : null;
 }
 
 /** Every instant at which the zone's clock reads `parts`: none, one, or two when the clock goes back. */
 function instantsOfWall(parts: LocalParts, timeZone: string): number[] {
-  const naive = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const naive = utcOfParts(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
   // The offsets in force a day before and a day after bracket any single clock change.
   const offsets = new Set<number>();
   for (const probe of [naive - DAY_MS, naive + DAY_MS]) {
@@ -117,14 +129,14 @@ export function shiftInstant(utcMs: number, timeZone: string, field: NavField, d
   if (!local) return null;
   let year = local.year, month = local.month, day = local.day;
   if (field === 'day') {
-    const moved = new Date(Date.UTC(year, month - 1, day + delta));
+    const moved = new Date(utcOfParts(year, month - 1, day + delta));
     year = moved.getUTCFullYear(); month = moved.getUTCMonth() + 1; day = moved.getUTCDate();
   } else {
     // Months and years keep the day number, or the last day of a shorter month.
     const months = field === 'month' ? delta : delta * 12;
-    const first = new Date(Date.UTC(year, month - 1 + months, 1));
+    const first = new Date(utcOfParts(year, month - 1 + months, 1));
     year = first.getUTCFullYear(); month = first.getUTCMonth() + 1;
-    day = Math.min(day, new Date(Date.UTC(year, month, 0)).getUTCDate());
+    day = Math.min(day, new Date(utcOfParts(year, month, 0)).getUTCDate());
   }
   if (year < MIN_YEAR || year > MAX_YEAR) return null;
   return inRange(utcFromLocal({...local, year, month, day}, timeZone), timeZone);

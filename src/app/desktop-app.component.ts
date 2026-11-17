@@ -74,7 +74,7 @@ const SOURCE_KEYS: Record<string,MessageKey> = {
 };
 const CALCULATION_FAILURES: Record<Exclude<ChartCalculationResult['kind'],'ready'>,MessageKey> = {
   not_native:'calc.browser', provider_unavailable:'calc.noprovider', invalid_request:'calc.invalid',
-  calculation_failed:'calc.failed', unavailable:'calc.failed',
+  out_of_range:'calc.range', calculation_failed:'calc.failed', unavailable:'calc.failed',
 };
 const ARCHIVE_FAILURES: Record<ArchiveFailure,MessageKey> = {
   not_native:'archive.browser', invalid_request:'archive.invalid', not_found:'archive.notfound',
@@ -116,6 +116,9 @@ const NAV_FIELD_LABELS: Record<NavField,MessageKey> = {
 const NAV_UNIT_LABELS: Record<StepUnit,MessageKey> = {min:'nav.unit.min', h:'nav.unit.h', d:'nav.unit.d'};
 /** A change of the clock redraws the chart after this pause, so holding an arrow stays smooth. */
 const NAV_RECOMPUTE_MS = 70;
+/** Holding a move button: the first step is immediate, the repeat starts after the delay and then runs at this pace. */
+const HOLD_DELAY_MS = 350;
+const HOLD_REPEAT_MS = 90;
 
 const MODE_KEYS: Record<ChartMode,MessageKey> = {
   natal:'mode.natal',transits:'mode.transits',synastry:'mode.synastry',latitude:'mode.latitude',
@@ -209,7 +212,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   electiveName = '';
   electiveInvalid = false;
   readonly stepRows = STEP_ROWS;
+  /** The instant and place the chart on screen was last calculated for: the clock always agrees with the chart. */
+  private navShown: NavPoint | null = null;
   private navTimer: ReturnType<typeof setTimeout> | null = null;
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
   private navTicket = 0;
   busy = false;
   ready = false;
@@ -509,6 +515,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!chart || !Number.isFinite(utcMs)) { this.nav = null; return; }
     const point: NavPoint = {utcMs, latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone, placeName:chart.placeName};
     this.nav = {chartId:chart.id, base:point, current:point};
+    this.navShown = point;
   }
   /** The chart's local date and time, one editable field each. */
   get navFields(): ReadonlyArray<{key: NavField; text: string; sep: string; label: string}> {
@@ -518,6 +525,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return (['day','month','year','hour','minute'] as const).map(key =>
       ({key, text:texts[key], sep:seps[key], label:this.t(NAV_FIELD_LABELS[key])}));
   }
+  /** The field elements are kept between redraws, so a button that is being held is not replaced under the pointer. */
+  trackNavField(_index: number, field: {key: NavField}): NavField { return field.key; }
   get navPlaceLabel(): string {
     const point = this.nav?.current;
     if (!point) return '';
@@ -531,23 +540,51 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return a.utcMs !== b.utcMs || a.latMicro !== b.latMicro || a.lngMicro !== b.lngMicro || a.timeZone !== b.timeZone;
   }
   stepUnitLabel(unit: StepUnit): string { return this.t(NAV_UNIT_LABELS[unit]); }
-  private moveNav(next: number | null): void {
+  /** True when the clock moved; false at the edge of the supported years or with nothing to move. */
+  private moveNav(next: number | null): boolean {
     const nav = this.nav;
-    if (!nav) return;
-    if (next === null) { this.navStatus = 'nav.limit'; this.cd.markForCheck(); return; }
+    if (!nav) return false;
+    if (next === null) { this.navStatus = 'nav.limit'; this.cd.markForCheck(); return false; }
     this.navStatus = null;
     this.navConfirmSave = false;
     this.nav = {...nav, current:{...nav.current, utcMs:next}};
     this.scheduleNavRecompute();
+    return true;
   }
-  adjustNav(field: NavField, delta: number): void {
+  adjustNav(field: NavField, delta: number): boolean {
     const point = this.nav?.current;
-    if (point) this.moveNav(shiftInstant(point.utcMs, point.timeZone, field, delta));
+    return point ? this.moveNav(shiftInstant(point.utcMs, point.timeZone, field, delta)) : false;
   }
-  stepNav(direction: 1 | -1): void {
+  stepNav(direction: 1 | -1): boolean {
     const point = this.nav?.current;
-    if (point) this.moveNav(stepInstant(point.utcMs, point.timeZone, this.navStepUnit, this.navStepValue, direction));
+    return point ? this.moveNav(stepInstant(point.utcMs, point.timeZone, this.navStepUnit, this.navStepValue, direction)) : false;
   }
+  /**
+   * Pressing a move button steps once at once and, while it stays pressed, keeps stepping, so the planets can be
+   * watched moving. The pointer is captured, so letting go anywhere stops it; reaching the edge of the years 0–5000 stops it too.
+   */
+  private beginHold(event: PointerEvent, move: () => boolean): void {
+    if (event.button !== 0) return;
+    try { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); } catch { /* a button without capture still repeats */ }
+    this.stopHold();
+    if (!move()) return;
+    const repeat = (delay: number): void => {
+      this.holdTimer = setTimeout(() => {
+        this.holdTimer = null;
+        if (this.destroyed || this.inspectorTab !== 'navigate' || !move()) return;
+        repeat(HOLD_REPEAT_MS);
+      }, delay);
+    };
+    repeat(HOLD_DELAY_MS);
+  }
+  stopHold(): void {
+    if (this.holdTimer !== null) { clearTimeout(this.holdTimer); this.holdTimer = null; }
+  }
+  holdStep(event: PointerEvent, direction: 1 | -1): void { this.beginHold(event, () => this.stepNav(direction)); }
+  holdField(event: PointerEvent, field: NavField, delta: number): void { this.beginHold(event, () => this.adjustNav(field, delta)); }
+  /** The keyboard (Enter or Space) clicks without a pointer; a mouse or touch click was already handled on press. */
+  clickStep(event: MouseEvent, direction: 1 | -1): void { if (event.detail === 0) this.stepNav(direction); }
+  clickField(event: MouseEvent, field: NavField, delta: number): void { if (event.detail === 0) this.adjustNav(field, delta); }
   selectStep(unit: StepUnit, value: number): void {
     this.navStepUnit = unit;
     this.navStepValue = value;
@@ -615,10 +652,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }, chart.archiveId, chart.kind);
     if (this.destroyed || ticket !== this.navTicket || this.nav?.chartId !== chart.id) return;
     if (typeof next === 'string') {
-      // The chart on screen stays as it was; say why the move did not show.
+      // The chart on screen stays as it was, so the clock goes back to it and a held button stops: a clock
+      // that moved on while the chart did not would be wrong. Say why.
       this.navStatus = next;
+      this.stopHold();
+      if (this.navShown && this.nav) this.nav = {...this.nav, current:this.navShown};
     } else {
       this.navStatus = null;
+      this.navShown = point;
       // Same identity, new data: the partner, the returns and the navigator keep pointing at it.
       this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id} : item);
       this.rowsCache = null;
@@ -1028,6 +1069,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.destroyed = true;
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
+    this.stopHold();
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();

@@ -19,7 +19,7 @@ test('"Naviga cielo" is a left-menu button that opens a panel on the right', () 
 });
 
 test('the panel has the date and time fields with arrows, back/forward, the step grid and the five actions', () => {
-  for (const piece of ['adjustNav(field.key, 1)', 'adjustNav(field.key, -1)', 'stepNav(-1)', 'stepNav(1)',
+  for (const piece of ['holdField($event, field.key, 1)', 'holdField($event, field.key, -1)', 'holdStep($event, -1)', 'holdStep($event, 1)',
     'selectStep(row.unit, value)', 'navNow()', 'toggleCityChange()', 'askNavSave()', 'navRestore()', 'openElective()']) {
     assert.ok(panel.includes(piece), piece);
   }

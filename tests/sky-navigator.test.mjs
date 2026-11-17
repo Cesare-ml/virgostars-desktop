@@ -65,12 +65,14 @@ test('a step goes forwards or backwards by the chosen amount and unit', () => {
   assert.equal(stepInstant(start, ROME, 'min', 1.5, 1), null);
 });
 
-test('moving outside the years 1900 to 2100 is refused, never wrapped', () => {
-  assert.equal(shiftInstant(utc('2100-12-31T10:00:00Z'), ROME, 'day', 1), null);
-  assert.equal(shiftInstant(utc('2100-06-15T10:00:00Z'), ROME, 'year', 1), null);
-  assert.equal(shiftInstant(utc('1900-01-01T12:00:00Z'), ROME, 'day', -1), null);
-  assert.equal(shiftInstant(utc('2100-12-31T23:30:00Z'), 'UTC', 'minute', 60), null);
-  assert.notEqual(shiftInstant(utc('2100-12-30T10:00:00Z'), ROME, 'day', 1), null);
+test('moving outside the years 0 to 5000 is refused, never wrapped', () => {
+  assert.equal(shiftInstant(utc('5000-12-31T10:00:00Z'), ROME, 'day', 1), null);
+  assert.equal(shiftInstant(utc('5000-06-15T10:00:00Z'), ROME, 'year', 1), null);
+  assert.equal(shiftInstant(utc('0000-01-01T12:00:00Z'), 'UTC', 'day', -1), null);
+  assert.equal(shiftInstant(utc('0000-01-01T12:00:00Z'), 'UTC', 'year', -1), null);
+  assert.equal(shiftInstant(utc('5000-12-31T23:30:00Z'), 'UTC', 'minute', 60), null);
+  assert.notEqual(shiftInstant(utc('5000-12-30T10:00:00Z'), ROME, 'day', 1), null);
+  assert.notEqual(shiftInstant(utc('0000-01-02T12:00:00Z'), 'UTC', 'day', -1), null);
   assert.equal(shiftInstant(utc('2026-01-01T00:00:00Z'), 'Not/AZone', 'day', 1), null);
   assert.equal(shiftInstant(utc('2026-01-01T00:00:00Z'), ROME, 'day', 1.5), null);
 });
@@ -84,4 +86,28 @@ test('the elective name carries the local date and time of the chart', () => {
   assert.equal(defaultElectiveName('Elettiva', utc('2026-11-17T15:11:44Z'), ROME), 'Elettiva 2026-11-17 16:11:44');
   assert.equal(defaultElectiveName('Elective', utc('2026-07-01T00:00:00Z'), 'UTC'), 'Elective 2026-07-01 00:00:00');
   assert.equal(isoFromMs(utc('2026-11-17T15:11:44Z')), '2026-11-17T15:11:44.000Z');
+});
+
+test('the first centuries work: year 0 is 1 BC, and the years 0 to 99 are not read as 1900 to 1999', () => {
+  assert.equal(wall(utc('0000-06-15T12:00:00Z'), 'UTC'), '0,6,15,12,0,0');
+  assert.equal(wall(utc('0050-03-01T00:00:00Z'), 'UTC'), '50,3,1,0,0,0');
+  assert.equal(wall(shiftInstant(utc('0099-12-31T12:00:00Z'), 'UTC', 'day', 1), 'UTC'), '100,1,1,12,0,0');
+  assert.equal(wall(shiftInstant(utc('0050-01-31T12:00:00Z'), 'UTC', 'month', 1), 'UTC'), '50,2,28,12,0,0');
+  assert.equal(wall(shiftInstant(utc('0000-02-29T12:00:00Z'), 'UTC', 'year', 4), 'UTC'), '4,2,29,12,0,0');
+  assert.equal(wall(shiftInstant(utc('0000-02-29T12:00:00Z'), 'UTC', 'year', 1), 'UTC'), '1,2,28,12,0,0');
+  assert.equal(wall(stepInstant(utc('0000-01-01T00:00:00Z'), 'UTC', 'd', 30, 1), 'UTC'), '0,1,31,0,0,0');
+  assert.equal(fieldTexts(utc('0050-03-01T00:00:00Z'), 'UTC').year, '0050');
+  assert.equal(fieldTexts(utc('0000-03-01T00:00:00Z'), 'UTC').year, '0000');
+});
+
+test('the old calendar is not used: 1 March 1500 is a Gregorian date, and a day step crosses 1582 without a gap', () => {
+  assert.equal(wall(utc('1500-03-01T00:00:00Z'), 'UTC'), '1500,3,1,0,0,0');
+  assert.equal(wall(shiftInstant(utc('1582-10-04T12:00:00Z'), 'UTC', 'day', 1), 'UTC'), '1582,10,5,12,0,0');
+});
+
+test('before standard time, a zone shows its mean local time to the second, and local clock steps still work', () => {
+  assert.equal(wall(utc('1800-06-01T12:00:00Z')), '1800,6,1,12,49,56');
+  const next = shiftInstant(utc('1800-06-01T12:00:00Z'), ROME, 'day', 1);
+  assert.equal(wall(next), '1800,6,2,12,49,56');
+  assert.notEqual(shiftInstant(utc('5000-01-31T12:00:00Z'), 'UTC', 'month', -1), null);
 });

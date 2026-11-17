@@ -10,8 +10,10 @@
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL_VERSION: u8 = 1;
-const MIN_YEAR: i32 = 1600;
-const MAX_YEAR: i32 = 2400;
+/// Calendar years accepted, astronomical numbering (year 0 is 1 BC). Which of them a provider can
+/// actually calculate is the provider's own limit, reported as a failed calculation.
+const MIN_YEAR: i32 = 0;
+const MAX_YEAR: i32 = 5000;
 const MAX_LAT_MICRO: i32 = 90_000_000;
 const MAX_LNG_MICRO: i32 = 180_000_000;
 
@@ -86,7 +88,8 @@ pub struct ProviderInfoV1 {
 #[serde(rename_all = "camelCase")]
 pub struct ChartResponseV1 {
     pub protocol_version: u8,
-    /// `ok`, `provider_unavailable`, `invalid_request` or `calculation_failed`.
+    /// `ok`, `provider_unavailable`, `invalid_request`, `out_of_range` (a valid date beyond what the
+    /// provider can calculate) or `calculation_failed`.
     pub status: &'static str,
     pub provider: Option<ProviderInfoV1>,
     pub chart: Option<ChartSnapshotV1>,
@@ -105,6 +108,11 @@ pub enum Luminary {
 
 pub trait EphemerisProvider: Send + Sync {
     fn info(&self) -> ProviderInfoV1;
+    /// Whether the date is inside what this provider can calculate. A date the program accepts can still
+    /// lie beyond a provider's range; that is reported as such, not as a generic failure.
+    fn covers(&self, _request: &ValidatedRequest) -> bool {
+        true
+    }
     fn chart(&self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError>;
     /// Apparent geocentric ecliptic longitude of a luminary, degrees in `[0, 360)`.
     /// Providers that cannot answer keep this default and searches report a failure.
@@ -193,6 +201,9 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
     let Some(provider) = provider else {
         return failure("provider_unavailable");
     };
+    if !provider.covers(&valid) {
+        return failure("out_of_range");
+    }
     match provider.chart(&valid) {
         Ok(chart) => ChartResponseV1 {
             protocol_version: PROTOCOL_VERSION,
@@ -242,6 +253,40 @@ mod tests {
         }
     }
 
+    /// A provider whose range ends before the request; it must never be asked for a chart.
+    struct ShortRange;
+    impl EphemerisProvider for ShortRange {
+        fn info(&self) -> ProviderInfoV1 {
+            ProviderInfoV1 { id: "synthetic_short", engine_version: "0".to_string() }
+        }
+        fn covers(&self, request: &ValidatedRequest) -> bool {
+            request.year <= 3000
+        }
+        fn chart(&self, _request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
+            panic!("a date beyond the provider's range must not reach it");
+        }
+    }
+
+    #[test]
+    fn test_a_date_beyond_the_provider_range_is_reported_as_out_of_range() {
+        let response = respond(Some(&ShortRange), &request("4000-01-01T00:00:00Z"));
+        assert_eq!(response.status, "out_of_range");
+        assert!(response.chart.is_none() && response.provider.is_none());
+        // Inside the range the provider is asked as usual (and here fails on purpose, not by panicking).
+        struct Fails;
+        impl EphemerisProvider for Fails {
+            fn info(&self) -> ProviderInfoV1 {
+                ProviderInfoV1 { id: "synthetic_fails", engine_version: "0".to_string() }
+            }
+            fn chart(&self, _request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
+                Err(ProviderError)
+            }
+        }
+        assert_eq!(respond(Some(&Fails), &request("4000-01-01T00:00:00Z")).status, "calculation_failed");
+        // An invalid date is still invalid, whatever the provider covers.
+        assert_eq!(respond(Some(&ShortRange), &request("5001-01-01T00:00:00Z")).status, "invalid_request");
+    }
+
     fn empty_chart() -> ChartSnapshotV1 {
         ChartSnapshotV1 {
             julian_day_ut: 2_451_545.0,
@@ -274,8 +319,9 @@ mod tests {
             "2001-02-03T04:05:60Z",
             "2001-02-03T04:05:06.5Z",
             "2001-02-03T04:05:06.5000Z",
-            "1599-12-31T23:59:59Z",
-            "2401-01-01T00:00:00Z",
+            "5001-01-01T00:00:00Z",
+            "-001-12-31T23:59:59Z",
+            "10000-01-01T00:00:00Z",
             "2001-02-03T04:05Z",
             "+001-02-03T04:05:06Z",
             "２００１-02-03T04:05:06Z",
@@ -284,6 +330,14 @@ mod tests {
             assert!(validate(&request(bad)).is_none(), "accepted {bad:?}");
         }
         assert!(validate(&request("2000-02-29T00:00:00Z")).is_some());
+        // The whole range, both edges, with proleptic Gregorian leap years.
+        for good in ["0000-01-01T00:00:00Z", "0000-02-29T12:00:00Z", "0099-12-31T23:59:59Z", "1582-10-10T00:00:00Z", "5000-12-31T23:59:59.999Z"] {
+            assert!(validate(&request(good)).is_some(), "rejected {good:?}");
+        }
+        // Year 1 is not a leap year, year 0 and year 4 are; 5000 is.
+        assert!(validate(&request("0001-02-29T00:00:00Z")).is_none());
+        assert!(validate(&request("0004-02-29T00:00:00Z")).is_some());
+        assert_eq!(validate(&request("0000-01-01T06:00:00Z")).map(|valid| (valid.year, valid.hour)), Some((0, 6.0)));
     }
 
     #[test]

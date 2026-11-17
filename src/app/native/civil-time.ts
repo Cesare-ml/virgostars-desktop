@@ -4,7 +4,7 @@
  * Ambiguous and nonexistent local times are never silently adjusted.
  */
 export type CivilTimeInput = Readonly<{
-  date: string; // Gregorian YYYY-MM-DD, inclusive years 1900..2100
+  date: string; // Gregorian YYYY-MM-DD, inclusive years 0000..5000 (astronomical numbering: 0000 is 1 BC)
   time: string; // 24-hour HH:mm or HH:mm:ss; leap seconds are unsupported
   timeZone: string; // IANA zone, e.g. Europe/Rome (no numeric offset)
 }>;
@@ -26,17 +26,31 @@ export type CivilTimeResult =
 type WallParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
 const HOUR_MS = 3_600_000;
 const PROBE_HOURS = 48;
+const MIN_YEAR = 0;
+const MAX_YEAR = 5000;
+
+/** UTC milliseconds of a calendar reading. Unlike Date.UTC, the years 0 to 99 stay the years 0 to 99. */
+function utcOfParts(year: number, monthIndex: number, day: number, hour = 0, minute = 0, second = 0): number {
+  const date = new Date(0);
+  date.setUTCFullYear(year, monthIndex, day);
+  date.setUTCHours(hour, minute, second, 0);
+  return date.getTime();
+}
+
 
 function wallAt(formatter: Intl.DateTimeFormat, epochMs: number): WallParts {
   const values: Record<string, number> = {};
+  let before = false;
   for (const { type, value } of formatter.formatToParts(new Date(epochMs))) {
-    if (type === 'year' || type === 'month' || type === 'day' ||
+    if (type === 'era') before = /^b/i.test(value);
+    else if (type === 'year' || type === 'month' || type === 'day' ||
         type === 'hour' || type === 'minute' || type === 'second') {
       values[type] = Number(value);
     }
   }
   return {
-    year: values['year'], month: values['month'], day: values['day'],
+    // Astronomical year: 1 BC is 0, 2 BC is -1.
+    year: before ? 1 - values['year'] : values['year'], month: values['month'], day: values['day'],
     hour: values['hour'], minute: values['minute'], second: values['second'],
   };
 }
@@ -47,7 +61,7 @@ function sameWall(a: WallParts, b: WallParts): boolean {
 }
 
 function utcOfWall(wall: WallParts): number {
-  return Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
+  return utcOfParts(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
 }
 
 /**
@@ -59,7 +73,7 @@ export function resolveCivilTime(input: CivilTimeInput): CivilTimeResult {
   const date = typeof input?.date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.date) : null;
   if (!date) return { status: 'invalid', code: 'INVALID_LOCAL_DATE' };
   const year = Number(date[1]), month = Number(date[2]), day = Number(date[3]);
-  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
+  if (year < MIN_YEAR || year > MAX_YEAR || month < 1 || month > 12 || day < 1 || day > 31) {
     return { status: 'invalid', code: 'INVALID_LOCAL_DATE' };
   }
   const time = typeof input.time === 'string' ? /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(input.time) : null;
@@ -84,7 +98,7 @@ export function resolveCivilTime(input: CivilTimeInput): CivilTimeResult {
   try {
     formatter = new Intl.DateTimeFormat('en-GB-u-ca-gregory-nu-latn', {
       timeZone: input.timeZone,
-      year: 'numeric', month: '2-digit', day: '2-digit',
+      era: 'short', year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
     });
   } catch (err) {

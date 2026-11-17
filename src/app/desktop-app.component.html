@@ -348,12 +348,12 @@
           <!-- Date and time in one quiet card; the arrows of each field fade in on hover. -->
           <section class="nav-card">
             <div class="nav-clock" role="group" [attr.aria-label]="t('nav.title')">
-              <ng-container *ngFor="let field of navFields">
+              <ng-container *ngFor="let field of navFields; trackBy: trackNavField">
                 <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
                 <div class="nav-field" [class.wide]="field.key==='year'" [class.time-start]="field.key==='hour'">
-                  <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (click)="adjustNav(field.key, 1)"></button>
+                  <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (pointerdown)="holdField($event, field.key, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event, field.key, 1)"></button>
                   <span class="nav-value">{{field.text}}</span>
-                  <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (click)="adjustNav(field.key, -1)"></button>
+                  <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (pointerdown)="holdField($event, field.key, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event, field.key, -1)"></button>
                 </div>
               </ng-container>
             </div>
@@ -364,10 +364,12 @@
           </section>
           <!-- A segmented control: the back half is plain, the forward half carries the accent. -->
           <div class="nav-moves">
-            <button type="button" class="nav-back" [attr.title]="t('nav.back')" (click)="stepNav(-1)">
+            <button type="button" class="nav-back" [attr.title]="t('nav.back')"
+              (pointerdown)="holdStep($event, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickStep($event, -1)">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.500 6l-6 6 6 6"/></svg>{{t('nav.back')}}
             </button>
-            <button type="button" class="nav-forward" [attr.title]="t('nav.forward')" (click)="stepNav(1)">
+            <button type="button" class="nav-forward" [attr.title]="t('nav.forward')"
+              (pointerdown)="holdStep($event, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickStep($event, 1)">
               {{t('nav.forward')}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.500 6l6 6-6 6"/></svg>
             </button>
           </div>

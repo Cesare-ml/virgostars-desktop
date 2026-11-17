@@ -17,6 +17,10 @@ use std::sync::{Mutex, OnceLock};
 use sweph_sys as swe;
 
 const EPHE_PATH_VARIABLE: &str = "VIRGOSTARS_EPHE_PATH";
+/// Julian-day range of the built-in Moshier planetary ephemeris (Swiss `MOSHPLEPH_START`/`MOSHPLEPH_END`):
+/// roughly 3000 BC to the spring of AD 3003. Swiss `.se1` files, when configured, cover far more.
+const MOSHIER_FIRST_JD: f64 = 625_000.5;
+const MOSHIER_LAST_JD: f64 = 2_818_000.5;
 const MESSAGE_BYTES: usize = 256;
 
 /// Names follow the keys already used by the Charts renderer settings.
@@ -153,6 +157,18 @@ impl EphemerisProvider for SwissEphemeris {
             CStr::from_ptr(buffer.as_ptr())
         };
         ProviderInfoV1 { id: "swiss_ephemeris", engine_version: version.to_string_lossy().into_owned() }
+    }
+
+    fn covers(&self, request: &ValidatedRequest) -> bool {
+        let _engine = ENGINE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if ephemeris_flag() != swe::SEFLG_MOSEPH {
+            return true;
+        }
+        // SAFETY: plain arithmetic on validated calendar fields.
+        let julian_day_ut = unsafe {
+            swe::swe_julday(request.year, request.month as c_int, request.day as c_int, request.hour, swe::SE_GREG_CAL)
+        };
+        (MOSHIER_FIRST_JD..=MOSHIER_LAST_JD).contains(&julian_day_ut)
     }
 
     fn luminary_longitude(&self, body: Luminary, julian_day_ut: f64) -> Result<f64, ProviderError> {
