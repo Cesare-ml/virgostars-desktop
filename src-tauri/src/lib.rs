@@ -21,7 +21,7 @@ pub fn run() {
             {
                 use tauri::Manager;
                 if let Ok(folder) = _app.path().app_local_data_dir() {
-                    virgostars_provider::configure(folder);
+                    virgostars_provider::configure(folder, _app.path().resource_dir().ok());
                 }
             }
             Ok(())

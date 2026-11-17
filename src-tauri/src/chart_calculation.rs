@@ -13,7 +13,7 @@ pub const PROTOCOL_VERSION: u8 = 1;
 /// Calendar years accepted, astronomical numbering (year 0 is 1 BC). Which of them a provider can
 /// actually calculate is the provider's own limit, reported as a failed calculation.
 const MIN_YEAR: i32 = 1900;
-const MAX_YEAR: i32 = 2100;
+const MAX_YEAR: i32 = 2033;
 const MAX_LAT_MICRO: i32 = 90_000_000;
 const MAX_LNG_MICRO: i32 = 180_000_000;
 
@@ -261,7 +261,7 @@ mod tests {
             ProviderInfoV1 { id: "synthetic_short", engine_version: "0".to_string() }
         }
         fn covers(&self, request: &ValidatedRequest) -> bool {
-            request.year <= 2050
+            request.year <= 2020
         }
         fn chart(&self, _request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
             panic!("a date beyond the provider's range must not reach it");
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_a_date_beyond_the_provider_range_is_reported_as_out_of_range() {
-        let response = respond(Some(&ShortRange), &request("2075-01-01T00:00:00Z"));
+        let response = respond(Some(&ShortRange), &request("2025-01-01T00:00:00Z"));
         assert_eq!(response.status, "out_of_range");
         assert!(response.chart.is_none() && response.provider.is_none());
         // Inside the range the provider is asked as usual (and here fails on purpose, not by panicking).
@@ -285,7 +285,7 @@ mod tests {
         }
         assert_eq!(respond(Some(&Fails), &request("2000-01-01T00:00:00Z")).status, "calculation_failed");
         // An invalid date is still invalid, whatever the provider covers.
-        assert_eq!(respond(Some(&ShortRange), &request("2101-01-01T00:00:00Z")).status, "invalid_request");
+        assert_eq!(respond(Some(&ShortRange), &request("2034-01-01T00:00:00Z")).status, "invalid_request");
     }
 
     fn empty_chart() -> ChartSnapshotV1 {
@@ -332,14 +332,14 @@ mod tests {
         }
         assert!(validate(&request("2000-02-29T00:00:00Z")).is_some());
         // The whole range, both edges, with Gregorian leap years.
-        for good in ["1900-01-01T00:00:00Z", "1904-02-29T12:00:00Z", "1999-12-31T23:59:59Z", "2000-02-29T00:00:00Z", "2100-12-31T23:59:59.999Z"] {
+        for good in ["1900-01-01T00:00:00Z", "1904-02-29T12:00:00Z", "1999-12-31T23:59:59Z", "2000-02-29T00:00:00Z", "2033-12-31T23:59:59.999Z"] {
             assert!(validate(&request(good)).is_some(), "rejected {good:?}");
         }
-        // 1900 and 2100 are not leap years, 2000 is; years outside 1900..2100 are refused.
+        // 1900 and 2033 are not leap years, 2000 and 2032 are; years outside 1900..2033 are refused.
         assert!(validate(&request("1900-02-29T00:00:00Z")).is_none());
-        assert!(validate(&request("2100-02-29T00:00:00Z")).is_none());
+        assert!(validate(&request("2033-02-29T00:00:00Z")).is_none());
         assert!(validate(&request("1899-12-31T23:59:59Z")).is_none());
-        assert!(validate(&request("2101-01-01T00:00:00Z")).is_none());
+        assert!(validate(&request("2034-01-01T00:00:00Z")).is_none());
         assert_eq!(validate(&request("1900-01-01T06:00:00Z")).map(|valid| (valid.year, valid.hour)), Some((1900, 6.0)));
     }
 

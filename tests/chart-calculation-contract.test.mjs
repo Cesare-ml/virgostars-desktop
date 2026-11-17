@@ -137,15 +137,15 @@ test('browser preview, missing provider and native failures stay distinct and op
   assert.deepEqual(await requestChart(throwingProbe, REQUEST), {kind: 'unavailable'});
 });
 
-test('charts of the whole supported range are accepted: 1900 and 2100 are inside, far outside is not', () => {
+test('charts of the whole supported range are accepted: 1900 and 2033 are inside, far outside is not', () => {
   const at = julianDayUt => {
     const raw = okResponse();
     raw.chart.julianDayUt = julianDayUt;
     return raw;
   };
-  // 1 January 1900 and 31 December 2100 (JD 2 415 020.5 and 2 488 069.5).
-  for (const jd of [2_415_020.5, 2_451_545, 2_488_069.5]) {
+  // 1 January 1900 and 31 December 2033 (JD 2 415 020.5 and 2 463 964.5).
+  for (const jd of [2_415_020.5, 2_451_545, 2_463_964.5]) {
     assert.equal(decodeChartResponse(at(jd)).chart.julianDayUt, jd);
   }
-  for (const jd of [0, 1_721_059.5, 2_000_000, 3_547_312.5]) assert.throws(() => decodeChartResponse(at(jd)));
+  for (const jd of [0, 1_721_059.5, 2_000_000, 2_488_069.5, 3_547_312.5]) assert.throws(() => decodeChartResponse(at(jd)));
 });

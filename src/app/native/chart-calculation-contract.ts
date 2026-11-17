@@ -62,7 +62,7 @@ export interface ChartCalculationTransport {
 
 const PROTOCOL_ERROR = 'Invalid chart calculation protocol';
 const JD_MIN = 2_410_000;
-const JD_MAX = 2_490_000;
+const JD_MAX = 2_470_000;
 const UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const SOURCES: readonly string[] = ['jpl'];
 
@@ -182,7 +182,7 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
       status: 'ok',
       provider: Object.freeze({id: providerId, engineVersion}),
       chart: Object.freeze({
-        // Calendar years 1900 to 2100 (JD about 2 415 020 to 2 488 070), with some margin.
+        // Calendar years 1900 to 2033 (JD about 2 415 020 to 2 463 965), with some margin.
         julianDayUt: finite(field(chart, 'julianDayUt'), JD_MIN, JD_MAX),
         bodies: Object.freeze(bodies),
         houses: Object.freeze(houses),

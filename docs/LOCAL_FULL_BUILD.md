@@ -18,7 +18,7 @@ The result is `src-tauri/target/release/virgostars-desktop-spike.exe`, without a
 
 ## Limits that stay in force
 
-- **Never distribute this executable.** This local build is not an installer: it has no bundle or signature, and the DE441 data file is not distributed (see "What blocks a public installer" in [VirgoStars-Ephemeris provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md) and [Licensing and publication](LICENSING_AND_PUBLICATION.md)).
+- **Never distribute this executable.** This local build is not an installer: it has no bundle or signature, and it finds the DE441 data only through the environment or `ephemeris.json`. The installer is described in [Ephemeris data bundle](EPHEMERIS_DATA_BUNDLE.md); see also [Licensing and publication](LICENSING_AND_PUBLICATION.md).
 - The default `npm run build:ui` / `npm run tauri:build` stay synthetic, so the public-source build still works with no private material.
 - The chart archive is encrypted at rest with a key in the OS credential store; there is no recovery key ([Encrypted archive](ENCRYPTED_ARCHIVE.md)).
 - Charts shown without a calculated chart are the demonstration wheel and keep their label.

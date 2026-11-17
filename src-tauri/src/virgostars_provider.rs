@@ -86,13 +86,28 @@ fn read_config(folder: &Path) -> Option<FileConfig> {
     serde_json::from_str(&text).ok()
 }
 
-/// Environment variables win over the file. `None` without a DE441 location.
-fn data_paths(config_folder: Option<&Path>, env: &dyn Fn(&str) -> Option<String>) -> Option<DataPaths> {
+/// Files shipped inside the installer, under the resource folder (see `docs/EPHEMERIS_DATA_BUNDLE.md`).
+const BUNDLED_FOLDER: &str = "ephemeris";
+const BUNDLED_DE441: &str = "de441-slice.eph";
+const BUNDLED_USNO: &str = "usno";
+const BUNDLED_CHIRON: &str = "chiron.bsp";
+
+/// Per item: environment variable, then `ephemeris.json`, then the files shipped with the installer.
+/// `None` when no DE441 location is known at all.
+fn data_paths(
+    config_folder: Option<&Path>,
+    bundled_folder: Option<&Path>,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Option<DataPaths> {
     let file = config_folder.and_then(read_config).unwrap_or_default();
-    let de441 = env("VIRGOSTARS_DE441_PATH").or(file.de441)?;
-    let usno = env("VIRGOSTARS_USNO_DIR").or(file.usno_directory);
-    let chiron = env("VIRGOSTARS_CHIRON_SPK").or(file.chiron_spk);
-    Some(DataPaths { de441: de441.into(), usno_directory: usno.map(Into::into), chiron_spk: chiron.map(Into::into) })
+    let shipped = |name: &str| bundled_folder.map(|folder| folder.join(BUNDLED_FOLDER).join(name)).filter(|path| path.exists());
+    let de441: PathBuf = match env("VIRGOSTARS_DE441_PATH").or(file.de441) {
+        Some(path) => path.into(),
+        None => shipped(BUNDLED_DE441)?,
+    };
+    let usno = env("VIRGOSTARS_USNO_DIR").or(file.usno_directory).map(PathBuf::from).or_else(|| shipped(BUNDLED_USNO));
+    let chiron = env("VIRGOSTARS_CHIRON_SPK").or(file.chiron_spk).map(PathBuf::from).or_else(|| shipped(BUNDLED_CHIRON));
+    Some(DataPaths { de441, usno_directory: usno, chiron_spk: chiron })
 }
 
 fn load_delta_t(directory: &Path) -> Option<DeltaTTable> {
@@ -135,18 +150,27 @@ impl Engine {
 }
 
 static CONFIG_FOLDER: OnceLock<PathBuf> = OnceLock::new();
+static RESOURCE_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
-/// Called once at startup with the application's data folder; `ephemeris.json` is read from it.
-pub fn configure(folder: PathBuf) {
-    let _ = CONFIG_FOLDER.set(folder);
+/// Called once at startup with the application's data folder (`ephemeris.json` is read from it) and the
+/// resource folder of the installed application (the shipped data files are looked for there).
+pub fn configure(data_folder: PathBuf, resource_folder: Option<PathBuf>) {
+    let _ = CONFIG_FOLDER.set(data_folder);
+    if let Some(folder) = resource_folder {
+        let _ = RESOURCE_FOLDER.set(folder);
+    }
 }
 
 fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
     let mut guard = ENGINE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if guard.is_none() {
         // Tried again on every call until the files are there: nothing is cached about a failure.
-        let paths = data_paths(CONFIG_FOLDER.get().map(PathBuf::as_path), &|name| std::env::var(name).ok())?;
+        let paths = data_paths(
+            CONFIG_FOLDER.get().map(PathBuf::as_path),
+            RESOURCE_FOLDER.get().map(PathBuf::as_path),
+            &|name| std::env::var(name).ok(),
+        )?;
         *guard = Engine::open(&paths);
     }
     guard.as_mut().map(action)
@@ -342,16 +366,39 @@ mod tests {
     #[test]
     fn test_data_locations_come_from_the_host_and_the_environment_wins() {
         let nothing = |_: &str| None;
-        assert_eq!(data_paths(None, &nothing), None);
+        assert_eq!(data_paths(None, None, &nothing), None);
         let env = |name: &str| match name {
             "VIRGOSTARS_DE441_PATH" => Some("C:/data/de441.eph".to_string()),
             "VIRGOSTARS_CHIRON_SPK" => Some("C:/data/chiron.bsp".to_string()),
             _ => None,
         };
-        let paths = data_paths(None, &env).unwrap();
+        let paths = data_paths(None, None, &env).unwrap();
         assert_eq!(paths.de441, PathBuf::from("C:/data/de441.eph"));
         assert_eq!(paths.chiron_spk, Some(PathBuf::from("C:/data/chiron.bsp")));
         assert_eq!(paths.usno_directory, None);
+    }
+
+    #[test]
+    fn test_the_files_shipped_with_the_installer_are_the_last_resort() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let resources = std::env::temp_dir().join(format!("vs-eph-bundled-{}-{unique}", std::process::id()));
+        let shipped = resources.join(BUNDLED_FOLDER);
+        std::fs::create_dir_all(shipped.join(BUNDLED_USNO)).unwrap();
+        std::fs::write(shipped.join(BUNDLED_DE441), b"x").unwrap();
+        std::fs::write(shipped.join(BUNDLED_CHIRON), b"x").unwrap();
+        let nothing = |_: &str| None;
+        let paths = data_paths(None, Some(&resources), &nothing).unwrap();
+        assert_eq!(paths.de441, shipped.join(BUNDLED_DE441));
+        assert_eq!(paths.usno_directory, Some(shipped.join(BUNDLED_USNO)));
+        assert_eq!(paths.chiron_spk, Some(shipped.join(BUNDLED_CHIRON)));
+        // A file the user names wins item by item; the others stay shipped.
+        let env = |name: &str| (name == "VIRGOSTARS_DE441_PATH").then(|| "D:/full/de441.eph".to_string());
+        let paths = data_paths(None, Some(&resources), &env).unwrap();
+        assert_eq!(paths.de441, PathBuf::from("D:/full/de441.eph"));
+        assert_eq!(paths.chiron_spk, Some(shipped.join(BUNDLED_CHIRON)));
+        // Nothing shipped and nothing named: no provider.
+        assert_eq!(data_paths(None, Some(&resources.join("missing")), &nothing), None);
+        let _ = std::fs::remove_dir_all(&resources);
     }
 
     #[test]
@@ -361,14 +408,14 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         let nothing = |_: &str| None;
         std::fs::write(folder.join(CONFIG_FILE), r#"{"de441":"D:/x/de441.eph","usnoDirectory":"D:/x/usno"}"#).unwrap();
-        let paths = data_paths(Some(&folder), &nothing).unwrap();
+        let paths = data_paths(Some(&folder), None, &nothing).unwrap();
         assert_eq!(paths.de441, PathBuf::from("D:/x/de441.eph"));
         assert_eq!(paths.usno_directory, Some(PathBuf::from("D:/x/usno")));
         // A key it does not know, or a file that is not JSON, gives no configuration at all.
         std::fs::write(folder.join(CONFIG_FILE), r#"{"de441":"D:/x/de441.eph","token":"x"}"#).unwrap();
-        assert_eq!(data_paths(Some(&folder), &nothing), None);
+        assert_eq!(data_paths(Some(&folder), None, &nothing), None);
         std::fs::write(folder.join(CONFIG_FILE), "not json").unwrap();
-        assert_eq!(data_paths(Some(&folder), &nothing), None);
+        assert_eq!(data_paths(Some(&folder), None, &nothing), None);
         let _ = std::fs::remove_dir_all(&folder);
     }
 

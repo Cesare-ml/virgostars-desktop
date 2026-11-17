@@ -4,7 +4,7 @@
  * Ambiguous and nonexistent local times are never silently adjusted.
  */
 export type CivilTimeInput = Readonly<{
-  date: string; // Gregorian YYYY-MM-DD, inclusive years 1900..2100
+  date: string; // Gregorian YYYY-MM-DD, inclusive years 1900..2033
   time: string; // 24-hour HH:mm or HH:mm:ss; leap seconds are unsupported
   timeZone: string; // IANA zone, e.g. Europe/Rome (no numeric offset)
 }>;
@@ -27,7 +27,7 @@ type WallParts = { year: number; month: number; day: number; hour: number; minut
 const HOUR_MS = 3_600_000;
 const PROBE_HOURS = 48;
 const MIN_YEAR = 1900;
-const MAX_YEAR = 2100;
+const MAX_YEAR = 2033;
 
 /** UTC milliseconds of a calendar reading. Unlike Date.UTC, the years 0 to 99 stay the years 0 to 99. */
 function utcOfParts(year: number, monthIndex: number, day: number, hour = 0, minute = 0, second = 0): number {

@@ -561,7 +561,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   /**
    * Pressing a move button steps once at once and, while it stays pressed, keeps stepping, so the planets can be
-   * watched moving. The pointer is captured, so letting go anywhere stops it; reaching the edge of the years 1900–2100 stops it too.
+   * watched moving. The pointer is captured, so letting go anywhere stops it; reaching the edge of the years 1900–2033 stops it too.
    */
   private beginHold(event: PointerEvent, move: () => boolean): void {
     if (event.button !== 0) return;

@@ -48,29 +48,29 @@ test('UTC resolves without a time zone offset', () => {
   assert.equal(x.choice?.offsetSeconds, 0);
   assert.equal(x.choice?.instantUtc, '2000-02-29T00:00:00.000Z');
 });
-test('the years 1900 to 2100 are accepted, with Gregorian leap years', () => {
+test('the years 1900 to 2033 are accepted, with Gregorian leap years', () => {
   const utcDay = date => resolve(date, '12:00', 'UTC');
   for (const [date, instant] of [
     ['1900-01-01', '1900-01-01T12:00:00.000Z'], ['1904-02-29', '1904-02-29T12:00:00.000Z'],
     ['1999-12-31', '1999-12-31T12:00:00.000Z'], ['2000-02-29', '2000-02-29T12:00:00.000Z'],
-    ['2026-11-17', '2026-11-17T12:00:00.000Z'], ['2100-12-31', '2100-12-31T12:00:00.000Z'],
+    ['2026-11-17', '2026-11-17T12:00:00.000Z'], ['2033-12-31', '2033-12-31T12:00:00.000Z'],
   ]) {
     const result = utcDay(date);
     assert.equal(result.status, 'resolved', date);
     assert.equal(result.choice?.instantUtc, instant, date);
   }
-  // 1900 and 2100 are not leap years; 2000 is.
+  // 1900 and 2033 are not leap years; 2000 is.
   assert.deepEqual(utcDay('1900-02-29'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'});
-  assert.deepEqual(utcDay('2100-02-29'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'});
+  assert.deepEqual(utcDay('2033-02-29'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'});
   assert.equal(utcDay('2000-02-29').status, 'resolved');
 });
 test('dates outside the supported years are refused, not approximated', () => {
-  for (const date of ['1899-12-31', '2101-01-01', '0000-06-01', '1800-06-01', '5000-12-31']) {
+  for (const date of ['1899-12-31', '2034-01-01', '0000-06-01', '1800-06-01', '5000-12-31']) {
     assert.deepEqual(resolve(date, '12:00', 'Europe/Rome'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'}, date);
   }
 });
 test('invalid calendar dates fail instead of overflowing into another month', () => {
-  for (const date of ['2026-02-29', '1900-02-29', '2026-04-31', '2026-00-12', '2026-13-01', '2101-01-01', '1899-12-31', '2026-1-01']) {
+  for (const date of ['2026-02-29', '1900-02-29', '2026-04-31', '2026-00-12', '2026-13-01', '2034-01-01', '1899-12-31', '2026-1-01']) {
     assert.deepEqual(resolve(date, '12:00'), {status: 'invalid', code: 'INVALID_LOCAL_DATE'}, date);
   }
 });

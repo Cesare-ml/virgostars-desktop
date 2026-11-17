@@ -1,6 +1,6 @@
 # VirgoStars-Ephemeris provider
 
-**Status: Integrated in the host, locally tested (2026-11-17).** Not released: no installer exists and the data files are not distributed (see "What blocks a public installer"). Real astronomy now comes from the canonical Rust engine; the temporary Swiss Ephemeris adapter has been removed from the build.
+**Status: Integrated in the host, locally tested (2026-11-17).** Not released. An unsigned installer that ships a 1890–2110 data slice has been built and tested locally ([data bundle](EPHEMERIS_DATA_BUNDLE.md)); the full 2.8 GB file is not distributed (see "What is still open for a wider release"). Real astronomy now comes from the canonical Rust engine; the temporary Swiss Ephemeris adapter has been removed from the build.
 
 ## What it does
 
@@ -10,32 +10,27 @@
 - Mars to Pluto are the **system barycentres** (the usual convention for the outer planets, DE441 carries no separate body for them).
 - Houses (`src-tauri/src/houses.rs`): Vehlow ("egizia"), Placidus, Koch, Regiomontanus and Porphyry, ported from the `astrological-functions` reference (`feat/houses-reference-validation-20261116`) and tested against its JavaScript output to 1e-8°. Ascendant, Midheaven and ARMC come from the engine. At polar latitudes the systems that do not exist are listed as unavailable; nothing is substituted.
 
-## Data the user supplies
+## Where the data come from
 
-Nothing astronomical ships in this repository or in a build. The host looks for three local items and never exposes their paths to the WebView:
+Nothing astronomical is committed to this repository. The host looks for each of three items, in this order: an environment variable, `ephemeris.json` in the application's local data folder, then the files shipped inside the installer ([data bundle](EPHEMERIS_DATA_BUNDLE.md)). Paths never cross IPC.
 
-| Item | Environment variable | `ephemeris.json` key | Needed |
+| Item | Environment variable | `ephemeris.json` key | Shipped name |
 | --- | --- | --- | --- |
-| Classic JPL DE441 binary (about 2.8 GB) | `VIRGOSTARS_DE441_PATH` | `de441` | yes |
-| USNO ΔT folder (`deltat.data`, `historic_deltat.data`, `deltat.preds`) | `VIRGOSTARS_USNO_DIR` | `usnoDirectory` | for dates after 27 June 2027 |
-| Chiron SPK (`2060_chiron_1900_2101.bsp`, about 3.7 MB) | `VIRGOSTARS_CHIRON_SPK` | `chironSpk` | for Chiron |
+| Classic JPL DE441 binary | `VIRGOSTARS_DE441_PATH` | `de441` | `ephemeris/de441-slice.eph` (years 1890–2110, 20.6 MB) |
+| USNO ΔT folder (`deltat.data`, `historic_deltat.data`, `deltat.preds`) | `VIRGOSTARS_USNO_DIR` | `usnoDirectory` | `ephemeris/usno/` |
+| Chiron SPK (NAIF 20002060, 3.7 MB) | `VIRGOSTARS_CHIRON_SPK` | `chironSpk` | `ephemeris/chiron.bsp` |
 
-`ephemeris.json` lives in the application's local data folder (`%LOCALAPPDATA%\<identifier>`), is limited to 16 KiB, and unknown keys make it invalid. Environment variables win over the file. Without a DE441 file there is **no provider**: the command answers `provider_unavailable` and the interface says the data file was not found (no fake astronomy, no fallback).
-
-Example:
-
-```json
-{ "de441": "D:/data/de441.eph", "usnoDirectory": "D:/data/usno", "chironSpk": "D:/data/2060_chiron_1900_2101.bsp" }
-```
+`ephemeris.json` lives in `%LOCALAPPDATA%\<identifier>`, is limited to 16 KiB, and unknown keys make it invalid. A user-named full DE441 file therefore replaces the shipped slice with no other change. With no DE441 file at all there is **no provider**: the command answers `provider_unavailable` and the interface says the data file was not found (no fake astronomy, no fallback).
 
 ## Supported dates
 
-- The app accepts calendar years **1900 to 2100**. This is the range the engine's time policy was validated for; dates before 1900 are refused (`invalid_request`). Earlier versions accepted years 0 to 5000 through the Moshier ephemeris; that range is gone and is a goal for later, after the long-term path is validated.
-- The real upper limit is lower. Terrestrial time needs ΔT: the measured values plus the USNO **predictions** end in 2033, so with the USNO folder the engine answers up to about **2033** and `out_of_range` after that. Without the folder the limit is **27 June 2027** (the built-in civil-time policy). The interface explains this with `calc.range`; the engine, not the desktop, owns ΔT, and no extrapolation was added here.
+- The app accepts calendar years **1900 to 2033**. Terrestrial time needs ΔT, and the USNO measured values plus predictions end in autumn 2033, so the last months of 2033 can still answer `out_of_range` (the interface says so). Dates before 1900 are refused (`invalid_request`). The engine, not the desktop, owns ΔT, and no extrapolation was added here.
+- Without the USNO folder the engine's own limit is **27 June 2027**.
+- Earlier versions accepted years 0 to 5000 through the Moshier ephemeris. That range is a goal for later: it needs the full DE441 file **and** a validated long-term ΔT model in the engine, which do not exist yet.
 
 ## Verification (2026-11-17, Windows)
 
-- `cargo test --locked`: 65 unit tests pass with the real data files configured; without them the provider tests skip themselves. `npm test`: 882 pass.
+- `cargo test --locked`: 67 unit tests pass with the real data files configured; without them the provider tests skip themselves. `npm test`: 882 pass.
 - Native executable driven through the WebView2 DevTools port with 300 synthetic requests (fictional instants 1900–2026 and places between 60° N and 60° S), compared with the earlier Swiss-linked build of the same app (local reference only, no Swiss output stored in the repository):
 
 | Quantity | Mean difference | Maximum |
@@ -49,15 +44,13 @@ Example:
 | osculating Apogee | 51.5″ | 222.7″ |
 
   True Node and osculating Apogee are defined differently by the two engines (osculating elements of the geocentric Moon), so a gap of that size is expected rather than an error. Chiron was unavailable in the reference build and is calculated here. The known conventions that differ on purpose (barycentre light-time, Swiss's Regiomontanus Midheaven-on-cusp-4 quirk) did not occur in this sample.
-- Edge dates through IPC: 1899 and 2101 are refused as invalid, 1900-01-01 to 2030 answer with 15 bodies, 2035 and later answer `out_of_range`; with no DE441 path the answer is `provider_unavailable`.
+- Edge dates through IPC (before the range was set to 2033): 1899 and 2101 are refused as invalid, 1900-01-01 to 2030 answer with 15 bodies, 2035 and later answer `out_of_range`; with no DE441 path the answer is `provider_unavailable`.
 
-## What blocks a public installer
+## What is still open for a wider release
 
-These are maintainer decisions and are **not** done here:
-
-1. **Data distribution.** DE441 is 2.8 GB and cannot ship inside an installer. Options: the user downloads or supplies it (first-run instructions), or a trimmed 1900–2100 slice is built (not attempted; the reader's acceptance of a trimmed file is unverified). The USNO files and the Chiron SPK are small but each needs its distribution rights assessed ([Licensing and publication](LICENSING_AND_PUBLICATION.md)).
-2. **Date coverage after 2033** needs an engine-side decision on ΔT beyond the predictions.
-3. **Identity.** The product is still "VirgoStars Desktop Lab" with synthetic icons, version 0.0.1; changing the bundle identifier changes the application-data folder and the credential-store entry of the encrypted archive.
+1. **Full DE441 (2.8 GB) for years 0–5000.** Hosting, a signed download manifest and the engine-side long-term ΔT are not done. The installer ships a 1890–2110 slice instead.
+2. **Rights of the shipped data** (DE441 slice, USNO files, Chiron SPK) must be confirmed by the maintainer before publication ([Licensing and publication](LICENSING_AND_PUBLICATION.md)).
+3. **Identity.** The product is still "VirgoStars Desktop Lab" with synthetic-derived icons, version 0.0.1; changing the bundle identifier changes the application-data folder and the credential-store entry of the encrypted archive.
 4. **Signing and updates.** There is no code-signing certificate (an unsigned installer triggers SmartScreen) and no updater with signature validation.
 5. The engine's own documents still call it experimental; no release acceptance has been run.
 

@@ -4,7 +4,7 @@
  *
  * Hours and minutes move the instant by elapsed time. Days, months and years move the local
  * calendar date of the chart's own time zone and keep its local clock time, so a day step across a
- * daylight-saving change still lands on the same wall-clock hour. Dates outside the years 1900 to 2100
+ * daylight-saving change still lands on the same wall-clock hour. Dates outside the years 1900 to 2033
  * (astronomical numbering: year 0 is 1 BC) are refused with `null`.
  */
 export type StepUnit = 'min' | 'h' | 'd';
@@ -20,7 +20,7 @@ export const STEP_ROWS: readonly StepRow[] = Object.freeze([
 export const DEFAULT_STEP = Object.freeze({unit: 'min' as StepUnit, value: 4 as number});
 
 export const MIN_YEAR = 1900;
-export const MAX_YEAR = 2100;
+export const MAX_YEAR = 2033;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 

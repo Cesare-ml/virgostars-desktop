@@ -10,7 +10,7 @@ A local birth time plus an IANA time zone does **not** always identify one UTC i
 
 `src/app/native/civil-time.ts` exports `resolveCivilTime({date, time, timeZone})`. It:
 
-- Accepts a strict Gregorian `YYYY-MM-DD` date in **years 1900–2100**, `HH:mm` or `HH:mm:ss` with seconds from `00` through `59`, and a valid IANA identifier recognized by the executing host.
+- Accepts a strict Gregorian `YYYY-MM-DD` date in **years 1900–2033**, `HH:mm` or `HH:mm:ss` with seconds from `00` through `59`, and a valid IANA identifier recognized by the executing host.
 - Uses the host-provided `Intl.DateTimeFormat` IANA timezone rules. It examines offsets across a bounded ±48-hour window around the nominal local timestamp (97 hourly probes), then validates every candidate UTC instant against the originally requested calendar date and wall-clock time.
 - Returns `resolved` with an explicit UTC instant and east-of-UTC offset in **seconds**, `ambiguous` with *all* matching sorted instants, `nonexistent` when none match, or `invalid` with a stable error code. Historic offsets are not rounded to minutes.
 - Does not choose a DST disambiguation policy, shift nonexistent times, guess a time zone from coordinates or silently convert to the device's local zone.
@@ -26,7 +26,7 @@ A local birth time plus an IANA time zone does **not** always identify one UTC i
 
 ## Deliberate limitations and acceptance gates
 
-- **Years 1900–2100, Gregorian only.** Narrowed on 2026-11-17 from 0–5000 to the range the VirgoStars-Ephemeris engine is validated for ([provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md)); 0–5000 stays a goal for later. The Julian calendar, earlier dates, leap seconds and uncertain historical zone data are not covered, and no historical zone rule is verified here. Do not claim full astrology historical coverage.
+- **Years 1900–2033, Gregorian only.** Narrowed on 2026-11-17 from 0–5000 to the range the VirgoStars-Ephemeris engine is validated for ([provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md)); 0–5000 stays a goal for later. The Julian calendar, earlier dates, leap seconds and uncertain historical zone data are not covered, and no historical zone rule is verified here. Do not claim full astrology historical coverage.
 - Depends on the timezone database packaged with the runtime (Node/Chromium/OS ICU). Data can differ between machines and after updates. This is a local conversion helper, not a version-pinned tzdata bundle or an independent proof of historical timezone accuracy. A future local catalog integration needs a tzdb source/version and regression evidence per operating system.
 - The hourly offset survey covers common IANA transition behavior including date-line jumps but is **not** a formally proven exhaustive resolver for every pre-standard historical timezone. Before shipping, cross-check independently with a pinned IANA tzdb and expand the accepted historical calendar range only with tests.
 - The 97-probe synchronous computation is suited to an individual edit, not every frame of a live chart. Cache only with an explicit provenance policy; do not run inside a frequent rendering loop.
