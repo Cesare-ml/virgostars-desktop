@@ -75,14 +75,21 @@ fn ephemeris_flag() -> c_int {
     })
 }
 
-fn source_of(returned_flags: c_int) -> &'static str {
-    if returned_flags & swe::SEFLG_MOSEPH != 0 {
-        "moshier"
-    } else if returned_flags & swe::SEFLG_SWIEPH != 0 {
-        "swiss_files"
-    } else {
-        "jpl"
+/// Only explicitly identified and unambiguous ephemeris sources are accepted.
+/// A zero/unknown flag is not proof that the engine used JPL data.
+fn source_of(returned_flags: c_int) -> Option<&'static str> {
+    let source = returned_flags & (swe::SEFLG_MOSEPH | swe::SEFLG_SWIEPH | swe::SEFLG_JPLEPH);
+    match source {
+        swe::SEFLG_MOSEPH => Some("moshier"),
+        swe::SEFLG_SWIEPH => Some("swiss_files"),
+        swe::SEFLG_JPLEPH => Some("jpl"),
+        _ => None,
     }
+}
+
+fn matching_source(ecliptic_flags: c_int, equatorial_flags: c_int) -> Option<&'static str> {
+    let ecliptic = source_of(ecliptic_flags)?;
+    (source_of(equatorial_flags)? == ecliptic).then_some(ecliptic)
 }
 
 /// Must be called while holding `ENGINE`.
@@ -95,8 +102,9 @@ fn calc(julian_day_ut: f64, body: c_int, flags: c_int) -> Option<([f64; 6], c_in
 }
 
 fn body_position(julian_day_ut: f64, id: &'static str, body: c_int, base: c_int) -> Option<BodyPositionV1> {
-    let (ecliptic, returned) = calc(julian_day_ut, body, base | swe::SEFLG_SPEED)?;
-    let (equatorial, _) = calc(julian_day_ut, body, base | swe::SEFLG_SPEED | swe::SEFLG_EQUATORIAL)?;
+    let (ecliptic, ecliptic_flags) = calc(julian_day_ut, body, base | swe::SEFLG_SPEED)?;
+    let (equatorial, equatorial_flags) = calc(julian_day_ut, body, base | swe::SEFLG_SPEED | swe::SEFLG_EQUATORIAL)?;
+    let ephemeris_source = matching_source(ecliptic_flags, equatorial_flags)?;
     Some(BodyPositionV1 {
         id,
         longitude_deg: ecliptic[0],
@@ -107,7 +115,7 @@ fn body_position(julian_day_ut: f64, id: &'static str, body: c_int, base: c_int)
         distance_speed: ecliptic[5],
         right_ascension_deg: equatorial[0],
         declination_deg: equatorial[1],
-        ephemeris_source: source_of(returned),
+        ephemeris_source,
     })
 }
 
@@ -161,7 +169,10 @@ impl EphemerisProvider for SwissEphemeris {
             Luminary::Sun => swe::SE_SUN,
             Luminary::Moon => swe::SE_MOON,
         };
-        calc(julian_day_ut, id, ephemeris_flag() | swe::SEFLG_SPEED).map(|(values, _)| values[0]).ok_or(ProviderError)
+        calc(julian_day_ut, id, ephemeris_flag() | swe::SEFLG_SPEED)
+            .and_then(|(values, returned)| source_of(returned).map(|_| values[0]))
+            .filter(|longitude| (0.0..360.0).contains(longitude))
+            .ok_or(ProviderError)
     }
 
     fn chart(&self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
@@ -213,6 +224,23 @@ mod tests {
     fn angle_between(a: f64, b: f64) -> f64 {
         let d = (a - b).rem_euclid(360.0);
         d.min(360.0 - d)
+    }
+
+    #[test]
+    fn test_ephemeris_source_requires_exactly_one_known_flag() {
+        assert_eq!(source_of(swe::SEFLG_MOSEPH), Some("moshier"));
+        assert_eq!(source_of(swe::SEFLG_SWIEPH), Some("swiss_files"));
+        assert_eq!(source_of(swe::SEFLG_JPLEPH), Some("jpl"));
+        assert_eq!(source_of(0), None);
+        assert_eq!(source_of(swe::SEFLG_MOSEPH | swe::SEFLG_SWIEPH), None);
+        assert_eq!(source_of(swe::SEFLG_SWIEPH | swe::SEFLG_JPLEPH), None);
+    }
+
+    #[test]
+    fn test_ecliptic_and_equatorial_sources_must_match() {
+        assert_eq!(matching_source(swe::SEFLG_MOSEPH, swe::SEFLG_MOSEPH), Some("moshier"));
+        assert_eq!(matching_source(swe::SEFLG_MOSEPH, swe::SEFLG_SWIEPH), None);
+        assert_eq!(matching_source(swe::SEFLG_SWIEPH, 0), None);
     }
 
     #[test]
