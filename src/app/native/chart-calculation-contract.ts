@@ -193,8 +193,25 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
   }
 }
 
+/** Match the Rust UTC parser before making an IPC call. Date.parse normalizes
+ * impossible dates in some JS engines, so validate the calendar explicitly. */
+function validUtcIso(value: unknown): boolean {
+  if (typeof value !== 'string' || !UTC_PATTERN.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const hour = Number(value.slice(11, 13));
+  const minute = Number(value.slice(14, 16));
+  const second = Number(value.slice(17, 19));
+  if (year < 1600 || year > 2400 || month < 1 || month > 12 ||
+      hour > 23 || minute > 59 || second > 59) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
+
 export function validChartRequest(request: ChartRequestV1): boolean {
-  return typeof request?.utcIso === 'string' && UTC_PATTERN.test(request.utcIso) &&
+  return validUtcIso(request?.utcIso) &&
     Number.isSafeInteger(request.latMicro) && Math.abs(request.latMicro) <= 90_000_000 &&
     Number.isSafeInteger(request.lngMicro) && Math.abs(request.lngMicro) <= 180_000_000;
 }

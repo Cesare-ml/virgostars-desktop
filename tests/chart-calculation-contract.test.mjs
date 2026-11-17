@@ -134,3 +134,37 @@ test('browser preview, missing provider and native failures stay distinct and op
   const throwingProbe = {isNative: () => { throw new Error('no bridge'); }, invoke: never};
   assert.deepEqual(await requestChart(throwingProbe, REQUEST), {kind: 'unavailable'});
 });
+
+test('UTC chart requests validate real Gregorian dates before native IPC', async () => {
+  const valid = [
+    '2000-02-29T23:59:59Z',
+    '2400-02-29T00:00:00.999Z',
+    '1600-01-01T00:00:00Z',
+    '2001-02-03T04:05:06.500Z',
+  ];
+  const invalid = [
+    '1900-02-29T00:00:00Z',
+    '2001-02-29T00:00:00Z',
+    '2001-04-31T00:00:00Z',
+    '2001-00-01T00:00:00Z',
+    '2001-13-01T00:00:00Z',
+    '2001-01-00T00:00:00Z',
+    '2001-01-01T24:00:00Z',
+    '2001-01-01T00:60:00Z',
+    '2001-01-01T00:00:60Z',
+    '1599-12-31T23:59:59Z',
+    '2401-01-01T00:00:00Z',
+  ];
+  for (const utcIso of valid) {
+    assert.equal(validChartRequest({...REQUEST, utcIso}), true, utcIso);
+  }
+  const transport = {
+    isNative() { throw new Error('Invalid request should not reach native transport'); },
+    async invoke() { throw new Error('Invalid request should not invoke Rust'); },
+  };
+  for (const utcIso of invalid) {
+    const request = {...REQUEST, utcIso};
+    assert.equal(validChartRequest(request), false, utcIso);
+    assert.deepEqual(await requestChart(transport, request), {kind: 'invalid_request'}, utcIso);
+  }
+});
