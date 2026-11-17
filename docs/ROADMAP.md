@@ -2,6 +2,22 @@
 
 Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed features.
 
+
+## P0 / ASAP — Crash reporting and unified user support (approved 2026-11-17)
+
+**State: DESIGNED / NOT IMPLEMENTED. Priority: immediate**, to be scheduled ahead of wider public beta. [Tracking issue #346](https://github.com/Cesare-ml/virgostars-desktop/issues/346). The backend/public FAQ and the private Control Center management UI belong to [VirgoStars web/backend #291](https://github.com/Cesare-ml/virgo-stars/issues/291), **not** to this repository.
+
+**First safe vertical slice — diagnostics and manual support:**
+- [ ] Add bounded rotating diagnostic logs on device, with sensitive-field redaction and a user-visible export/preview; support Angular/JS errors, Rust panics and anomalous native termination when technically feasible.
+- [ ] On next launch after an abnormal exit, offer a recoverable **Send / Do not send** crash-report dialog with preview and clear consent; no silent data transfer, no loss of offline startup.
+- [ ] Provide **Help → Support Center**, FAQs, bug and feature request entry points, IT/EN, accessible on Windows and without requiring continuous Internet.
+- [ ] Design a durable offline outbox for *explicitly approved* reports, with stable IDs, retry/deduplication, cancellation and deletion; never embed backend admin credentials.
+- [ ] Evaluate a Tauri 2-compatible Sentry/minidump integration separately after compatibility, supply-chain and privacy review; keep local diagnostics usable without it.
+
+**Privacy invariants:** do not attach natal charts, dates/places of birth, user notes, tokens, credentials, raw account identifiers, IPs, personal file paths or screenshots automatically. Attachments are opt-in and previewable. Diagnostic telemetry remains disabled until an explicit privacy decision and validation.
+
+**Acceptance:** synthetic crash/panic/UI-error tests; normal and crash-restart smoke on Windows 11/WebView2; offline send/decline/retry; clean logs and backpressure limits; documented failure paths and an updated privacy notice. Preserve macOS portability. No GitHub Actions, production AWS changes, automatic merge, signed release or public deploy are authorized by this roadmap entry.
+
 ## Gate 0 — Documentation and safe workspace
 - [x] Create private repository and initial README.
 - [x] Draft stack ADR, architecture, auth/sync/privacy, update, licensing and agent guidance (draft PR, not assumed merged).
