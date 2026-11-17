@@ -345,41 +345,52 @@
         </div>
         <!-- Naviga cielo: move the chart in time and place and watch it change. -->
         <div class="navigator" *ngIf="inspectorTab==='navigate' && activeChart && nav">
-          <!-- The clock: one capsule per field, a chevron above and below to change it. -->
-          <div class="nav-clock" role="group" [attr.aria-label]="t('nav.title')">
-            <ng-container *ngFor="let field of navFields">
-              <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
-              <div class="nav-field" [class.wide]="field.key==='year'">
-                <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (click)="adjustNav(field.key, 1)"></button>
-                <span class="nav-value">{{field.text}}</span>
-                <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (click)="adjustNav(field.key, -1)"></button>
-              </div>
-            </ng-container>
-          </div>
-          <p class="nav-place">{{navPlaceLabel}}</p>
-          <!-- One pill, two halves: the back half is outlined, the forward half is filled. -->
+          <!-- Date and time in one quiet card; the arrows of each field fade in on hover. -->
+          <section class="nav-card">
+            <div class="nav-clock" role="group" [attr.aria-label]="t('nav.title')">
+              <ng-container *ngFor="let field of navFields">
+                <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
+                <div class="nav-field" [class.wide]="field.key==='year'" [class.time-start]="field.key==='hour'">
+                  <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (click)="adjustNav(field.key, 1)"></button>
+                  <span class="nav-value">{{field.text}}</span>
+                  <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (click)="adjustNav(field.key, -1)"></button>
+                </div>
+              </ng-container>
+            </div>
+            <p class="nav-place">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.400 6-10.200a6 6 0 0 0-12 0C6 15.600 12 21 12 21z"/><circle cx="12" cy="10.800" r="2.200"/></svg>
+              <span>{{navPlaceLabel}}</span>
+            </p>
+          </section>
+          <!-- A segmented control: the back half is plain, the forward half carries the accent. -->
           <div class="nav-moves">
-            <button type="button" class="nav-back" [attr.title]="t('nav.back')" (click)="stepNav(-1)"><span aria-hidden="true">‹</span> {{t('nav.back')}}</button>
-            <button type="button" class="nav-forward" [attr.title]="t('nav.forward')" (click)="stepNav(1)">{{t('nav.forward')}} <span aria-hidden="true">›</span></button>
+            <button type="button" class="nav-back" [attr.title]="t('nav.back')" (click)="stepNav(-1)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.500 6l-6 6 6 6"/></svg>{{t('nav.back')}}
+            </button>
+            <button type="button" class="nav-forward" [attr.title]="t('nav.forward')" (click)="stepNav(1)">
+              {{t('nav.forward')}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.500 6l6 6-6 6"/></svg>
+            </button>
           </div>
           <div class="step-grid" role="group" [attr.aria-label]="t('nav.step')">
             <div class="step-row" *ngFor="let row of stepRows">
               <span class="step-unit">{{stepUnitLabel(row.unit)}}</span>
-              <button type="button" *ngFor="let value of row.values" [class.selected]="navStepUnit===row.unit && navStepValue===value"
-                [attr.aria-pressed]="navStepUnit===row.unit && navStepValue===value" (click)="selectStep(row.unit, value)">{{value}}</button>
+              <div class="step-options">
+                <button type="button" *ngFor="let value of row.values" [class.selected]="navStepUnit===row.unit && navStepValue===value"
+                  [attr.aria-pressed]="navStepUnit===row.unit && navStepValue===value" (click)="selectStep(row.unit, value)">{{value}}</button>
+              </div>
             </div>
           </div>
           <p class="nav-status" role="status" *ngIf="navStatus">{{t(navStatus)}}</p>
           <p class="nav-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
-          <!-- Five small tiles instead of five wide buttons: an icon and a short word each; the full name is the tooltip. -->
+          <!-- Quiet actions: an icon and a short word, no boxes; the full name is the tooltip. -->
           <div class="nav-tools" role="group" [attr.aria-label]="t('nav.title')">
             <button type="button" class="nav-tool" [attr.title]="t('nav.now')" [attr.aria-label]="t('nav.now')" (click)="navNow()">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.500V12l3 2"/></svg>
               <span>{{t('nav.now.short')}}</span>
             </button>
             <button type="button" class="nav-tool" [class.open]="cityChangeOpen" [attr.title]="t('nav.city')" [attr.aria-label]="t('nav.city')"
               [attr.aria-expanded]="cityChangeOpen" (click)="toggleCityChange()">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.4 6-10.2a6 6 0 0 0-12 0C6 15.600 12 21 12 21z"/><circle cx="12" cy="10.800" r="2.200"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.400 6-10.200a6 6 0 0 0-12 0C6 15.600 12 21 12 21z"/><circle cx="12" cy="10.800" r="2.200"/></svg>
               <span>{{t('nav.city.short')}}</span>
             </button>
             <!-- Only a subject's chart can be saved over; the sky of the moment has no data to overwrite. -->

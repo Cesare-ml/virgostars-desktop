@@ -112,7 +112,10 @@ test('the panel is narrow and has its own look: no wide stacked buttons, no gree
   // The five actions are small icon tiles in one row, not a column of wide buttons.
   assert.equal((panel.match(/class="nav-tool[ "]/g) ?? []).length, 5);
   assert.doesNotMatch(panel, /class="nav-action"/);
-  assert.match(css, /\.nav-tools \{ display:flex; gap:4px; \}/);
+  assert.match(css, /\.nav-tools \{ display:flex; justify-content:space-between;/);
+  // No box around an action: a hairline above the row and transparent tiles.
+  assert.match(css, /\.nav-tool \{[^}]*border:0;[^}]*background:transparent;/);
+  assert.match(css, /\.step-options \{ flex:1; display:flex; border:1px solid var\(--vs-border\);/);
   const look = css.slice(css.indexOf('/* Naviga cielo'), css.indexOf('/* Erigi elettiva'));
   for (const old of ['#0E9F9A', '#E91E63', '#F28C28', '#3FA34D', '#E5483D']) assert.ok(!look.includes(old), old);
   assert.match(look, /\.nav-forward \{ background:var\(--vs-accent\);/);
