@@ -8,15 +8,15 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 
 const good = () => ({
   styleSheets: [{href: '/styles.css', rules: 8}, {href: 'inline', rules: 109}],
-  layout: {sidebar: {w: 208, h: 820}, inspector: {w: 348, h: 820}, canvas: {w: 593, h: 593}},
+  layout: {sidebar: {w: 60, h: 880}, inspector: {w: 344, h: 880}, canvas: {w: 872, h: 872}},
   webgl: {ok: true, lost: false},
   syntheticLabelVisible: true,
   requests: ['http://tauri.localhost/', 'http://tauri.localhost/main.js', 'http://ipc.localhost/desktop_runtime_info'],
   exceptions: [],
   console: [],
   resize: {
-    '1280x720': {canvas: [433, 433], overflowX: false, overflowY: false},
-    '1920x1080': {canvas: [803, 803], overflowX: false, overflowY: false}
+    '1280x720': {canvas: [712, 712], overflowX: false, overflowY: false},
+    '1920x1080': {canvas: [1072, 1072], overflowX: false, overflowY: false}
   },
   runtimeInfo: {protocolVersion: 1, fixtureKind: 'synthetic_demo', accountConnected: false, cloudSyncAvailable: false},
   calculation: {status: 'provider_unavailable', provider: null, chart: null},
@@ -38,7 +38,8 @@ test('each observable regression is reported by a stable identifier', () => {
     ['EXTERNAL_REQUEST', o => { o.requests.push('https://example.com/x.css'); }],
     ['PAGE_EXCEPTION', o => { o.exceptions.push('boom'); }],
     ['RESIZE_1280x720', o => { o.resize['1280x720'].overflowX = true; }],
-    ['RESIZE_1920x1080', o => { delete o.resize['1920x1080']; }],
+    [['RESIZE_1920x1080', 'CHART_NOT_TALL_1920x1080'], o => { delete o.resize['1920x1080']; }],
+    ['CHART_NOT_TALL_1280x720', o => { o.resize['1280x720'].canvas = [600, 600]; }],
     ['IPC_RUNTIME_INFO', o => { o.runtimeInfo = null; }],
     ['IPC_INVALID_REQUEST_ACCEPTED', o => { o.invalidCalculation = {status: 'ok'}; }],
     ['PNG_EXPORT', o => { o.png = {bytes: 12, signatureOk: false}; }],
@@ -47,7 +48,7 @@ test('each observable regression is reported by a stable identifier', () => {
   for (const [id, mutate] of cases) {
     const observed = good();
     mutate(observed);
-    assert.deepEqual(evaluateSmoke(observed).failures, [id], id);
+    assert.deepEqual(evaluateSmoke(observed).failures, [].concat(id), String(id));
   }
 });
 

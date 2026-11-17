@@ -7,7 +7,7 @@ import {
   defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
 } from 'grafici-astrologici';
 import {
-  chartSide, CHART_MODES, shouldCollapseNavigation, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
+  chartSide, CHART_MODES, INSPECTOR_OVERLAY_MAX_PX, shouldCollapseNavigation, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
 } from './workspace-state';
 import { fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
 import { translate, type Locale, type MessageKey } from './translations';
@@ -173,7 +173,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   navCollapsed = shouldCollapseNavigation(window.innerWidth, window.innerHeight, true);
   /** Once the user folds or unfolds the navigation themselves, the window size no longer decides. */
   private navManual = false;
-  inspectorCollapsed = false;
+  /** On a narrow window the inspector floats over the chart, so it starts closed instead of hiding it. */
+  inspectorCollapsed = window.innerWidth <= INSPECTOR_OVERLAY_MAX_PX;
   busy = true;
   ready = false;
   status: MessageKey = 'chart.loading';

@@ -18,6 +18,9 @@ import {fileURLToPath} from 'node:url';
 
 export const DEVTOOLS_PORT = 9339;
 export const MIN_PNG_BYTES = 10_000;
+/** The wheel must take at least this share of the window height (the navigation may fold to a 60 px rail). */
+export const MIN_CHART_HEIGHT_SHARE = 0.95;
+const MIN_NAV_WIDTH_PX = 40;
 const LOCAL_URL = /^(https?:\/\/(tauri|ipc|asset)\.localhost(?:[:/]|$)|tauri:|ipc:|data:|blob:|about:)/;
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -29,7 +32,7 @@ export function evaluateSmoke(observed) {
   const sheets = observed.styleSheets ?? [];
   fail('CSS_NOT_APPLIED', !sheets.some(sheet => sheet.href !== 'inline' && sheet.rules > 0));
   const layout = observed.layout ?? {};
-  fail('LAYOUT_COLLAPSED', !(layout.sidebar?.w > 100 && layout.inspector?.w > 100 && layout.canvas?.w >= 200 && layout.canvas?.h >= 200));
+  fail('LAYOUT_COLLAPSED', !(layout.sidebar?.w >= MIN_NAV_WIDTH_PX && layout.inspector?.w > 100 && layout.canvas?.w >= 200 && layout.canvas?.h >= 200));
   fail('WEBGL_UNAVAILABLE', observed.webgl?.ok !== true || observed.webgl?.lost === true);
   fail('SYNTHETIC_LABEL_MISSING', observed.calculated !== true && observed.syntheticLabelVisible !== true);
   fail('EXTERNAL_REQUEST', (observed.requests ?? []).some(url => !LOCAL_URL.test(url)));
@@ -37,6 +40,8 @@ export function evaluateSmoke(observed) {
   for (const size of ['1280x720', '1920x1080']) {
     const resized = observed.resize?.[size];
     fail(`RESIZE_${size}`, !resized || resized.overflowX || resized.overflowY || !(resized.canvas?.[0] >= 200));
+    const height = Number(size.split('x')[1]);
+    fail(`CHART_NOT_TALL_${size}`, !resized || !(resized.canvas?.[1] >= MIN_CHART_HEIGHT_SHARE * height));
   }
   const info = observed.runtimeInfo;
   fail('IPC_RUNTIME_INFO', !(info?.protocolVersion === 1 && info.fixtureKind === 'synthetic_demo'
