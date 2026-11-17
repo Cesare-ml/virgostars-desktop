@@ -20,7 +20,7 @@ test('visual overlay is not a second screen-reader live status', () => {
   assert.ok(overlay);
   assert.match(overlay, /aria-hidden="true"/);
   assert.doesNotMatch(overlay, /role="status"|aria-live=/);
-  assert.match(html, /class="status-message" role="status">\{\{t\(status\)\}\}/,
+  assert.match(html, /class="status-message" role="status"[^>]*>\{\{t\(status\)\}\}/,
     'the toolbar continues to announce state changes');
   assert.match(html, /class="chart-error"[^>]*role="alert"/,
     'renderer failures remain accessible as alerts');

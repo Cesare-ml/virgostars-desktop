@@ -32,3 +32,19 @@ test('all Italian and English UI labels have identical keys and nonempty text',(
     assert.ok(translate('en',key));
   }
 });
+
+test('navigation folds only when the centre column would be narrower than the window is tall', async () => {
+  const {shouldCollapseNavigation, NAV_WIDTH_PX, INSPECTOR_WIDTH_PX} = await import('../src/app/workspace-state.ts');
+  // 1360x880: 1360-208-344 = 808 < 880, so the wheel would be width-limited.
+  assert.equal(shouldCollapseNavigation(1360, 880, true), true);
+  // The same window with the inspector closed leaves 1152 for the chart.
+  assert.equal(shouldCollapseNavigation(1360, 880, false), false);
+  // Full HD keeps the labelled navigation: 1920-208-344 = 1368 >= 1080.
+  assert.equal(shouldCollapseNavigation(1920, 1080, true), false);
+  // Narrow windows float the inspector instead of giving it a column.
+  assert.equal(shouldCollapseNavigation(1100, 700, true), 1100 - NAV_WIDTH_PX < 700);
+  assert.equal(INSPECTOR_WIDTH_PX, 344);
+  for (const bad of [[NaN, 800], [1200, Infinity], [0, 800], [-5, 800]]) {
+    assert.equal(shouldCollapseNavigation(bad[0], bad[1], true), false);
+  }
+});

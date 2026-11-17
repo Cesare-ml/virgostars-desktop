@@ -48,7 +48,9 @@ test('the component dispatches every catalog action and disables the rest', () =
   for (const action of new Set(entries.map(entry => entry.action).filter(Boolean))) {
     assert.match(component, new RegExp("case '" + action + "':"), action);
   }
-  assert.match(html, /\[disabled\]="entry\.status!=='available' \|\| busy \|\| calcBusy"/);
+  // Available entries are active buttons; everything else sits in a collapsed, disabled list.
+  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy"/);
+  assert.match(html, /\*ngFor="let entry of unavailableIn\(group\)" disabled/);
 });
 
 test('calculated exports are never named like fixture exports', () => {

@@ -146,7 +146,7 @@ test('Angular checks live styles and geometry at startup and offers manual reche
   assert.match(html, /class="desktop-app" #shell/);
   assert.match(html, /class="workspace" #workspace/);
   assert.match(html, /\(click\)="checkStyles\(\)"/);
-  assert.match(html, /class="layout-warning" role="status"/);
+  assert.match(html, /class="layout-warning-banner" role="status"/);
   assert.match(html, /\*ngIf="styleStatus !== 'active'"/);
 });
 
