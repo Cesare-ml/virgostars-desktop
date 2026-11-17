@@ -49,10 +49,10 @@ From a normal checkout (siblings `astrological-charts`, `astrological-functions`
 npm run tauri:build:swiss:private:local
 ```
 
-or `npm run tauri:build:swiss:local` for the synthetic placeholder images. To include the offline city catalog as well (no installer is produced):
+or `npm run tauri:build:swiss:local` for the synthetic placeholder images. Both local Swiss build scripts now pass `--no-bundle`: they compile a local executable without producing an installer or distributable package. This is a packaging safeguard, **not** a licence grant; do not distribute the executable. To include the offline city catalog as well (no installer is produced):
 
 ```powershell
 npm run tauri:build:places:swiss:private:local
 ```
 
-The plain builds above do not package the catalog, so the city search answers "catalog not installed" and coordinates must be typed. With the catalog build, city search and the picker were verified in the native window on 2026-11-15. The executable is `src-tauri/target/release/virgostars-desktop-spike.exe`. The `…:local` scripts exist for the maintainer's machine only.
+These local builds intentionally use `--no-bundle` (including the catalog variant). The plain builds above do not package the catalog, so the city search answers "catalog not installed" and coordinates must be typed. With the catalog build, city search and the picker were verified in the native window on 2026-11-15. The executable is `src-tauri/target/release/virgostars-desktop-spike.exe`. The `…:local` scripts exist for the maintainer's machine only.
