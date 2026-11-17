@@ -34,6 +34,12 @@ Respond y/yes or s/si/sì for a confirmed success. Enter or any other response c
 
 The script creates no reports, scans no birth data, captures no screenshots, invokes no network download, and never automatically closes the app.
 
+## Instrumented smoke (optional, opens a window)
+
+    npm run smoke:native
+
+Measures applied CSS, layout at two sizes, WebGL and context recovery, outbound requests, the read-only IPC commands and PNG export through a loopback DevTools port. It does not replace the manual checklist above. See [Instrumented Windows smoke](WINDOWS_INSTRUMENTED_SMOKE_2026-11-17.md).
+
 ## Verify source contract without Windows
 
     node --test tests/windows-native-gui-smoke.test.mjs
