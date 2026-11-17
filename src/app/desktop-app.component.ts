@@ -42,6 +42,7 @@ import { newChartId, validChartRecord, type ArchiveFailure, type ArchiveResult, 
 import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
+import { ElementsViewComponent } from './elements-view.component';
 import {
   ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
   type ChartSettings
@@ -127,7 +128,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -153,6 +154,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   theme: UiTheme = this.initialUiPreferences.theme;
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
+  /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
+  chartPresentation: 'wheel' | 'elements' = 'wheel';
+  showDodecatemoria = false;
   inspectorTab: InspectorTab = 'planets';
   /** Centre panel over the chart: the new-chart form and the archive each have their own. */
   view: WorkspaceView = 'chart';
@@ -792,6 +796,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!this.houseSystems.includes(value) || value === this.houseSystem || this.exporting) return;
     this.houseSystem = value;
     if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  toggleElements(): void {
+    if (!this.activeChart || this.destroyed) return;
+    this.chartPresentation = this.chartPresentation === 'wheel' ? 'elements' : 'wheel';
+    this.cd.markForCheck();
+  }
+  toggleDodecatemoria(): void {
+    this.showDodecatemoria = !this.showDodecatemoria;
     this.cd.markForCheck();
   }
   /** Sky of this moment at the active chart's place, drawn around it. */

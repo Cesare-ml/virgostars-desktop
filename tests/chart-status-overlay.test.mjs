@@ -9,9 +9,11 @@ test('chart busy overlay displays the current render/export status', () => {
   const html = read('src/app/desktop-app.component.html');
   const overlay = html.match(/<div class="chart-message"[^>]*>[^<]*<\/div>/)?.[0];
   assert.ok(overlay, 'expected chart-stage progress overlay');
-  assert.match(overlay, /\*ngIf="busy"/);
+  assert.match(overlay, /\*ngIf="busy && chartPresentation==='wheel'"/);
   assert.match(overlay, /\{\{t\(status\)\}\}/);
   assert.doesNotMatch(overlay, /t\('chart.loading'\)/);
+  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && chartPresentation==='elements'"/,
+    'elements presentation has its own overlay; wheel loading must not obscure it');
 });
 
 test('visual overlay is not a second screen-reader live status', () => {

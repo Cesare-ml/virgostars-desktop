@@ -69,7 +69,7 @@
   background:var(--vs-surface); border:0; border-radius:0; margin:0;
 }
 .chart-canvas { aspect-ratio:1; max-width:100%; max-height:100%; background:transparent; }
-.stage-info { position:absolute; top:14px; left:16px; max-width:min(240px,26%); pointer-events:none; }
+.stage-info { position:absolute; top:14px; left:16px; max-width:min(240px,26%); pointer-events:none; z-index:3; }
 .stage-info h1 { margin:0 0 2px; font-size:19px; font-weight:700; letter-spacing:-.03em; }
 .stage-info p { margin:0; font-size:12px; color:var(--vs-text-secondary); overflow-wrap:anywhere; }
 .stage-info .stage-subject { color:var(--vs-text); font-weight:650; }
@@ -97,6 +97,7 @@
   background:var(--vs-surface); border-radius:8px; font-size:15px;
 }
 .toolbar-button:not(:disabled):hover,.small-control:hover,.fit-button:hover { background:var(--vs-surface-muted); }
+.toolbar-button.selected { background:var(--vs-surface-muted); border-color:var(--vs-accent); box-shadow:0 0 0 1px var(--vs-accent) inset; }
 .toolbar-button:disabled,.export-button:disabled { opacity:.5; }
 .fit-button { padding:0 12px; font-size:12px; }
 .status-message { color:var(--vs-text-secondary); font-size:11px; text-align:right; }

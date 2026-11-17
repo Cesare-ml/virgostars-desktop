@@ -85,6 +85,11 @@
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
         </div>
 
+        <!-- A light DOM view of the same calculated longitudes, never a second wheel renderer. -->
+        <vs-elements-view *ngIf="view==='chart' && activeChart && chartPresentation==='elements'"
+          [data]="activeChart.data" [houseSystem]="houseSystem" [locale]="locale"
+          [showDodecatemoria]="showDodecatemoria" (toggleDodecatemoria)="toggleDodecatemoria()"></vs-elements-view>
+
         <div class="stage-tools">
           <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
             <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
@@ -92,14 +97,17 @@
               <span class="clock-compact">{{clockCompactText}}</span>
             </time>
           </div>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
+            [class.selected]="chartPresentation==='elements'" [attr.aria-pressed]="chartPresentation==='elements'"
+            (click)="toggleElements()">{{t('elements.button')}}</button>
           <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
             [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
         </div>
 
         <div class="chart-toolbar chart-toolbar-left" role="toolbar" [attr.aria-label]="t('chart')">
-          <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
-          <button type="button" class="toolbar-button" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>
-          <button type="button" class="toolbar-button fit-button" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
+          <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
+          <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && mode==='transits'"
             [disabled]="busy||calcBusy" (click)="showTransits()">{{t('transits.refresh')}}</button>
           <button type="button" class="toolbar-button sky-live" *ngIf="isSkyActive && mode==='natal'" [class.live]="skyLive"
@@ -109,14 +117,14 @@
           </button>
         </div>
         <div class="chart-toolbar chart-toolbar-right">
-          <span class="status-message" role="status" [class.quiet]="status !== 'exporting' && status !== 'exported'">{{t(status)}}</span>
+          <span class="status-message" role="status" *ngIf="chartPresentation==='wheel'" [class.quiet]="status !== 'exporting' && status !== 'exported'">{{t(status)}}</span>
           <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && activeChart.kind === 'chart' && activeChart.archiveId === null"
             [disabled]="archiveBusy || calcBusy" (click)="saveActiveChart()">{{t('chart.save')}}</button>
-          <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
+          <button type="button" class="export-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
         </div>
 
-        <div class="chart-message" *ngIf="busy" aria-hidden="true">{{t(status)}}</div>
-        <p class="chart-error" *ngIf="error" role="alert">{{error}}</p>
+        <div class="chart-message" *ngIf="busy && chartPresentation==='wheel'" aria-hidden="true">{{t(status)}}</div>
+        <p class="chart-error" *ngIf="error && chartPresentation==='wheel'" role="alert">{{error}}</p>
         <p class="layout-warning-banner" role="status" *ngIf="styleStatus !== 'active'">
           {{t(styleStatusKey)}} <button type="button" class="small-control wide" (click)="checkStyles()">{{t('styles.retry')}}</button>
         </p>

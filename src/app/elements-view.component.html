@@ -1,0 +1,89 @@
+<section class="elements-view" [attr.aria-label]="t('elements.title')" *ngIf="distribution as model">
+  <header class="elements-head">
+    <div class="elements-heading">
+      <h2>{{t('elements.title')}}</h2>
+      <p>{{t('elements.subtitle')}}</p>
+    </div>
+    <button class="dodeca-toggle" type="button" [class.active]="showDodecatemoria"
+      [attr.aria-pressed]="showDodecatemoria" (click)="toggleDodecatemoria.emit()">
+      <span class="dodeca-indicator" aria-hidden="true"></span>
+      {{t(showDodecatemoria ? 'elements.hideDodeca' : 'elements.showDodeca')}}
+    </button>
+  </header>
+
+  <div class="element-axes" [attr.aria-label]="t('elements.axes')" role="group">
+    <div class="axis-pill" [attr.data-element]="model.ascElement">
+      <span class="axis-name">ASC</span>
+      <span class="axis-sign" aria-hidden="true">{{signSymbol(model.ascSign)}}</span>
+      <strong>{{elementLabel(model.ascElement)}}</strong>
+    </div>
+    <span class="axis-link" aria-hidden="true">⟷</span>
+    <div class="axis-pill" [attr.data-element]="model.dsElement">
+      <span class="axis-name">DS</span>
+      <span class="axis-sign" aria-hidden="true">{{signSymbol(model.dsSign)}}</span>
+      <strong>{{elementLabel(model.dsElement)}}</strong>
+    </div>
+  </div>
+
+  <div class="elements-headings" aria-hidden="true">
+    <span>{{t('elements.inHouses')}}</span>
+    <span>{{t('elements.title')}}</span>
+    <span>{{t('elements.inSigns')}}</span>
+  </div>
+
+  <div class="elements-rows">
+    <section class="element-row" *ngFor="let row of model.strips; trackBy:trackElement" [attr.data-element]="row.id"
+      [attr.aria-label]="elementLabel(row.id)">
+      <div class="element-cell house-cell">
+        <span class="cell-small-heading">{{t('elements.inHouses')}}</span>
+        <ul class="element-placements">
+          <li *ngFor="let item of row.housePlanets; trackBy:trackPlanet" class="planet-chip"
+            [attr.title]="positionTitle(item,'house')" [attr.aria-label]="positionTitle(item,'house')">
+            <span class="planet-glyph" aria-hidden="true">{{item.glyph}}</span>
+            <span aria-hidden="true">{{houseLabel(item.house)}}</span>
+          </li>
+          <li class="element-empty" *ngIf="!row.housePlanets.length" [attr.aria-label]="t('elements.none')">—</li>
+        </ul>
+        <div class="dodeca-line" *ngIf="showDodecatemoria">
+          <span class="dodeca-caption">{{t('elements.dodecatemoria')}}</span>
+          <ul class="element-placements">
+            <li *ngFor="let item of row.houseDodecatemoria; trackBy:trackPlanet" class="planet-chip secondary"
+              [attr.title]="positionTitle(item,'house',true)" [attr.aria-label]="positionTitle(item,'house',true)">
+              <span class="planet-glyph" aria-hidden="true">{{item.glyph}}</span>
+              <span aria-hidden="true">{{houseLabel(item.house)}}</span>
+            </li>
+            <li class="element-empty" *ngIf="!row.houseDodecatemoria.length" [attr.aria-label]="t('elements.none')">—</li>
+          </ul>
+        </div>
+      </div>
+      <div class="element-center">
+        <span class="element-icon" aria-hidden="true">{{elementSymbol(row.id)}}</span>
+        <strong>{{elementLabel(row.id)}}</strong>
+      </div>
+      <div class="element-cell sign-cell">
+        <span class="cell-small-heading">{{t('elements.inSigns')}}</span>
+        <ul class="element-placements">
+          <li *ngFor="let item of row.signPlanets; trackBy:trackPlanet" class="planet-chip"
+            [attr.title]="positionTitle(item,'sign')" [attr.aria-label]="positionTitle(item,'sign')">
+            <span class="planet-glyph" aria-hidden="true">{{item.glyph}}</span>
+            <span aria-hidden="true">{{signSymbol(item.sign)}}</span>
+          </li>
+          <li class="element-empty" *ngIf="!row.signPlanets.length" [attr.aria-label]="t('elements.none')">—</li>
+        </ul>
+        <div class="dodeca-line" *ngIf="showDodecatemoria">
+          <span class="dodeca-caption">{{t('elements.dodecatemoria')}}</span>
+          <ul class="element-placements">
+            <li *ngFor="let item of row.signDodecatemoria; trackBy:trackPlanet" class="planet-chip secondary"
+              [attr.title]="positionTitle(item,'sign',true)" [attr.aria-label]="positionTitle(item,'sign',true)">
+              <span class="planet-glyph" aria-hidden="true">{{item.glyph}}</span>
+              <span aria-hidden="true">{{signSymbol(item.sign)}}</span>
+            </li>
+            <li class="element-empty" *ngIf="!row.signDodecatemoria.length" [attr.aria-label]="t('elements.none')">—</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+  <p class="element-footnote">{{t('elements.seven')}} · {{t('elements.housesDepend')}}</p>
+  <p class="element-footnote" *ngIf="showDodecatemoria">{{t('elements.dodecaMethod')}}</p>
+</section>
