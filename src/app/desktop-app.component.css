@@ -22,7 +22,7 @@
   min-width:38px; height:36px; background:var(--vs-surface-muted); border:1px solid var(--vs-border);
   color:var(--vs-text); border-radius:8px; font-weight:650;
 }
-.workspace { --nav-width:208px; --inspector-width:344px; position:relative; display:grid;
+.workspace { --nav-width:208px; --inspector-width:400px; position:relative; display:grid;
   grid-template-columns:var(--nav-width) minmax(0,1fr) var(--inspector-width);
   min-width:0; min-height:0; overflow:hidden;
 }
@@ -50,7 +50,8 @@
 .nav-mark { font-size:21px; line-height:1; flex:0 0 22px; text-align:center; }
 .nav-label { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; font-size:13px; }
 .nav-separator { height:1px; background:rgba(255,255,255,.14); margin:12px 10px; }
-.sidebar-bottom { margin-top:auto; border-top:1px solid rgba(255,255,255,.14); display:flex; flex-direction:column; gap:10px;
+.nav-scroll { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; }
+.sidebar-bottom { margin-top:8px; border-top:1px solid rgba(255,255,255,.14); display:flex; flex-direction:column; gap:10px;
   color:var(--vs-nav-muted); padding:12px 4px 2px; font-size:10px; }
 .sidebar-prefs { display:flex; gap:8px; }
 .sidebar-prefs .small-control { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.16); color:var(--vs-nav-text); flex:1; }
@@ -106,6 +107,24 @@
 /* Panels that open over the chart: the new chart form and the archive. */
 .sheet { position:absolute; inset:0; z-index:6; overflow-y:auto; background:var(--vs-bg); padding:28px 32px 40px; }
 .sheet-inner { max-width:720px; margin:0 auto; }
+/* Functions and settings open as a drawer from the left menu. */
+.drawer { position:absolute; top:0; bottom:0; left:0; z-index:6; width:min(420px,100%); overflow-y:auto;
+  background:var(--vs-bg); border-right:1px solid var(--vs-border); box-shadow:6px 0 18px rgba(0,0,0,.12); padding:20px 20px 32px; }
+.settings-check { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 0; }
+.startup-options { padding:4px 0 8px; }
+.empty-state { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; background:var(--vs-surface); color:var(--vs-text-secondary); font-size:14px; text-align:center; padding:24px; }
+.empty-state p { margin:0; max-width:420px; }
+.form-primary-link { background:var(--vs-accent); color:var(--vs-accent-contrast); border:0; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:700; }
+.info-button { padding:0 12px; font-size:12px; font-weight:650; }
+.info-button.selected { background:var(--vs-surface-muted); color:var(--vs-accent); }
+/* Aspect lists: symbol, symbol, symbol. */
+.aspect-symbols { display:flex; align-items:center; gap:10px; }
+.aspect-point { display:inline-flex; align-items:center; min-width:24px; justify-content:center; }
+.aspect-point .glyph-name { font-size:10px; font-weight:700; color:var(--vs-text-secondary); }
+.aspect-sign { min-width:26px; text-align:center; font-size:22px; line-height:1; color:var(--vs-text);
+  font-family:"Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",sans-serif; cursor:default; }
+.glyph.sm { width:22px; height:22px; object-fit:contain; vertical-align:middle; }
 .sheet-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
 .sheet-head h2 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.03em; }
 .autosave { display:flex; align-items:center; gap:8px; margin-top:14px; font-size:13px; }
@@ -136,7 +155,7 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .city-clock-unavailable { font-size:12px; color:var(--vs-text-secondary); }
 @media (max-width:1140px) {
   .workspace:not(.inspector-collapsed) { grid-template-columns:var(--nav-width) minmax(0,1fr); }
-  .inspector { position:absolute; right:0; top:0; bottom:0; width:min(344px,84vw); z-index:7; box-shadow:-8px 0 20px rgba(0,0,0,.15); }
+  .inspector { position:absolute; right:0; top:0; bottom:0; width:min(400px,84vw); z-index:7; box-shadow:-8px 0 20px rgba(0,0,0,.15); }
 }
 @media (max-width:760px) {
   .workspace { --nav-width:60px; grid-template-columns:var(--nav-width) minmax(0,1fr); }
@@ -186,7 +205,7 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .function-group[open] > summary::before,.settings-section[open] > summary::before { content:"▾"; }
 .function-group > summary > span:first-child { flex:1; }
 /* Planet table: glyph, longitude, house (coloured by element), speed, latitude. */
-.planet-table { width:100%; border-collapse:collapse; font-size:11.5px; margin-top:6px; }
+.planet-table { width:100%; border-collapse:collapse; font-size:11px; margin-top:6px; }
 .planet-table th { text-align:left; font-weight:700; color:var(--vs-text); padding:7px 3px; background:var(--vs-surface-muted); }
 .planet-table td { padding:5px 3px; border-bottom:1px solid var(--vs-border); white-space:nowrap; }
 .planet-table .num { text-align:right; }

@@ -15,7 +15,7 @@ test('the clock is mounted and disposed with the Angular workstation lifecycle',
   const after = app.indexOf('\n    // Read-only capability check', start);
   assert.ok(after > start);
   const callback = app.slice(start, after);
-  assert.match(callback, /if \(this\.destroyed\) return;\s*this\.updateCityClock\(\);\s*this\.cd\.markForCheck\(\);/);
+  assert.match(callback, /if \(this\.destroyed\) return;\s*this\.cd\.markForCheck\(\);/);
   assert.doesNotMatch(callback, /this\.draw\(|this\.renderer\./);
 });
 

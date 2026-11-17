@@ -28,13 +28,16 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 export function evaluateSmoke(observed) {
   const failures = [];
   const warnings = [];
+  // Without an ephemeris provider there is no chart to draw or export; the page must say so instead.
+  const calculated = observed.calculation?.status === 'ok';
   const fail = (id, condition) => { if (condition) failures.push(id); };
   const sheets = observed.styleSheets ?? [];
   fail('CSS_NOT_APPLIED', !sheets.some(sheet => sheet.href !== 'inline' && sheet.rules > 0));
   const layout = observed.layout ?? {};
   fail('LAYOUT_COLLAPSED', !(layout.sidebar?.w >= MIN_NAV_WIDTH_PX && layout.inspector?.w > 100 && layout.canvas?.w >= 200 && layout.canvas?.h >= 200));
   fail('WEBGL_UNAVAILABLE', observed.webgl?.ok !== true || observed.webgl?.lost === true);
-  fail('SYNTHETIC_LABEL_MISSING', observed.calculated !== true && observed.syntheticLabelVisible !== true);
+  // The program opens on the sky of the moment, and shows no placeholder chart.
+  fail('STARTUP_SKY_MISSING', calculated && !/cielo|sky/i.test(observed.startupTitle ?? ''));
   fail('EXTERNAL_REQUEST', (observed.requests ?? []).some(url => !LOCAL_URL.test(url)));
   fail('PAGE_EXCEPTION', (observed.exceptions ?? []).length > 0);
   for (const size of ['1280x720', '1920x1080']) {
@@ -52,7 +55,7 @@ export function evaluateSmoke(observed) {
     || calc?.status === 'ok' && calc.provider && calc.chart;
   fail('IPC_CALCULATION_NOT_TRUTHFUL', !honest);
   fail('IPC_INVALID_REQUEST_ACCEPTED', observed.invalidCalculation?.status !== 'invalid_request');
-  fail('PNG_EXPORT', !(observed.png?.signatureOk && observed.png.bytes >= MIN_PNG_BYTES));
+  fail('PNG_EXPORT', calculated && !(observed.png?.signatureOk && observed.png.bytes >= MIN_PNG_BYTES));
   fail('WEBGL_CONTEXT_NOT_RECOVERED', !(observed.contextLoss?.lostAfterLose === true && observed.contextLoss.lostAfterRestore === false));
   if ((observed.console ?? []).some(line => /ipc\.localhost/.test(line))) {
     warnings.push('IPC_CSP_FALLBACK: Tauri IPC over ipc.localhost is blocked by connect-src and falls back to postMessage');
@@ -134,13 +137,18 @@ export async function runSmoke(root) {
     };
     // Reload so that every startup request is observed from the beginning.
     await cdp.send('Page.reload', {ignoreCache: true});
-    await sleep(7000);
+    // A cold start of a freshly built executable can be slow: wait for the chart or the empty state, not a fixed time.
+    for (let attempt = 0; attempt < 80; attempt++) {
+      await sleep(500);
+      if (await evaluate(`!!document.querySelector('.stage-info, .empty-state')`).catch(() => false)) break;
+    }
+    await sleep(2500);
 
     observed.styleSheets = await evaluate(`[...document.styleSheets].map(sheet => { try { return {href: sheet.href ? new URL(sheet.href).pathname : 'inline', rules: sheet.cssRules.length}; } catch { return {href: 'unreadable', rules: 0}; } })`);
     const box = selector => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const b = el.getBoundingClientRect(); return {w: Math.round(b.width), h: Math.round(b.height)}; })()`;
     observed.layout = await evaluate(`({sidebar: ${box('.sidebar')}, canvas: ${box('canvas.chart-canvas')}, inspector: ${box('.inspector')}})`);
     observed.webgl = await evaluate(`(() => { const c = document.querySelector('canvas.chart-canvas'); const gl = c && (c.getContext('webgl2') || c.getContext('webgl')); return gl ? {ok: true, lost: gl.isContextLost()} : {ok: false}; })()`);
-    observed.syntheticLabelVisible = await evaluate(`/sintetic|synthetic|dimostrativ|demonstrat|demo/i.test(document.body.innerText)`);
+    observed.startupTitle = await evaluate(`document.querySelector('.stage-info h1')?.textContent ?? ''`);
 
     observed.resize = {};
     for (const [width, height] of [[1280, 720], [1920, 1080]]) {

@@ -8,25 +8,48 @@
         </div>
         <button type="button" class="sidebar-toggle" [attr.title]="t('navigation.toggle')" [attr.aria-label]="t('navigation.toggle')" [attr.aria-expanded]="!navCollapsed" (click)="toggleNavigation()">☷</button>
       </div>
-      <div class="nav-list">
-        <button type="button" class="nav-item nav-primary" [class.selected]="view==='new'" [attr.title]="t('newchart')" (click)="openNewChart()">
-          <span class="nav-mark" aria-hidden="true">＋</span><span class="nav-label">{{t('newchart')}}</span>
-        </button>
-        <button type="button" class="nav-item" [class.selected]="view==='archive'" [attr.title]="t('archive')" (click)="openArchive()">
-          <span class="nav-mark" aria-hidden="true">▤</span><span class="nav-label">{{t('archive')}}</span>
-        </button>
-      </div>
-      <div class="nav-separator"></div>
-      <div class="nav-list">
-        <button type="button" class="nav-item" *ngFor="let item of modes"
-          [class.selected]="view==='chart' && mode===item"
-          [disabled]="busy || calcBusy"
-          [attr.title]="modeLabel(item)"
-          [attr.aria-current]="view==='chart' && mode===item ? 'page' : null"
-          (click)="setMode(item)">
-          <span class="nav-mark" aria-hidden="true">{{item==='natal'?'◎':item==='transits'?'◉':item==='synastry'?'◇':'⊕'}}</span>
-          <span class="nav-label">{{modeLabel(item)}}</span>
-        </button>
+      <div class="nav-scroll">
+        <div class="nav-list">
+          <button type="button" class="nav-item nav-primary" [class.selected]="view==='new'" [attr.title]="t('newchart')" (click)="openNewChart()">
+            <span class="nav-mark" aria-hidden="true">＋</span><span class="nav-label">{{t('newchart')}}</span>
+          </button>
+          <button type="button" class="nav-item" [class.selected]="view==='archive'" [attr.title]="t('archive')" (click)="openArchive()">
+            <span class="nav-mark" aria-hidden="true">▤</span><span class="nav-label">{{t('archive')}}</span>
+          </button>
+        </div>
+        <div class="nav-separator"></div>
+        <div class="nav-list">
+          <button type="button" class="nav-item" [class.selected]="view==='chart' && isSkyActive && mode==='natal'"
+            [disabled]="calcBusy" [attr.title]="t('sky.title')" (click)="showSky()">
+            <span class="nav-mark" aria-hidden="true">✧</span><span class="nav-label">{{t('sky.title')}}</span>
+          </button>
+          <button type="button" class="nav-item" *ngFor="let item of modes"
+            [class.selected]="view==='chart' && mode===item && !(isSkyActive && item==='natal')"
+            [disabled]="busy || calcBusy"
+            [attr.title]="modeLabel(item)"
+            [attr.aria-current]="view==='chart' && mode===item ? 'page' : null"
+            (click)="setMode(item)">
+            <span class="nav-mark" aria-hidden="true">{{item==='natal'?'◎':item==='transits'?'◉':item==='synastry'?'◇':'⊕'}}</span>
+            <span class="nav-label">{{modeLabel(item)}}</span>
+          </button>
+        </div>
+        <div class="nav-separator"></div>
+        <div class="nav-list">
+          <button type="button" class="nav-item" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'" [attr.title]="t('nav.planets')"
+            [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">
+            <span class="nav-mark" aria-hidden="true">☉</span><span class="nav-label">{{t('nav.planets')}}</span>
+          </button>
+          <button type="button" class="nav-item" [class.selected]="!inspectorCollapsed && inspectorTab==='aspects'" [attr.title]="t('tab.aspects')"
+            [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='aspects'" (click)="toggleInspectorTab('aspects')">
+            <span class="nav-mark" aria-hidden="true">△</span><span class="nav-label">{{t('tab.aspects')}}</span>
+          </button>
+          <button type="button" class="nav-item" [class.selected]="view==='functions'" [attr.title]="t('tab.functions')" (click)="openFunctions()">
+            <span class="nav-mark" aria-hidden="true">≣</span><span class="nav-label">{{t('tab.functions')}}</span>
+          </button>
+          <button type="button" class="nav-item" [class.selected]="view==='settings'" [attr.title]="t('tab.settings')" (click)="openSettings()">
+            <span class="nav-mark" aria-hidden="true">⚙</span><span class="nav-label">{{t('tab.settings')}}</span>
+          </button>
+        </div>
       </div>
       <div class="sidebar-bottom">
         <div class="sidebar-prefs">
@@ -41,9 +64,9 @@
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')">
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
 
-        <div class="stage-info" *ngIf="view==='chart'">
-          <h1>{{modeLabel(mode)}}</h1>
-          <p class="stage-subject">{{subjectTitle}}</p>
+        <div class="stage-info" *ngIf="view==='chart' && activeChart">
+          <h1>{{stageTitle}}</h1>
+          <p class="stage-subject" *ngIf="!isSkyActive">{{subjectTitle}}</p>
           <p class="stage-caption">{{subjectCaption}}</p>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
@@ -56,9 +79,8 @@
               <span class="clock-compact">{{clockCompactText}}</span>
             </time>
           </div>
-          <button type="button" class="toolbar-button inspector-toggle" [attr.title]="t('inspector.toggle')"
-            [attr.aria-label]="t('inspector.toggle')" [attr.aria-expanded]="!inspectorCollapsed"
-            (click)="toggleInspector()">☷</button>
+          <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
+            [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
         </div>
 
         <div class="chart-toolbar chart-toolbar-left" role="toolbar" [attr.aria-label]="t('chart')">
@@ -67,10 +89,12 @@
           <button type="button" class="toolbar-button fit-button" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && mode==='transits'"
             [disabled]="busy||calcBusy" (click)="showTransits()">{{t('transits.refresh')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="isSkyActive && mode==='natal'"
+            [disabled]="busy||calcBusy" (click)="showSky()">{{t('sky.refresh')}}</button>
         </div>
         <div class="chart-toolbar chart-toolbar-right">
           <span class="status-message" role="status" [class.quiet]="status !== 'exporting' && status !== 'exported'">{{t(status)}}</span>
-          <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && activeChart.archiveId === null"
+          <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && activeChart.kind === 'chart' && activeChart.archiveId === null"
             [disabled]="archiveBusy || calcBusy" (click)="saveActiveChart()">{{t('chart.save')}}</button>
           <button type="button" class="export-button" [disabled]="!ready||busy" (click)="exportPng()">{{t('export')}}</button>
         </div>
@@ -80,6 +104,12 @@
         <p class="layout-warning-banner" role="status" *ngIf="styleStatus !== 'active'">
           {{t(styleStatusKey)}} <button type="button" class="small-control wide" (click)="checkStyles()">{{t('styles.retry')}}</button>
         </p>
+
+        <!-- No chart on screen: either the sky is being calculated or the calculation is not available. -->
+        <div class="empty-state" *ngIf="!activeChart && view==='chart'" role="status">
+          <p>{{t(calcMessage ?? 'sky.loading')}}</p>
+          <button type="button" class="form-primary-link" *ngIf="!calcBusy" (click)="openNewChart()">{{t('newchart')}}</button>
+        </div>
 
         <!-- New chart: its own panel, nothing else in it. -->
         <section class="sheet" *ngIf="view==='new'" [attr.aria-label]="t('form.title')">
@@ -118,7 +148,7 @@
                   <span>{{chartWhen(chart)}}</span>
                   <span>{{chart.placeLabel}}</span>
                 </button>
-                <button type="button" class="small-control wide" *ngIf="chart.archiveId === null" [disabled]="archiveBusy || calcBusy"
+                <button type="button" class="small-control wide" *ngIf="chart.kind === 'chart' && chart.archiveId === null" [disabled]="archiveBusy || calcBusy"
                   (click)="saveChart(chart)">{{t('chart.save')}}</button>
                 <button type="button" class="small-control" [disabled]="calcBusy || busy"
                   [attr.aria-label]="t('session.remove')" [attr.title]="t('session.remove')" (click)="removeChart(chart.id)">×</button>
@@ -132,7 +162,6 @@
                   </ng-container>
                 </select>
               </label>
-              <button type="button" class="link-control" *ngIf="activeChart" [disabled]="calcBusy || busy" (click)="showDemoChart(); closeSheet()">{{t('session.demo')}}</button>
             </ng-container>
 
             <h3 class="panel-title">{{t('archive.saved.title')}} ({{savedCharts.length}})</h3>
@@ -158,95 +187,13 @@
             </div>
           </div>
         </section>
-      </section>
-    </main>
 
-    <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
-      <div class="inspector-head">
-        <div class="inspector-tabs" role="tablist">
-          <button type="button" role="tab" id="tab-planets" aria-controls="inspector-content"
-            [attr.aria-selected]="inspectorTab==='planets'" (click)="setInspectorTab('planets')">{{t('tab.planets')}}</button>
-          <button type="button" role="tab" id="tab-aspects" aria-controls="inspector-content"
-            [attr.aria-selected]="inspectorTab==='aspects'" (click)="setInspectorTab('aspects')">{{t('tab.aspects')}}</button>
-          <button type="button" role="tab" id="tab-functions" aria-controls="inspector-content"
-            [attr.aria-selected]="inspectorTab==='functions'" (click)="setInspectorTab('functions')">{{t('tab.functions')}}</button>
-          <button type="button" role="tab" id="tab-settings" aria-controls="inspector-content"
-            [attr.aria-selected]="inspectorTab==='settings'" (click)="setInspectorTab('settings')">{{t('tab.settings')}}</button>
-        </div>
-        <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
-      </div>
-      <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
-        <div *ngIf="inspectorTab==='planets' && activeChart as chart">
-          <label class="setting-line select-line">
-            <span>{{t('houses.system')}}</span>
-            <select class="inline-select" [disabled]="busy" (change)="setHouseSystem($event)">
-              <option *ngFor="let system of houseSystems" [value]="system" [selected]="system===houseSystem">{{houseSystemLabel(system)}}</option>
-            </select>
-          </label>
-          <p class="inspector-hint missing-note" *ngIf="chart.unavailableHouseSystems.length">{{t('houses.missing')}} {{systemsOf(chart.unavailableHouseSystems)}}</p>
-          <table class="planet-table">
-            <thead>
-              <tr><th class="glyph-col"><span class="sr-only">{{t('tab.planets')}}</span></th><th>{{t('column.lng')}}</th><th>{{t('column.house')}}</th><th class="num">{{t('column.speed')}}</th><th class="num">{{t('column.lat')}}</th></tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let angle of angleRows">
-                <td class="glyph-col" [attr.title]="angle.fallback">
-                  <img class="glyph" alt="" [src]="glyphUrl(angle.id)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{angle.fallback}}</span>
-                </td>
-                <td class="numeric">{{longitudeText(angle.longitude)}}</td>
-                <td><span class="house-badge" *ngIf="houseOf(angle.house) as h" [attr.data-element]="h.element">{{h.text}}</span></td>
-                <td class="num"></td><td class="num"></td>
-              </tr>
-              <tr *ngFor="let row of planetRowsView">
-                <td class="glyph-col" [attr.title]="planetLabel(row.name)">
-                  <img class="glyph" [attr.alt]="planetLabel(row.name)" [src]="glyphUrl(row.name, row.retrograde)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.name)}}{{row.retrograde ? ' R' : ''}}</span>
-                </td>
-                <td class="numeric" [attr.title]="signName(row.longitude)">{{longitudeText(row.longitude)}}</td>
-                <td><span class="house-badge" *ngIf="houseOf(row.house) as h" [attr.data-element]="h.element">{{h.text}}</span></td>
-                <td class="num numeric">{{speedText(row.speed)}}</td>
-                <td class="num numeric">{{latitudeText(row.latitude)}}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p class="inspector-hint missing-note" *ngIf="chart.unavailableBodies.length">{{t('bodies.missing')}} {{namesOf(chart.unavailableBodies)}}</p>
-        </div>
-        <div *ngIf="inspectorTab==='planets' && !activeChart">
-          <p class="inspector-hint">{{t('planets.help')}}</p>
-          <div class="data-head"><span>{{t('tab.planets')}}</span><span>λ</span></div>
-          <button type="button" class="data-line" *ngFor="let planet of planets"
-            [class.active]="selectedPlanet===planet.name"
-            [attr.aria-pressed]="selectedPlanet===planet.name"
-            (click)="selectPlanet(planet.name)">
-            <span>{{planetLabel(planet.name)}}</span><span class="numeric">{{formatDegrees(planet.longitude)}}</span>
-          </button>
-        </div>
-        <div *ngIf="inspectorTab==='aspects'">
-          <p class="inspector-hint" *ngIf="!activeChart">{{t('aspects.help.demo')}}</p>
-          <ng-container *ngIf="activeChart">
-            <p class="inspector-hint">{{t('aspects.help')}}</p>
-            <p class="inspector-hint" *ngIf="!chartSettings.showAspects">{{t('aspects.hidden')}}</p>
-            <div class="data-head"><span>{{t('tab.aspects')}} ({{aspectRows.length}})</span><span>{{t('aspects.orb')}}</span></div>
-            <p class="inspector-hint missing-note" *ngIf="!aspectRows.length">{{t('aspects.none')}}</p>
-            <div class="data-line static aspect-line" *ngFor="let row of aspectRows">
-              <span>{{planetLabel(row.from)}} <em>{{aspectLabel(row.aspect)}}</em> {{planetLabel(row.to)}}</span>
-              <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
-                [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{row.applying ? 'A' : 'S'}}</span></span>
-            </div>
-            <p class="inspector-hint missing-note">{{t('aspects.legend')}}</p>
-            <ng-container *ngIf="(mode === 'transits' && transitChartAvailable) || (mode === 'synastry' && partnerChart)">
-              <div class="data-head"><span>{{t(mode === 'transits' ? 'aspects.transits' : 'aspects.synastry')}} ({{crossAspectRows.length}})</span><span>{{t('aspects.orb')}}</span></div>
-              <p class="inspector-hint">{{t(mode === 'transits' ? 'aspects.transits.help' : 'aspects.synastry.help')}}</p>
-              <p class="inspector-hint missing-note" *ngIf="!crossAspectRows.length">{{t('aspects.none')}}</p>
-              <div class="data-line static aspect-line" *ngFor="let row of crossAspectRows">
-                <span>{{planetLabel(row.from)}} <em>{{aspectLabel(row.aspect)}}</em> {{planetLabel(row.to)}}</span>
-                <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
-                  [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{row.applying ? 'A' : 'S'}}</span></span>
-              </div>
-            </ng-container>
-          </ng-container>
-          <button type="button" class="link-control" (click)="setInspectorTab('settings')">{{t('aspects.settings')}}</button>
-        </div>
-        <div *ngIf="inspectorTab==='functions'">
+        <!-- Functions: a drawer that opens from the left menu. -->
+        <section class="drawer" *ngIf="view==='functions'" [attr.aria-label]="t('tab.functions')">
+          <header class="sheet-head">
+            <h2>{{t('tab.functions')}}</h2>
+            <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
+          </header>
           <vs-returns-panel *ngIf="returnTool && returnRadix" [locale]="locale" [kind]="returnTool" [radix]="returnRadix"
             [busy]="calcBusy || busy" (chartRequested)="onReturnChartRequested($event)" (closed)="closeReturns()"></vs-returns-panel>
           <p class="calc-status" role="status" *ngIf="returnTool && calcMessage">{{t(calcMessage)}}</p>
@@ -276,30 +223,127 @@
               </button>
             </section>
           </details>
-        </div>
-        <div *ngIf="inspectorTab==='settings'">
+        </section>
+
+        <!-- Settings: a drawer that opens from the left menu. -->
+        <section class="drawer" *ngIf="view==='settings'" [attr.aria-label]="t('tab.settings')">
+          <header class="sheet-head">
+            <h2>{{t('tab.settings')}}</h2>
+            <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
+          </header>
           <details class="settings-section" open>
+            <summary>{{t('startup.title')}}</summary>
+            <div class="startup-options" role="radiogroup" [attr.aria-label]="t('startup.title')">
+              <label class="settings-check">
+                <input type="radio" name="startup" [checked]="startup.mode==='sky'" (change)="setStartupMode('sky')">
+                <span>{{t('startup.sky')}}</span>
+              </label>
+              <label class="settings-check">
+                <input type="radio" name="startup" [checked]="startup.mode==='natal-transits'" [disabled]="!savedCharts.length" (change)="setStartupMode('natal-transits')">
+                <span>{{t('startup.natal')}}</span>
+              </label>
+              <label class="setting-line select-line" *ngIf="startup.mode==='natal-transits'">
+                <span>{{t('startup.chart')}}</span>
+                <select class="inline-select" (change)="setStartupChart($event)">
+                  <option *ngFor="let saved of savedCharts" [value]="saved.id" [selected]="saved.id===startup.chartId">{{saved.name || t('session.unnamed')}}</option>
+                </select>
+              </label>
+              <p class="inspector-hint" *ngIf="!savedCharts.length">{{t('startup.nochart')}}</p>
+            </div>
+          </details>
+          <details class="settings-section">
             <summary>{{t('chartsettings.title')}}</summary>
             <vs-chart-settings [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
               (settingsChange)="onChartSettingsChanged($event)"></vs-chart-settings>
-          </details>
-          <details class="settings-section">
-            <summary>{{t('city.title')}}</summary>
-            <vs-offline-city-picker [locale]="locale" [selectedPlace]="selectedCity" (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
-            <div class="setting-line" *ngIf="selectedCity">
-              <span>{{t('clock.city')}}</span>
-              <div class="city-clock-values">
-                <strong>{{selectedCity.name}}</strong>
-                <time *ngIf="cityClock.kind === 'ready'" [attr.datetime]="clockInstantIso" [attr.title]="t('clock.city.note')">{{cityClockText}}</time>
-                <span *ngIf="cityClock.kind !== 'ready'" class="city-clock-unavailable">{{t('clock.city.unavailable')}}</span>
-              </div>
-            </div>
           </details>
           <details class="settings-section">
             <summary>{{t('settings.appearance')}}</summary>
             <div class="setting-line"><span>{{t('language')}}</span><button type="button" class="small-control wide" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button></div>
             <div class="setting-line"><span>{{t('settings.theme')}}</span><button type="button" class="small-control wide" (click)="toggleTheme()">{{activeThemeLabel}}</button></div>
           </details>
+        </section>
+      </section>
+    </main>
+
+    <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
+      <div class="inspector-head">
+        <div class="inspector-tabs" role="tablist">
+          <button type="button" role="tab" id="tab-planets" aria-controls="inspector-content"
+            [attr.aria-selected]="inspectorTab==='planets'" (click)="setInspectorTab('planets')">{{t('nav.planets')}}</button>
+          <button type="button" role="tab" id="tab-aspects" aria-controls="inspector-content"
+            [attr.aria-selected]="inspectorTab==='aspects'" (click)="setInspectorTab('aspects')">{{t('tab.aspects')}}</button>
+        </div>
+        <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>
+      </div>
+      <div class="inspector-body" role="tabpanel" id="inspector-content" [attr.aria-labelledby]="'tab-'+inspectorTab">
+        <p class="inspector-hint" *ngIf="!activeChart">{{t('inspector.nochart')}}</p>
+        <div *ngIf="inspectorTab==='planets' && activeChart as chart">
+          <label class="setting-line select-line">
+            <span>{{t('houses.system')}}</span>
+            <select class="inline-select" [disabled]="busy" (change)="setHouseSystem($event)">
+              <option *ngFor="let system of houseSystems" [value]="system" [selected]="system===houseSystem">{{houseSystemLabel(system)}}</option>
+            </select>
+          </label>
+          <p class="inspector-hint missing-note" *ngIf="chart.unavailableHouseSystems.length">{{t('houses.missing')}} {{systemsOf(chart.unavailableHouseSystems)}}</p>
+          <table class="planet-table">
+            <thead>
+              <tr>
+                <th class="glyph-col"><span class="sr-only">{{t('tab.planets')}}</span></th>
+                <th>{{t('column.lng')}}</th><th>{{t('column.house')}}</th>
+                <th class="num">{{t('column.speed')}}</th><th class="num">{{t('column.lat')}}</th><th class="num">{{t('column.latspeed')}}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let angle of angleRows">
+                <td class="glyph-col" [attr.title]="angle.fallback">
+                  <img class="glyph" alt="" [src]="glyphUrl(angle.id)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{angle.fallback}}</span>
+                </td>
+                <td class="numeric">{{longitudeText(angle.longitude)}}</td>
+                <td><span class="house-badge" *ngIf="houseOf(angle.house) as h" [attr.data-element]="h.element">{{h.text}}</span></td>
+                <td class="num"></td><td class="num"></td><td class="num"></td>
+              </tr>
+              <tr *ngFor="let row of planetRowsView">
+                <td class="glyph-col" [attr.title]="planetLabel(row.name)">
+                  <img class="glyph" [attr.alt]="planetLabel(row.name)" [src]="glyphUrl(row.name, row.retrograde)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.name)}}{{row.retrograde ? ' R' : ''}}</span>
+                </td>
+                <td class="numeric" [attr.title]="signName(row.longitude)">{{longitudeText(row.longitude)}}</td>
+                <td><span class="house-badge" *ngIf="houseOf(row.house) as h" [attr.data-element]="h.element">{{h.text}}</span></td>
+                <td class="num numeric">{{speedText(row.speed)}}</td>
+                <td class="num numeric">{{latitudeText(row.latitude)}}</td>
+                <td class="num numeric">{{latitudeSpeedText(row.latitudeSpeed)}}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="inspector-hint missing-note" *ngIf="chart.unavailableBodies.length">{{t('bodies.missing')}} {{namesOf(chart.unavailableBodies)}}</p>
+        </div>
+        <div *ngIf="inspectorTab==='aspects' && activeChart">
+          <p class="inspector-hint" *ngIf="!chartSettings.showAspects">{{t('aspects.hidden')}}</p>
+          <div class="data-head" [attr.title]="t('aspects.help')"><span>{{t('tab.aspects')}} ({{aspectRows.length}})</span><span>{{t('aspects.orb')}}</span></div>
+          <p class="inspector-hint missing-note" *ngIf="!aspectRows.length">{{t('aspects.none')}}</p>
+          <div class="data-line static aspect-line" *ngFor="let row of aspectRows">
+            <span class="aspect-symbols">
+              <span class="aspect-point" [attr.title]="planetLabel(row.from)"><img class="glyph sm" [attr.alt]="planetLabel(row.from)" [src]="glyphUrl(row.from)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.from)}}</span></span>
+              <span class="aspect-sign" [attr.title]="aspectLabel(row.aspect)">{{aspectSymbolOf(row.aspect)}}</span>
+              <span class="aspect-point" [attr.title]="planetLabel(row.to)"><img class="glyph sm" [attr.alt]="planetLabel(row.to)" [src]="glyphUrl(row.to)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.to)}}</span></span>
+            </span>
+            <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
+              [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{t(row.applying ? 'aspects.appl.short' : 'aspects.sep.short')}}</span></span>
+          </div>
+          <ng-container *ngIf="(mode === 'transits' && transitChartAvailable) || (mode === 'synastry' && partnerChart)">
+            <div class="data-head spaced" [attr.title]="t(mode === 'transits' ? 'aspects.transits.help' : 'aspects.synastry.help')">
+              <span>{{t(mode === 'transits' ? 'aspects.transits' : 'aspects.synastry')}} ({{crossAspectRows.length}})</span><span>{{t('aspects.orb')}}</span>
+            </div>
+            <p class="inspector-hint missing-note" *ngIf="!crossAspectRows.length">{{t('aspects.none')}}</p>
+            <div class="data-line static aspect-line" *ngFor="let row of crossAspectRows">
+              <span class="aspect-symbols">
+                <span class="aspect-point" [attr.title]="planetLabel(row.from)"><img class="glyph sm" [attr.alt]="planetLabel(row.from)" [src]="glyphUrl(row.from)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.from)}}</span></span>
+                <span class="aspect-sign" [attr.title]="aspectLabel(row.aspect)">{{aspectSymbolOf(row.aspect)}}</span>
+                <span class="aspect-point" [attr.title]="planetLabel(row.to)"><img class="glyph sm" [attr.alt]="planetLabel(row.to)" [src]="glyphUrl(row.to)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.to)}}</span></span>
+              </span>
+              <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
+                [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{t(row.applying ? 'aspects.appl.short' : 'aspects.sep.short')}}</span></span>
+            </div>
+          </ng-container>
         </div>
       </div>
     </aside>

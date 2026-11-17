@@ -9,16 +9,18 @@ import {
 import {
   chartSide, CHART_MODES, INSPECTOR_OVERLAY_MAX_PX, shouldCollapseNavigation, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
 } from './workspace-state';
-import { fictionalHouses, fictionalPlanets, makeFictionalTheme, type DemoPlanet } from './fictional-fixture';
+type DemoPlanet = 'Sun' | 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn' | 'Uranus' | 'Neptune' | 'Pluto';
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
-import {validatePngDataUrl, syntheticPngFilename, calculatedPngFilename} from './png-export-safety';
+import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
-import { OfflineCityPickerComponent } from './offline-city-picker.component';
-import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
-import { DeviceClock, formatDeviceClock, selectedCityClockAt, type SelectedCityClock } from './device-clock';
+import { DeviceClock, formatDeviceClock } from './device-clock';
+import { aspectSymbol } from './aspect-symbols';
+import {
+  DEFAULT_SKY_PLACE, loadStartupPreference, saveStartupPreference, type StartupMode, type StartupPreference
+} from './startup-preference';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
@@ -80,6 +82,8 @@ const STATUS_KEYS: Record<FunctionStatus,MessageKey> = {
 /** One calculated chart, held in memory for this session only. */
 type SessionChart = Readonly<{
   id: number;
+  /** `sky` is the sky of a moment (no person); `chart` is a subject's chart. */
+  kind: 'chart' | 'sky';
   name: string;
   utcIso: string;
   timeZone: string;
@@ -104,7 +108,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, OfflineCityPickerComponent, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -116,9 +120,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   private readonly cd = inject(ChangeDetectorRef);
   private readonly renderer = new GraficoRenderService();
-  private readonly natal: TemaRender = makeFictionalTheme(0);
-  private readonly transit: TemaRender = makeFictionalTheme(23);
-  private readonly synastry: TemaRender = makeFictionalTheme(58);
   private resizeObserver?: ResizeObserver;
   private initialized = false;
   private destroyed = false;
@@ -129,8 +130,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly deviceClock = new DeviceClock();
 
   readonly modes = CHART_MODES;
-  readonly planets = fictionalPlanets();
-  readonly houses = fictionalHouses();
 
   theme: UiTheme = this.initialUiPreferences.theme;
   locale: Locale = this.initialUiPreferences.locale;
@@ -140,7 +139,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   view: WorkspaceView = 'chart';
   autoSave = true;
   archiveQuery = '';
-  selectedPlanet: string | null = null;
+  /** What the window shows at start; read from this device's preferences. */
+  startup: StartupPreference = loadStartupPreference(this.uiPreferencesStorage);
   // Calculated charts live in memory only: no disk, no account, no network.
   sessionCharts: SessionChart[] = [];
   activeChartId: number | null = null;
@@ -168,14 +168,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // Solar or lunar return panel; its radix is the chart that was active when it opened.
   returnTool: ReturnKind | null = null;
   returnRadix: ReturnRadix | null = null;
-  selectedCity: OfflinePlaceV1 | null = null;
-  cityClock: SelectedCityClock = {kind: 'not_selected'};
   navCollapsed = shouldCollapseNavigation(window.innerWidth, window.innerHeight, true);
   /** Once the user folds or unfolds the navigation themselves, the window size no longer decides. */
   private navManual = false;
   /** On a narrow window the inspector floats over the chart, so it starts closed instead of hiding it. */
   inspectorCollapsed = window.innerWidth <= INSPECTOR_OVERLAY_MAX_PX;
-  busy = true;
+  busy = false;
   ready = false;
   status: MessageKey = 'chart.loading';
   runtimeStatus: MessageKey = 'runtime.checking';
@@ -249,17 +247,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return this.sessionCharts.find(chart => chart.id === this.partnerChartId) ?? null;
   }
   get transitChartAvailable(): boolean { return this.transitChart !== null; }
+  get isSkyActive(): boolean { return this.activeChart?.kind === 'sky'; }
+  get stageTitle(): string { return this.isSkyActive && this.mode === 'natal' ? this.t('sky.title') : this.modeLabel(this.mode); }
   get subjectTitle(): string {
     const chart = this.activeChart;
-    return chart ? this.chartName(chart) : this.t('subject');
+    return chart ? this.chartName(chart) : '';
   }
   get subjectCaption(): string {
     const chart = this.activeChart;
-    return chart ? this.chartWhen(chart) + ' · ' + chart.placeLabel : this.t('fixture');
+    return chart ? this.chartWhen(chart) + ' · ' + chart.placeLabel : '';
   }
+  aspectSymbolOf(aspect:string): string { return aspectSymbol(aspect); }
   availableIn(group: FunctionGroup): FunctionEntry[] { return group.entries.filter(entry => entry.status === 'available'); }
   unavailableIn(group: FunctionGroup): FunctionEntry[] { return group.entries.filter(entry => entry.status !== 'available'); }
-  chartName(chart: SessionChart): string { return chart.name || this.t('session.unnamed'); }
+  chartName(chart: SessionChart): string {
+    return chart.kind === 'sky' ? this.t('sky.title') : chart.name || this.t('session.unnamed');
+  }
   chartWhen(chart: {utcIso: string; timeZone: string}): string {
     try {
       return new Intl.DateTimeFormat(this.locale === 'it' ? 'it-IT' : 'en-GB', {
@@ -307,6 +310,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   longitudeText(longitude:number): string { return formatLongitudeDms(longitude, this.locale); }
   latitudeText(latitude:number): string { return formatLatitudeDms(latitude); }
   speedText(speed:number): string { return formatSpeed(speed, this.locale); }
+  latitudeSpeedText(speed:number): string { return formatSpeed(speed, this.locale, 3); }
   houseOf(house:number | null): HouseDisplay | null { return house === null ? null : houseDisplay(house); }
   houseSystemLabel(system:HouseSystemId): string { return this.t(HOUSE_SYSTEM_KEYS[system]); }
   statusLabel(status:FunctionStatus): string { return this.t(STATUS_KEYS[status]); }
@@ -326,7 +330,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   trackChart(_index:number, chart:SessionChart): number { return chart.id; }
 
-  private async computeChart(input: NewChartInput, archiveId: string | null = null): Promise<SessionChart | MessageKey> {
+  private async computeChart(input: NewChartInput, archiveId: string | null = null, kind: 'chart' | 'sky' = 'chart'): Promise<SessionChart | MessageKey> {
     const result = await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
     if (result.kind !== 'ready') return CALCULATION_FAILURES[result.kind];
     const data = buildTemaRenderData(result.chart, input.utcIso);
@@ -335,7 +339,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const onlySource = sources.size === 1 ? [...sources][0] : null;
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
     return {
-      id:this.nextChartId++, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
+      id:this.nextChartId++, kind, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
       archiveId, placeName:input.placeName,
       placeLabel:input.placeName ? input.placeName + ' (' + coordinates + ')' : coordinates,
       latMicro:input.latMicro, lngMicro:input.lngMicro,
@@ -391,7 +395,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.activeChartId = chart ? chart.id : null;
     this.transitChart = null;
     this.rowsCache = null;
-    this.selectedPlanet = null;
     if (chart) this.useAvailableHouseSystem(chart);
     if (chart && this.partnerChartId === chart.id) this.partnerChartId = null;
     // Overlays belong to the previous chart; start again from the plain wheel.
@@ -409,13 +412,68 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.sessionCharts = this.sessionCharts.filter(chart => chart.id !== id);
     if (this.returnRadix?.chartId === id) this.closeReturns();
     if (this.partnerChartId === id) this.partnerChartId = null;
-    if (this.activeChartId === id) this.showChart(null);
+    if (this.activeChartId === id) { this.showChart(null); void this.showSky(); }
     else if (this.mode === 'synastry' && !this.partnerChart) this.setMode('natal');
     this.cd.markForCheck();
   }
-  showDemoChart(): void {
-    if (this.calcBusy || this.exporting || this.activeChartId === null) return;
-    this.showChart(null);
+  /** The sky of this moment, cast at the place of the chosen start chart or, failing that, at the default place. */
+  async showSky(): Promise<void> {
+    if (this.calcBusy || this.exporting || this.destroyed) return;
+    const ticket = ++this.calcTicket;
+    this.calcBusy = true;
+    this.calcMessage = 'sky.loading';
+    this.view = 'chart';
+    this.cd.markForCheck();
+    const saved = this.savedCharts.find(item => item.id === this.startup.chartId);
+    const place = saved
+      ? {name:saved.placeName, latMicro:saved.latMicro, lngMicro:saved.lngMicro, timeZone:saved.timeZone}
+      : DEFAULT_SKY_PLACE;
+    const chart = await this.computeChart({
+      name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:place.timeZone,
+      offsetSeconds:0, latMicro:place.latMicro, lngMicro:place.lngMicro, placeName:place.name,
+    }, null, 'sky');
+    if (this.destroyed || ticket !== this.calcTicket) return;
+    this.calcBusy = false;
+    if (typeof chart === 'string') {
+      this.calcMessage = chart;
+    } else {
+      // Only the latest sky is kept in the session.
+      const old = new Set(this.sessionCharts.filter(item => item.kind === 'sky').map(item => item.id));
+      this.sessionCharts = [...this.sessionCharts.filter(item => !old.has(item.id)), chart];
+      if (this.partnerChartId !== null && old.has(this.partnerChartId)) this.partnerChartId = null;
+      this.mode = 'natal';
+      this.showChart(chart);
+      this.calcMessage = null;
+    }
+    this.cd.markForCheck();
+  }
+  /** What the program shows when it opens, according to the start preference. */
+  private async showStartupChart(): Promise<void> {
+    await this.loadArchive();
+    if (this.destroyed) return;
+    const saved = this.startup.mode === 'natal-transits'
+      ? this.savedCharts.find(item => item.id === this.startup.chartId) : undefined;
+    if (saved) {
+      await this.onChartRequested({
+        name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
+        offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName,
+      }, saved.id);
+      if (this.destroyed) return;
+      if (this.activeChart) { await this.showTransits(); return; }
+    }
+    await this.showSky();
+  }
+  setStartupMode(mode: StartupMode): void {
+    const chartId = this.startup.chartId ?? this.savedCharts[0]?.id ?? null;
+    this.startup = {mode: mode === 'natal-transits' && chartId ? 'natal-transits' : 'sky', chartId};
+    saveStartupPreference(this.uiPreferencesStorage, this.startup);
+    this.cd.markForCheck();
+  }
+  setStartupChart(event: Event): void {
+    const id = (event.target as HTMLSelectElement).value;
+    if (!this.savedCharts.some(item => item.id === id)) return;
+    this.startup = {mode:this.startup.mode, chartId:id};
+    saveStartupPreference(this.uiPreferencesStorage, this.startup);
     this.cd.markForCheck();
   }
   setPartner(event: Event): void {
@@ -563,9 +621,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone, placeName:chart.placeName,
     };
     this.returnTool = kind;
-    this.view = 'chart';
-    this.inspectorCollapsed = false;
-    this.setInspectorTab('functions');
+    this.view = 'functions';
+    this.cd.markForCheck();
   }
   closeReturns(): void {
     this.returnTool = null;
@@ -600,17 +657,37 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     switch (entry.action) {
       case 'archive': this.openArchive(); break;
       case 'solar_return': this.openReturns('solar'); break;
-      case 'aspect_table': this.setInspectorTab('aspects'); break;
-      case 'chart_settings': this.setInspectorTab('settings'); break;
+      case 'aspect_table': this.closeSheet(); this.openInspector('aspects'); break;
+      case 'chart_settings': this.openSettings(); break;
       case 'lunar_return': this.openReturns('lunar'); break;
-      case 'new_chart': case 'now_chart': this.openNewChart(); break;
+      case 'new_chart': this.openNewChart(); break;
+      case 'now_chart': void this.showSky(); break;
       case 'session_charts': this.openArchive(); break;
-      case 'house_system': case 'planet_info': this.setInspectorTab('planets'); break;
-      case 'mode_natal': this.setMode('natal'); break;
-      case 'mode_transits': this.setMode('transits'); break;
-      case 'mode_synastry': this.setMode('synastry'); break;
-      case 'mode_latitude': this.setMode('latitude'); break;
+      case 'house_system': case 'planet_info': this.closeSheet(); this.openInspector('planets'); break;
+      case 'mode_natal': this.closeSheet(); this.setMode('natal'); break;
+      case 'mode_transits': this.closeSheet(); this.setMode('transits'); break;
+      case 'mode_synastry': this.closeSheet(); this.setMode('synastry'); break;
+      case 'mode_latitude': this.closeSheet(); this.setMode('latitude'); break;
     }
+  }
+  openFunctions(): void {
+    this.view = this.view === 'functions' ? 'chart' : 'functions';
+    this.cd.markForCheck();
+  }
+  openSettings(): void {
+    this.view = this.view === 'settings' ? 'chart' : 'settings';
+    this.cd.markForCheck();
+  }
+  openInspector(tab: InspectorTab): void {
+    this.inspectorTab = tab;
+    this.inspectorCollapsed = false;
+    this.cd.markForCheck();
+  }
+  /** The left-menu and toolbar buttons for the planet and aspect tables open them, or close them when already showing. */
+  toggleInspectorTab(tab: InspectorTab): void {
+    if (!this.inspectorCollapsed && this.inspectorTab === tab) this.inspectorCollapsed = true;
+    else this.openInspector(tab);
+    this.cd.markForCheck();
   }
   openNewChart(): void {
     this.view = 'new';
@@ -621,21 +698,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get activeThemeLabel(): string { return this.t(this.theme === 'light' ? 'theme.current.light' : 'theme.current.dark'); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
   get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
-  get cityClockText(): string { return this.cityClock.kind === 'ready' ? this.cityClock.text : '—'; }
   get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
-  private updateCityClock(): void {
-    this.cityClock = selectedCityClockAt(this.deviceClock.timestamp, this.selectedCity, this.locale);
-  }
-  onCitySelected(place: OfflinePlaceV1): void {
-    this.selectedCity = place;
-    this.updateCityClock();
-    this.cd.markForCheck();
-  }
-  onCityEdited(): void {
-    this.selectedCity = null;
-    this.updateCityClock();
-    this.cd.markForCheck();
-  }
   get clockInstantIso(): string | null {
     const ms = this.deviceClock.timestamp;
     return Number.isFinite(ms) && Math.abs(ms) <= 8_640_000_000_000_000 ? new Date(ms).toISOString() : null;
@@ -652,12 +715,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     // Local clock is independent of renderer success, astronomy and account auth.
     this.deviceClock.start(() => {
       if (this.destroyed) return;
-      this.updateCityClock();
       this.cd.markForCheck();
     });
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
-    void this.loadArchive();
     try {
       // No network fallback. The selected local image pack is embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');
@@ -667,6 +728,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.resizeObserver = new ResizeObserver(() => this.fitStage());
       this.resizeObserver.observe(this.stage.nativeElement);
       void this.draw();
+      void this.showStartupChart();
     } catch (error) {
       this.renderError(error);
     }
@@ -725,7 +787,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.locale = this.locale === 'it' ? 'en' : 'it';
     document.documentElement.lang = this.locale;
     this.persistUiPreferences();
-    this.updateCityClock();
     this.cd.markForCheck();
   }
   toggleTheme(): void {
@@ -738,10 +799,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   setMode(mode:ChartMode): void {
     if (this.view !== 'chart') { this.view = 'chart'; this.cd.markForCheck(); }
-    if(this.busy || mode === this.mode) return;
+    if(this.busy) return;
+    // "Tema natale" while the sky is on screen means the last subject's chart, or the archive to choose one.
+    if (mode === 'natal' && this.isSkyActive) { this.openNatal(); return; }
+    if (mode === this.mode) return;
     if (this.activeChart && mode === 'transits') { void this.showTransits(); return; }
     if (this.activeChart && mode === 'synastry' && !this.partnerChart) {
-      // Never pair a calculated chart with fixture data.
+      // A synastry needs a second calculated chart.
       this.calcMessage = 'synastry.needsecond';
       if (this.sessionCharts.length > 1) this.openArchive(); else this.openNewChart();
       return;
@@ -754,10 +818,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.inspectorTab = tab;
     this.cd.markForCheck();
   }
-  selectPlanet(name:string): void {
-    // Inspector-only selection; the upstream renderer does not yet expose a stable
-    // planet selection contract. Never pretend the chart itself is highlighted.
-    this.selectedPlanet = this.selectedPlanet === name ? null : name;
+  private openNatal(): void {
+    const last = [...this.sessionCharts].reverse().find(item => item.kind === 'chart');
+    if (!last) { this.openArchive(); return; }
+    this.mode = 'natal';
+    this.showChart(last);
     this.cd.markForCheck();
   }
   zoom(direction:-1|1): void {
@@ -785,7 +850,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       aspectsOn[id] = settings.aspects[id].active;
       aspectOrbs[id] = settings.aspects[id].orb;
     }
-    const planets: Record<string,unknown> = active ? active.data.planets : this.natal.planets;
+    const planets: Record<string,unknown> = active ? active.data.planets : {};
     const points = options.settaggi.elementi_celesti as unknown as Record<string,{att:boolean; orb:number; aspVerso:boolean}>;
     // Everything starts switched off: lots and other points this build does not compute stay off.
     for (const name of Object.keys(points)) { points[name].att = false; points[name].aspVerso = false; }
@@ -801,15 +866,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     return options;
   }
-  private chartArguments(): [TemaRender,TemaRender,TemaRender,string] {
+  /** Null while no chart is on screen: nothing is drawn from placeholder data. */
+  private chartArguments(): [TemaRender,TemaRender,TemaRender,string] | null {
     // Upstream parameters are declared non-nullable, but its supported demo uses
     // null to mean that an optional overlay is disabled. This cast isolates the
     // legacy type mismatch until the renderer exports nullable parameters.
     const noOverlay = null as unknown as TemaRender;
     const active = this.activeChart;
-    const transit = active ? this.transitChart?.render : this.transit;
-    const synastry = active ? this.partnerChart?.render : this.synastry;
-    return [active ? active.render : this.natal,
+    if (!active) return null;
+    const transit = this.transitChart?.render;
+    const synastry = this.partnerChart?.render;
+    return [active.render,
       this.mode==='transits' && transit ? transit : noOverlay,
       this.mode==='synastry' && synastry ? synastry : noOverlay,
       this.mode==='latitude' ? 'latitudini' : 'carta-astrale'];
@@ -817,11 +884,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async draw(): Promise<void> {
     const ticket = this.drawGeneration.begin();
     if(ticket === null) return;
+    const args = this.chartArguments();
+    if (!args) {
+      this.busy=false; this.ready=false; this.error='';
+      this.cd.markForCheck();
+      return;
+    }
     this.busy=true; this.ready=false; this.error=''; this.status='chart.loading';
     this.cd.markForCheck();
     try {
       // Capture the request's mode, overlay and skin before awaiting the library.
-      const [natal,transits,synastry,kind] = this.chartArguments();
+      const [natal,transits,synastry,kind] = args;
       const options = this.options();
       await this.renderer.disegnaScena(natal,transits,synastry,kind,options);
       // The upstream service may skip superseded scene-generation requests.
@@ -844,17 +917,18 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if(!this.ready || this.busy || this.destroyed || this.exporting) return;
     const exportMode = this.mode;
     const exportTheme = this.theme;
+    const args = this.chartArguments();
+    if (!args) return;
     this.exporting=true;
     this.busy=true; this.status='exporting'; this.cd.markForCheck();
     try {
-      const [natal,transits,synastry,kind]=this.chartArguments();
+      const [natal,transits,synastry,kind]=args;
       const png=await this.renderer.generaImmagine(natal,transits,synastry,kind,
         this.options(),{x:800,y:800},2);
       if(this.destroyed) return;
       // A renderer failure must never become an arbitrary link/download target.
       const safePng = validatePngDataUrl(png);
-      const safeFilename = this.activeChart
-        ? calculatedPngFilename(exportMode,exportTheme) : syntheticPngFilename(exportMode,exportTheme);
+      const safeFilename = calculatedPngFilename(exportMode,exportTheme);
       requestSyntheticPngDownload(safePng,safeFilename,{
         createAnchor: () => document.createElement('a'),
         appendAnchor: anchor => { document.body.appendChild(anchor); },

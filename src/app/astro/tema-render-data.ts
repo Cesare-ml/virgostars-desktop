@@ -151,6 +151,8 @@ export type PlanetRow = Readonly<{
   latitude: number;
   /** Longitude speed in degrees per day; negative is retrograde. */
   speed: number;
+  /** Latitude speed in degrees per day. */
+  latitudeSpeed: number;
   signIndex: number;
   degreeInSign: number;
   retrograde: boolean;
@@ -185,10 +187,11 @@ export function formatLatitudeDms(latitude: number): string {
 }
 
 /** Longitude speed in degrees per day with at most two decimals and the locale's decimal separator. */
-export function formatSpeed(speed: number, locale: TableLocale = 'it'): string {
+export function formatSpeed(speed: number, locale: TableLocale = 'it', decimals = 2): string {
   if (!Number.isFinite(speed)) return '—';
-  const rounded = Math.round(speed * 100) / 100;
-  return new Intl.NumberFormat(locale === 'it' ? 'it-IT' : 'en-GB', {maximumFractionDigits: 2})
+  const scale = 10 ** decimals;
+  const rounded = Math.round(speed * scale) / scale;
+  return new Intl.NumberFormat(locale === 'it' ? 'it-IT' : 'en-GB', {maximumFractionDigits: decimals})
     .format(Object.is(rounded, -0) ? 0 : rounded);
 }
 
@@ -219,6 +222,7 @@ export function planetRows(data: TemaRenderData, system: HouseSystemId): PlanetR
       degreeInSign: body.longitude30,
       latitude: body.latitude,
       speed: body.longitudeSpeed,
+      latitudeSpeed: body.latitudeSpeed,
       retrograde: body.longitudeSpeed < 0,
       house,
     });

@@ -10,7 +10,7 @@ const good = () => ({
   styleSheets: [{href: '/styles.css', rules: 8}, {href: 'inline', rules: 109}],
   layout: {sidebar: {w: 60, h: 880}, inspector: {w: 344, h: 880}, canvas: {w: 872, h: 872}},
   webgl: {ok: true, lost: false},
-  syntheticLabelVisible: true,
+  startupTitle: 'Cielo del momento',
   requests: ['http://tauri.localhost/', 'http://tauri.localhost/main.js', 'http://ipc.localhost/desktop_runtime_info'],
   exceptions: [],
   console: [],
@@ -34,7 +34,7 @@ test('each observable regression is reported by a stable identifier', () => {
     ['CSS_NOT_APPLIED', o => { o.styleSheets = [{href: 'inline', rules: 109}]; }],
     ['LAYOUT_COLLAPSED', o => { o.layout.canvas = {w: 0, h: 0}; }],
     ['WEBGL_UNAVAILABLE', o => { o.webgl = {ok: false}; }],
-    ['SYNTHETIC_LABEL_MISSING', o => { o.syntheticLabelVisible = false; }],
+    ['STARTUP_SKY_MISSING', o => { o.calculation = {status: 'ok', provider: {name: 'x'}, chart: {}}; o.startupTitle = 'Tema natale'; }],
     ['EXTERNAL_REQUEST', o => { o.requests.push('https://example.com/x.css'); }],
     ['PAGE_EXCEPTION', o => { o.exceptions.push('boom'); }],
     ['RESIZE_1280x720', o => { o.resize['1280x720'].overflowX = true; }],
@@ -42,7 +42,7 @@ test('each observable regression is reported by a stable identifier', () => {
     ['CHART_NOT_TALL_1280x720', o => { o.resize['1280x720'].canvas = [600, 600]; }],
     ['IPC_RUNTIME_INFO', o => { o.runtimeInfo = null; }],
     ['IPC_INVALID_REQUEST_ACCEPTED', o => { o.invalidCalculation = {status: 'ok'}; }],
-    ['PNG_EXPORT', o => { o.png = {bytes: 12, signatureOk: false}; }],
+    ['PNG_EXPORT', o => { o.calculation = {status: 'ok', provider: {name: 'x'}, chart: {}}; o.png = {bytes: 12, signatureOk: false}; }],
     ['WEBGL_CONTEXT_NOT_RECOVERED', o => { o.contextLoss = {lostAfterLose: true, lostAfterRestore: true}; }]
   ];
   for (const [id, mutate] of cases) {

@@ -2,8 +2,8 @@
 export type ChartMode = 'natal' | 'transits' | 'synastry' | 'latitude';
 export type UiTheme = 'light' | 'dark';
 /** What the centre of the window shows over the chart: nothing, the new-chart form or the archive. */
-export type WorkspaceView = 'chart' | 'new' | 'archive';
-export type InspectorTab = 'planets' | 'aspects' | 'functions' | 'settings';
+export type WorkspaceView = 'chart' | 'new' | 'archive' | 'functions' | 'settings';
+export type InspectorTab = 'planets' | 'aspects';
 export type Locale = 'it' | 'en';
 
 export const CHART_MODES: ReadonlyArray<ChartMode> = Object.freeze(['natal', 'transits', 'synastry', 'latitude']);
@@ -19,7 +19,7 @@ export function chartSide(width: number, height: number, padding = 24): number {
 }
 /** Widths (CSS px) of the side columns; keep in step with desktop-app.component.css. */
 export const NAV_WIDTH_PX = 208;
-export const INSPECTOR_WIDTH_PX = 344;
+export const INSPECTOR_WIDTH_PX = 400;
 /** At or below this window width the inspector floats over the chart instead of taking a column. */
 export const INSPECTOR_OVERLAY_MAX_PX = 1140;
 /**

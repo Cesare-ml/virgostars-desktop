@@ -63,8 +63,10 @@ test('calculated exports are never named like fixture exports', () => {
 
 test('a calculated chart is never paired with fixture overlays', () => {
   const component = read('src/app/desktop-app.component.ts');
-  assert.match(component, /const transit = active \? this\.transitChart\?\.render : this\.transit;/);
-  assert.match(component, /const synastry = active \? this\.partnerChart\?\.render : this\.synastry;/);
+  // No placeholder chart exists any more: overlays only ever come from calculated charts.
+  assert.doesNotMatch(component, /makeFictionalTheme|fictionalPlanets|fictionalHouses/);
+  assert.match(component, /const transit = this\.transitChart\?\.render;/);
+  assert.match(component, /const synastry = this\.partnerChart\?\.render;/);
   assert.match(component, /const present = AXIS_IDS\.includes\(id\) \|\| id in planets;/);
   assert.match(component, /target\.att = present && setting\.shown;/);
 });
