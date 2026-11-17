@@ -7,7 +7,7 @@ import {
   defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
 } from 'grafici-astrologici';
 import {
-  chartSide, CHART_MODES, INSPECTOR_OVERLAY_MAX_PX, shouldCollapseNavigation, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
+  chartSide, CHART_MARGIN_PX, CHART_MODES, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
 } from './workspace-state';
 type DemoPlanet = 'Sun' | 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn' | 'Uranus' | 'Neptune' | 'Pluto';
 import { translate, type Locale, type MessageKey } from './translations';
@@ -170,11 +170,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // Solar or lunar return panel; its radix is the chart that was active when it opened.
   returnTool: ReturnKind | null = null;
   returnRadix: ReturnRadix | null = null;
-  navCollapsed = shouldCollapseNavigation(window.innerWidth, window.innerHeight, true);
+  navCollapsed = shouldCollapseNavigation(window.innerWidth, window.innerHeight, false);
   /** Once the user folds or unfolds the navigation themselves, the window size no longer decides. */
   private navManual = false;
-  /** On a narrow window the inspector floats over the chart, so it starts closed instead of hiding it. */
-  inspectorCollapsed = window.innerWidth <= INSPECTOR_OVERLAY_MAX_PX;
+  /** The planet and aspect tables start closed; the left menu or the Info pianeti button opens them. */
+  inspectorCollapsed = true;
+  /** The sky of the moment: running (green, refreshed every SKY_REFRESH_MS) or paused (yellow). */
+  skyLive = true;
+  private skyTimer: ReturnType<typeof setInterval> | null = null;
+  private skyRefreshing = false;
   busy = false;
   ready = false;
   status: MessageKey = 'chart.loading';
@@ -419,13 +423,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   /** The sky of this moment, cast at the place of the chosen start chart or, failing that, at the default place. */
-  async showSky(): Promise<void> {
+  async showSky(silent = false): Promise<void> {
     if (this.calcBusy || this.exporting || this.destroyed) return;
-    const ticket = ++this.calcTicket;
-    this.calcBusy = true;
-    this.calcMessage = 'sky.loading';
-    this.view = 'chart';
-    this.cd.markForCheck();
+    // A silent refresh never takes over: a request the user makes meanwhile wins.
+    const ticket = silent ? this.calcTicket : ++this.calcTicket;
+    if (!silent) {
+      this.calcBusy = true;
+      this.calcMessage = 'sky.loading';
+      this.view = 'chart';
+      this.cd.markForCheck();
+    }
     const saved = this.savedCharts.find(item => item.id === this.startup.chartId);
     const place = saved
       ? {name:saved.placeName, latMicro:saved.latMicro, lngMicro:saved.lngMicro, timeZone:saved.timeZone}
@@ -435,9 +442,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       offsetSeconds:0, latMicro:place.latMicro, lngMicro:place.lngMicro, placeName:place.name,
     }, null, 'sky');
     if (this.destroyed || ticket !== this.calcTicket) return;
-    this.calcBusy = false;
+    // The sky must still be what is on screen, as a plain wheel.
+    if (silent && (!this.isSkyActive || this.mode !== 'natal')) return;
+    if (!silent) this.calcBusy = false;
     if (typeof chart === 'string') {
-      this.calcMessage = chart;
+      // A refresh that fails keeps the chart already on screen.
+      if (!silent) this.calcMessage = chart;
     } else {
       // Only the latest sky is kept in the session.
       const old = new Set(this.sessionCharts.filter(item => item.kind === 'sky').map(item => item.id));
@@ -445,9 +455,19 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if (this.partnerChartId !== null && old.has(this.partnerChartId)) this.partnerChartId = null;
       this.mode = 'natal';
       this.showChart(chart);
-      this.calcMessage = null;
+      if (!silent) this.calcMessage = null;
     }
     this.cd.markForCheck();
+  }
+  toggleSkyLive(): void {
+    this.skyLive = !this.skyLive;
+    this.cd.markForCheck();
+  }
+  private async skyTick(): Promise<void> {
+    if (!this.skyLive || this.destroyed || !this.isSkyActive || this.mode !== 'natal') return;
+    if (this.calcBusy || this.busy || this.exporting || this.skyRefreshing) return;
+    this.skyRefreshing = true;
+    try { await this.showSky(true); } finally { this.skyRefreshing = false; }
   }
   /** What the program shows when it opens, according to the start preference. */
   private async showStartupChart(): Promise<void> {
@@ -721,6 +741,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     });
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
+    this.skyTimer = setInterval(() => { void this.skyTick(); }, SKY_REFRESH_MS);
     try {
       // No network fallback. The selected local image pack is embedded in Tauri.
       GestoreImmagini.configurePublicAssetsBase('/assets/');
@@ -747,6 +768,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    if (this.skyTimer !== null) clearInterval(this.skyTimer);
     this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
@@ -760,8 +782,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if (collapse !== this.navCollapsed) { this.navCollapsed = collapse; this.cd.markForCheck(); }
     }
     const bounds = this.stage.nativeElement.getBoundingClientRect();
-    // The wheel takes the full height of the window; only a hairline margin is kept.
-    const diameter = chartSide(bounds.width,bounds.height,4);
+    // The wheel takes nearly the full height of the window, with a small margin to its edge.
+    const diameter = chartSide(bounds.width,bounds.height,CHART_MARGIN_PX);
     if (diameter >= 32) {
       const surface = this.canvas.nativeElement;
       const css = diameter + 'px';

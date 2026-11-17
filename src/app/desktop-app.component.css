@@ -116,6 +116,11 @@
   gap:14px; background:var(--vs-surface); color:var(--vs-text-secondary); font-size:14px; text-align:center; padding:24px; }
 .empty-state p { margin:0; max-width:420px; }
 .form-primary-link { background:var(--vs-accent); color:var(--vs-accent-contrast); border:0; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:700; }
+/* Play/pause of the sky of the moment: green while it refreshes itself, yellow while paused. */
+.sky-live { display:inline-flex; align-items:center; gap:8px; padding:0 12px; font-size:14px; }
+.sky-dot { width:10px; height:10px; border-radius:50%; background:#E0A800; box-shadow:0 0 0 3px rgba(224,168,0,.28); }
+.sky-live.live .sky-dot { background:#1FAE55; box-shadow:0 0 0 3px rgba(31,174,85,.28); }
+.settings-top { padding:2px 0 6px; border-bottom:1px solid var(--vs-border); margin-bottom:2px; }
 .info-button { padding:0 12px; font-size:12px; font-weight:650; }
 .info-button.selected { background:var(--vs-surface-muted); color:var(--vs-accent); }
 /* Aspect lists: symbol, symbol, symbol. */

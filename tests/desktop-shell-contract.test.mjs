@@ -49,7 +49,7 @@ test('the chart owns the full window height: no top bar, header or footer around
   assert.match(css,/\.chart-stage\s*\{[^}]*margin:0;/s);
   assert.match(css,/\.desktop-app\s*\{[^}]*grid-template-rows:minmax\(0,1fr\);/s);
   const component=read('src/app/desktop-app.component.ts');
-  assert.match(component,/chartSide\(bounds\.width,bounds\.height,4\)/);
+  assert.match(component,/chartSide\(bounds\.width,bounds\.height,CHART_MARGIN_PX\)/);
 });
 test('light and dark tokens exist, and the chart has a central flex stage',()=>{
   const css=read('src/app/desktop-app.component.css');

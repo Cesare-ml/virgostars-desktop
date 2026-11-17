@@ -17,6 +17,10 @@ export function chartSide(width: number, height: number, padding = 24): number {
   const available = Math.floor(Math.min(width, height) - 2 * padding);
   return Math.max(0, Math.min(available, MAX_CHART_SIDE_CSS_PX));
 }
+/** The sky of the moment refreshes itself this often while it is running. */
+export const SKY_REFRESH_MS = 33_000;
+/** Margin (CSS px) kept between the wheel and the edge of its area. */
+export const CHART_MARGIN_PX = 12;
 /** Widths (CSS px) of the side columns; keep in step with desktop-app.component.css. */
 export const NAV_WIDTH_PX = 208;
 export const INSPECTOR_WIDTH_PX = 400;

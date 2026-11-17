@@ -4,8 +4,9 @@ import {readFileSync} from 'node:fs';
 
 const component = readFileSync(new URL('../src/app/desktop-app.component.ts', import.meta.url), 'utf8');
 
-test('on a narrow window the floating inspector starts closed instead of covering the chart', () => {
-  assert.match(component, /inspectorCollapsed = window\.innerWidth <= INSPECTOR_OVERLAY_MAX_PX;/);
+test('the planet and aspect tables start closed, whatever the window size', () => {
+  assert.match(component, /inspectorCollapsed = true;/);
+  assert.doesNotMatch(component, /inspectorCollapsed = window\.innerWidth/);
 });
 
 test('the navigation folds by itself until the user decides', () => {

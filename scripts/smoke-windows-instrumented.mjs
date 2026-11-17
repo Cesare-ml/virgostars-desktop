@@ -143,6 +143,11 @@ export async function runSmoke(root) {
       if (await evaluate(`!!document.querySelector('.stage-info, .empty-state')`).catch(() => false)) break;
     }
     await sleep(2500);
+    // Pause the sky's own refresh (every 33 s) so that it cannot redraw in the middle of a measurement.
+    await evaluate(`document.querySelector('.sky-live.live')?.click()`);
+    // The planet table starts closed; open it so that its layout is measured too.
+    await evaluate(`document.querySelector('.info-button')?.click()`);
+    await sleep(1500);
 
     observed.styleSheets = await evaluate(`[...document.styleSheets].map(sheet => { try { return {href: sheet.href ? new URL(sheet.href).pathname : 'inline', rules: sheet.cssRules.length}; } catch { return {href: 'unreadable', rules: 0}; } })`);
     const box = selector => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const b = el.getBoundingClientRect(); return {w: Math.round(b.width), h: Math.round(b.height)}; })()`;
