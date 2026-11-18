@@ -38,7 +38,7 @@ use virgostars_ephemeris_core::spk_type21::SmallBodySpk;
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-const ENGINE_VERSION: &str = "core-0.1.0-5491f82";
+const ENGINE_VERSION: &str = "core-0.1.0-ff0ad09";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
@@ -182,6 +182,32 @@ pub fn data_available() -> bool {
     with_engine(|_| ()).is_some()
 }
 
+/// Source error is informational only; the caller supplies the uncertainty used
+/// for sensitivity. Its semantics and the snapshot vintage are not verified.
+pub(crate) fn historical_usno_delta_t(
+    jd_ut1: f64,
+    allow_predictions: bool,
+) -> Result<(f64, &'static str, Option<f64>), &'static str> {
+    with_engine(|engine| select_historical_usno(engine.delta_t.as_ref(), jd_ut1, allow_predictions))
+        .ok_or("provider_unavailable")?
+}
+
+fn select_historical_usno(
+    table: Option<&DeltaTTable>,
+    jd_ut1: f64,
+    allow_predictions: bool,
+) -> Result<(f64, &'static str, Option<f64>), &'static str> {
+    use virgostars_ephemeris_core::delta_t_table::DeltaTKind;
+    let table = table.ok_or("time_source_unavailable")?;
+    let value = table.delta_t(jd_ut1).map_err(|_| "time_source_out_of_range")?;
+    let source = match value.kind {
+        DeltaTKind::Measured => "Local USNO-format non-prediction (source unverified)",
+        DeltaTKind::Predicted if allow_predictions => "Local USNO-format prediction (source unverified)",
+        DeltaTKind::Predicted => return Err("time_source_out_of_range"),
+    };
+    Ok((value.delta_t_seconds, source, value.uncertainty_seconds))
+}
+
 /// Isolated experimental path: the input epoch is explicitly UT1, never civil UTC.
 pub(crate) fn historical_planet(
     request: &crate::historical_planets::HistoricalPlanetRequest,
@@ -211,6 +237,7 @@ pub(crate) fn historical_planet(
             jd_tdb: output.epoch.jd_tdb.0, delta_t_seconds: output.epoch.delta_t_seconds,
             uncertainty_seconds: output.epoch.uncertainty_seconds, delta_t_source: output.delta_t_source,
             uncertainty_source: request.uncertainty_source.clone(),
+            usno_source_error: request.usno_source_error.clone(),
             longitude_deg: fields.longitude_deg, latitude_deg: fields.latitude_deg, distance_au: fields.distance_au,
             longitude_speed_deg_per_tdb_day: output.rates.longitude_deg_per_tdb_day,
             latitude_speed_deg_per_tdb_day: output.rates.latitude_deg_per_tdb_day,
@@ -380,6 +407,24 @@ impl EphemerisProvider for VirgoStarsEphemeris {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn historical_usno_requires_table_and_explicit_prediction_choice() {
+        let historic = "1950.0 29.15 0.1\n1960.0 33.15 0.02\n1965.0 35.0 0.01\n1970.0 40.18 0.001\n1972.0 42.23 0.001\n1972.5 42.81 0.001\n";
+        let monthly = "1973 2 1 43.4724\n1973 3 1 43.5648\n";
+        let predictions = "41900.0\t1973.5\t44.0\t \t0.3\n42000.0\t1973.8\t45.0\t \t0.4\n";
+        let table = DeltaTTable::from_usno(monthly, historic, Some(predictions)).unwrap();
+        assert_eq!(select_historical_usno(None, 2441714.5, false), Err("time_source_unavailable"));
+        assert_eq!(select_historical_usno(Some(&table), 2441714.5, false),
+            Ok((43.4724, "Local USNO-format non-prediction (source unverified)", None)));
+        let prediction = 2_400_000.5 + 41900.0;
+        let between = (2441714.5 + prediction) / 2.0;
+        assert_eq!(select_historical_usno(Some(&table), between, true).unwrap().2, None);
+        assert_eq!(select_historical_usno(Some(&table), prediction, false), Err("time_source_out_of_range"));
+        assert_eq!(select_historical_usno(Some(&table), prediction, true),
+            Ok((44.0, "Local USNO-format prediction (source unverified)", Some(0.3))));
+        assert_eq!(select_historical_usno(Some(&table), 1.0, true), Err("time_source_out_of_range"));
+    }
 
     fn request(year: i32, month: u32, day: u32, hour: f64) -> ValidatedRequest {
         ValidatedRequest { year, month, day, hour, latitude_deg: 41.8928, longitude_deg: 12.4837 }
