@@ -49,7 +49,7 @@ backup before downgrading. The legacy plain-v1 import remains read-only and its
 source file is not removed by migration. No historical data or archive key is
 sent to the server.
 
-Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 1); there is no automatic repair, deletion or downgrade.
+Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 2); there is no automatic repair, deletion or downgrade.
 
 ## Interface
 
