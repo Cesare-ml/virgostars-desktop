@@ -83,7 +83,7 @@ impl NativeAccessGrant {
     pub(crate) fn bearer(&self) -> &str { &self.access_token }
 }
 
-fn valid_staging_token_endpoint(value: &str) -> Option<Url> {
+pub(crate) fn valid_staging_token_endpoint(value: &str) -> Option<Url> {
     if value.len() > 512 { return None; }
     let uri = Url::parse(value).ok()?;
     if uri.scheme() != "https" || uri.path() != TOKEN_PATH ||
