@@ -12,7 +12,8 @@ try { await fetch(`http://127.0.0.1:${port}/json/version`); throw new Error('DEV
 catch (error) { if (error.message === 'DEVTOOLS_PORT_IN_USE') throw error; }
 const env = {...process.env, WEBVIEW2_USER_DATA_FOLDER:mkdtempSync(join(process.cwd(), '.local/historical-qa-profile-')),
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`};
-delete env.VIRGOSTARS_USNO_DIR;
+if (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR) env.VIRGOSTARS_USNO_DIR = process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR;
+else delete env.VIRGOSTARS_USNO_DIR;
 delete env.VIRGOSTARS_CHIRON_SPK;
 const child = spawn(exe, [], {windowsHide:true, stdio:'ignore', env});
 let socket;
@@ -54,5 +55,13 @@ try {
   result='';
   for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
   if(!/Morrison-Stephenson 2004 standard error/.test(result) || !/meno incertezza|minus uncertainty/.test(result)) throw Error('ESTIMATED_UNCERTAINTY_NOT_SHOWN');
-  process.stdout.write('WebView2 historical panel: model, BCE estimate, uncertainty and explicit source passed.\n');
+  if (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR) {
+    await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const sel=p.querySelectorAll('select')[1]; sel.value='usno'; sel.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await pause(150);
+    await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const a=p.querySelectorAll('input[type=number]'); for(const [i,v] of [[0,'2000'],[5,'5']]){a[i].value=v; a[i].dispatchEvent(new Event('input',{bubbles:true}));} p.querySelector('form').requestSubmit();})()`);
+    result='';
+    for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
+    if(!/Local USNO-format non-prediction \(source unverified\)/.test(result)) throw Error('USNO_RESULT_NOT_SHOWN');
+  }
+  process.stdout.write('WebView2 historical panel: model, BCE estimate, uncertainty and explicit source passed' + (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR ? '; USNO passed.\n' : '. USNO not requested.\n'));
 } finally { socket?.close(); child.kill(); }
