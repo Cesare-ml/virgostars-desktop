@@ -14,6 +14,12 @@ import sqlite3
 import tempfile
 
 EXPECTED_ROWS = 1_951_599
+# The authorized v2 city release identity; must match fetch_catalog.py exactly.
+# The Python function accepts a small explicit expected row count for synthetic tests,
+# but the CLI used for native packaging never permits an alternate release.
+PINNED_DATABASE_BYTES = 196_808_704
+PINNED_DATABASE_SHA256 = "605f0d0e3646812b3aaa4acd8b895dd462b10b58d986df1c2e4ca1a486c7457a"
+PINNED_COUNTRY_LOOKUP_COUNT = 244
 # Match the private archive importer's maximum manifest size.
 MAX_MANIFEST_BYTES = 16_384
 
@@ -63,14 +69,27 @@ def prepare(root: Path, expected: int = EXPECTED_ROWS) -> Path:
     if not catalog.is_file() or not manifest_file.is_file():
         raise FileNotFoundError("Missing catalog or manifest: build the local SQLite pack first")
     info = parse_manifest(manifest_file)
+    actual_bytes = catalog.stat().st_size
+    actual_sha256 = sha256_of(catalog)
     # bool is an int subclass in Python: reject JSON true/false for number fields.
     if (type(expected) is not int or expected < 1 or
         type(info.get("schemaVersion")) is not int or info["schemaVersion"] not in (1, 2) or
         type(info.get("rowCount")) is not int or info["rowCount"] != expected or
         info.get("file") != catalog.name or
-        type(info.get("bytes")) is not int or info["bytes"] != catalog.stat().st_size or
-        info.get("sha256") != sha256_of(catalog)):
+        type(info.get("bytes")) is not int or info["bytes"] != actual_bytes or
+        info.get("sha256") != actual_sha256):
         raise ValueError("City pack metadata, size, count or checksum mismatch")
+    # A forged, internally consistent manifest must not authorize a different
+    # SQLite database in the production pack. Synthetic unit tests opt in via
+    # an explicit, non-production row count passed to prepare(), not the CLI.
+    if expected == EXPECTED_ROWS and (
+        info["schemaVersion"] != 2 or
+        actual_bytes != PINNED_DATABASE_BYTES or
+        actual_sha256 != PINNED_DATABASE_SHA256 or
+        type(info.get("countryLookupCount")) is not int or
+        info["countryLookupCount"] != PINNED_COUNTRY_LOOKUP_COUNT
+    ):
+        raise ValueError("City pack differs from the pinned private release")
     with closing(sqlite3.connect(catalog.as_uri() + "?mode=ro", uri=True)) as connection:
         count = connection.execute("SELECT value FROM catalog_meta WHERE key='rowCount'").fetchone()
         if count is None or count[0] != str(expected):
@@ -124,6 +143,8 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--expected-rows", type=int, default=EXPECTED_ROWS)
     args = parser.parse_args()
+    if args.expected_rows != EXPECTED_ROWS:
+        raise SystemExit("City release packaging only supports the pinned production row count")
     file = prepare(args.root, args.expected_rows)
     print("Tauri city-pack override generated: " + str(file))
     print("This does not automatically build/sign a Windows installer.")
