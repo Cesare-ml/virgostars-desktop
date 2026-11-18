@@ -77,10 +77,19 @@ fn valid_loopback_uri(candidate: &str) -> bool {
         uri.as_str() == candidate
 }
 
+/// Consent is staging-only while the backend PKCE authorization is disabled
+/// in production. The caller supplies the exact URL, but it must still be a
+/// VirgoStars-owned staging/preview host. No arbitrary HTTPS origin is valid.
 fn valid_consent_origin(candidate: &str) -> Option<Url> {
     let uri = Url::parse(candidate).ok()?;
+    let host = uri.host_str()?;
+    let labels: Vec<_> = host.split('.').collect();
+    let staging_host = labels.len() >= 3 &&
+        labels[labels.len() - 2] == "virgostars" &&
+        labels[labels.len() - 1] == "it" &&
+        labels[..labels.len() - 2].iter().any(|label| matches!(*label, "staging" | "preview"));
     if uri.scheme() != "https" ||
-        !matches!(uri.host_str(), Some("www.virgostars.it" | "virgostars.it")) ||
+        !staging_host ||
         uri.port().is_some() || uri.path() != "/collega-dispositivo" ||
         uri.query().is_some() || uri.fragment().is_some() ||
         !uri.username().is_empty() || uri.password().is_some() ||
@@ -227,15 +236,21 @@ mod tests {
     #[test]
     fn consent_url_matches_the_disabled_web_candidate_query_contract() {
         let (a, _) = new();
-        let url = a.consent_url("https://www.virgostars.it/collega-dispositivo").unwrap();
+        let url = a.consent_url("https://staging.virgostars.it/collega-dispositivo").unwrap();
         let query: Vec<_> = url.query_pairs().collect();
         assert_eq!(query.len(), 5);
         assert_eq!(url.path(), "/collega-dispositivo");
         assert_eq!(query.iter().find(|(key, _)| key == "code_challenge_method").unwrap().1, "S256");
         assert_eq!(query.iter().find(|(key, _)| key == "redirect_uri").unwrap().1.as_ref(), a.redirect_uri.as_str());
+        assert!(a.consent_url("https://preview.virgostars.it/collega-dispositivo").is_ok());
+        assert!(a.consent_url("https://www.virgostars.it/collega-dispositivo").is_err());
+        assert!(a.consent_url("https://virgostars.it/collega-dispositivo").is_err());
         assert!(a.consent_url("http://www.virgostars.it/collega-dispositivo").is_err());
         assert!(a.consent_url("https://virgostars.it.evil.test/collega-dispositivo").is_err());
-        assert!(a.consent_url("https://www.virgostars.it/collega-dispositivo?next=https://evil.test").is_err());
+        assert!(a.consent_url("https://staging.virgostars.it.evil.test/collega-dispositivo").is_err());
+        assert!(a.consent_url("https://staging.virgostars.it/collega-dispositivo?next=https://evil.test").is_err());
+        assert!(a.consent_url("https://staging.virgostars.it/collega-dispositivo#evil").is_err());
+        assert!(a.consent_url("https://staging.virgostars.it:8443/collega-dispositivo").is_err());
     }
 
     #[test]
@@ -262,7 +277,7 @@ mod tests {
             CallbackDecision::Denied => panic!("expected authorization code"),
         }
         assert!(matches!(a.accept_callback(&redirect, now), Err(LoginError::AlreadyFinished)));
-        assert!(matches!(a.consent_url("https://www.virgostars.it/collega-dispositivo"), Err(LoginError::AlreadyFinished)));
+        assert!(matches!(a.consent_url("https://staging.virgostars.it/collega-dispositivo"), Err(LoginError::AlreadyFinished)));
     }
 
     #[test]
