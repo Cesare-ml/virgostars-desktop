@@ -121,7 +121,12 @@ fn find_crossings(
                 let middle = low + (high - low) / 2.0;
                 if read(middle)? <= 0.0 { low = middle } else { high = middle }
             }
-            crossings.push(low + (high - low) / 2.0);
+            let crossing = low + (high - low) / 2.0;
+            // The calendar-year interval is half-open. In particular, do not
+            // count an exact 1 January return in both adjacent years.
+            if crossing < end {
+                crossings.push(crossing);
+            }
         }
         left = right;
         left_offset = right_offset;
@@ -260,6 +265,19 @@ mod tests {
         let previous_year = find_crossings(on_boundary, 40.0, start - 365.0, start, 1.0).unwrap();
         assert_eq!(previous_year.len(), 1);
         assert!((previous_year[0] - (start - 360.0)).abs() < 2e-9);
+    }
+
+    #[test]
+    fn test_exact_end_boundary_belongs_only_to_next_interval() {
+        let start = year_start_julian_day(2001);
+        let end = year_start_julian_day(2002);
+        // Uniform direct motion, exactly on target at the next year's start.
+        let motion = |time: f64| Ok((40.0 + (time - end)).rem_euclid(360.0));
+        let current = find_crossings(motion, 40.0, start, end, 1.0).unwrap();
+        assert!(current.iter().all(|time| *time < end));
+        let following = find_crossings(motion, 40.0, end, end + 365.0, 1.0).unwrap();
+        assert!(!following.is_empty());
+        assert!((following[0] - end).abs() < 2e-9);
     }
 
     #[test]
