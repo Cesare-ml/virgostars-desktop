@@ -4,7 +4,7 @@
 
 ## What it does
 
-- `src-tauri/src/virgostars_provider.rs` implements the `EphemerisProvider` port with `virgostars-ephemeris-core` (CPAL-1.0), pinned to one reviewed commit (`6835e00`) of `Cesare-ml/VirgoStars-Ephemeris`. The git dependency needs network access the first time it is fetched.
+- `src-tauri/src/virgostars_provider.rs` implements the `EphemerisProvider` port with `virgostars-ephemeris-core` (CPAL-1.0), pinned to reviewed commit `31b84d45b7301adf440737158825804fb1bbbbff` of `Cesare-ml/VirgoStars-Ephemeris`. The git dependency needs network access the first time it is fetched.
 - `calculate_chart` v1 is unchanged (same IPC contract, no path, name or account data crosses it). It now answers with provider id `virgostars_ephemeris`, source `jpl` and the engine version string.
 - Bodies: Sun, Moon, Mercury, Venus, Mars–Pluto, mean and true lunar Node, mean and osculating Apogee, and Chiron (JPL SPK, NAIF 20002060). Apparent geocentric ecliptic-of-date positions, speeds, right ascension and declination.
 - Mars to Pluto are the **system barycentres** (the usual convention for the outer planets, DE441 carries no separate body for them).
@@ -28,6 +28,16 @@ Nothing astronomical is committed to this repository. The host looks for each of
 - Without the USNO folder the engine's own limit is **27 June 2027**.
 - Earlier versions accepted years 0 to 5000 through the Moshier ephemeris. That range is a goal for later: it needs the full DE441 file **and** a validated long-term ΔT model in the engine, which do not exist yet.
 
+## Experimental historical planet bridge (2026-11-18)
+
+`calculate_historical_planet` is a separate v1 native command, with a TypeScript adapter in `src/app/native/historical-planets.ts`. It is not yet called by the chart UI and does not extend `calculate_chart` or claim a complete historical chart. It requires a body, an already-known Julian day **UT1**, TT−UT1 in seconds, its nonnegative uncertainty, and a nonempty source label. A caller must obtain those values for each epoch; the app does not choose a historical model or infer UT1 from UTC or local civil time. An uncertainty of zero is a caller assertion, not a proof of accuracy. TT-to-TDB uses the engine's approximation, and the returned uncertainty is not an angular error bound.
+
+The result includes time provenance and apparent planet position with experimental empirical longitude, latitude and radial speeds per TDB day. These candidate speeds are not derivatives of the returned position. Radial correction is explicitly indicated and is not applied to the Sun. Mars–Pluto refer to system barycentres. It does not calculate houses, lunar nodes/apogees, Chiron or stars. No data path crosses IPC and no network request is made. Provider absence and calculation failure are reported, not substituted. The actual selected DE441 file controls date coverage; the shipped slice does **not** cover the desired 13000 BCE–3999 CE range.
+
+**Historical source decision:** require a caller-supplied, identified ΔT and uncertainty for this experimental bridge until a suitable automatic source is selected and evaluated for the full requested interval. [NASA's Espenak–Meeus expressions](https://eclipse.gsfc.nasa.gov/LEcat5/deltatpoly.html) are presented for astronomical years −1999 to +3000, not the entire product interval; the currently implemented experimental core entry has the narrower 0–3000 contract and supplies no uncertainty. NASA also describes the [growing uncertainty of extrapolated ΔT](https://eclipse.gsfc.nasa.gov/SEhelp/rotation.html). These facts do not justify silently extending either model to 13000 BCE or 3999 CE. Existing modern chart time policy remains separate.
+
+The engine's existing Swiss comparisons and owner-approved thresholds are sampled results, not a guarantee over every epoch or historical physical accuracy. On Windows, the bridge was locally checked against the same core and the user-supplied full DE441 for Sun, Moon, Mercury and Pluto at three synthetic UT1 instants in 13000 BCE, 2000 and 3999 CE; the ΔT used was fictional and the test establishes adapter wiring, not independent astronomical validation. `cargo test --locked` passed 73 tests with one external-data test ignored; the latter was also run explicitly and passed. The JavaScript suite passed 905 tests with 12 skipped. The frontend build passed with an explicitly supplied sibling charts path; WebView2 IPC, a packaged build and installation were not tested for this change.
+
 ## Verification (2026-11-17, Windows)
 
 - `cargo test --locked`: 67 unit tests pass with the real data files configured; without them the provider tests skip themselves. `npm test`: 882 pass.
@@ -48,7 +58,7 @@ Nothing astronomical is committed to this repository. The host looks for each of
 
 ## What is still open for a wider release
 
-1. **Full DE441 (2.8 GB) for years 0–5000.** Hosting, a signed download manifest and the engine-side long-term ΔT are not done. The installer ships a 1890–2110 slice instead.
+1. **Full DE441 (2.8 GB) for the desired historical interval.** Hosting, a signed download manifest, a suitable automatic long-term ΔT source and historical civil-time handling are not done. The installer ships a 1890–2110 slice instead. The explicit UT1 command above is an integration building block, not a solution to historical chart input.
 2. **Rights of the shipped data** (DE441 slice, USNO files, Chiron SPK) must be confirmed by the maintainer before publication ([Licensing and publication](LICENSING_AND_PUBLICATION.md)).
 3. **Identity.** The product is still "VirgoStars Desktop Lab" with synthetic-derived icons, version 0.0.1; changing the bundle identifier changes the application-data folder and the credential-store entry of the encrypted archive.
 4. **Signing and updates.** There is no code-signing certificate (an unsigned installer triggers SmartScreen) and no updater with signature validation.
