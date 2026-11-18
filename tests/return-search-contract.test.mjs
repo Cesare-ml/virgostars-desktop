@@ -120,3 +120,29 @@ test('years, zones and instants are validated and formatted without guessing', (
   assert.match(formatReturnInstant('2000-01-01T10:00:00.000Z', 'Europe/Rome', 'en'), /11:00:00/);
   assert.equal(formatReturnInstant('2000-01-01T10:00:00.000Z', 'Not/AZone', 'it'), '2000-01-01T10:00:00.000Z');
 });
+
+test('native return results outside the requested UTC year fail closed', async () => {
+  const transport = instants => ({
+    isNative: () => true,
+    invoke: async () => ({...okResponse(), instants}),
+  });
+  const firstOfNextYear = {
+    utcIso: '2001-01-01T00:00:00.000Z',
+    julianDayUt: 2451910.5,
+  };
+  const lastOfPreviousYear = {
+    utcIso: '1999-12-31T23:59:59.000Z',
+    julianDayUt: 2451544.499988426,
+  };
+  assert.deepEqual(
+    await requestReturns(transport([instant(10), firstOfNextYear]), REQUEST),
+    {kind: 'unavailable'},
+  );
+  assert.deepEqual(
+    await requestReturns(transport([lastOfPreviousYear, instant(10)]), REQUEST),
+    {kind: 'unavailable'},
+  );
+  const result = await requestReturns(transport([instant(10), instant(37.25)]), REQUEST);
+  assert.equal(result.kind, 'ready');
+  assert.equal(result.instants.length, 2);
+});
