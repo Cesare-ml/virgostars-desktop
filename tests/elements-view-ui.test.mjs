@@ -4,15 +4,18 @@ import {readFileSync} from 'node:fs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('Elementi swaps central presentation without destroying the existing canvas',()=>{
+test('Elementi and Aspetti independently swap central presentation without destroying the canvas',()=>{
   const html=read('src/app/desktop-app.component.html');
   const source=read('src/app/desktop-app.component.ts');
   assert.match(html, /<canvas #canvas class="chart-canvas"/);
-  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && chartPresentation==='elements'"/);
+  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && chartPresentation!=='wheel'"/);
   assert.match(html, /\(click\)="toggleElements\(\)"/);
   assert.match(html, /\[attr\.aria-pressed\]="chartPresentation==='elements'"/);
-  assert.match(source, /chartPresentation: 'wheel' \| 'elements' = 'wheel'/);
-  assert.match(source, /this\.chartPresentation = this\.chartPresentation === 'wheel' \? 'elements' : 'wheel'/);
+  assert.match(html, /\(click\)="toggleAspects\(\)"/);
+  assert.match(html, /\[attr\.aria-pressed\]="chartPresentation==='aspects'"/);
+  assert.match(source, /chartPresentation: 'wheel' \| 'elements' \| 'aspects' = 'wheel'/);
+  assert.match(source, /this\.chartPresentation = this\.chartPresentation === 'elements' \? 'wheel' : 'elements'/);
+  assert.match(source, /this\.chartPresentation = this\.chartPresentation === 'aspects' \? 'wheel' : 'aspects'/);
 });
 
 test('dodecatemoria second lines use the existing computed data and house selection',()=>{
@@ -25,7 +28,11 @@ test('dodecatemoria second lines use the existing computed data and house select
   assert.match(html,/row\.signDodecatemoria/);
   assert.match(html,/\*ngIf="showDodecatemoria"/);
   assert.match(html,/\[attr\.aria-pressed\]="showDodecatemoria"/);
+  assert.match(desktop,/\[showTransaturnians\]="showTransaturnians"/);
+  assert.match(html,/\[attr\.aria-pressed\]="showTransaturnians"/);
+  assert.match(html,/\(click\)="toggleTransaturnians\.emit\(\)"/);
   assert.match(source,/houseDisplay\(house\)\?\.element/);
+  assert.match(source,/this\.showTransaturnians/);
 });
 
 test('elemental axis arrows live in their element rows; modalities and aspect matrix share chart data',()=>{
@@ -38,13 +45,35 @@ test('elemental axis arrows live in their element rows; modalities and aspect ma
   assert.match(html,/class="axis-arrow ds-arrow"/);
   assert.match(html,/model\.modalities/);
   assert.match(html,/class="aspect-matrix"/);
+  assert.match(html,/\*ngIf="presentation==='aspects'"/);
+  assert.match(html,/\*ngIf="presentation==='elements'"/);
   assert.match(html,/matrixAspect\(planet,other\)/);
-  assert.match(desktop,/\[theme\]="theme" \[aspects\]="aspectRows"/);
+  assert.match(desktop,/\[theme\]="theme" \[aspects\]="matrixAspectRows"/);
+  assert.match(source,/const PLANETS = \['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto'\]/);
   assert.match(source,/MAJOR_ASPECTS/);
   assert.match(source,/planetImageUrl\(name:string,retrograde=false\)/);
   assert.match(source,/simboli-bianchi\/elementi-celesti/);
   assert.match(source,/simboli-bianchi\/segni/);
   assert.match(read('package.json'),/"start:private"/);
+});
+
+test('npm start uses only the approved private asset stage; synthetic preview stays explicit',()=>{
+  const scripts=JSON.parse(read('package.json')).scripts;
+  assert.match(scripts.start,/prepare:frontend:private/);
+  assert.match(scripts.start,/desktop:build:private-artwork/);
+  assert.doesNotMatch(scripts.start,/npm run prepare:frontend &&/);
+  assert.equal(scripts['start:private'],'npm start');
+  assert.match(scripts['start:synthetic'],/npm run prepare:frontend && ng serve desktop/);
+});
+
+test('Elements copy is compact; aspect descriptions are not on either panel',()=>{
+  const html=read('src/app/elements-view.component.html');
+  for(const caption of [
+    'ANALISI DEL TEMA','CHART ANALYSIS','QUALITÀ','QUALITIES','RELAZIONI','RELATIONSHIPS',
+    'elements.subtitle','elements.seven','elements.housesDepend','Sette pianeti tradizionali',
+    'Seven traditional planets','Aspetti maggiori · orbi dalle impostazioni del grafico',
+    'Major aspects · orbs from chart settings',
+  ]) assert.ok(!html.includes(caption),`unexpected caption: ${caption}`);
 });
 
 test('all planetary marks including both matrix axes use artwork glyphs; element chips are white-on-color',()=>{

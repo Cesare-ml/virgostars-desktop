@@ -45,7 +45,7 @@ npm test
 npm run build:ui
 ```
 
-Run the local Angular development UI with `npm start`. For a native prototype use `npm run tauri:dev`, or `npm run tauri:build` to attempt an executable build. `src-tauri/tauri.conf.json` currently has `bundle.active=false`: **these commands do not produce an end-user installer**. No real VirgoStars account, production service or restricted data package is required for the synthetic build.
+For local development with the verified original artwork, place the authorized `astrological-assets` checkout beside this repository and run `npm start` (alias: `npm run start:private`). This serves only the approved, locally staged images. A public-only checkout can instead run `npm run start:synthetic` to use synthetic checkerboard fixtures; `npm run build:ui` and `npm run tauri:build` also remain synthetic by default. For a native prototype, start the Angular server first and then use `npm run tauri:dev`, or `npm run tauri:build` to attempt an executable build. `src-tauri/tauri.conf.json` currently has `bundle.active=false`: **these commands do not produce an end-user installer**. No VirgoStars account, production service, or restricted data package is required for the synthetic build.
 
 The synthetic asset generator is designed to fail closed on unexpected, modified or unapproved assets. If the local generated pack already exists, follow [Asset Pipeline](docs/ASSET_PIPELINE.md) rather than overwriting it.
 

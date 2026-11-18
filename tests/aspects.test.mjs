@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RENDER_POINT_ORDER, aspectPoints, computeAspects, computeCrossAspects, formatOrb} from '../src/app/astro/aspects.ts';
+import {RENDER_POINT_ORDER, MATRIX_PLANETS, aspectPoints, computeAspects, computeCrossAspects, computePlanetMatrixAspects, formatOrb} from '../src/app/astro/aspects.ts';
 import {ASPECT_DEFINITIONS, defaultChartSettings} from '../src/app/chart-settings.ts';
 
 // Visibly fictional positions chosen so each aspect is obvious.
@@ -169,6 +169,29 @@ test('chart points follow the renderer order; hidden bodies are left out, axes k
   assert.ok(RENDER_POINT_ORDER.indexOf('MC') < RENDER_POINT_ORDER.indexOf('AS'));
   settings.points.Moon.shown = false;
   assert.ok(!aspectPoints(data, settings.points).some(p => p.name === 'Moon'));
+});
+
+test('dedicated ten-planet aspect matrix includes outer planets without changing wheel settings',()=>{
+  const settings=defaultChartSettings();
+  const body=(longitude,longitudeSpeed=1)=>({longitude,longitudeSpeed,equatoriale:{declination:0}});
+  const data={
+    as:45,ds:225,mc:315,ic:135,
+    planets:{Sun:body(0),Moon:body(92),Uranus:body(120),Neptune:body(180),Pluto:body(60)},
+  };
+  assert.deepEqual(MATRIX_PLANETS,['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto']);
+  assert.equal(settings.points.Uranus.aspects,false);
+  assert.equal(settings.points.Neptune.aspects,false);
+  assert.equal(settings.points.Pluto.aspects,false);
+  const rows=computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS);
+  assert.ok(find(rows,'Sun','Uranus','trigono'));
+  assert.ok(find(rows,'Sun','Neptune','opposizione'));
+  assert.ok(find(rows,'Sun','Pluto','sestile'));
+  assert.equal(find(computeAspects(aspectPoints(data,settings.points),settings,ASPECT_DEFINITIONS),'Sun','Uranus'),undefined);
+  assert.equal(settings.points.Uranus.aspects,false,'matrix calculation may not mutate chart settings');
+  settings.points.Uranus.orb=0;
+  assert.equal(find(computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS),'Sun','Uranus'),undefined);
+  settings.aspects.sestile.active=false;
+  assert.equal(find(computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS),'Sun','Pluto'),undefined);
 });
 
 test('orbs are shown in degrees and whole minutes', () => {

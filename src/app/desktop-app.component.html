@@ -86,10 +86,11 @@
         </div>
 
         <!-- A light DOM view of the same calculated longitudes, never a second wheel renderer. -->
-        <vs-elements-view *ngIf="view==='chart' && activeChart && chartPresentation==='elements'"
+        <vs-elements-view *ngIf="view==='chart' && activeChart && chartPresentation!=='wheel'"
           [data]="activeChart.data" [houseSystem]="houseSystem" [locale]="locale"
-          [theme]="theme" [aspects]="aspectRows"
-          [showDodecatemoria]="showDodecatemoria" (toggleDodecatemoria)="toggleDodecatemoria()"></vs-elements-view>
+          [theme]="theme" [aspects]="matrixAspectRows" [presentation]="chartPresentation==='aspects' ? 'aspects' : 'elements'"
+          [showDodecatemoria]="showDodecatemoria" (toggleDodecatemoria)="toggleDodecatemoria()"
+          [showTransaturnians]="showTransaturnians" (toggleTransaturnians)="toggleTransaturnians()"></vs-elements-view>
 
         <div class="stage-tools">
           <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
@@ -101,6 +102,9 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
             [class.selected]="chartPresentation==='elements'" [attr.aria-pressed]="chartPresentation==='elements'"
             (click)="toggleElements()">{{t('elements.button')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
+            [class.selected]="chartPresentation==='aspects'" [attr.aria-pressed]="chartPresentation==='aspects'"
+            (click)="toggleAspects()">{{t('elements.aspectsButton')}}</button>
           <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
             [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
         </div>

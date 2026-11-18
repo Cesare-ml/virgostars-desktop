@@ -8,7 +8,7 @@ The existing offline bundle verifiers inspect **generated files**. Angular `ng b
 
 `scripts/verify-angular-source-config.mjs` accepts exactly the reviewed `desktop` project and its synthetic and optional private-artwork inputs, including CSS critical-inlining disabled for the current CSP, no font network optimization and no extra build projects/options. It rejects any unknown field, altered path, new configuration or changed optimization option. It also rejects **duplicate JSON object keys**, including Unicode-escaped aliases, before comparing with the reviewed configuration. This prevents ambiguous keys from being silently collapsed by `JSON.parse`; whitespace-only formatting changes remain allowed. This is an intentionally strict equality policy rather than a general-purpose Angular config linter. The checker opens `angular.json` once as a bounded read-only file descriptor (64 KiB + 1-byte overflow guard), requests `O_NOFOLLOW` on supported platforms, compares device/inode before reading, and closes the descriptor even on failure. The synthetic file-swap/growth tests cover these rejection paths; a Windows-native behavior check remains necessary.
 
-Both `npm run build:ui` and `npm run build:ui:private` run the read-only check **before** staging or invoking Angular. The normal Tauri build scripts depend on these UI build commands. **The development entrypoints are also guarded:** `npm start` validates the Angular project before preparing synthetic assets or starting the loopback dev server; `npm run tauri:dev` preserves the existing version check first, validates the same Angular source, then the existing Tauri WebView security configuration, before preparing the icon or starting the native host. The gate is a one-time startup preflight, not a live watcher: restart the dev command after changing `angular.json`. The catalog-enabled Tauri build entrypoints check Angular inputs after the mandatory version guard and **before** fetching optional city resources. The manual Windows PowerShell bootstrap checks versions and Angular inputs before any `npm ci`; it still uses the ordinary `build:ui` gate again before packaging. Direct `ng serve`, `ng build` or Tauri CLI invocations can bypass npm guards; use the documented workflow.
+Both `npm run build:ui` and `npm run build:ui:private` run the read-only check **before** staging or invoking Angular. The normal Tauri build scripts depend on these UI build commands. **The development entrypoints are also guarded:** `npm start` now validates the Angular project before preparing approved local original assets and starting the private-artwork loopback server; `npm run start:synthetic` keeps the same preflight before staging checkerboard assets; `npm run tauri:dev` preserves the existing version check first, validates the same Angular source, then the existing Tauri WebView security configuration, before preparing the icon or starting the native host. The gate is a one-time startup preflight, not a live watcher: restart the dev command after changing `angular.json`. The catalog-enabled Tauri build entrypoints check Angular inputs after the mandatory version guard and **before** fetching optional city resources. The manual Windows PowerShell bootstrap checks versions and Angular inputs before any `npm ci`; it still uses the ordinary `build:ui` gate again before packaging. Direct `ng serve`, `ng build` or Tauri CLI invocations can bypass npm guards; use the documented workflow.
 
 ## Validation
 
@@ -20,8 +20,10 @@ node scripts/verify-angular-source-config.mjs
 npm run verify:version
 npm test
 npm run build:ui
-# When the authorized sibling Charts dependency is installed:
+# When the authorized sibling Charts and Astrological Assets checkouts are installed:
 npm start
+# On a public-only checkout without approved artwork, instead:
+npm run start:synthetic
 # In a second terminal, with npm start still running:
 npm run tauri:dev
 ```

@@ -22,7 +22,8 @@ const snapshot = () => ({
 });
 const element = (result,id) => result.strips.find(row=>row.id===id);
 const names = placements => placements.map(item=>item.name);
-const summarize = (data,system) => elementDistribution(data,system,house=>houseDisplay(house)?.element ?? null);
+const summarize = (data,system,includeTransaturnians=false) =>
+  elementDistribution(data,system,house=>houseDisplay(house)?.element ?? null,includeTransaturnians);
 
 test('sign distribution includes exactly the seven traditional planets, not Uranus',()=>{
   const data=buildTemaRenderData(snapshot(),'2000-01-01T12:00:00Z');
@@ -34,6 +35,23 @@ test('sign distribution includes exactly the seven traditional planets, not Uran
   assert.deepEqual(names(element(result,'earth').signPlanets),['Moon']);
   assert.deepEqual(names(element(result,'water').signPlanets),['Venus']);
   assert.equal(result.strips.flatMap(row=>row.signPlanets).length,7);
+});
+
+test('optional transaturnians enter element and modality counts, but not unavailable dodecatemoria',()=>{
+  const data=buildTemaRenderData({...snapshot(),bodies:[
+    ...snapshot().bodies,body('Neptune',235),body('Pluto',282),
+  ]},'2000-01-01T12:00:00Z');
+  const classic=summarize(data,'egizia');
+  const extended=summarize(data,'egizia',true);
+  assert.equal(classic.countedPlanets,7);
+  assert.equal(extended.countedPlanets,10);
+  assert.deepEqual(names(element(extended,'fire').signPlanets),['Sun','Jupiter','Uranus']);
+  assert.deepEqual(names(element(extended,'water').signPlanets),['Venus','Neptune']);
+  assert.deepEqual(names(element(extended,'earth').signPlanets),['Moon','Pluto']);
+  assert.equal(extended.modalities.reduce((count,row)=>count+row.planets.length,0),10);
+  assert.equal(extended.strips.flatMap(row=>row.signDodecatemoria).length,7);
+  assert.equal(extended.strips.flatMap(row=>row.houseDodecatemoria).length,7);
+  assert.equal(classic.strips.flatMap(row=>row.signPlanets).length,7,'toggle never mutates original');
 });
 
 test('house groups use the chosen house cusps and do not assume sign elements',()=>{

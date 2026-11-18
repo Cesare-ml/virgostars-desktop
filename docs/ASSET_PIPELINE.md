@@ -35,7 +35,8 @@ Or use the existing `powershell -NoProfile -File .\scripts\build-windows-spike.p
 - `npm run build:ui`: prepare/reuse verified stage, build the desktop-owned Angular application, verify resulting `dist/desktop/browser` bundle.
 - `npm run verify:bundle`: read `.local/frontend/synthetic-assets-manifest.json` and validate exact emitted image paths and hashes, an Angular desktop root, and absence of external script/style tags and historical demo bootstrap.
 - `npm run tauri:build`: first build and verify Angular, then build the Tauri executable. `bundle.active=false` still means **no installer** is produced.
-- `npm start`: verifies/stages assets before starting the local Angular development server. Offline release builds should not require a development server.
+- `npm start` (also `npm run start:private`): verifies and stages owner-approved artwork from `../astrological-assets` before starting the private-artwork Angular development server. Without an approved local pack it fails closed. This is a local development choice, **not** the default shipped asset bundle.
+- `npm run start:synthetic`: stages checkerboards and starts the isolated synthetic Angular development server; it works for public-only contributors. Offline release builds should not require a development server.
 
 ## Fail-closed behavior
 
@@ -69,11 +70,11 @@ Synthetic provenance fields are build-time safeguards, not cryptographic proof o
 ## Immagini originali approvate per build private
 
 Per controllare la grafica in sviluppo senza creare un nuovo installer, nella
-cartella Desktop eseguire `npm run start:private` anziché `npm start`; in un
+cartella Desktop eseguire `npm start` (oppure `npm run start:private`); in un
 secondo terminale lanciare `npm run tauri:dev`. Il server Angular in questa
 modalità seleziona esclusivamente il bundle di asset locali con manifest
 convalidato nel checkout fratello `../astrological-assets`. La modalità
-predefinita `npm start` rimane sintetica. La nuova vista Elementi visualizza
+dedicata `npm run start:synthetic` rimane sintetica. La nuova vista Elementi visualizza
 i glifi dal pack quando sono effettivamente sagomati e leggibili; se il file
 approvato è una vecchia immagine piatta a tinta unita, ricade su simboli di
 testo per non mostrare quadrati pieni. Questo fallback è anche applicato

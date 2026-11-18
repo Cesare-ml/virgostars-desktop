@@ -12,8 +12,8 @@ test('chart busy overlay displays the current render/export status', () => {
   assert.match(overlay, /\*ngIf="busy && chartPresentation==='wheel'"/);
   assert.match(overlay, /\{\{t\(status\)\}\}/);
   assert.doesNotMatch(overlay, /t\('chart.loading'\)/);
-  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && chartPresentation==='elements'"/,
-    'elements presentation has its own overlay; wheel loading must not obscure it');
+  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && chartPresentation!=='wheel'"/,
+    'alternative presentations have their own overlay; wheel loading must not obscure them');
 });
 
 test('visual overlay is not a second screen-reader live status', () => {

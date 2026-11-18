@@ -15,6 +15,7 @@ const ELEMENT_LABELS: Record<ElementId, MessageKey> = {
 const PLANET_LABELS: Record<string, MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
   Mars:'name.mars', Jupiter:'name.jupiter', Saturn:'name.saturn',
+  Uranus:'name.uranus', Neptune:'name.neptune', Pluto:'name.pluto',
 };
 const SIGN_LABELS: readonly MessageKey[] = [
   'sign.aries','sign.taurus','sign.gemini','sign.cancer','sign.leo','sign.virgo',
@@ -22,7 +23,7 @@ const SIGN_LABELS: readonly MessageKey[] = [
 ];
 // VS15 requests monochrome glyphs on Windows rather than colored Unicode emoji.
 const SIGN_SYMBOLS = ['♈︎','♉︎','♊︎','♋︎','♌︎','♍︎','♎︎','♏︎','♐︎','♑︎','♒︎','♓︎'];
-const PLANETS = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn'] as const;
+const PLANETS = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto'] as const;
 const MAJOR_ASPECTS = new Set(['congiunzione','opposizione','trigono','quadrato','sestile']);
 const ASPECT_NAMES: Record<string, readonly [string,string]> = {
   congiunzione:['Congiunzione','Conjunction'], opposizione:['Opposizione','Opposition'],
@@ -42,8 +43,11 @@ export class ElementsViewComponent implements OnChanges {
   @Input() locale: Locale = 'it';
   @Input() theme: 'light'|'dark' = 'light';
   @Input() aspects: readonly AspectRow[] = [];
+  @Input() presentation: 'elements'|'aspects' = 'elements';
   @Input() showDodecatemoria = false;
+  @Input() showTransaturnians = false;
   @Output() readonly toggleDodecatemoria = new EventEmitter<void>();
+  @Output() readonly toggleTransaturnians = new EventEmitter<void>();
 
   readonly planets = PLANETS;
   readonly aspectLegend = ['congiunzione','sestile','quadrato','trigono','opposizione'] as const;
@@ -52,7 +56,7 @@ export class ElementsViewComponent implements OnChanges {
 
   ngOnChanges(): void {
     if (this.data) this.distribution = elementDistribution(
-      this.data,this.houseSystem,house => houseDisplay(house)?.element ?? null,
+      this.data,this.houseSystem,house => houseDisplay(house)?.element ?? null,this.showTransaturnians,
     );
     this.aspectMap.clear();
     for (const row of this.aspects) {
@@ -78,7 +82,8 @@ export class ElementsViewComponent implements OnChanges {
     return this.copy(...labels[id]);
   }
   planetSymbol(name:string): string {
-    return ({Sun:'☉',Moon:'☽',Mercury:'☿',Venus:'♀',Mars:'♂',Jupiter:'♃',Saturn:'♄'} as Record<string,string>)[name] ?? '•';
+    return ({Sun:'☉',Moon:'☽',Mercury:'☿',Venus:'♀',Mars:'♂',Jupiter:'♃',Saturn:'♄',
+      Uranus:'♅',Neptune:'♆',Pluto:'♇'} as Record<string,string>)[name] ?? '•';
   }
   planetRetrograde(name:string): boolean { return (this.data?.planets[name]?.longitudeSpeed ?? 0)<0; }
   signElement(sign:number): ElementId | null { return zodiacElementOfSign(sign); }

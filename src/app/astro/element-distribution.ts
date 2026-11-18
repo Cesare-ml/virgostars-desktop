@@ -21,6 +21,7 @@ const SEVEN = [
   ['Sun', '☉'], ['Moon', '☽'], ['Mercury', '☿'], ['Venus', '♀'],
   ['Mars', '♂'], ['Jupiter', '♃'], ['Saturn', '♄'],
 ] as const;
+const TRANSATURNIANS = [['Uranus', '♅'], ['Neptune', '♆'], ['Pluto', '♇']] as const;
 
 export const MODALITY_ORDER = ['cardinal','fixed','mutable'] as const;
 export type ModalityId = typeof MODALITY_ORDER[number];
@@ -68,6 +69,7 @@ function findHouse(longitude: number, cusps: readonly number[] | undefined): num
 /** The caller supplies the existing houseDisplay convention; no duplicate house classification. */
 export function elementDistribution(
   data: TemaRenderData, system: HouseSystemId, elementOfHouse: (house:number) => ElementId | null,
+  includeTransaturnians = false,
 ): ElementDistribution {
   const cusps = data.houses[system]?.house;
   const strips = ELEMENT_ORDER.map(id => ({
@@ -76,7 +78,7 @@ export function elementDistribution(
   }));
   const modalities = MODALITY_ORDER.map(id => ({id, planets: [] as ElementPlacement[]}));
   let countedPlanets = 0;
-  for (const [name, glyph] of SEVEN) {
+  for (const [name, glyph] of includeTransaturnians ? [...SEVEN, ...TRANSATURNIANS] : SEVEN) {
     const body = data.planets[name];
     if (!body || !Number.isFinite(body.longitude)) continue;
     countedPlanets++;

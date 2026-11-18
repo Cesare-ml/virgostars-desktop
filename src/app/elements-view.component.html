@@ -1,18 +1,24 @@
-<section class="elements-view" [class.dark-theme]="theme==='dark'" [attr.aria-label]="t('elements.title')" *ngIf="distribution as model">
+<section class="elements-view" [class.dark-theme]="theme==='dark'"
+  [attr.aria-label]="t(presentation==='elements' ? 'elements.title' : 'elements.aspectsTitle')" *ngIf="distribution as model">
   <header class="elements-head">
     <div class="elements-heading">
-      <span class="section-kicker">{{copy('ANALISI DEL TEMA','CHART ANALYSIS')}}</span>
-      <h2>{{t('elements.title')}} <span class="heading-dot" aria-hidden="true">✦</span></h2>
-      <p>{{t('elements.subtitle')}}</p>
+      <h2>{{t(presentation==='elements' ? 'elements.title' : 'elements.aspectsTitle')}} <span class="heading-dot" aria-hidden="true">✦</span></h2>
     </div>
-    <button class="dodeca-toggle" type="button" [class.active]="showDodecatemoria"
-      [attr.aria-pressed]="showDodecatemoria" (click)="toggleDodecatemoria.emit()">
-      <span class="dodeca-indicator" aria-hidden="true"></span>
-      {{t(showDodecatemoria ? 'elements.hideDodeca' : 'elements.showDodeca')}}
-    </button>
+    <div class="elements-actions" *ngIf="presentation==='elements'">
+      <button class="dodeca-toggle" type="button" [class.active]="showDodecatemoria"
+        [attr.aria-pressed]="showDodecatemoria" (click)="toggleDodecatemoria.emit()">
+        <span class="dodeca-indicator" aria-hidden="true"></span>
+        {{t(showDodecatemoria ? 'elements.hideDodeca' : 'elements.showDodeca')}}
+      </button>
+      <button class="dodeca-toggle" type="button" [class.active]="showTransaturnians"
+        [attr.aria-pressed]="showTransaturnians" (click)="toggleTransaturnians.emit()">
+        <span class="dodeca-indicator" aria-hidden="true"></span>
+        {{t(showTransaturnians ? 'elements.hideTransaturnians' : 'elements.showTransaturnians')}}
+      </button>
+    </div>
   </header>
 
-  <div class="distribution-panel">
+  <div class="distribution-panel" *ngIf="presentation==='elements'">
     <div class="elements-headings" aria-hidden="true">
       <span>{{t('elements.inHouses')}}</span>
       <span>{{copy('ELEMENTO','ELEMENT')}}</span>
@@ -85,16 +91,13 @@
         </div>
       </section>
     </div>
-    <p class="distribution-note">{{t('elements.seven')}} · {{t('elements.housesDepend')}}</p>
     <p class="distribution-note" *ngIf="showDodecatemoria">{{t('elements.dodecaMethod')}}</p>
   </div>
 
-  <div class="analysis-grid">
+  <div class="analysis-grid" *ngIf="presentation==='elements'">
     <section class="analysis-card modality-card" aria-labelledby="modality-title">
       <div class="analysis-title">
-        <span class="section-kicker">{{copy('QUALITÀ','QUALITIES')}}</span>
         <h3 id="modality-title">{{copy('Modalità dei segni','Zodiac modalities')}}</h3>
-        <p>{{copy('Sette pianeti tradizionali','Seven traditional planets')}}</p>
       </div>
       <div class="modality-row" *ngFor="let group of model.modalities" [attr.data-modality]="group.id">
         <div class="modality-head">
@@ -116,14 +119,12 @@
       </div>
     </section>
 
-    <section class="analysis-card aspect-card" aria-labelledby="aspect-matrix-title">
-      <div class="analysis-title">
-        <span class="section-kicker">{{copy('RELAZIONI','RELATIONSHIPS')}}</span>
-        <h3 id="aspect-matrix-title">{{copy('Tabella degli aspetti','Aspect matrix')}}</h3>
-        <p>{{copy('Aspetti maggiori · orbi dalle impostazioni del grafico','Major aspects · orbs from chart settings')}}</p>
-      </div>
+  </div>
+
+  <section class="analysis-card aspect-card" *ngIf="presentation==='aspects'" aria-labelledby="aspect-matrix-title">
+      <h3 id="aspect-matrix-title" class="sr-only">{{t('elements.aspectsTitle')}}</h3>
       <div class="matrix-scroll">
-        <table class="aspect-matrix" [attr.aria-label]="copy('Aspetti tra i sette pianeti','Aspects between seven planets')">
+        <table class="aspect-matrix" [attr.aria-label]="copy('Aspetti tra i dieci pianeti','Aspects between ten planets')">
           <thead><tr><th scope="col" class="matrix-corner"></th>
             <th scope="col" *ngFor="let planet of planets; trackBy:trackName" [attr.title]="planetLabel(planet)">
               <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:planet,retrograde:planetRetrograde(planet),white:false}"></ng-container>
@@ -155,8 +156,7 @@
           <b [attr.data-aspect]="aspect">{{aspectMark(aspect)}}</b> {{aspectName(aspect)}}
         </span>
       </div>
-    </section>
-  </div>
+  </section>
 </section>
 
 <ng-template #planetMark let-name let-retrograde="retrograde" let-white="white">

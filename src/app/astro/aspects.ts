@@ -29,6 +29,9 @@ const OPPOSITE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['true Node', 'true Node Sud'], ['mean Node', 'mean Node Sud'],
 ];
 const PARALLEL_ORB_DEG = 1;
+export const MATRIX_PLANETS: readonly string[] = Object.freeze([
+  'Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto',
+]);
 
 export type AspectPoint = Readonly<{
   name: string;
@@ -138,6 +141,25 @@ export function computeAspects(
     }
   }
   return rows;
+}
+
+/**
+ * The dedicated aspects matrix always evaluates the ten planets available in
+ * the chart, even when the wheel excludes outer-planet aspect lines by default.
+ * Retain each planet's configured orb and the user's active aspect definitions;
+ * do not mutate settings or affect the wheel/inspector calculations.
+ */
+export function computePlanetMatrixAspects(
+  data: TemaRenderData, settings: ChartSettings, definitions: readonly AspectDefinition[],
+): AspectRow[] {
+  const points = {...settings.points};
+  for (const name of MATRIX_PLANETS) {
+    const id = name as keyof ChartSettings['points'];
+    points[id] = {...points[id], shown:true, aspects:true};
+  }
+  const matrixSettings = {...settings, points};
+  const planetPoints = aspectPoints(data,matrixSettings.points).filter(point=>MATRIX_PLANETS.includes(point.name));
+  return computeAspects(planetPoints,matrixSettings,definitions);
 }
 
 /**
