@@ -234,12 +234,18 @@ fn read_callback_target(stream: &mut TcpStream, host: &str, timeout: Duration) -
 /// No user-controlled HTML, redirects or third-party resources. In particular,
 /// the authorization code is not reflected into the browser response.
 fn respond(stream: &mut TcpStream, accepted: bool) {
+    // The fixed script replaces the local callback URL in the current history
+    // entry as soon as the page runs. It receives no callback values. This is
+    // best effort: browser history may already have persisted the navigation.
+    const CLEAN_URL: &str = "history.replaceState(null,document.title,location.pathname)";
+    const CLEAN_URL_HASH: &str = "IgkiiN+by1M0XVt0qHxZPIsxnDoVpUuZRConiSPwZCo=";
     let (status, body) = if accepted {
-        ("200 OK", "<!doctype html><html lang=it><meta charset=utf-8><title>VirgoStars</title><p>Puoi tornare a VirgoStars Desktop.</p></html>")
+        ("200 OK", "Puoi tornare a VirgoStars Desktop.")
     } else {
-        ("400 Bad Request", "<!doctype html><html lang=it><meta charset=utf-8><title>VirgoStars</title><p>Richiesta non valida o scaduta.</p></html>")
+        ("400 Bad Request", "Richiesta non valida o scaduta.")
     };
-    let response = format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; base-uri 'none'; form-action 'none'\r\nConnection: close\r\n\r\n{body}", body.len());
+    let body = format!("<!doctype html><html lang=it><meta charset=utf-8><title>VirgoStars</title><script>{CLEAN_URL}</script><p>{body}</p></html>");
+    let response = format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; script-src 'sha256-{CLEAN_URL_HASH}'; base-uri 'none'; form-action 'none'\r\nConnection: close\r\n\r\n{body}", body.len());
     // An already validated callback must remain completed if the browser
     // closes early; never propagate user-visible network error details.
     let _ = stream.write_all(response.as_bytes());
@@ -318,6 +324,13 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 200 OK"));
         assert!(!response.contains(&"A".repeat(43)));
         assert!(response.contains("Referrer-Policy: no-referrer"));
+        assert!(response.contains("history.replaceState(null,document.title,location.pathname)"));
+        assert!(response.contains("script-src 'sha256-IgkiiN+by1M0XVt0qHxZPIsxnDoVpUuZRConiSPwZCo='"));
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use sha2::{Digest, Sha256};
+        let script = response.split_once("<script>").unwrap().1.split_once("</script>").unwrap().0;
+        let hash = STANDARD.encode(Sha256::digest(script.as_bytes()));
+        assert!(response.contains(&format!("script-src 'sha256-{hash}'")));
     }
 
     #[test]
