@@ -1,6 +1,6 @@
 //! Strict native default-browser launch adapter for the staged Desktop PKCE flow.
 //!
-//! No WebView, Tauri IPC, token exchange or login UI is wired to this module.
+//! The staging-only native flow invokes this adapter; it is never exposed directly to the WebView.
 //! URLs and command arguments must never be logged: the consent URL contains
 //! the opaque one-time OAuth state and PKCE challenge.
 #![allow(dead_code)]

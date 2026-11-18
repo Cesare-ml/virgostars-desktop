@@ -109,6 +109,21 @@ impl NativeLoginSession {
                         }};
                     }
                 }
+                // Expiry must clear the token even if the WebView is frozen
+                // or never asks for another status snapshot.
+                loop {
+                    let Ok(mut current) = state_for_worker.lock() else { break; };
+                    match &*current {
+                        SecretState::Connected(grant) if grant.remaining_seconds(Instant::now()) == 0 => {
+                            *current = SecretState::Expired;
+                            break;
+                        }
+                        SecretState::Connected(_) => {},
+                        _ => break,
+                    }
+                    drop(current);
+                    thread::sleep(Duration::from_millis(250));
+                }
             })
             .map_err(|_| {
                 cancel_if_spawn_fails.cancel();
@@ -354,5 +369,28 @@ mod tests {
         release_tx.send(()).unwrap();
         thread::sleep(Duration::from_millis(50));
         assert_eq!(session.snapshot().phase, NativeLoginPhase::Expired);
+    }
+
+    struct ShortLivedHttp;
+    impl TokenHttpTransport for ShortLivedHttp {
+        fn post_form(&self, _: &Url, _: &str, _: Duration, _: usize) -> Result<TokenHttpResponse, ()> {
+            let jwt = format!("{}.{}.{}", "A".repeat(43), "B".repeat(43), "C".repeat(100));
+            Ok(TokenHttpResponse { status: 200, content_type: "application/json".to_owned(),
+                body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":2,"scope":"chart_sync:read"}}"#).into_bytes() })
+        }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> { Ok(()) }
+    }
+
+    #[test]
+    fn expired_grant_is_dropped_without_polling_status() {
+        let session = NativeLoginSession::start(&CallbackBrowser, ShortLivedHttp,
+            CONSENT, TOKEN, Duration::from_secs(2)).unwrap();
+        let until = Instant::now() + Duration::from_secs(5);
+        loop {
+            let expired = matches!(*session.state.lock().unwrap(), SecretState::Expired);
+            if expired { break; }
+            assert!(Instant::now() < until);
+            thread::sleep(Duration::from_millis(20));
+        }
     }
 }

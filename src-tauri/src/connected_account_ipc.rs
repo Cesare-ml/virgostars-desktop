@@ -1,22 +1,35 @@
-//! Versioned, disabled-by-default native account IPC boundary.
-//!
-//! This is deliberately **not** an authentication command. It validates the
-//! exact public request shape, but never launches a browser, exchanges a code,
-//! reads the registry's secret state, or returns account credentials.
+//! Versioned native account IPC. Default builds remain disabled. An explicit
+//! staging-only build can expose narrowly scoped, credential-free status.
 #![allow(dead_code)]
 
 use crate::pkce_native_registry::NativeLoginRegistry;
 use serde_json::Value;
 use tauri::State;
+#[cfg(feature = "staging-connected-account")]
+use tauri::Manager;
 
 const PROTOCOL_VERSION: u64 = 1;
 const NATIVE_UNAVAILABLE: &str = "native_unavailable";
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DisabledConnectedAccountReply {
+pub struct ConnectedAccountReply {
     protocol_version: u8,
     status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attempt_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_in_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope: Option<&'static str>,
+}
+
+impl ConnectedAccountReply {
+    fn disabled() -> Self { Self { protocol_version: 1, status: "disabled", attempt_id: None, expires_in_seconds: None, scope: None } }
+    #[cfg(feature = "staging-connected-account")]
+    fn status(status: &'static str, attempt_id: String) -> Self {
+        Self { protocol_version: 1, status, attempt_id: Some(attempt_id), expires_in_seconds: None, scope: None }
+    }
 }
 
 fn valid_attempt_id(value: &str) -> bool {
@@ -38,7 +51,7 @@ fn valid_request(value: &Value) -> bool {
     }
     match obj.get("operation").and_then(Value::as_str) {
         Some("start") => obj.len() == 2 && obj.contains_key("protocolVersion") && obj.contains_key("operation"),
-        Some("status" | "cancel") => {
+        Some("status" | "cancel" | "disconnect") => {
             obj.len() == 3 && obj.contains_key("protocolVersion") && obj.contains_key("operation") &&
                 obj.get("attemptId").and_then(Value::as_str).is_some_and(valid_attempt_id)
         }
@@ -46,17 +59,62 @@ fn valid_request(value: &Value) -> bool {
     }
 }
 
-/// Intentionally registered as Tauri IPC but always returns disabled, even
-/// when Angular's local feature flag is accidentally enabled. The managed
-/// registry is injected to prove a single native owner exists; it is never
-/// queried or mutated by this stub. No credentials can cross this boundary.
+/// Only a specifically built staging client with two explicit native endpoints
+/// may start a login. Endpoint validation remains in the native flow.
 #[tauri::command]
-pub fn desktop_connected_account_v1(
+pub async fn desktop_connected_account_v1(
     request: Value,
     _registry: State<'_, NativeLoginRegistry>,
-) -> Result<DisabledConnectedAccountReply, &'static str> {
+    _app: tauri::AppHandle,
+) -> Result<ConnectedAccountReply, &'static str> {
     if !valid_request(&request) { return Err(NATIVE_UNAVAILABLE); }
-    Ok(DisabledConnectedAccountReply { protocol_version: 1, status: "disabled" })
+    #[cfg(feature = "staging-connected-account")]
+    {
+        use crate::pkce_native_registry::NativeRegistrySnapshot;
+        use crate::pkce_native_session::NativeLoginPhase;
+        let (Some(consent), Some(token)) = (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"),
+            option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) else { return Ok(ConnectedAccountReply::disabled()); };
+        if crate::pkce_login::valid_consent_origin(consent).is_none()
+            || crate::pkce_token_exchange::valid_staging_token_endpoint(token).is_none() {
+            return Ok(ConnectedAccountReply::disabled());
+        }
+        let operation = request["operation"].as_str().ok_or(NATIVE_UNAVAILABLE)?;
+        if operation == "start" {
+            let app = _app.clone();
+            let id = tauri::async_runtime::spawn_blocking(move || {
+                let registry = app.state::<NativeLoginRegistry>();
+                registry.start(&crate::system_browser::OsDefaultBrowser,
+                    crate::pkce_reqwest_https::StagingReqwestHttps, consent, token,
+                    std::time::Duration::from_secs(600))
+            }).await.map_err(|_| NATIVE_UNAVAILABLE)?.map_err(|_| NATIVE_UNAVAILABLE)?;
+            let mut reply = ConnectedAccountReply::status("pending", id);
+            reply.expires_in_seconds = Some(600);
+            return Ok(reply);
+        }
+        let attempt_id = request["attemptId"].as_str().ok_or(NATIVE_UNAVAILABLE)?;
+        if operation == "cancel" {
+            if !_registry.cancel(attempt_id) { return Err(NATIVE_UNAVAILABLE); }
+            return Ok(ConnectedAccountReply::status("cancelled", attempt_id.to_owned()));
+        }
+        if operation == "disconnect" {
+            if !_registry.disconnect(attempt_id) { return Err(NATIVE_UNAVAILABLE); }
+            return Ok(ConnectedAccountReply::status("disconnected", attempt_id.to_owned()));
+        }
+        let NativeRegistrySnapshot::Active(snapshot) = _registry.snapshot() else { return Err(NATIVE_UNAVAILABLE); };
+        if snapshot.attempt_id != attempt_id { return Err(NATIVE_UNAVAILABLE); }
+        let phase = match snapshot.phase {
+            NativeLoginPhase::Pending => "pending", NativeLoginPhase::Connected => "connected",
+            NativeLoginPhase::Denied => "denied", NativeLoginPhase::Expired => "expired",
+            NativeLoginPhase::Cancelled => "cancelled", NativeLoginPhase::Disconnected => "disconnected",
+            NativeLoginPhase::Failed => "failed",
+        };
+        let mut reply = ConnectedAccountReply::status(phase, snapshot.attempt_id);
+        if phase == "pending" { reply.expires_in_seconds = Some(snapshot.remaining_seconds); }
+        if phase == "connected" { reply.scope = Some("chart_sync:read"); }
+        Ok(reply)
+    }
+    #[cfg(not(feature = "staging-connected-account"))]
+    { Ok(ConnectedAccountReply::disabled()) }
 }
 
 #[cfg(test)]
@@ -71,6 +129,7 @@ mod tests {
         assert!(valid_request(&json!({"protocolVersion":1,"operation":"start"})));
         assert!(valid_request(&json!({"protocolVersion":1,"operation":"status","attemptId":UUID})));
         assert!(valid_request(&json!({"protocolVersion":1,"operation":"cancel","attemptId":UUID})));
+        assert!(valid_request(&json!({"protocolVersion":1,"operation":"disconnect","attemptId":UUID})));
         for invalid in [
             json!({"protocolVersion":2,"operation":"start"}),
             json!({"protocolVersion":1,"operation":"start","attemptId":null}),
@@ -79,7 +138,7 @@ mod tests {
             json!({"protocolVersion":1,"operation":"status","attemptId":null}),
             json!({"protocolVersion":1,"operation":"status","attemptId":"wrong"}),
             json!({"protocolVersion":1,"operation":"cancel","attemptId":UUID,"token":"secret"}),
-            json!({"protocolVersion":1,"operation":"disconnect","attemptId":UUID}),
+            json!({"protocolVersion":1,"operation":"disconnect"}),
             json!([1,"start"]),
         ] {
             assert!(!valid_request(&invalid));
@@ -88,12 +147,20 @@ mod tests {
 
     #[test]
     fn disabled_response_has_exactly_two_public_fields() {
-        let value = serde_json::to_value(DisabledConnectedAccountReply {
-            protocol_version:1, status:"disabled",
-        }).unwrap();
+        let value = serde_json::to_value(ConnectedAccountReply::disabled()).unwrap();
         assert_eq!(value, json!({"protocolVersion":1,"status":"disabled"}));
         assert!(value.get("attemptId").is_none());
         assert!(value.get("accessToken").is_none());
         assert!(value.get("deviceId").is_none());
+    }
+
+    #[cfg(feature = "staging-connected-account")]
+    #[test]
+    fn connected_response_contains_only_public_scope_and_attempt_id() {
+        let mut reply = ConnectedAccountReply::status("connected", UUID.to_owned());
+        reply.scope = Some("chart_sync:read");
+        assert_eq!(serde_json::to_value(reply).unwrap(), json!({
+            "protocolVersion":1,"status":"connected","attemptId":UUID,"scope":"chart_sync:read"
+        }));
     }
 }

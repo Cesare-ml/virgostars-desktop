@@ -4,7 +4,7 @@
 
 ## This increment
 
-`src/app/native/connected-account-contract.ts` defines a data-only, fail-closed protocol for `start`, `status` and `cancel`. The Tauri command is registered but always returns disabled; no UI login button is wired. **Default `enabled: false` makes any caller inert**, even on Windows. The connected-status schema is `contracts/connected-account-status.v1.schema.json`; tests check its scope and fields against the TypeScript decoder and Rust token exchange.
+`src/app/native/connected-account-contract.ts` defines a data-only, fail-closed protocol for `start`, `status`, `cancel` and `disconnect`. The settings UI is wired to the command; ordinary native builds return disabled. A separate explicit staging-only Cargo feature and two allowlisted build-time endpoints are required even to attempt login. The connected-status schema is `contracts/connected-account-status.v1.schema.json`; tests check its scope and fields against the TypeScript decoder and Rust token exchange.
 
 ## Host ownership and next native implementation
 

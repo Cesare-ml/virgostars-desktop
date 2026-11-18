@@ -129,15 +129,19 @@ test('rejects unknown protocol and status values', () => {
   }
 });
 
-test('cancellation and denial have operation-specific status', () => {
+test('cancellation, disconnect and denial have operation-specific status', () => {
   assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status: 'cancelled', attemptId: ATTEMPT},
     {operation: 'cancel', attemptId: ATTEMPT}), {kind: 'cancelled', attemptId: ATTEMPT});
   for (const status of ['denied', 'expired']) {
     assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status, attemptId: ATTEMPT},
       {operation: 'status', attemptId: ATTEMPT}), {kind: status, attemptId: ATTEMPT});
   }
-  assert.throws(() => decodeConnectedAccountResponse({protocolVersion: 1, status: 'cancelled', attemptId: ATTEMPT},
-    {operation: 'status', attemptId: ATTEMPT}));
+  assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status: 'cancelled', attemptId: ATTEMPT},
+    {operation: 'status', attemptId: ATTEMPT}), {kind:'cancelled', attemptId:ATTEMPT});
+  assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status: 'disconnected', attemptId: ATTEMPT},
+    {operation: 'disconnect', attemptId: ATTEMPT}), {kind:'disconnected', attemptId:ATTEMPT});
+  assert.throws(() => decodeConnectedAccountResponse({protocolVersion: 1, status: 'connected', attemptId: ATTEMPT, scope:'chart_sync:read'},
+    {operation: 'disconnect', attemptId: ATTEMPT}));
 });
 
 test('invalid attempt ID is rejected before IPC', async () => {

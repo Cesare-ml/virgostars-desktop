@@ -28,6 +28,7 @@ function fixture() {
       'src/app/native/chart-calculation.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/chart-archive.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/return-search.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
+      'src/app/native/connected-account.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/workspace-state.ts':'export const state=1;',
     },
     tauriConfig:{app:{security:{capabilities:[]}}},

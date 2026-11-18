@@ -1,8 +1,7 @@
-//! Inert staging login coordinator: bound loopback -> browser -> callback -> token.
+//! Staging login coordinator: bound loopback -> browser -> callback -> verified grant.
 //!
 //! This composes previously isolated Rust primitives with an injected browser
-//! and HTTP transport. No Tauri IPC, UI, external network adapter or live
-//! authorization feature flag is enabled by registering this module.
+//! and HTTP transport. Registering this module alone enables no network flow.
 #![allow(dead_code)]
 
 use crate::pkce_loopback::{LoginCancelHandle, LoopbackError, LoopbackLogin, SystemBrowserOpener};

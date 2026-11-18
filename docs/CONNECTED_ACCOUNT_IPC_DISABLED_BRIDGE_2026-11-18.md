@@ -1,20 +1,30 @@
-# Connected account: registered but disabled Tauri IPC (2026-11-18)
+# Connected account IPC v1 — staging candidate
 
-This stacked, draft-only slice registers `desktop_connected_account_v1` as a Tauri command and installs exactly one app-owned `NativeLoginRegistry` state object. The command is deliberately an inert, fail-closed **disabled** staging boundary, not a functional login. It never calls the registry's start/status/cancel methods, launches a browser, starts a loopback listener, exchanges a code, stores credentials, or enables cloud sync.
+**Prototype; default disabled; not deployed or live-tested.** The settings
+panel calls `desktop_connected_account_v1`; ordinary builds return precisely
+`{protocolVersion: 1, status: "disabled"}` and do not launch a browser.
+Browser preview also remains offline. The original `charts:read`/`deviceId`
+mismatch is corrected to `chart_sync:read` with no fabricated device ID.
 
-## Exact public surface
+An experimental build must explicitly enable the Cargo feature
+`staging-connected-account` and provide both compile-time values
+`VIRGOSTARS_DESKTOP_STAGING_CONSENT` and `VIRGOSTARS_DESKTOP_STAGING_TOKEN`.
+The existing native allowlists reject production, non-HTTPS and untrusted
+hosts even with the feature enabled. No setting or URL inside the WebView
+can switch endpoints or enable this feature. No deployment is implied.
 
-- Angular defaults to `enabled: false` and does not invoke native code at all in that mode. Browser preview returns `not_native` only when callers explicitly enable the candidate.
-- With an explicit local `enabled: true` and a native Tauri host, the request is `invoke('desktop_connected_account_v1', {request})`.
-- Request payloads must have `protocolVersion: 1` and exactly one supported operation: `start` without an attempt ID, or `status`/`cancel` with a lowercase UUIDv4 `attemptId`. Extra keys, wrong types, unsupported versions, and malformed IDs fail closed to `native_unavailable`.
-- Every valid request returns exactly `{ "protocolVersion": 1, "status": "disabled" }`; no identifiers, tokens, URLs, codes, state, verifier or backend error details cross to the WebView. Angular now recognizes *only* this exact two-field disabled response; extra keys fail closed.
-- The managed Rust registry exists but is not queried or mutated by this command. It has no endpoint or app credentials wired into IPC.
+The v1 request has exact fields and supports `start`, `status`, `cancel` and
+`disconnect`, binding all follow-up operations to the native UUID attempt.
+The native registry allows one attempt, dispatches browser launch on a
+blocking worker, checks the backend session before reporting `connected`,
+and clears its grant on disconnect, expiry or app shutdown. The UI receives
+only public phase, attempt ID, bounded lifetime and `chart_sync:read`. Tokens,
+authorization codes, verifier, OAuth state and URLs never enter the WebView.
+Disconnect clears native memory; backend revocation is not yet wired, so a
+previous bearer may remain valid until its short expiry. No refresh or
+persistent login is implemented, and restart begins disconnected.
 
-## Gates before live login
-
-1. The old Angular candidate expected `charts:read` and a `deviceId`; the backend candidate returns `chart_sync:read` and no device ID. The v1 connected-status schema and decoders now agree on read-only scope without inventing an ID. This does not prove live interoperability: no real connected state may be reported until server verification is implemented and reviewed.
-2. Review allowed staging origins, PKCE/browser/loopback lifecycle, and grant scope. Add a correctly configured staging backend and explicit consent flow; **do not activate** on production by changing a UI flag.
-3. Define secure native session ownership, persistence/revocation/refresh policy and a no-secret response before connecting this IPC to the `NativeLoginRegistry` methods.
-4. Run `cargo test --manifest-path src-tauri/Cargo.toml --locked`, `cargo check`, Tauri build, and functional Windows 11 native smoke (offline, launch, cancel, expiry, shutdown, no login on normal app start). The current execution environment lacks a Rust/Cargo toolchain, so Rust tests in this slice have not been compiled.
-
-No main-branch merge, no deployment, no GitHub Actions, no release, no production OAuth exposure in this slice.
+Rust/Cargo unit tests, source-contract tests and Windows builds provide local
+evidence only. A real backend, TLS negative tests, browser history/log review,
+two-account isolation and Windows GUI/offline acceptance remain mandatory
+before activation; the backend consent and routes are still candidates.

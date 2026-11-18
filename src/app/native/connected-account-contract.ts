@@ -1,22 +1,23 @@
 /**
  * Candidate v1 IPC contract for the Desktop connected-account login.
  *
- * The Rust host (not the Angular WebView) must own the PKCE verifier/state,
- * system-browser launch, loopback listener, token exchange and OS keychain.
+ * The Rust host (not the Angular WebView) owns the PKCE verifier/state,
+ * system-browser launch, loopback listener and ephemeral token exchange.
  * No OAuth code, URL, token, verifier or state may cross this interface.
- * The registered Tauri command is currently a disabled-only stub. Even when
- * explicitly invoked, it cannot start a session or return native secrets.
+ * Default Tauri builds remain disabled. Only explicitly configured staging
+ * builds can start a session, and native secrets never cross this boundary.
  */
 export type ConnectedAccountOperation =
   | Readonly<{ operation: 'start' }>
   | Readonly<{ operation: 'status'; attemptId: string }>
-  | Readonly<{ operation: 'cancel'; attemptId: string }>;
+  | Readonly<{ operation: 'cancel'; attemptId: string }>
+  | Readonly<{ operation: 'disconnect'; attemptId: string }>;
 
 export type ConnectedAccountResult =
   | Readonly<{ kind: 'disabled' | 'not_native' | 'native_unavailable' }>
   | Readonly<{ kind: 'pending'; attemptId: string; expiresInSeconds: number }>
   | Readonly<{ kind: 'connected'; attemptId: string; scope: 'chart_sync:read' }>
-  | Readonly<{ kind: 'denied' | 'expired' | 'cancelled'; attemptId: string }>;
+  | Readonly<{ kind: 'denied' | 'expired' | 'cancelled' | 'disconnected' | 'failed'; attemptId: string }>;
 
 export interface ConnectedAccountTransport {
   isNative(): boolean;
@@ -66,7 +67,7 @@ export function decodeConnectedAccountResponse(
   if (typeof attemptId !== 'string' || !ID.test(attemptId) ||
       (operation.operation !== 'start' && attemptId !== operation.attemptId)) throw new Error(ERROR);
 
-  if (status === 'pending' && operation.operation !== 'cancel' &&
+  if (status === 'pending' && (operation.operation === 'start' || operation.operation === 'status') &&
       exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'expiresInSeconds'])) {
     const seconds = ownData(raw, 'expiresInSeconds');
     if (typeof seconds === 'number' && Number.isSafeInteger(seconds) && seconds >= 1 && seconds <= 600) {
@@ -80,8 +81,9 @@ export function decodeConnectedAccountResponse(
       return Object.freeze({kind: 'connected', attemptId, scope});
     }
   }
-  if (status === 'denied' || status === 'expired' || status === 'cancelled') {
-    const allowed = status === 'cancelled' ? operation.operation === 'cancel' : operation.operation === 'status';
+  if (status === 'denied' || status === 'expired' || status === 'cancelled' || status === 'disconnected' || status === 'failed') {
+    const allowed = status === 'cancelled' ? (operation.operation === 'cancel' || operation.operation === 'status')
+      : status === 'disconnected' ? (operation.operation === 'disconnect' || operation.operation === 'status') : operation.operation === 'status';
     if (allowed && exactKeys(raw, ['protocolVersion', 'status', 'attemptId'])) {
       return Object.freeze({kind: status, attemptId});
     }
@@ -90,8 +92,8 @@ export function decodeConnectedAccountResponse(
 }
 
 /**
- * Preview/default state is permanently inert. The explicit `enabled` option
- * only becomes meaningful after Rust implementation + staging security review.
+ * The helper is inert unless explicitly called with `enabled: true`. The
+ * native host independently gates any actual login on staging configuration.
  * It is deliberately not read from localStorage or any URL parameter.
  */
 export async function requestConnectedAccount(
@@ -104,7 +106,7 @@ export async function requestConnectedAccount(
     if (!transport.isNative()) return {kind: 'not_native'};
     if (operation.operation !== 'start' &&
         (typeof operation.attemptId !== 'string' || !ID.test(operation.attemptId))) return {kind: 'native_unavailable'};
-    if (operation.operation !== 'start' && operation.operation !== 'status' && operation.operation !== 'cancel') {
+    if (operation.operation !== 'start' && operation.operation !== 'status' && operation.operation !== 'cancel' && operation.operation !== 'disconnect') {
       return {kind: 'native_unavailable'};
     }
     const request = operation.operation === 'start'

@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns', 'desktop_connected_account_v1']);
 const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns', 'connected_account_ipc::desktop_connected_account_v1']);
-const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts']);
+const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts', 'src/app/native/connected-account.ts']);
 const FRONTEND_EXTENSIONS = /\.(?:ts|tsx|js|mjs)$/;
 
 function assert(ok, message) { if (!ok) throw new Error(message); }

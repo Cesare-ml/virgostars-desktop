@@ -1,4 +1,4 @@
-//! Single-owner native staging login registry (inert; no Tauri IPC).
+//! Single-owner native staging login registry.
 //!
 //! This registry is intended to be owned once by a future native app host.
 //! It reserves the only login slot *before* opening a browser, prevents stale

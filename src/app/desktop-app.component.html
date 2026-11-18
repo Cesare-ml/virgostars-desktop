@@ -285,6 +285,18 @@
             <ng-template #noChartForHouses><p class="inspector-hint">{{t('houses.system')}}: {{t('inspector.nochart')}}</p></ng-template>
           </div>
           <details class="settings-section" open>
+            <summary>{{t('account.title')}}</summary>
+            <p class="inspector-hint">{{t('account.local')}}</p>
+            <p class="inspector-hint" role="status" aria-live="polite">{{t(accountStatusKey)}}</p>
+            <button type="button" class="toolbar-button"
+              *ngIf="account.status==='idle' || account.status==='expired' || account.status==='denied' || account.status==='failed' || account.status==='unavailable'"
+              (click)="account.start()">{{t('account.login')}}</button>
+            <button type="button" class="toolbar-button" *ngIf="account.status==='starting' || account.status==='pending'"
+              (click)="account.cancel()">{{t('account.cancel')}}</button>
+            <button type="button" class="toolbar-button" *ngIf="account.status==='connected'"
+              (click)="account.cancel()">{{t('account.disconnect')}}</button>
+          </details>
+          <details class="settings-section" open>
             <summary>{{t('startup.title')}}</summary>
             <div class="startup-options" role="radiogroup" [attr.aria-label]="t('startup.title')">
               <label class="settings-check">

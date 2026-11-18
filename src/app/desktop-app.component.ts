@@ -12,6 +12,8 @@ import {
 type DemoPlanet = 'Sun' | 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn' | 'Uranus' | 'Neptune' | 'Pluto';
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
+import { connectedAccount } from './native/connected-account';
+import { ConnectedAccountState, type AccountViewStatus } from './native/connected-account-state';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
@@ -124,6 +126,11 @@ const HOLD_REPEAT_MS = 90;
 const MODE_KEYS: Record<ChartMode,MessageKey> = {
   natal:'mode.natal',transits:'mode.transits',synastry:'mode.synastry',latitude:'mode.latitude',
 };
+const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
+  idle:'account.idle', starting:'account.starting', pending:'account.pending', connected:'account.connected',
+  canceling:'account.canceling', expired:'account.expired', denied:'account.denied',
+  failed:'account.failed', unavailable:'account.unavailable',
+};
 
 @Component({
   selector:'vs-desktop-app',
@@ -139,6 +146,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
 
   private readonly cd = inject(ChangeDetectorRef);
+  readonly account = new ConnectedAccountState(connectedAccount, () => this.cd.markForCheck());
+  get accountStatusKey(): MessageKey { return ACCOUNT_STATUS_KEYS[this.account.status]; }
   private readonly renderer = new GraficoRenderService();
   private resizeObserver?: ResizeObserver;
   private initialized = false;
@@ -1103,6 +1112,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.account.dispose();
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.stopHold();
