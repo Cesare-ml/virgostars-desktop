@@ -15,6 +15,8 @@ mod pkce_loopback;
 mod system_browser;
 // Native-only, transport-injected staging token exchange; not an IPC command.
 mod pkce_token_exchange;
+// Native-only staging login flow coordinator; intentionally not Tauri IPC.
+mod pkce_staging_flow;
 mod houses;
 mod return_search;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
