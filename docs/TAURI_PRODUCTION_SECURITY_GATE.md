@@ -17,7 +17,7 @@ The command also runs during **both** npm `verify:bundle` / `build:ui` and `veri
 The gate requires:
 
 - The Tauri root keys must match the reviewed schema, product name and application identifier, with no unreviewed global options or plugins. The `build` section permits only `devUrl` and `frontendDist`.
-- The `bundle` section permits only `active` and the existing two local icons, in their reviewed order. Extra resources, external binaries, new packaging knobs or alternate icons require review.
+- The `bundle` section permits only `active` and the existing three local platform icons, in their reviewed order. Extra resources, external binaries, new packaging knobs or alternate icons require review.
 - The packaged frontend stays at the local `../dist/desktop/browser` path, without an unreviewed Tauri `beforeBuildCommand`.
 - Exactly **one** local native window must retain the reviewed six fields (`label`, `title`, `width`, `height`, `minWidth`, `minHeight`). Unknown or missing keys and extra windows fail the gate. In particular, `additionalBrowserArgs`, `devtools`, `webviewDataDirectory`, and explicit external `url` settings cannot be slipped into the Tauri config without review.
 - Production CSP contains the existing nine directives and their exact allowed source lists; no extra, missing or duplicate directives, remote URLs, `unsafe-eval`, or script `data:` sources are accepted.
@@ -59,7 +59,7 @@ The source preflight now uses an explicit key inventory for the Tauri root,
 `app`, native window and security/CSP checks. The reviewed root schema is
 `https://schema.tauri.app/config/2`, the product name is `VirgoStars Desktop Lab`,
 and the application identifier remains `it.virgostars.desktop.rendererlab`.
-The two approved icon references are `icons/icon.png` and `icons/icon.ico`.
+The three approved icon references are `icons/icon.png`, `icons/icon.ico`, and `icons/icon.icns`. These existing files support the reviewed platform bundles; alternate filenames or order still fail closed.
 The app version is checked by the existing dedicated version-consistency gate.
 
 An attempt to add a Tauri plugin, build watch-folder, bundled resource,
