@@ -97,8 +97,8 @@
             <label class="monomeric-option">
               <span>{{ locale==='it' ? "Maestro dell'ora planetaria" : 'Planetary-hour ruler' }}</span>
               <select [value]="manualHourRuler" (change)="setManualHourRuler($event)">
-                <option value="">{{ locale==='it' ? 'Scegli il pianeta' : 'Choose planet' }}</option>
-                <option *ngFor="let planet of hourRulerOptions" [value]="planet">{{planet==='SUN'?(locale==='it'?'Sole':'Sun'):planet==='MOON'?(locale==='it'?'Luna':'Moon'):planet==='MERCURY'?(locale==='it'?'Mercurio':'Mercury'):planet==='VENUS'?(locale==='it'?'Venere':'Venus'):planet==='MARS'?(locale==='it'?'Marte':'Mars'):planet==='JUPITER'?(locale==='it'?'Giove':'Jupiter'):(locale==='it'?'Saturno':'Saturn')}}</option>
+                <option value="">{{ locale==='it' ? 'Automatico dagli orari solari' : 'From supplied solar times' }}</option>
+                <option *ngFor="let planet of hourRulerOptions" [value]="planet">{{hourRulerLabel(planet)}}</option>
               </select>
             </label>
             <label class="monomeric-option">
@@ -110,7 +110,33 @@
             </label>
             <span class="monomeric-source-tag">✦ {{ locale==='it' ? '360 simboli · catalogo legacy' : '360 symbols · legacy catalog' }}</span>
           </div>
-          <p class="monomeric-caution" role="note">{{ locale==='it' ? "Il maestro dell'ora va indicato manualmente finché non sono disponibili alba e tramonto verificati. La scelta dei gradi è esplicita; non si attribuisce automaticamente il metodo di Costesèque ad Angelini." : 'Choose the hour ruler manually until verified sunrise and sunset are available. The degree convention is explicit; the Costesèque method is not automatically attributed to Angelini.' }}</p>
+          <details class="monomeric-solar-panel">
+            <summary>{{locale==='it' ? 'Calcola il Maestro dell’Ora da alba e tramonto' : 'Calculate the hour ruler from sunrise and sunset'}}</summary>
+            <p>{{locale==='it' ? "Inserisci gli eventi solari nel fuso orario del tema. Per una nascita prima dell'alba usa l'alba del giorno precedente. Gli orari sono forniti da te e non vengono calcolati o verificati astronomicamente dall'app." : 'Enter solar events in the chart’s time zone. For birth before sunrise, use the preceding day’s sunrise. These user-supplied times are not astronomically calculated or verified by the app.'}}</p>
+            <div class="monomeric-solar-grid">
+              <label class="monomeric-option">
+                <span>{{locale==='it' ? 'Alba iniziale' : 'First sunrise'}}</span>
+                <input type="datetime-local" [value]="solarClockInputs.sunriseLocal" (input)="setSolarClockInput('sunriseLocal', $event)">
+              </label>
+              <label class="monomeric-option">
+                <span>{{locale==='it' ? 'Tramonto' : 'Sunset'}}</span>
+                <input type="datetime-local" [value]="solarClockInputs.sunsetLocal" (input)="setSolarClockInput('sunsetLocal', $event)">
+              </label>
+              <label class="monomeric-option">
+                <span>{{locale==='it' ? 'Alba successiva' : 'Next sunrise'}}</span>
+                <input type="datetime-local" [value]="solarClockInputs.nextSunriseLocal" (input)="setSolarClockInput('nextSunriseLocal', $event)">
+              </label>
+            </div>
+            <p class="monomeric-solar-result" role="status" *ngIf="manuallyResolvedSolarHour as hour">
+              <ng-container [ngSwitch]="hour.status">
+                <span *ngSwitchCase="'READY'">✓ {{manualSolarHourSummary}}</span>
+                <span *ngSwitchCase="'INVALID_CLOCK'">{{locale==='it' ? 'Orari non validi: controlla date, ordine degli eventi e cambio d’ora.' : 'Invalid times: check dates, event order and daylight-saving transitions.'}}</span>
+                <span *ngSwitchCase="'OUTSIDE_INTERVAL'">{{locale==='it' ? 'La nascita è fuori dall’intervallo fra le due albe.' : 'Birth time is outside the interval between the sunrises.'}}</span>
+                <span *ngSwitchDefault>{{locale==='it' ? 'Inserisci tutti e tre gli eventi.' : 'Enter all three events.'}}</span>
+              </ng-container>
+            </p>
+          </details>
+          <p class="monomeric-caution" role="note">{{ locale==='it' ? "Puoi scegliere un pianeta manualmente oppure far calcolare il governatore dagli orari solari inseriti. Il calcolo usa ore temporali e sequenza caldaica, senza attribuire automaticamente la variante storica a un autore." : 'Choose a ruler manually or calculate it from the supplied solar times. The calculation uses seasonal hours and the Chaldean sequence without automatically attributing the variant to a specific author.' }}</p>
           <vs-monomeric-cross [cross]="monomericCross" [locale]="locale"></vs-monomeric-cross>
           <section class="monomeric-neighbors" *ngIf="monomericAdjacentRows.length" [attr.aria-label]="locale==='it' ? 'Monomeri adiacenti attivi' : 'Active adjacent monomers'">
             <div class="monomeric-neighbors-heading">

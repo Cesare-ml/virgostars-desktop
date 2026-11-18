@@ -21,6 +21,7 @@ import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } fro
 import { DeviceClock, formatDeviceClock } from './device-clock';
 import { aspectSymbol } from './aspect-symbols';
 import { monomerPointLabel, resolveMonomers, type MonomericDegreeMode } from './astro/monomeric-catalog';
+import { resolveManualPlanetaryHour, type ManualSolarClockInputs, type ManualPlanetaryHourResult } from './astro/manual-planetary-hour';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import {
@@ -161,12 +162,30 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   chartPresentation: 'wheel' | 'elements' | 'aspects' | 'monomeric-cross' = 'wheel';
   readonly hourRulerOptions: readonly TraditionalPlanet[] = ['SUN','MOON','MERCURY','VENUS','MARS','JUPITER','SATURN'];
   manualHourRuler: TraditionalPlanet | '' = '';
+  solarClockInputs: ManualSolarClockInputs = {sunriseLocal:'',sunsetLocal:'',nextSunriseLocal:''};
   monomericDegreeMode: MonomericDegreeMode = 'shown-degree';
-  /** No source-backed sunrise/sunset in this client yet; the user must enter a known ruler. */
+  /** Hour calculation is available only when the user explicitly supplies all
+   * three local solar-event readings; no astronomical times are fabricated. */
+  get manuallyResolvedSolarHour(): ManualPlanetaryHourResult {
+    const chart = this.activeChart;
+    return chart ? resolveManualPlanetaryHour(chart.utcIso, chart.timeZone, this.solarClockInputs) : {status:'INCOMPLETE',ruler:null};
+  }
+  get selectedCrossHourRuler(): TraditionalPlanet | '' {
+    const hour = this.manuallyResolvedSolarHour;
+    return this.manualHourRuler || (hour.status === 'READY' ? hour.ruler : '');
+  }
+  get manualSolarHourSummary(): string {
+    const hour = this.manuallyResolvedSolarHour;
+    if (hour.status !== 'READY') return '';
+    const planet = this.hourRulerLabel(hour.ruler);
+    const phase = hour.segment === 'DAY' ? (this.locale === 'it' ? 'diurna' : 'day') : (this.locale === 'it' ? 'notturna' : 'night');
+    return `${this.locale === 'it' ? 'Ora planetaria' : 'Planetary hour'} ${hour.number} · ${planet} · ${phase}`;
+  }
   get monomericCross(): MonomericCrossView | null {
     const chart = this.activeChart;
     const houses = chart?.data.houses[this.houseSystem];
-    if (!chart || !houses || !this.manualHourRuler) return null;
+    const hourRuler = this.selectedCrossHourRuler;
+    if (!chart || !houses || !hourRuler) return null;
     const names: Record<TraditionalPlanet,string> = {
       SUN:'Sun', MOON:'Moon', MERCURY:'Mercury', VENUS:'Venus', MARS:'Mars', JUPITER:'Jupiter', SATURN:'Saturn',
     };
@@ -178,7 +197,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     try {
       const geometry = buildMonomericCrossGeometry({
-        hourRuler:this.manualHourRuler, planetLongitudesDeg:longitudes,
+        hourRuler, planetLongitudesDeg:longitudes,
         houseCuspsDeg:houses.house, houseSystemId:this.houseSystem,
       });
       const view = monomericCrossViewFromGeometry(geometry, this.locale);
@@ -518,6 +537,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private showChart(chart: SessionChart | null): void {
     this.activeChartId = chart ? chart.id : null;
     this.manualHourRuler = '';
+    this.solarClockInputs = {sunriseLocal:'',sunsetLocal:'',nextSunriseLocal:''};
     this.transitChart = null;
     this.rowsCache = null;
     if (chart) this.useAvailableHouseSystem(chart);
@@ -885,9 +905,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.chartPresentation = this.chartPresentation === 'monomeric-cross' ? 'wheel' : 'monomeric-cross';
     this.cd.markForCheck();
   }
+  hourRulerLabel(value: TraditionalPlanet): string {
+    const names: Record<TraditionalPlanet,DemoPlanet> = {
+      SUN:'Sun', MOON:'Moon', MERCURY:'Mercury', VENUS:'Venus', MARS:'Mars', JUPITER:'Jupiter', SATURN:'Saturn',
+    };
+    return this.t(BODY_KEYS[names[value]]);
+  }
   setManualHourRuler(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
     this.manualHourRuler = this.hourRulerOptions.includes(value as TraditionalPlanet) ? value as TraditionalPlanet : '';
+    this.cd.markForCheck();
+  }
+  setSolarClockInput(field: keyof ManualSolarClockInputs, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.solarClockInputs = {...this.solarClockInputs, [field]:value};
     this.cd.markForCheck();
   }
   setMonomericDegreeMode(event: Event): void {

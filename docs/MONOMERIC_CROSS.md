@@ -30,12 +30,26 @@ fra catalogo legacy e fonte primaria resta una revisione editoriale da completar
 ad esempio una voce riporta «lega» dove la ricerca trascrive «legna».
 Il software preserva il testo legacy, non inventa correzioni né interpretazioni.
 
-**Limiti espliciti:** il Maestro dell'Ora è ancora scelto manualmente: non si
-deduce da sola la regola di alba/tramonto della nascita. L'app non dispone oggi
-di un provider locale verificato per gli eventi solari, e calcolarne uno nuovo
-nel solo layer Angular violerebbe la separazione astronomia/astrologia del
-progetto. Le descrizioni hanno significato storico-simbolico, non costituiscono
-interpretazioni, diagnosi o previsioni.
+**Maestro dell'Ora:** oltre alla selezione diretta del pianeta, l'utente può
+inserire *alba iniziale, tramonto e alba successiva* come data e ora **locali**
+nel fuso orario del tema. Il modulo `manual-planetary-hour` converte gli orari
+in UTC, controlla i cambi di ora e le date impossibili, deriva il giorno della
+settimana dall'**alba iniziale locale** e usa i contratti già testati
+`buildPlanetaryHours` + `lookupPlanetaryHour` di `astrological-functions`.
+La Croce viene quindi generata automaticamente per il pianeta che governa la
+precisa ora temporale di nascita. Un pianeta scelto manualmente prevale sempre;
+cambiando tema i tre orari vengono azzerati, evitando dati di un'altra nascita.
+I valori inseriti non sono salvati né inviati al backend.
+
+**Limiti espliciti:** non viene ancora calcolata automaticamente la posizione
+astronomica del Sole sull'orizzonte. Gli orari solari devono provenire da una
+fonte controllata dall'utente e sono etichettati come
+`CALLER_SUPPLIED_NOT_ASTRONOMICALLY_VERIFIED`; per nascite prima dell'alba bisogna
+inserire l'alba del **giorno precedente**. L'app non dispone oggi di un provider
+locale verificato per gli eventi solari, e calcolarne uno nuovo in Angular
+violerebbe la separazione astronomia/astrologia del progetto. Le descrizioni
+hanno significato storico-simbolico, non costituiscono interpretazioni,
+diagnosi o previsioni.
 
 **Gate diritti e provenienza:** il catalogo è stato trasferito dai sorgenti
 legacy della stessa organizzazione in una **PR desktop in bozza** per

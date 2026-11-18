@@ -75,9 +75,19 @@
 .monomeric-option { display:flex; flex:1 1 195px; max-width:340px; flex-direction:column; gap:7px; font-size:12px; font-weight:700; color:var(--vs-text); }
 .monomeric-option select { display:block; width:100%; border:1px solid var(--vs-border); background:var(--vs-surface-muted); color:var(--vs-text);
   border-radius:10px; padding:11px 14px; font:inherit; font-weight:600; }
-.monomeric-option select:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
+.monomeric-option input { display:block; width:100%; border:1px solid var(--vs-border); background:var(--vs-surface-muted); color:var(--vs-text);
+  border-radius:10px; padding:11px 14px; font:inherit; font-weight:600; min-height:41px; }
+.monomeric-option select:focus-visible,.monomeric-option input:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
 .monomeric-source-tag { color:#A78146; background:#C69D5220; border:1px solid #C69D5244; border-radius:999px;
   padding:8px 12px; font-size:11px; font-weight:750; letter-spacing:.015em; margin-bottom:2px; }
+.monomeric-solar-panel { background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:14px;
+  padding:12px 17px; margin:0 0 12px; }
+.monomeric-solar-panel summary { cursor:pointer; font-size:12px; color:var(--vs-text); font-weight:750; }
+.monomeric-solar-panel summary:focus-visible { outline:2px solid var(--vs-focus); outline-offset:4px; }
+.monomeric-solar-panel>p { font-size:12px; line-height:1.5; color:var(--vs-text-secondary); margin:11px 0; }
+.monomeric-solar-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.monomeric-solar-panel .monomeric-option { max-width:none; min-width:0; }
+.monomeric-solar-panel .monomeric-solar-result { margin-bottom:0; font-size:12px; font-weight:650; color:var(--vs-text); }
 .monomeric-caution { color:var(--vs-text-secondary); font-size:12px; line-height:1.5; max-width:900px; margin:0 0 16px; }
 .monomeric-neighbors { margin-top:20px; padding:22px; border:1px solid var(--vs-border); border-radius:22px; background:var(--vs-surface); }
 .monomeric-neighbors-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 20px; margin-bottom:15px; }
@@ -88,6 +98,7 @@
 .monomeric-neighbor-card h4 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#A78146; margin:0 0 10px; }
 .monomeric-neighbor-card p { font-size:12px; line-height:1.55; margin:0 0 7px; }
 .monomeric-neighbor-card p:last-child { margin-bottom:0; }
+@media (max-width:900px) { .monomeric-solar-grid { grid-template-columns:1fr; } }
 @media (max-width:700px) { .monomeric-stage { padding-inline:12px; } .monomeric-controls { padding:14px; } .monomeric-neighbor-grid { grid-template-columns:1fr; } }
 .stage-info { position:absolute; top:14px; left:16px; max-width:min(240px,26%); pointer-events:none; z-index:3; }
 .stage-info h1 { margin:0 0 2px; font-size:19px; font-weight:700; letter-spacing:-.03em; }
