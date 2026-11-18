@@ -1,0 +1,175 @@
+<section class="elements-view" [class.dark-theme]="theme==='dark'"
+  [attr.aria-label]="t(presentation==='elements' ? 'elements.title' : 'elements.aspectsTitle')" *ngIf="distribution as model">
+  <header class="elements-head">
+    <div class="elements-heading">
+      <h2>{{t(presentation==='elements' ? 'elements.title' : 'elements.aspectsTitle')}} <span class="heading-dot" aria-hidden="true">✦</span></h2>
+    </div>
+    <div class="elements-actions">
+      <button *ngIf="presentation==='elements'" class="dodeca-toggle" type="button" [class.active]="showDodecatemoria"
+        [attr.aria-pressed]="showDodecatemoria" (click)="toggleDodecatemoria.emit()">
+        <span class="dodeca-indicator" aria-hidden="true"></span>
+        {{t(showDodecatemoria ? 'elements.hideDodeca' : 'elements.showDodeca')}}
+      </button>
+      <button class="dodeca-toggle" type="button" [class.active]="showTransaturnians"
+        [attr.aria-pressed]="showTransaturnians" (click)="toggleTransaturnians.emit()">
+        <span class="dodeca-indicator" aria-hidden="true"></span>
+        {{t(showTransaturnians ? 'elements.hideTransaturnians' : 'elements.showTransaturnians')}}
+      </button>
+    </div>
+  </header>
+
+  <div class="distribution-panel" *ngIf="presentation==='elements'">
+    <div class="elements-headings" aria-hidden="true">
+      <span>{{t('elements.inHouses')}}</span>
+      <span>{{copy('ELEMENTO','ELEMENT')}}</span>
+      <span>{{t('elements.inSigns')}}</span>
+    </div>
+    <div class="elements-rows">
+      <section class="element-row" *ngFor="let row of model.strips; trackBy:trackElement"
+        [attr.data-element]="row.id" [attr.aria-label]="elementLabel(row.id)">
+        <div class="element-cell house-cell">
+          <span class="cell-small-heading">{{t('elements.inHouses')}}</span>
+          <div class="placements-line house-line">
+            <span class="axis-arrow asc-arrow" *ngIf="model.ascElement===row.id"
+              [attr.title]="'ASC · '+signSymbol(model.ascSign)+' '+elementLabel(row.id)"
+              [attr.aria-label]="'ASC · '+elementLabel(row.id)">
+              <b>ASC</b> <span class="axis-zodiac">{{signSymbol(model.ascSign)}}</span>
+            </span>
+            <ul class="element-placements">
+              <li *ngFor="let item of row.housePlanets; trackBy:trackPlanet" class="planet-chip"
+                [attr.title]="positionTitle(item,'house')" [attr.aria-label]="positionTitle(item,'house')">
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+                <span class="placement-datum">{{houseLabel(item.house)}}</span>
+              </li>
+              <li class="element-empty" *ngIf="!row.housePlanets.length && model.ascElement!==row.id">—</li>
+            </ul>
+          </div>
+          <div class="dodeca-line" *ngIf="showDodecatemoria">
+            <span class="dodeca-caption">{{t('elements.dodecatemoria')}}</span>
+            <ul class="element-placements">
+              <li *ngFor="let item of row.houseDodecatemoria; trackBy:trackPlanet" class="planet-chip secondary"
+                [attr.title]="positionTitle(item,'house',true)" [attr.aria-label]="positionTitle(item,'house',true)">
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+                <span class="placement-datum">{{houseLabel(item.house)}}</span>
+              </li>
+              <li class="element-empty" *ngIf="!row.houseDodecatemoria.length">—</li>
+            </ul>
+          </div>
+        </div>
+        <div class="element-center">
+          <span class="element-emblem" [attr.data-shape]="row.id" aria-hidden="true"><span></span></span>
+          <strong>{{elementLabel(row.id)}}</strong>
+        </div>
+        <div class="element-cell sign-cell">
+          <span class="cell-small-heading">{{t('elements.inSigns')}}</span>
+          <div class="placements-line sign-line">
+            <ul class="element-placements">
+              <li *ngFor="let item of row.signPlanets; trackBy:trackPlanet" class="planet-chip"
+                [attr.title]="positionTitle(item,'sign')" [attr.aria-label]="positionTitle(item,'sign')">
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+                <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign,white:true}"></ng-container>
+              </li>
+              <li class="element-empty" *ngIf="!row.signPlanets.length && model.dsElement!==row.id">—</li>
+            </ul>
+            <span class="axis-arrow ds-arrow" *ngIf="model.dsElement===row.id"
+              [attr.title]="'DS · '+signSymbol(model.dsSign)+' '+elementLabel(row.id)"
+              [attr.aria-label]="'DS · '+elementLabel(row.id)">
+              <b>DS</b> <span class="axis-zodiac">{{signSymbol(model.dsSign)}}</span>
+            </span>
+          </div>
+          <div class="dodeca-line" *ngIf="showDodecatemoria">
+            <span class="dodeca-caption">{{t('elements.dodecatemoria')}}</span>
+            <ul class="element-placements">
+              <li *ngFor="let item of row.signDodecatemoria; trackBy:trackPlanet" class="planet-chip secondary"
+                [attr.title]="positionTitle(item,'sign',true)" [attr.aria-label]="positionTitle(item,'sign',true)">
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+                <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign,white:true}"></ng-container>
+              </li>
+              <li class="element-empty" *ngIf="!row.signDodecatemoria.length">—</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </div>
+    <p class="distribution-note" *ngIf="showDodecatemoria">{{t('elements.dodecaMethod')}}</p>
+  </div>
+
+  <div class="analysis-grid" *ngIf="presentation==='elements'">
+    <section class="analysis-card modality-card" aria-labelledby="modality-title">
+      <div class="analysis-title">
+        <h3 id="modality-title">{{copy('Assi','Axes')}}</h3>
+      </div>
+      <div class="modality-row" *ngFor="let group of model.modalities" [attr.data-modality]="group.id">
+        <div class="modality-head">
+          <span>{{modalityLabel(group.id)}}</span>
+          <strong>{{group.planets.length}} <small>/ {{model.countedPlanets}}</small></strong>
+        </div>
+        <div class="modality-track" role="meter" [attr.aria-label]="modalityLabel(group.id)"
+          [attr.aria-valuenow]="group.planets.length" [attr.aria-valuemax]="model.countedPlanets" aria-valuemin="0">
+          <span [style.width.%]="modalityPercent(group.planets.length)"></span>
+        </div>
+        <ul class="modality-planets">
+          <li *ngFor="let item of group.planets; trackBy:trackPlanet" [attr.data-element]="signElement(item.sign)"
+            [attr.title]="positionTitle(item,'sign')" [attr.aria-label]="positionTitle(item,'sign')">
+            <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+            <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign,white:true}"></ng-container>
+          </li>
+          <li class="modality-empty" *ngIf="!group.planets.length">{{t('elements.none')}}</li>
+        </ul>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="analysis-card aspect-card" *ngIf="presentation==='aspects'" aria-labelledby="aspect-matrix-title">
+      <h3 id="aspect-matrix-title" class="sr-only">{{t('elements.aspectsTitle')}}</h3>
+      <div class="matrix-scroll">
+        <table class="aspect-matrix" [attr.aria-label]="t('elements.aspectsTitle')">
+          <thead><tr><th scope="col" class="matrix-corner"></th>
+            <th scope="col" *ngFor="let planet of planets; trackBy:trackName" [attr.title]="planetLabel(planet)">
+              <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:planet,retrograde:planetRetrograde(planet),white:false}"></ng-container>
+              <span class="sr-only">{{planetLabel(planet)}}</span>
+            </th>
+          </tr></thead>
+          <tbody><tr *ngFor="let planet of planets; let i=index; trackBy:trackName">
+            <th scope="row" [attr.title]="planetLabel(planet)">
+              <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:planet,retrograde:planetRetrograde(planet),white:false}"></ng-container>
+              <span class="sr-only">{{planetLabel(planet)}}</span>
+            </th>
+            <td *ngFor="let other of planets; let j=index; trackBy:trackName" [class.matrix-upper]="j>=i">
+              <ng-container *ngIf="j<i">
+                <ng-container *ngIf="matrixAspect(planet,other) as aspect; else noAspect">
+                  <span class="matrix-aspect" [attr.data-aspect]="aspect.aspect" [attr.title]="aspectTitle(aspect)"
+                    [attr.aria-label]="aspectTitle(aspect)">
+                    <b>{{aspectMark(aspect.aspect)}}</b>
+                    <small>{{aspectOrb(aspect)}}</small>
+                  </span>
+                </ng-container>
+                <ng-template #noAspect><span class="matrix-empty" aria-hidden="true">·</span></ng-template>
+              </ng-container>
+            </td>
+          </tr></tbody>
+        </table>
+      </div>
+      <div class="aspect-legend" [attr.aria-label]="copy('Legenda degli aspetti','Aspect legend')">
+        <span *ngFor="let aspect of aspectLegend">
+          <b [attr.data-aspect]="aspect">{{aspectMark(aspect)}}</b> {{aspectName(aspect)}}
+        </span>
+      </div>
+  </section>
+</section>
+
+<ng-template #planetMark let-name let-retrograde="retrograde" let-white="white">
+  <span class="astro-glyph" [class.asset-on-light]="!white" [class.axis-glyph]="name==='AS'||name==='MC'" aria-hidden="true">
+    <img class="asset-glyph" alt="" [src]="planetImageUrl(name,retrograde)"
+      (load)="imageLoaded($event)" (error)="imageMissing($event)">
+    <span class="glyph-fallback">{{planetSymbol(name)}}</span>
+  </span>
+</ng-template>
+<ng-template #signMark let-sign let-white="white">
+  <span class="astro-glyph sign-glyph" [class.asset-on-light]="!white" aria-hidden="true">
+    <img class="asset-glyph" alt="" [src]="signImageUrl(sign)"
+      (load)="imageLoaded($event)" (error)="imageMissing($event)">
+    <span class="glyph-fallback">{{signSymbol(sign)}}</span>
+  </span>
+</ng-template>

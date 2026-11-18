@@ -41,7 +41,7 @@ The desktop package refers to the sibling compiled chart package using the npm f
 
 The synthetic-only staging command now reads the generated manifest and images **without building the old demo**. It places only approved synthetic assets under .local/frontend/assets. The desktop Angular builder emits dist/desktop/browser/assets, then the new verifier checks exact SHA-256 matches, no extra images and the actual desktop entrypoint. See [asset pipeline](ASSET_PIPELINE.md).
 
-After setup, run npm run start in one console and npm run tauri:dev in a second; dev mode requires the Angular loopback server only. A completed Tauri build should embed Angular and synthetic assets, without an image server.
+After setup, use `npm start` in one console when the approved `../astrological-assets` checkout is present, or `npm run start:synthetic` for a public-only checkout. Run `npm run tauri:dev` in a second console; dev mode uses the already running Angular loopback server. A completed default Tauri build embeds Angular and synthetic assets, without an image server.
 
 The existing PowerShell helper scripts/build-windows-spike.ps1 now builds the charts library and stages assets. A previously generated .local/frontend is reused only when all expected synthetic files and hashes match. If it contains stale demo files, unauthorized files or changed content, the script fails closed; inspect and manually delete **only** that ignored generated directory before staging again.
 

@@ -35,7 +35,8 @@ Or use the existing `powershell -NoProfile -File .\scripts\build-windows-spike.p
 - `npm run build:ui`: prepare/reuse verified stage, build the desktop-owned Angular application, verify resulting `dist/desktop/browser` bundle.
 - `npm run verify:bundle`: read `.local/frontend/synthetic-assets-manifest.json` and validate exact emitted image paths and hashes, an Angular desktop root, and absence of external script/style tags and historical demo bootstrap.
 - `npm run tauri:build`: first build and verify Angular, then build the Tauri executable. `bundle.active=false` still means **no installer** is produced.
-- `npm start`: verifies/stages assets before starting the local Angular development server. Offline release builds should not require a development server.
+- `npm start` (also `npm run start:private`): verifies and stages owner-approved artwork from `../astrological-assets` before starting the private-artwork Angular development server. Without an approved local pack it fails closed. This is a local development choice, **not** the default shipped asset bundle.
+- `npm run start:synthetic`: stages checkerboards and starts the isolated synthetic Angular development server; it works for public-only contributors. Offline release builds should not require a development server.
 
 ## Fail-closed behavior
 
@@ -67,6 +68,17 @@ Local Node.js 22.16.0, 2026-11-10:
 Synthetic provenance fields are build-time safeguards, not cryptographic proof of artistic ownership. A developer with write access to both the manifest and its generator could forge them; public release requires separate signed/provenance-reviewed assets. These tests do not validate accounts, encryption, cloud sync or astronomical correctness. Original source uses CPAL-1.0; this does not grant redistribution rights for separately obtained assets or city data. Public-source and native-release reviews remain independent, and no GitHub Actions or production changes are implied.
 
 ## Immagini originali approvate per build private
+
+Per controllare la grafica in sviluppo senza creare un nuovo installer, nella
+cartella Desktop eseguire `npm start` (oppure `npm run start:private`); in un
+secondo terminale lanciare `npm run tauri:dev`. Il server Angular in questa
+modalità seleziona esclusivamente il bundle di asset locali con manifest
+convalidato nel checkout fratello `../astrological-assets`. La modalità
+dedicata `npm run start:synthetic` rimane sintetica. La nuova vista Elementi visualizza
+i glifi dal pack quando sono effettivamente sagomati e leggibili; se il file
+approvato è una vecchia immagine piatta a tinta unita, ricade su simboli di
+testo per non mostrare quadrati pieni. Questo fallback è anche applicato
+quando il file non esiste.
 
 La modalità opzionale `private-artwork` utilizza il checkout locale di `astrological-assets`, senza richiedere il repository di produzione. Serve un checkout accessibile ai collaboratori autorizzati. `npm run build:ui:private` verifica il manifest approvato fissato tramite SHA-256 dei byte UTF-8 con fine riga normalizzato a LF, la corrispondenza con `catalog/approvals.json`, tutti gli hash e le dimensioni, e prepara una copia in `.local/frontend-private`. Il bundle è verificato separatamente con `npm run verify:bundle:private`; asset extra, manomissioni, link simbolici e manifest diversi causano un errore. Il renderer continua a caricare `/assets/` in locale.
 

@@ -27,5 +27,19 @@ const icns = readFileSync(resolve(root, 'src-tauri/icons/icon.icns'));
 if (icns.toString('ascii', 0, 4) !== 'icns' || icns.readUInt32BE(4) !== icns.length) {
   throw new Error('Invalid macOS ICNS');
 }
+const reviewedIcnsChunks = ['icp5', 'ic07', 'ic08', 'ic09'];
+let offset = 8;
+for (const type of reviewedIcnsChunks) {
+  if (offset + 8 > icns.length || icns.toString('ascii', offset, offset + 4) !== type) {
+    throw new Error('Invalid macOS ICNS chunk: ' + type);
+  }
+  const length = icns.readUInt32BE(offset + 4);
+  if (length < 8 || offset + length > icns.length ||
+      !icns.subarray(offset + 8, offset + 16).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) {
+    throw new Error('Invalid macOS ICNS PNG payload: ' + type);
+  }
+  offset += length;
+}
+if (offset !== icns.length) throw new Error('Invalid macOS ICNS trailing data');
 
 console.log('VirgoStars native brand icons verified (PNG, ICO, ICNS).');

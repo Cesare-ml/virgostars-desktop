@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RENDER_POINT_ORDER, aspectPoints, computeAspects, computeCrossAspects, formatOrb} from '../src/app/astro/aspects.ts';
+import {RENDER_POINT_ORDER, MATRIX_PLANETS, MATRIX_EXTRA_POINTS, matrixPointOrder, aspectPoints, computeAspects, computeCrossAspects, computePlanetMatrixAspects, formatOrb} from '../src/app/astro/aspects.ts';
 import {ASPECT_DEFINITIONS, defaultChartSettings} from '../src/app/chart-settings.ts';
 
 // Visibly fictional positions chosen so each aspect is obvious.
@@ -169,6 +169,47 @@ test('chart points follow the renderer order; hidden bodies are left out, axes k
   assert.ok(RENDER_POINT_ORDER.indexOf('MC') < RENDER_POINT_ORDER.indexOf('AS'));
   settings.points.Moon.shown = false;
   assert.ok(!aspectPoints(data, settings.points).some(p => p.name === 'Moon'));
+});
+
+test('dedicated aspect matrix includes Black Moon, North Node and axes; outer planets are opt-in',()=>{
+  const settings=defaultChartSettings();
+  const body=(longitude,longitudeSpeed=1)=>({longitude,longitudeSpeed,equatoriale:{declination:0}});
+  const data={
+    as:0,ds:180,mc:90,ic:270,
+    planets:{Sun:body(0),Moon:body(92),Uranus:body(120),Neptune:body(180),Pluto:body(60),
+      'osc. Apogee':body(120),'true Node':body(180)},
+  };
+  assert.deepEqual(MATRIX_PLANETS,['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto']);
+  assert.deepEqual(MATRIX_EXTRA_POINTS,['osc. Apogee','true Node','AS','MC']);
+  assert.deepEqual(matrixPointOrder(false),[
+    'Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','osc. Apogee','true Node','AS','MC',
+  ]);
+  assert.equal(matrixPointOrder(true).length,14);
+  assert.equal(settings.points.Uranus.aspects,false);
+  assert.equal(settings.points.Neptune.aspects,false);
+  assert.equal(settings.points.Pluto.aspects,false);
+  const rows=computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS);
+  assert.ok(find(rows,'Sun','osc. Apogee','trigono'));
+  assert.ok(find(rows,'Sun','true Node','opposizione'));
+  assert.ok(find(rows,'Sun','AS','congiunzione'));
+  assert.ok(find(rows,'Sun','MC','quadrato'));
+  assert.equal(find(rows,'AS','MC'),undefined,'an axis is never aspected with another axis');
+  assert.equal(find(rows,'Sun','Uranus'),undefined);
+  assert.equal(find(rows,'Sun','Neptune'),undefined);
+  assert.equal(find(rows,'Sun','Pluto'),undefined);
+  const withOuter=computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS,true);
+  assert.ok(find(withOuter,'Sun','Uranus','trigono'));
+  assert.ok(find(withOuter,'Sun','Neptune','opposizione'));
+  assert.ok(find(withOuter,'Sun','Pluto','sestile'));
+  assert.equal(find(computeAspects(aspectPoints(data,settings.points),settings,ASPECT_DEFINITIONS),'Sun','Uranus'),undefined);
+  assert.equal(settings.points.Uranus.aspects,false,'matrix calculation may not mutate chart settings');
+  settings.points.Uranus.orb=0;
+  assert.equal(find(computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS,true),'Sun','Uranus'),undefined);
+  settings.aspects.sestile.active=false;
+  assert.equal(find(computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS,true),'Sun','Pluto'),undefined);
+  delete data.planets['osc. Apogee'];
+  assert.equal(find(computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS),'Sun','osc. Apogee'),undefined,
+    'unavailable Black Moon position must never be invented');
 });
 
 test('orbs are shown in degrees and whole minutes', () => {

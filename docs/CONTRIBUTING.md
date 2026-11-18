@@ -21,7 +21,7 @@ npm test
 npm run build:ui
 ```
 
-Use `npm start` for Angular UI work and `npm run tauri:dev` for the native prototype. The packaged Windows application is not a production release or an installable signed update. Don't claim full native validation from unit tests alone.
+Use `npm start` for Angular UI work when the verified original `../astrological-assets` checkout is available (alias: `npm run start:private`). Otherwise use `npm run start:synthetic` for the public-source, synthetic-only preview. In either case use `npm run tauri:dev` in a second terminal for the native prototype. Production builds continue to select synthetic/private artwork explicitly; the packaged Windows application is not a production release or an installable signed update. Don't claim full native validation from unit tests alone.
 
 ## Pull requests
 
