@@ -70,6 +70,37 @@ The verified `platform` and protocol version can later help gate update packages
 
 No GitHub Actions, merge, release, deployment or change to VirgoStars production services is part of this increment. Repository is still private and the eventual open-source license remains undecided.
 
+## Planetary hour: separate read-only solar-event port (2026-11-18, draft)
+
+The earlier `desktop_runtime_info` protocol stays unchanged. A separate
+`calculate_solar_events` Tauri command now accepts the already reviewed
+`ChartRequestV1` instant and observer coordinates. Its response is v1:
+`{protocolVersion, status, snapshot}`. Failure statuses contain `snapshot:null`;
+`ok` contains observer (including elevation), explicit horizon/refraction/model
+IDs, engine/kernel/time-model descriptors and a discriminated event window:
+`AVAILABLE` carries preceding sunrise UTC, intervening sunset UTC and following
+sunrise UTC; `UNAVAILABLE` states a polar or missing-event reason. The snapshot
+deliberately has **no weekday**: Angular derives the sunrise-local weekday from
+the chart's IANA time zone before the existing domain hour calculation.
+
+The Rust `SolarEventsProvider` trait is a dependency-injected, read-only port,
+with coverage and error cases exercised by synthetic Rust test fixtures.
+**No producer is registered in the actual application**: the pinned Ephemeris
+core does not provide a reviewed solar-event API, so valid native requests
+currently yield `provider_unavailable` without astronomical data. The default
+port must not be changed to a calendar approximation or an unreviewed core
+commit. `src/app/native/solar-events-contract.ts` strictly copies the response,
+rejects unexpected fields and mismatched natal observers, delegates domain
+calculation to `astrological-functions`, times out after 5 seconds and ignores
+late responses on theme change via the Angular controller.
+
+The native IPC source audit now pins **six** read-only commands/adapters.
+Node tests and the Angular offline build cover synthetic contracts, not real
+solar events. Rust unit tests, actual WebView2 IPC, sample DE441 comparisons,
+polar-edge numerical behavior and independent scientific benchmarks remain
+Windows/upstream acceptance gates; do not present this draft as a working
+automatic planetary-hour calculator or merge it without maintainer review.
+
 ## Bounded native capability handshake (2026-11-13, draft)
 
 The Angular runtime label must not remain on "checking" forever if the

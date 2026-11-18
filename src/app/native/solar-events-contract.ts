@@ -47,9 +47,9 @@ function finite(value:unknown):number {
   return value;
 }
 
-/** Explicit whitelist prevents an unreviewed native field from entering Angular. */
-function copySnapshot(raw:unknown):SolarEventAdapterInput {
-  const fields=record(raw,['weekday','observer','model','source','events']);
+/** The native solar producer supplies physical events, never an assumed civil weekday. */
+function copySnapshot(raw:unknown):Omit<SolarEventAdapterInput,'weekday'> {
+  const fields=record(raw,['observer','model','source','events']);
   const observer=record(fields.observer,['latitudeDeg','longitudeDegEast','elevationMeters']);
   const model=record(fields.model,['horizonDefinitionId','refractionModelId','eventAlgorithmId']);
   const source=record(fields.source,['engineId','engineVersion','kernelSetId','timeModelId','evidence']);
@@ -57,16 +57,26 @@ function copySnapshot(raw:unknown):SolarEventAdapterInput {
   const events=variant.availability==='AVAILABLE'
     ? {availability:'AVAILABLE' as const,sunriseUtc:iso(variant.sunriseUtc),sunsetUtc:iso(variant.sunsetUtc),nextSunriseUtc:iso(variant.nextSunriseUtc)}
     : {availability:'UNAVAILABLE' as const,reason:variant.reason as 'POLAR_DAY'|'POLAR_NIGHT'|'SUN_EVENTS_UNAVAILABLE'};
-  if (!['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'].includes(fields.weekday as string) ||
-      source.engineId!=='VIRGOSTARS_EPHEMERIS' || source.evidence!=='CALLER_ASSERTED_NOT_VERIFIED' ||
+  if (source.engineId!=='VIRGOSTARS_EPHEMERIS' || source.evidence!=='CALLER_ASSERTED_NOT_VERIFIED' ||
       (variant.availability==='UNAVAILABLE' && !['POLAR_DAY','POLAR_NIGHT','SUN_EVENTS_UNAVAILABLE'].includes(variant.reason as string))) throw new Error(ERROR);
   return {
-    weekday:fields.weekday as SolarEventAdapterInput['weekday'],
     observer:{latitudeDeg:finite(observer.latitudeDeg),longitudeDegEast:finite(observer.longitudeDegEast),elevationMeters:finite(observer.elevationMeters)},
     model:{horizonDefinitionId:bounded(model.horizonDefinitionId),refractionModelId:bounded(model.refractionModelId),eventAlgorithmId:bounded(model.eventAlgorithmId)},
     source:{engineId:'VIRGOSTARS_EPHEMERIS',engineVersion:bounded(source.engineVersion),kernelSetId:bounded(source.kernelSetId),timeModelId:bounded(source.timeModelId),evidence:'CALLER_ASSERTED_NOT_VERIFIED'},
     events,
   };
+}
+
+/** The first sunrise, not the UTC birth date, owns the local planetary weekday. */
+function weekdayOfSunrise(sunriseUtc:string,timeZone:string):SolarEventAdapterInput['weekday'] {
+  const day=new Intl.DateTimeFormat('en-US',{timeZone,weekday:'long'}).format(new Date(sunriseUtc));
+  const weekdays:Readonly<Record<string,SolarEventAdapterInput['weekday']>>={
+    Sunday:'SUNDAY',Monday:'MONDAY',Tuesday:'TUESDAY',Wednesday:'WEDNESDAY',
+    Thursday:'THURSDAY',Friday:'FRIDAY',Saturday:'SATURDAY',
+  };
+  const weekday=weekdays[day];
+  if (!weekday) throw new Error(ERROR);
+  return weekday;
 }
 
 function recordEventKeys(raw:unknown):Record<string,unknown> {
@@ -107,7 +117,10 @@ export async function requestAutomaticHour(transport:SolarEventsTransport, chart
       return {kind:envelope.status as 'provider_unavailable'|'invalid_request'|'out_of_range'|'calculation_failed'};
     }
     if (envelope.status!=='ok') throw new Error(ERROR);
-    const result=resolveEphemerisPlanetaryHour(chart,copySnapshot(envelope.snapshot));
+    const snapshot=copySnapshot(envelope.snapshot);
+    if (snapshot.events.availability==='UNAVAILABLE') return {kind:'unavailable'};
+    const weekday=weekdayOfSunrise(snapshot.events.sunriseUtc,chart.timeZone);
+    const result=resolveEphemerisPlanetaryHour(chart,{...snapshot,weekday});
     switch (result.status) {
       case 'READY': return {kind:'ready',...result};
       case 'MISMATCHED_OBSERVER': return {kind:'mismatched_observer'};

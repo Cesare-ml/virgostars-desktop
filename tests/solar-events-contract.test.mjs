@@ -15,7 +15,6 @@ const natal=Object.freeze({
   latMicro:41_902_800,lngMicro:12_496_400,
 });
 const snapshot={
-  weekday:'THURSDAY',
   observer:{latitudeDeg:41.9028,longitudeDegEast:12.4964,elevationMeters:0},
   model:{horizonDefinitionId:'USNO_MINUS_50_ARCMIN',refractionModelId:'STANDARD',eventAlgorithmId:'EXPERIMENTAL'},
   source:{engineId:'VIRGOSTARS_EPHEMERIS',engineVersion:'0.1.0',kernelSetId:'DE441_TEST',timeModelId:'EXPLICIT_UT1_TT_TDB',evidence:'CALLER_ASSERTED_NOT_VERIFIED'},
@@ -52,10 +51,9 @@ test('synthetic solar snapshot passes strict native contract and resolves real C
   assert.deepEqual(calls,[{command:'calculate_solar_events',args:{request:{protocolVersion:1,utcIso:natal.utcIso,latMicro:natal.latMicro,lngMicro:natal.lngMicro}}}]);
 });
 
-test('native solar event snapshot must match natal location, local weekday and sunrise interval',async()=>{
+test('native solar event snapshot must match natal location and containing sunrise interval',async()=>{
   for(const [change,expected] of [
     [{observer:{...snapshot.observer,longitudeDegEast:8.5}},'mismatched_observer'],
-    [{weekday:'WEDNESDAY'},'weekday_mismatch'],
     [{events:{...snapshot.events,sunriseUtc:'2024-06-20T10:30:00.000Z',sunsetUtc:'2024-06-20T19:00:00.000Z'}},'outside_interval'],
     [{events:{availability:'UNAVAILABLE',reason:'POLAR_DAY'}},'unavailable'],
   ]) {
@@ -65,6 +63,26 @@ test('native solar event snapshot must match natal location, local weekday and s
   }
 });
 
+test('pre-sunrise birth uses the PREVIOUS sunrise and the previous planetary weekday',async()=>{
+  const result=await requestAutomaticHour(transport(reply('ok',{
+    ...snapshot,
+    events:{availability:'AVAILABLE',sunriseUtc:'2024-06-19T03:00:00.000Z',sunsetUtc:'2024-06-19T19:00:00.000Z',nextSunriseUtc:'2024-06-20T03:00:00.000Z'},
+  })),{...natal,utcIso:'2024-06-20T02:00:00.000Z'});
+  assert.equal(result.kind,'ready');
+  assert.equal(result.number,23);
+  assert.equal(result.startUtc,'2024-06-20T01:40:00.000Z');
+});
+
+test('weekday comes from the local sunrise, even when UTC sunrise is on a different date',async()=>{
+  const result=await requestAutomaticHour(transport(reply('ok',{
+    ...snapshot,
+    events:{availability:'AVAILABLE',sunriseUtc:'2024-06-19T23:00:00.000Z',sunsetUtc:'2024-06-20T11:00:00.000Z',nextSunriseUtc:'2024-06-20T23:00:00.000Z'},
+  })),{...natal,utcIso:'2024-06-19T23:30:00.000Z',timeZone:'Asia/Tokyo'});
+  assert.equal(result.kind,'ready');
+  assert.equal(result.ruler,'JUPITER'); // Thursday in Tokyo; still Wednesday in UTC.
+  assert.equal(result.number,1);
+});
+
 test('tampered, unexpected, getter-backed and inconsistent native replies fail closed',async()=>{
   const getterSnapshot={...snapshot};
   Object.defineProperty(getterSnapshot,'events',{enumerable:true,get(){throw new Error('private data');}});
@@ -72,6 +90,7 @@ test('tampered, unexpected, getter-backed and inconsistent native replies fail c
     null,{},reply('ok',null),reply('ok',{...snapshot,secret:'sensitive'}),
     reply('ok',getterSnapshot),reply('ok',{...snapshot,source:{...snapshot.source,evidence:'SCIENTIFICALLY_VERIFIED'}}),
     reply('ok',{...snapshot,events:{...snapshot.events,nextSunriseUtc:'not a date'}}),
+    reply('ok',{...snapshot,weekday:'WEDNESDAY'}),
     reply('provider_unavailable',snapshot),reply('unknown'),
     {...reply('ok',snapshot),protocolVersion:2},
     new Error('private path error'),
