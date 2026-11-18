@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 
 use crate::pkce_token_exchange::{
-    valid_staging_token_endpoint, NativeAccessGrant, TokenHttpResponse, TokenHttpTransport,
+    valid_staging_token_endpoint, NativeAccessGrant, TokenHttpResponse, TokenHttpTransport, TokenScope,
 };
 use reqwest::blocking::{Body, Client};
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
@@ -19,6 +19,29 @@ const MAX_TOKEN_RESPONSE_BYTES: usize = 8192;
 const MAX_TOKEN_CONTENT_TYPE_BYTES: usize = 64;
 const MAX_TOKEN_DEADLINE: Duration = Duration::from_secs(10);
 const MAX_SESSION_RESPONSE_BYTES: u64 = 1024;
+const MAX_GROUP_RESPONSE_BYTES: u64 = 65536;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GroupRequest<'a> { sync_id: &'a str, base_groups: &'a [String], groups: &'a [String] }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct GroupResponse { contract_version: u8, status: String, groups: Vec<String> }
+
+#[derive(PartialEq, Eq)]
+pub(crate) enum GroupWriteResult { Updated, Unchanged, Conflict(Vec<String>) }
+
+fn parse_group_response(status: u16, bytes: &[u8], desired: &[String]) -> Result<GroupWriteResult, ()> {
+    let response: GroupResponse = serde_json::from_slice(bytes).map_err(|_| ())?;
+    if response.contract_version != 1 || !crate::chart_archive::valid_groups(&response.groups) { return Err(()); }
+    match (status, response.status.as_str()) {
+        (200, "updated") if response.groups == desired => Ok(GroupWriteResult::Updated),
+        (200, "unchanged") if response.groups == desired => Ok(GroupWriteResult::Unchanged),
+        (409, "conflict") => Ok(GroupWriteResult::Conflict(response.groups)),
+        _ => Err(()),
+    }
+}
 
 fn restricted_client(timeout: Duration) -> Result<Client, ()> {
     Client::builder()
@@ -73,6 +96,41 @@ impl Read for SecretFormReader {
 /// Rust-only transport, never constructed in or returned to the WebView.
 /// `post_form` is blocking: it MUST run on the dedicated native worker.
 pub struct StagingReqwestHttps;
+
+impl StagingReqwestHttps {
+    /// Native-only, bounded group update. The caller must tie any result to
+    /// the still-current verified session and persist it transactionally; this
+    /// helper is deliberately not exposed to the WebView or invoked yet.
+    pub(crate) fn replace_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant,
+        sync_id: &str, base_groups: &[String], groups: &[String]) -> Result<GroupWriteResult, ()> {
+        if grant.scope() != TokenScope::ReadAndGroupWrite
+            || grant.remaining_seconds(std::time::Instant::now()) == 0
+            || !crate::chart_archive::valid_id(sync_id)
+            || !crate::chart_archive::valid_groups(base_groups)
+            || !crate::chart_archive::valid_groups(groups) { return Err(()); }
+        let mut destination = valid_staging_token_endpoint(token_endpoint.as_str()).ok_or(())?;
+        destination.set_path("/chart-sync/v1/groups");
+        let payload = Zeroizing::new(serde_json::to_string(&GroupRequest {sync_id,base_groups,groups}).map_err(|_| ())?);
+        if payload.len() > 262144 { return Err(()); }
+        let auth_value = Zeroizing::new(format!("Bearer {}", grant.bearer()));
+        let mut auth = HeaderValue::from_str(&auth_value).map_err(|_| ())?;
+        auth.set_sensitive(true);
+        let client = restricted_client(MAX_TOKEN_DEADLINE)?;
+        let reader = SecretFormReader::new(&payload);
+        let response = client.post(destination).header(ACCEPT,"application/json")
+            .header(CONTENT_TYPE,"application/json").header(AUTHORIZATION,auth)
+            .body(Body::sized(reader,payload.len() as u64)).send().map_err(|_| ())?;
+        let status = response.status().as_u16();
+        if !matches!(status,200 | 409) || response.content_length().is_some_and(|n| n > MAX_GROUP_RESPONSE_BYTES) { return Err(()); }
+        let content_type = response.headers().get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).ok_or(())?;
+        if !content_type.eq_ignore_ascii_case("application/json")
+            && !content_type.eq_ignore_ascii_case("application/json; charset=utf-8") { return Err(()); }
+        let mut bytes = Zeroizing::new(Vec::new());
+        response.take(MAX_GROUP_RESPONSE_BYTES + 1).read_to_end(&mut bytes).map_err(|_| ())?;
+        if bytes.len() as u64 > MAX_GROUP_RESPONSE_BYTES { return Err(()); }
+        parse_group_response(status, &bytes, groups)
+    }
+}
 
 impl TokenHttpTransport for StagingReqwestHttps {
     fn post_form(
@@ -216,5 +274,19 @@ mod tests {
             &br#"{"contractVersion":1,"status":"active","status":"active","scope":"chart_sync:read"}"#[..],
             &br#"{"contractVersion":2,"status":"active","scope":"chart_sync:read"}"#[..],
         ] { assert!(!valid_session_response(invalid, "chart_sync:read")); }
+    }
+
+    #[test]
+    fn group_reply_requires_matching_status_and_strict_bounded_fields() {
+        let schema: serde_json::Value = serde_json::from_str(include_str!("../../contracts/group-update-response.v1.schema.json")).unwrap();
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["properties"]["status"]["enum"], serde_json::json!(["updated", "unchanged", "conflict"]));
+        assert_eq!(schema["properties"]["groups"]["maxItems"], 50);
+        let desired = vec!["Gruppo fittizio".to_owned()];
+        assert!(matches!(parse_group_response(200, br#"{"contractVersion":1,"status":"updated","groups":["Gruppo fittizio"]}"#, &desired), Ok(GroupWriteResult::Updated)));
+        assert!(matches!(parse_group_response(409, br#"{"contractVersion":1,"status":"conflict","groups":["Web fittizio"]}"#, &desired), Ok(GroupWriteResult::Conflict(groups)) if groups == ["Web fittizio"]));
+        assert!(parse_group_response(200, br#"{"contractVersion":1,"status":"updated","groups":["sbagliato"]}"#, &desired).is_err());
+        assert!(parse_group_response(200, br#"{"contractVersion":1,"status":"updated","groups":["Gruppo fittizio"],"token":"no"}"#, &desired).is_err());
+        assert!(parse_group_response(409, br#"{"contractVersion":1,"status":"unchanged","groups":["Gruppo fittizio"]}"#, &desired).is_err());
     }
 }

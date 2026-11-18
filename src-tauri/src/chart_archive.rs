@@ -113,7 +113,7 @@ fn failure(status: Failure) -> ArchiveResponseV1 {
 }
 
 /// Lowercase canonical UUID text, e.g. from `crypto.randomUUID()`.
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     id.len() == 36
         && id.bytes().enumerate().all(|(index, byte)| match index {
             8 | 13 | 18 | 23 => byte == b'-',
@@ -157,7 +157,7 @@ fn valid_record(chart: &ChartRecordV1) -> bool {
         && chart_calculation::validate(&instant_and_place).is_some()
 }
 
-fn valid_groups(groups: &[String]) -> bool {
+pub(crate) fn valid_groups(groups: &[String]) -> bool {
     groups.len() <= MAX_GROUPS && groups.iter().enumerate().all(|(index, name)|
         !name.is_empty() && valid_text(name, MAX_GROUP_CHARS) && !groups[..index].contains(name))
 }
