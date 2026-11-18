@@ -7,7 +7,7 @@ import {auditNativeIpc, auditCheckout} from '../scripts/verify-native-ipc.mjs';
 
 function fixture() {
   return {
-    entry:'tauri::Builder::default().invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events])',
+    entry:'tauri::Builder::default().invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar])',
     rustModules:{
       runtime_probe:'#[tauri::command]\npub fn desktop_runtime_info() {}',
       offline_places:'#[tauri::command]\npub async fn search_offline_places() {}',
@@ -15,6 +15,7 @@ function fixture() {
       chart_archive:'#[tauri::command]\npub fn chart_archive() {}',
       return_search:'#[tauri::command]\npub fn find_returns() {}',
       synod_events:'#[tauri::command]\npub async fn synod_events() {}',
+      historical_planets:'#[tauri::command]\npub fn calculate_historical_planet() {}\n#[tauri::command]\npub fn calculate_historical_planet_calendar() {}',
     },
     runtimeContract:"async function run(port) { return port.invoke('desktop_runtime_info'); }",
     placesContract:"async function search(port) { return port.invoke('search_offline_places', {query:'A'}); }",
@@ -22,6 +23,8 @@ function fixture() {
     archiveContract:"async function archive(port) { return port.invoke('chart_archive', {request:{}}); }",
     returnContract:"async function returns(port) { return port.invoke('find_returns', {request:{}}); }",
     synodContract:"async function synods(port) { return port.invoke('synod_events', {request:{}}); }",
+    historicalContract:"async function historical(port) { return port.invoke('calculate_historical_planet', {request:{}}); }",
+    historicalCalendarContract:"async function calendar(port) { return port.invoke('calculate_historical_planet_calendar', {request:{}}); }",
     tsFiles:{
       'src/app/native/runtime.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command)=>invoke<unknown>(command);",
       'src/app/native/offline-places.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
@@ -29,6 +32,8 @@ function fixture() {
       'src/app/native/chart-archive.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/return-search.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/synod-events.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
+      'src/app/native/historical-planets.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
+      'src/app/native/historical-calendar.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/workspace-state.ts':'export const state=1;',
     },
     tauriConfig:{app:{security:{capabilities:[]}}},
@@ -37,10 +42,10 @@ function fixture() {
 
 test('reviewed read-only registry and restricted adapters pass',()=>{
   const checked=auditNativeIpc(fixture());
-  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events']);
+  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar']);
 });
 test('extra native command cannot enter without a conscious allowlist review',()=>{
-  const f=fixture();f.entry=f.entry.replace('synod_events::synod_events]', 'synod_events::synod_events, account::read_token]');
+  const f=fixture();f.entry=f.entry.replace('historical_planets::calculate_historical_planet_calendar]', 'historical_planets::calculate_historical_planet_calendar, account::read_token]');
   assert.throws(()=>auditNativeIpc(f),/command count/);
 });
 test('duplicate or missing native commands fail',()=>{
@@ -58,7 +63,7 @@ test('missing Rust command function fails',()=>{
   assert.throws(()=>auditNativeIpc(f),/Unregistered/);
 });
 test('renamed Angular native commands fail the exact cross-language contract',()=>{
-  const commandOf={runtimeContract:'desktop_runtime_info',placesContract:'search_offline_places',chartContract:'calculate_chart',archiveContract:'chart_archive',returnContract:'find_returns'};
+  const commandOf={runtimeContract:'desktop_runtime_info',placesContract:'search_offline_places',chartContract:'calculate_chart',archiveContract:'chart_archive',returnContract:'find_returns',synodContract:'synod_events',historicalContract:'calculate_historical_planet',historicalCalendarContract:'calculate_historical_planet_calendar'};
   for(const which of Object.keys(commandOf)){
     const f=fixture();f[which]=f[which].replace(commandOf[which],'unreviewed_native_method');
     assert.throws(()=>auditNativeIpc(f),/contract command mismatch/);
@@ -136,6 +141,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       'src-tauri/src/chart_archive.rs':f.rustModules.chart_archive,
       'src-tauri/src/return_search.rs':f.rustModules.return_search,
       'src-tauri/src/synod_events.rs':f.rustModules.synod_events,
+      'src-tauri/src/historical_planets.rs':f.rustModules.historical_planets,
       'src-tauri/tauri.conf.json':JSON.stringify(f.tauriConfig),
       'src-tauri/build.rs':'fn main() { tauri_build::build(); }',
       'src/app/native/runtime-protocol.ts':f.runtimeContract,
@@ -144,10 +150,12 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       'src/app/native/chart-archive-contract.ts':f.archiveContract,
       'src/app/native/return-search-contract.ts':f.returnContract,
       'src/app/native/synod-events-contract.ts':f.synodContract,
+      'src/app/native/historical-planets-contract.ts':f.historicalContract,
+      'src/app/native/historical-calendar-contract.ts':f.historicalCalendarContract,
       ...f.tsFiles,
       'src/main.ts':'export const demo = true;',
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar']);
     for(const [path,content] of [
       ['src/main.ts',"import('@tauri-apps/api/core');"],
       ['src/app/misc/native.tsx',"import {invoke} from '@tauri-apps/api/core';"],
@@ -158,7 +166,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       assert.throws(()=>auditCheckout(root),/Unexpected Tauri import/,path);
       write(path,'export const ok = true;');
     }
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar']);
     // In Tauri 2 an empty capabilities array still auto-loads capability files.
     // An unexpected JSON/TOML permission file must fail closed.
     for(const name of ['unexpected.json','unexpected.toml','readme.txt']) {
@@ -171,13 +179,13 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
     mkdirSync(join(root,'src-tauri/capabilities','nested'));
     assert.throws(()=>auditCheckout(root),/auto-discovered capability files/);
     rmSync(join(root,'src-tauri/capabilities','nested'),{recursive:true});
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar']);
     // A command in a newly added nested Rust file must not evade the audit.
     write('src-tauri/src/features/new_command.rs',
       '#[tauri::command]\npub fn reveal_secret() {}');
     assert.throws(()=>auditCheckout(root),/Unregistered native command/);
     write('src-tauri/src/features/new_command.rs','pub fn helper() {}');
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar']);
 
     // Distinct Rust files with identical basenames are ambiguous in the flat
     // module-name inventory and must be reviewed rather than silently merged.
@@ -222,6 +230,7 @@ test('changing Tauri build.rs from its reviewed build-only form fails closed',()
       'src-tauri/src/chart_archive.rs':f.rustModules.chart_archive,
       'src-tauri/src/return_search.rs':f.rustModules.return_search,
       'src-tauri/src/synod_events.rs':f.rustModules.synod_events,
+      'src-tauri/src/historical_planets.rs':f.rustModules.historical_planets,
       'src-tauri/tauri.conf.json':JSON.stringify(f.tauriConfig),
       'src-tauri/build.rs':'fn main() { tauri_build::build(); }',
       'src/app/native/runtime-protocol.ts':f.runtimeContract,
@@ -230,9 +239,11 @@ test('changing Tauri build.rs from its reviewed build-only form fails closed',()
       'src/app/native/chart-archive-contract.ts':f.archiveContract,
       'src/app/native/return-search-contract.ts':f.returnContract,
       'src/app/native/synod-events-contract.ts':f.synodContract,
+      'src/app/native/historical-planets-contract.ts':f.historicalContract,
+      'src/app/native/historical-calendar-contract.ts':f.historicalCalendarContract,
       ...f.tsFiles,
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar']);
     write('src-tauri/build.rs','fn main() { tauri_build::try_build(custom_attributes()); }');
     assert.throws(()=>auditCheckout(root),/build configuration changed/);
   } finally {rmSync(root,{recursive:true,force:true});}

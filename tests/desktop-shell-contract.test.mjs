@@ -36,11 +36,12 @@ test('UI has dedicated archive, chart and honest account panels',()=>{
   assert.doesNotMatch(html,/<footer/);
   // The archive is not part of the new-chart panel, and the new-chart panel is not part of the archive.
   const newSheet=html.match(/<section class="sheet" \*ngIf="view==='new'"[\s\S]*?<\/section>/)?.[0] ?? '';
-  const archiveSheet=html.match(/<section class="sheet" \*ngIf="view==='archive'"[\s\S]*?<\/section>\s*<\/section>/)?.[0] ?? '';
+  const archiveSheet=html.split('<!-- Archive: saved charts and charts open in this session. -->')[1]?.split('<!-- Functions: a drawer')[0] ?? '';
   assert.ok(newSheet.includes('<vs-new-chart'));
   assert.doesNotMatch(newSheet,/savedCharts|visibleSavedCharts|archive\.title/);
-  assert.ok(archiveSheet.includes('visibleSavedCharts'));
-  assert.doesNotMatch(archiveSheet,/<vs-new-chart/);
+  assert.ok(archiveSheet.includes('shownSavedCharts'));
+  assert.match(archiveSheet, /<vs-new-chart[^>]*\[editChart\]="edit"/, 'archive editor reuses the birth form only with an existing saved chart');
+  assert.doesNotMatch(newSheet, /\[editChart\]/, 'new chart must remain a separate creation workflow');
 });
 test('the chart owns the full window height: no top bar, header or footer around it',()=>{
   const html=read('src/app/desktop-app.component.html');

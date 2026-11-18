@@ -20,18 +20,21 @@ export type ArchiveOperation =
   | Readonly<{operation: 'list'}>
   | Readonly<{operation: 'save'; chart: ChartRecordV1}>
   | Readonly<{operation: 'delete'; id: string}>
+  | Readonly<{operation: 'photo_save'; id: string; photoData: readonly number[]}>
+  | Readonly<{operation: 'photo_read' | 'photo_delete'; id: string}>
   /** Deletes the old plain-text file of the first prototype, once its charts are in the encrypted archive. */
   | Readonly<{operation: 'remove_legacy'}>;
 
 export type ArchiveFailure =
   | 'not_native' | 'invalid_request' | 'not_found' | 'archive_full'
-  | 'archive_unavailable' | 'archive_corrupt' | 'archive_newer' | 'archive_locked' | 'unavailable';
+  | 'archive_unavailable' | 'archive_corrupt' | 'archive_newer' | 'archive_locked' | 'photo_corrupt' | 'unavailable';
 
 export type ArchiveResult =
-  | Readonly<{kind: 'ready'; charts: readonly SavedChartV1[]; legacyPresent: boolean}>
+  | Readonly<{kind: 'ready'; charts: readonly SavedChartV1[]; legacyPresent: boolean;
+      photoIds: readonly string[]; photoData: readonly number[] | null}>
   | Readonly<{kind: ArchiveFailure}>;
 
-type WireRequest = {protocolVersion: 1; operation: string; chart?: ChartRecordV1; id?: string};
+type WireRequest = {protocolVersion: 1; operation: string; chart?: ChartRecordV1; id?: string; photoData?: readonly number[]};
 
 export interface ChartArchiveTransport {
   isNative(): boolean;
@@ -45,9 +48,19 @@ const ZONE_PATTERN = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/;
 // Control characters and invisible direction/format marks never belong in a label.
 const UNSAFE_TEXT = /[\p{Cc}​-‏‪-‮⁦-⁩﻿]/u;
 const MAX_CHARTS = 5000;
+export const MAX_PHOTO_BYTES = 220_000;
 const FAILURES: readonly string[] = [
-  'invalid_request', 'not_found', 'archive_full', 'archive_unavailable', 'archive_corrupt', 'archive_newer', 'archive_locked',
+  'invalid_request', 'not_found', 'archive_full', 'archive_unavailable', 'archive_corrupt', 'archive_newer', 'archive_locked', 'photo_corrupt',
 ];
+
+/** Photo transport accepts only a resized JPEG. No paths, EXIF, SVG or URLs cross IPC. */
+export function validPhotoBytes(bytes: readonly number[]): boolean {
+  if (!Array.isArray(bytes) || Object.getPrototypeOf(bytes) !== Array.prototype ||
+      bytes.length < 8 || bytes.length > MAX_PHOTO_BYTES ||
+      bytes[0] !== 255 || bytes[1] !== 216 || bytes[2] !== 255 ||
+      bytes[bytes.length - 2] !== 255 || bytes[bytes.length - 1] !== 217) return false;
+  return Object.keys(bytes).length === bytes.length && bytes.every(value => Number.isInteger(value) && value >= 0 && value <= 255);
+}
 
 function plainObject(x: unknown): x is Record<string, unknown> {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return false;
@@ -103,7 +116,8 @@ function decodeSavedChart(raw: unknown, seen: Set<string>): SavedChartV1 {
 }
 
 type DecodedArchive =
-  | Readonly<{status: 'ok'; charts: readonly SavedChartV1[]; legacyPresent: boolean}>
+  | Readonly<{status: 'ok'; charts: readonly SavedChartV1[]; legacyPresent: boolean;
+      photoIds: readonly string[]; photoData: readonly number[] | null}>
   | Readonly<{status: Exclude<ArchiveFailure, 'not_native' | 'unavailable'>}>;
 
 /** Detached, frozen values from one native response; throws a generic error otherwise. */
@@ -123,7 +137,15 @@ export function decodeArchiveResponse(raw: unknown): DecodedArchive {
     if (typeof legacyPresent !== 'boolean') throw new Error(PROTOCOL_ERROR);
     const seen = new Set<string>();
     const decoded = Array.from({length: charts.length}, (_, index) => decodeSavedChart(field(charts, String(index)), seen));
-    return Object.freeze({status: 'ok', charts: Object.freeze(decoded), legacyPresent});
+    const rawIds = Object.hasOwn(raw, 'photoIds') ? field(raw, 'photoIds') : [];
+    if (!Array.isArray(rawIds) || rawIds.length > MAX_CHARTS ||
+        Object.getPrototypeOf(rawIds) !== Array.prototype || Object.keys(rawIds).length !== rawIds.length ||
+        !rawIds.every(id => typeof id === 'string' && ID_PATTERN.test(id) && seen.has(id)) ||
+        new Set(rawIds).size !== rawIds.length) throw new Error(PROTOCOL_ERROR);
+    const rawPhoto = Object.hasOwn(raw, 'photoData') ? field(raw, 'photoData') : null;
+    if (rawPhoto !== null && !validPhotoBytes(rawPhoto as number[])) throw new Error(PROTOCOL_ERROR);
+    return Object.freeze({status: 'ok', charts: Object.freeze(decoded), legacyPresent,
+      photoIds:Object.freeze([...rawIds] as string[]), photoData:rawPhoto ? Object.freeze([...(rawPhoto as number[])]) : null});
   } catch {
     // Never surface native details, accessor or Proxy trap messages.
     throw new Error(PROTOCOL_ERROR);
@@ -141,6 +163,14 @@ function wireRequest(operation: ArchiveOperation): WireRequest | null {
   if (operation.operation === 'delete' && typeof operation.id === 'string' && ID_PATTERN.test(operation.id)) {
     return {protocolVersion: 1, operation: 'delete', id: operation.id};
   }
+  if (operation.operation === 'photo_save' && typeof operation.id === 'string' && ID_PATTERN.test(operation.id) &&
+      validPhotoBytes(operation.photoData)) {
+    return {protocolVersion: 1, operation: 'photo_save', id:operation.id, photoData:[...operation.photoData]};
+  }
+  if ((operation.operation === 'photo_read' || operation.operation === 'photo_delete') &&
+      typeof operation.id === 'string' && ID_PATTERN.test(operation.id)) {
+    return {protocolVersion: 1, operation:operation.operation, id:operation.id};
+  }
   return null;
 }
 
@@ -155,7 +185,8 @@ export async function requestArchive(
     if (!transport.isNative()) return {kind: 'not_native'};
     const decoded = decodeArchiveResponse(await transport.invoke('chart_archive', {request}));
     return decoded.status === 'ok'
-      ? {kind: 'ready', charts: decoded.charts, legacyPresent: decoded.legacyPresent}
+      ? {kind: 'ready', charts: decoded.charts, legacyPresent: decoded.legacyPresent,
+          photoIds:decoded.photoIds, photoData:decoded.photoData}
       : {kind: decoded.status};
   } catch {
     return {kind: 'unavailable'};

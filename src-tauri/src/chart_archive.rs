@@ -20,6 +20,7 @@
 use crate::archive_keys::{new_key, Key, KeyError, KeyStore, OsKeyStore};
 use crate::archive_vault::{self, VaultError};
 use crate::chart_calculation::{self, ChartRequestV1};
+use crate::chart_photos::{self, PhotoError};
 use rusqlite::serialize::OwnedData;
 use rusqlite::{params, Connection, DatabaseName, ErrorCode, OpenFlags, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,8 @@ pub struct ArchiveRequestV1 {
     pub operation: String,
     pub chart: Option<ChartRecordV1>,
     pub id: Option<String>,
+    /// Only for `photo_save`: a bounded, already-resized JPEG. Never synced.
+    pub photo_data: Option<Vec<u8>>,
 }
 
 /// What the user entered. The id is generated once by the client and never
@@ -92,6 +95,10 @@ pub struct ArchiveResponseV1 {
     pub charts: Option<Vec<SavedChartV1>>,
     /// The old plain-text file of the first prototype is still on disk.
     pub legacy_present: bool,
+    /// Photo presence is device-local metadata, not a field on SavedChartV1.
+    pub photo_ids: Vec<String>,
+    /// Present only for a requested `photo_read`; never returned by `list`.
+    pub photo_data: Option<Vec<u8>>,
 }
 
 type Failure = &'static str;
@@ -101,10 +108,20 @@ type Failure = &'static str;
 struct Outcome {
     charts: Vec<SavedChartV1>,
     legacy_present: bool,
+    photo_ids: Vec<String>,
+    photo_data: Option<Vec<u8>>,
 }
 
 fn failure(status: Failure) -> ArchiveResponseV1 {
-    ArchiveResponseV1 { protocol_version: PROTOCOL_VERSION, status, charts: None, legacy_present: false }
+    ArchiveResponseV1 { protocol_version: PROTOCOL_VERSION, status, charts: None, legacy_present: false, photo_ids: Vec::new(), photo_data: None }
+}
+
+fn photo_failure(error: PhotoError) -> Failure {
+    match error {
+        PhotoError::Invalid => "invalid_request",
+        PhotoError::Unavailable => "archive_unavailable",
+        PhotoError::Corrupt => "photo_corrupt",
+    }
 }
 
 /// Lowercase canonical UUID text, e.g. from `crypto.randomUUID()`.
@@ -482,8 +499,17 @@ fn open_session(paths: &ArchivePaths, keys: &dyn KeyStore) -> Result<Session, Fa
     Ok(Session { connection: fresh_connection()? })
 }
 
-fn outcome(paths: &ArchivePaths, connection: &Connection) -> Result<Outcome, Failure> {
-    Ok(Outcome { charts: list(connection)?, legacy_present: paths.legacy.exists() })
+fn outcome(paths: &ArchivePaths, connection: &Connection, photo_data: Option<Vec<u8>>) -> Result<Outcome, Failure> {
+    let charts = list(connection)?;
+    let folder = paths.sealed.parent().ok_or("archive_unavailable")?;
+    let ids = charts.iter().map(|chart| chart.id.clone()).collect::<Vec<_>>();
+    let photo_ids = chart_photos::list_ids(folder, &ids).map_err(photo_failure)?;
+    Ok(Outcome { charts, legacy_present: paths.legacy.exists(), photo_ids, photo_data })
+}
+
+fn saved_chart_exists(connection: &Connection, id: &str) -> Result<bool, Failure> {
+    connection.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts WHERE id=?1)", [id], |row| row.get(0))
+        .map_err(|error| classify(&error))
 }
 
 fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, now_ms: i64, limit: i64) -> Result<Outcome, Failure> {
@@ -492,30 +518,56 @@ fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, no
     }
     // Validate completely before touching the disk.
     let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    match (request.operation.as_str(), &request.chart, &request.id) {
-        ("list", None, None) => {
+    match (request.operation.as_str(), &request.chart, &request.id, &request.photo_data) {
+        ("list", None, None, None) => {
             let session = open_session(paths, keys)?;
-            outcome(paths, &session.connection)
+            outcome(paths, &session.connection, None)
         }
-        ("save", Some(chart), None) if valid_record(chart) => {
+        ("save", Some(chart), None, None) if valid_record(chart) => {
             let mut session = open_session(paths, keys)?;
             save(&mut session.connection, chart, now_ms, limit)?;
             persist(paths, keys, &session.connection)?;
-            outcome(paths, &session.connection)
+            outcome(paths, &session.connection, None)
         }
-        ("delete", None, Some(id)) if valid_id(id) => {
+        ("delete", None, Some(id), None) if valid_id(id) => {
             let session = open_session(paths, keys)?;
             delete(&session.connection, id)?;
             persist(paths, keys, &session.connection)?;
-            outcome(paths, &session.connection)
+            // Never keep an attachment visible after its chart is deleted.
+            // A file deletion failure is reported (not silently treated as success).
+            chart_photos::remove(paths.sealed.parent().ok_or("archive_unavailable")?, id).map_err(photo_failure)?;
+            outcome(paths, &session.connection, None)
         }
-        ("remove_legacy", None, None) => {
+        ("remove_legacy", None, None, None) => {
             // Only once the sealed archive has been opened successfully (migration included).
             let session = open_session(paths, keys)?;
             if paths.legacy.exists() && paths.sealed.exists() {
                 fs::remove_file(&paths.legacy).map_err(|_| "archive_unavailable")?;
             }
-            outcome(paths, &session.connection)
+            outcome(paths, &session.connection, None)
+        }
+        ("photo_save", None, Some(id), Some(data)) if valid_id(id) && chart_photos::valid_jpeg(data) => {
+            let session = open_session(paths, keys)?;
+            if !saved_chart_exists(&session.connection, id)? { return Err("not_found"); }
+            let key = keys.load().map_err(key_failure)?.ok_or("archive_locked")?;
+            chart_photos::save(paths.sealed.parent().ok_or("archive_unavailable")?, &key, id, data).map_err(photo_failure)?;
+            outcome(paths, &session.connection, None)
+        }
+        ("photo_read", None, Some(id), None) if valid_id(id) => {
+            let session = open_session(paths, keys)?;
+            if !saved_chart_exists(&session.connection, id)? { return Err("not_found"); }
+            let key = keys.load().map_err(key_failure)?.ok_or("archive_locked")?;
+            let photo = chart_photos::read(paths.sealed.parent().ok_or("archive_unavailable")?, &key, id)
+                .map_err(photo_failure)?.map(|data| data.to_vec());
+            outcome(paths, &session.connection, photo)
+        }
+        ("photo_delete", None, Some(id), None) if valid_id(id) => {
+            let session = open_session(paths, keys)?;
+            if !saved_chart_exists(&session.connection, id)? { return Err("not_found"); }
+            // A corrupted/locked archive must never allow attachment mutations.
+            keys.load().map_err(key_failure)?.ok_or("archive_locked")?;
+            chart_photos::remove(paths.sealed.parent().ok_or("archive_unavailable")?, id).map_err(photo_failure)?;
+            outcome(paths, &session.connection, None)
         }
         _ => Err("invalid_request"),
     }
@@ -529,6 +581,8 @@ pub fn handle(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveReques
             status: "ok",
             charts: Some(outcome.charts),
             legacy_present: outcome.legacy_present,
+            photo_ids: outcome.photo_ids,
+            photo_data: outcome.photo_data,
         },
         Err(status) => failure(status),
     }
@@ -593,7 +647,7 @@ mod tests {
         }
     }
     fn request(operation: &str) -> ArchiveRequestV1 {
-        ArchiveRequestV1 { protocol_version: 1, operation: operation.into(), chart: None, id: None }
+        ArchiveRequestV1 { protocol_version: 1, operation: operation.into(), chart: None, id: None, photo_data: None }
     }
     fn list_request() -> ArchiveRequestV1 { request("list") }
     fn save_request(chart: ChartRecordV1) -> ArchiveRequestV1 {
@@ -601,6 +655,9 @@ mod tests {
     }
     fn delete_request(id: &str) -> ArchiveRequestV1 {
         ArchiveRequestV1 { id: Some(id.into()), ..request("delete") }
+    }
+    fn photo_request(operation: &str, id: &str, photo_data: Option<Vec<u8>>) -> ArchiveRequestV1 {
+        ArchiveRequestV1 { id: Some(id.into()), photo_data, ..request(operation) }
     }
     fn go(archive: &TempArchive, keys: &FakeKeyStore, request: &ArchiveRequestV1, now_ms: i64) -> ArchiveResponseV1 {
         handle(&archive.paths, keys, request, now_ms)
@@ -666,6 +723,28 @@ mod tests {
         assert_eq!(listed[0].utc_iso, "2001-02-03T04:05:06.000Z");
         assert_eq!((listed[0].lat_micro, listed[0].lng_micro), (44_697_805, 11_805_778));
         assert_eq!((listed[0].created_at_ms, listed[0].updated_at_ms), (2000, 2000));
+    }
+
+    #[test]
+    fn test_private_photo_is_encrypted_separately_and_never_enters_chart_rows() {
+        let archive = TempArchive::new("private-photo");
+        let keys = FakeKeyStore::empty();
+        let jpeg = vec![0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0xff, 0xd9];
+        // An unsaved ID cannot accumulate photos on disk or create a key.
+        assert_eq!(go(&archive, &keys, &photo_request("photo_save", ID_A, Some(jpeg.clone())), 1).status, "not_found");
+        assert!(keys.key.borrow().is_none());
+        go(&archive, &keys, &save_request(record(ID_A, "Soggetto immaginario")), 1000);
+        let written = go(&archive, &keys, &photo_request("photo_save", ID_A, Some(jpeg.clone())), 1001);
+        assert_eq!(written.status, "ok");
+        assert_eq!(written.photo_ids, vec![ID_A.to_string()]);
+        assert!(written.photo_data.is_none());
+        let listed = go(&archive, &keys, &list_request(), 1002);
+        assert_eq!(listed.charts.unwrap()[0].name, "Soggetto immaginario");
+        assert!(listed.photo_data.is_none(), "list must not include image bytes");
+        let read = go(&archive, &keys, &photo_request("photo_read", ID_A, None), 1003);
+        assert_eq!(read.photo_data, Some(jpeg));
+        go(&archive, &keys, &delete_request(ID_A), 1004);
+        assert!(chart_photos::list_ids(&archive.folder, &[ID_A.into()]).unwrap().is_empty());
     }
 
     #[test]

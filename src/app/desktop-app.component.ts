@@ -43,6 +43,7 @@ import {
 import { functionMenu, pendingSettings, type FunctionEntry, type FunctionGroup, type FunctionStatus } from './function-catalog';
 import { chartArchive } from './native/chart-archive';
 import { newChartId, validChartRecord, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
+import {preparePrivateChartPhoto} from './private-chart-photo';
 import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
 import {synodEvents} from './native/synod-events';
 import type {SynodRecord} from './native/synod-events-contract';
@@ -52,6 +53,7 @@ import {australChartData, regoloPlanetOfYear, settingsWithConjunctOuter} from '.
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
+import { HistoricalPlanetsComponent } from './historical-planets.component';
 import {
   ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
   type ChartSettings
@@ -89,7 +91,12 @@ const ARCHIVE_FAILURES: Record<ArchiveFailure,MessageKey> = {
   not_native:'archive.browser', invalid_request:'archive.invalid', not_found:'archive.notfound',
   archive_full:'archive.full', archive_unavailable:'archive.unavailable', archive_corrupt:'archive.corrupt',
   archive_newer:'archive.newer', archive_locked:'archive.locked', unavailable:'archive.unavailable',
+  photo_corrupt:'archive.photo.corrupt',
 };
+const ARCHIVE_PHOTO_VISIBILITY_KEY = 'virgostars.desktop.private-photos-visible.v1';
+function readPhotoVisibility(storage: {getItem(key: string): string | null} | null): boolean {
+  try { return storage?.getItem(ARCHIVE_PHOTO_VISIBILITY_KEY) === 'yes'; } catch { return false; }
+}
 const STATUS_KEYS: Record<FunctionStatus,MessageKey> = {
   available:'functions.available', planned:'functions.planned', excluded:'functions.excluded',
 };
@@ -136,7 +143,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, HistoricalPlanetsComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -226,6 +233,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
   // Charts saved in the local SQLite archive (inputs only, recalculated when opened).
   savedCharts: readonly SavedChartV1[] = [];
+  /** Photo bytes never enter savedCharts, storage preferences, sync DTOs or the cloud. */
+  private photoIds: readonly string[] = [];
+  photoUrls: Record<string, string> = {};
+  showArchivePhotos = readPhotoVisibility(this.uiPreferencesStorage);
+  photoBusyId: string | null = null;
+  pendingPhotoDeleteId: string | null = null;
+  photoStatus: MessageKey | null = null;
+  editingChart: SavedChartV1 | null = null;
+  archiveVisibleLimit = 24;
+  private photoGeneration = 0;
+  private photoLoadingIds = new Map<string, number>();
   archiveBusy = false;
   archiveMessage: MessageKey | null = null;
   pendingDeleteId: string | null = null;
@@ -1102,8 +1120,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private applyArchive(result: ArchiveResult, success: MessageKey | null): boolean {
     if (result.kind === 'ready') {
       this.savedCharts = result.charts;
+      this.photoIds = result.photoIds;
       this.legacyPresent = result.legacyPresent;
       this.archiveMessage = success;
+      if (this.showArchivePhotos && this.view === 'archive' && !this.editingChart) void this.loadVisiblePhotos();
       return true;
     }
     this.archiveMessage = ARCHIVE_FAILURES[result.kind];
@@ -1147,8 +1167,105 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!query) return this.savedCharts;
     return this.savedCharts.filter(chart => (chart.name + ' ' + chart.placeName).toLocaleLowerCase().includes(query));
   }
+  get shownSavedCharts(): readonly SavedChartV1[] { return this.visibleSavedCharts.slice(0, this.archiveVisibleLimit); }
+  hasPrivatePhoto(id: string): boolean { return this.photoIds.includes(id); }
+  showMoreSavedCharts(): void {
+    this.archiveVisibleLimit += 24;
+    if (this.showArchivePhotos) void this.loadVisiblePhotos();
+  }
   setArchiveQuery(event: Event): void {
     this.archiveQuery = (event.target as HTMLInputElement).value.slice(0, 80);
+    this.archiveVisibleLimit = 24;
+    this.releasePhotoUrls();
+    if (this.showArchivePhotos) void this.loadVisiblePhotos();
+    this.cd.markForCheck();
+  }
+  toggleArchivePhotos(): void {
+    this.showArchivePhotos = !this.showArchivePhotos;
+    try { this.uiPreferencesStorage?.setItem(ARCHIVE_PHOTO_VISIBILITY_KEY, this.showArchivePhotos ? 'yes' : 'no'); }
+    catch { /* private preferences can be disabled; never block the archive */ }
+    if (this.showArchivePhotos) void this.loadVisiblePhotos();
+    else this.releasePhotoUrls();
+    this.cd.markForCheck();
+  }
+  private releasePhotoUrls(): void {
+    ++this.photoGeneration;
+    for (const url of Object.values(this.photoUrls)) URL.revokeObjectURL(url);
+    this.photoUrls = {};
+  }
+  private async loadVisiblePhotos(): Promise<void> {
+    const generation = this.photoGeneration;
+    // Only the current page; searching and "show more" load additional thumbnails lazily.
+    for (const saved of this.shownSavedCharts) {
+      if (this.destroyed || !this.showArchivePhotos || this.view !== 'archive' || generation !== this.photoGeneration) return;
+      if (!this.hasPrivatePhoto(saved.id) || this.photoUrls[saved.id] || this.photoLoadingIds.get(saved.id) === generation) continue;
+      this.photoLoadingIds.set(saved.id, generation);
+      let result: ArchiveResult;
+      try { result = await chartArchive({operation:'photo_read', id:saved.id}); }
+      finally { if (this.photoLoadingIds.get(saved.id) === generation) this.photoLoadingIds.delete(saved.id); }
+      if (this.destroyed || !this.showArchivePhotos || this.view !== 'archive' || generation !== this.photoGeneration) return;
+      if (result.kind === 'ready' && result.photoData) {
+        this.photoUrls = {...this.photoUrls, [saved.id]: URL.createObjectURL(new Blob(
+          [Uint8Array.from(result.photoData)], {type:'image/jpeg'}))};
+        this.cd.markForCheck();
+      } else if (result.kind !== 'ready') {
+        this.photoStatus = ARCHIVE_FAILURES[result.kind];
+        this.cd.markForCheck();
+      }
+    }
+  }
+  async uploadPrivatePhoto(saved: SavedChartV1, event: Event): Promise<void> {
+    const element = event.target as HTMLInputElement;
+    const file = element.files?.[0];
+    element.value = '';
+    if (!file || this.archiveBusy || this.photoBusyId) return;
+    this.photoBusyId = saved.id;
+    this.photoStatus = null;
+    this.cd.markForCheck();
+    try {
+      const photoData = await preparePrivateChartPhoto(file);
+      if (this.destroyed) return;
+      const ok = await this.runArchive({operation:'photo_save', id:saved.id, photoData}, null);
+      if (ok) {
+        this.releasePhotoUrls();
+        this.photoStatus = 'archive.photo.saved';
+        if (this.showArchivePhotos) void this.loadVisiblePhotos();
+      }
+    } catch {
+      if (!this.destroyed) this.photoStatus = 'archive.photo.invalid';
+    } finally {
+      if (!this.destroyed) { this.photoBusyId = null; this.cd.markForCheck(); }
+    }
+  }
+  askRemovePrivatePhoto(id: string): void { this.pendingPhotoDeleteId = id; this.cd.markForCheck(); }
+  cancelRemovePrivatePhoto(): void { this.pendingPhotoDeleteId = null; this.cd.markForCheck(); }
+  async removePrivatePhoto(saved: SavedChartV1): Promise<void> {
+    if (this.pendingPhotoDeleteId !== saved.id || this.archiveBusy || this.photoBusyId) return;
+    this.pendingPhotoDeleteId = null;
+    this.photoBusyId = saved.id;
+    const ok = await this.runArchive({operation:'photo_delete', id:saved.id}, null);
+    if (ok) {
+      this.releasePhotoUrls();
+      this.photoStatus = 'archive.photo.deleted';
+    }
+    this.photoBusyId = null;
+    this.cd.markForCheck();
+  }
+  editSavedChart(saved: SavedChartV1): void {
+    if (this.calcBusy || this.archiveBusy) return;
+    this.editingChart = saved;
+    this.archiveMessage = null;
+    this.cd.markForCheck();
+  }
+  cancelEditSaved(): void { this.editingChart = null; this.cd.markForCheck(); }
+  async saveEditedChart(input: NewChartInput): Promise<void> {
+    const original = this.editingChart;
+    if (!original || this.archiveBusy) return;
+    const ok = await this.runArchive({operation:'save', chart:{
+      id:original.id, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
+      latMicro:input.latMicro, lngMicro:input.lngMicro, placeName:input.placeName,
+    }}, 'archive.edited');
+    if (ok) this.editingChart = null;
     this.cd.markForCheck();
   }
   setAutoSave(event: Event): void {
@@ -1157,12 +1274,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openSavedChart(saved: SavedChartV1): void {
     if (this.calcBusy || this.exporting) return;
-    const open = this.sessionCharts.find(chart => chart.archiveId === saved.id);
+    const open = this.sessionCharts.find(chart => chart.archiveId === saved.id &&
+      chart.name === saved.name && chart.utcIso === saved.utcIso && chart.timeZone === saved.timeZone &&
+      chart.latMicro === saved.latMicro && chart.lngMicro === saved.lngMicro && chart.placeName === saved.placeName);
     if (open) { this.activateChart(open.id); this.closeSheet(); return; }
+    const previousIds = this.sessionCharts.filter(chart => chart.archiveId === saved.id).map(chart => chart.id);
     void this.onChartRequested({
       name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
       offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName,
-    }, saved.id).then(() => { if (!this.destroyed && this.calcMessage === 'calc.ready') this.closeSheet(); });
+    }, saved.id).then(() => {
+      if (!this.destroyed && this.calcMessage === 'calc.ready') {
+        this.sessionCharts = this.sessionCharts.filter(chart => !previousIds.includes(chart.id));
+        if (previousIds.includes(this.partnerChartId ?? -1)) this.partnerChartId = null;
+        if (previousIds.includes(this.returnRadix?.chartId ?? -1)) this.closeReturns();
+        this.closeSheet();
+      }
+    });
   }
   askDeleteSaved(id: string): void {
     this.pendingDeleteId = id;
@@ -1193,6 +1320,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.pendingDeleteId = null;
     const deleted = await this.runArchive({operation:'delete', id}, 'archive.deleted');
     if (deleted) {
+      this.releasePhotoUrls();
+      if (this.showArchivePhotos) void this.loadVisiblePhotos();
       // The chart stays open in this session, but is no longer a saved one.
       this.sessionCharts = this.sessionCharts.map(item => item.archiveId === id ? {...item, archiveId:null} : item);
       this.cd.markForCheck();
@@ -1237,12 +1366,18 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openArchive(): void {
     this.view = 'archive';
+    this.editingChart = null;
     this.archiveMessage = null;
     this.calcMessage = null;
+    this.photoStatus = null;
+    this.pendingPhotoDeleteId = null;
+    if (this.showArchivePhotos) void this.loadVisiblePhotos();
     this.cd.markForCheck();
   }
   closeSheet(): void {
     this.view = 'chart';
+    this.editingChart = null;
+    this.releasePhotoUrls();
     this.cd.markForCheck();
   }
   runFunction(entry: FunctionEntry): void {
@@ -1293,6 +1428,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openSettings(): void {
     this.view = this.view === 'settings' ? 'chart' : 'settings';
+    this.cd.markForCheck();
+  }
+
+  openHistoricalPlanets(): void {
+    this.view = this.view === 'historical' ? 'chart' : 'historical';
     this.cd.markForCheck();
   }
   openInspector(tab: InspectorTab): void {
@@ -1413,6 +1553,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.cancelTransitNavigation();
+    this.releasePhotoUrls();
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.stopHold();
