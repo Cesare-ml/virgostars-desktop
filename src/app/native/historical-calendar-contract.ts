@@ -1,7 +1,8 @@
 import {decodeHistoricalPlanet, HISTORICAL_BODIES, type HistoricalBody, type HistoricalResult} from './historical-planets-contract';
 
 export type DeltaTChoice = Readonly<{kind: 'supplied'; seconds: number; uncertaintySeconds: number; source: string}> |
-  Readonly<{kind: 'espenakMeeus2006'; uncertaintySeconds: number}>;
+  Readonly<{kind: 'espenakMeeus2006'; uncertaintySeconds: number}> |
+  Readonly<{kind: 'espenakMeeus2006EstimatedUncertainty'}>;
 /** Calendar values are UT1, on the proleptic Gregorian calendar, using astronomical year numbering. */
 export type HistoricalCalendarRequest = Readonly<{body: HistoricalBody; year: number; month: number; day: number;
   hour: number; minute: number; second: number; deltaT: DeltaTChoice; includeScenarios?: boolean}>;
@@ -20,8 +21,11 @@ export function validHistoricalCalendar(value: HistoricalCalendarRequest): boole
   const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (value.day < 1 || value.day > monthDays[value.month - 1]) return false;
   const choice = value.deltaT;
-  if (!choice || !Number.isFinite(choice.uncertaintySeconds) || choice.uncertaintySeconds < 0) return false;
-  if (choice.kind === 'espenakMeeus2006') return value.year >= 0 && value.year <= 3000;
+  if (!choice) return false;
+  if (choice.kind === 'espenakMeeus2006EstimatedUncertainty') return value.year >= -999 &&
+    (value.year < 1200 || (value.year === 1200 && value.month === 1 && value.day === 1 && value.hour === 0 && value.minute === 0 && value.second === 0));
+  if (!Number.isFinite(choice.uncertaintySeconds) || choice.uncertaintySeconds < 0) return false;
+  if (choice.kind === 'espenakMeeus2006') return value.year >= -1999 && value.year <= 3000;
   return choice.kind === 'supplied' && Number.isFinite(choice.seconds) && typeof choice.source === 'string' &&
     choice.source.trim().length > 0 && new TextEncoder().encode(choice.source).length <= 200;
 }
@@ -31,11 +35,15 @@ export async function requestHistoricalCalendar(transport: HistoricalCalendarTra
     if (!transport.isNative()) return {kind: 'not_native'};
     const deltaT = request.deltaT.kind === 'supplied'
       ? {kind: 'supplied' as const, seconds: request.deltaT.seconds, uncertaintySeconds: request.deltaT.uncertaintySeconds, source: request.deltaT.source}
-      : {kind: 'espenakMeeus2006' as const, uncertaintySeconds: request.deltaT.uncertaintySeconds};
+      : request.deltaT.kind === 'espenakMeeus2006'
+        ? {kind: 'espenakMeeus2006' as const, uncertaintySeconds: request.deltaT.uncertaintySeconds}
+        : {kind: 'espenakMeeus2006EstimatedUncertainty' as const};
     const raw = await transport.invoke('calculate_historical_planet_calendar', {request: {protocolVersion: 1,
       body: request.body, year: request.year, month: request.month, day: request.day, hour: request.hour,
       minute: request.minute, second: request.second, deltaT, ...(request.includeScenarios ? {includeScenarios:true} : {})}});
-    return decodeHistoricalPlanet(raw, {body: request.body, uncertaintySeconds: deltaT.uncertaintySeconds,
+    return decodeHistoricalPlanet(raw, {body: request.body,
+      ...(deltaT.kind === 'espenakMeeus2006EstimatedUncertainty'
+        ? {uncertaintySource:'Morrison-Stephenson 2004 standard error'} : {uncertaintySeconds:deltaT.uncertaintySeconds}),
       deltaTSource: deltaT.kind === 'supplied' ? deltaT.source : 'Espenak-Meeus 2006',
       includeScenarios: request.includeScenarios === true,
       ...(deltaT.kind === 'supplied' ? {deltaTSeconds: deltaT.seconds} : {})});
