@@ -2,6 +2,14 @@
 
 Status: **PROPOSED**. No production routes or synchronization engine exist here.
 
+Product requirement clarified on 2026-11-18: the same account's natal-chart
+groups should be available across Desktop and the website. This is not sharing
+with other accounts. The candidate server read model contains group names, but
+the current local encrypted archive does not store groups or synchronize them.
+An actual implementation also needs account-isolated storage, an explicit
+write authorization, durable offline edits and conflict handling. Do not
+present the connected login as completed group synchronization.
+
 ## Required user journey
 1. **First online login:** open trusted VirgoStars identity flow in the system browser using OAuth 2 Authorization Code + PKCE (or a rigorously reviewed desktop-safe equivalent). Register this installation with a per-device identifier; obtain only account-scoped privileges.
 2. **Download initial snapshot:** after server authorization, import only the signed-in user's allowed entities into a local transaction. Protect keys with OS secure storage; show download/progress/retry.
