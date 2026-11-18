@@ -34,6 +34,15 @@ chiama `LoginCancelHandle::cancel`; la race del token è già gestita dal
 coordinator della PR #360. In caso di errore di rete non ritentare lo stesso
 authorization code: serve un nuovo tentativo PKCE.
 
+Il coordinator ora richiede anche `GET /chart-sync/v1/session` con il bearer
+solo nel processo Rust prima di completare l'accesso. La risposta è limitata,
+vincolata allo schema `contracts/connected-session.v1.schema.json` e non
+contiene dati account o temi. Il backend candidato deve verificare firma,
+audience, grant corrente e opt-in prima di rispondere. Il trasporto resta
+non collegato all'IPC e i test con TLS e backend reali non sono stati eseguiti.
+Il gestore nativo distingue rifiuto e scadenza, espone il tempo residuo del
+tentativo e scarta un grant arrivato dopo la scadenza o l'annullamento.
+
 ## Gate di attivazione (eseguire nel checkout completo Windows)
 
 Nel checkpoint precedente il blocco era **Rust toolchain unavailable**. Nel

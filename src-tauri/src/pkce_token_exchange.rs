@@ -39,6 +39,12 @@ pub trait TokenHttpTransport {
         timeout: Duration,
         max_response_bytes: usize,
     ) -> Result<TokenHttpResponse, ()>;
+
+    /// A syntactically valid token is not proof of an active backend session.
+    /// Implementations must fail closed until the backend confirms the grant.
+    fn verify_grant(&self, _endpoint: &Url, _grant: &NativeAccessGrant) -> Result<(), ()> {
+        Err(())
+    }
 }
 
 /// Raw bytes are zeroized by the exchanger immediately after transport. A

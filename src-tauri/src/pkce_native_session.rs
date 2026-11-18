@@ -5,9 +5,9 @@
 //! attempt and must not expose tokens through status IPC.
 #![allow(dead_code)]
 
-use crate::pkce_loopback::{LoginCancelHandle, SystemBrowserOpener};
+use crate::pkce_loopback::{LoginCancelHandle, LoopbackError, SystemBrowserOpener};
 use crate::pkce_staging_flow::{StagingLoginAttempt, StagingLoginError};
-use crate::pkce_token_exchange::{NativeAccessGrant, TokenHttpTransport};
+use crate::pkce_token_exchange::{NativeAccessGrant, TokenExchangeError, TokenHttpTransport};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -17,6 +17,7 @@ pub enum NativeLoginPhase {
     Pending,
     Connected,
     Failed,
+    Denied,
     Cancelled,
     Expired,
     Disconnected,
@@ -41,6 +42,7 @@ enum SecretState {
     Pending,
     Connected(NativeAccessGrant),
     Failed,
+    Denied,
     Cancelled,
     Expired,
     Disconnected,
@@ -52,6 +54,7 @@ pub struct NativeLoginSession {
     attempt_id: String,
     cancellation: LoginCancelHandle,
     state: Arc<Mutex<SecretState>>,
+    deadline: Instant,
 }
 
 impl NativeLoginSession {
@@ -72,8 +75,12 @@ impl NativeLoginSession {
         if max_wait.is_zero() || max_wait > Duration::from_secs(600) {
             return Err(NativeSessionStartError::WorkerUnavailable);
         }
+        let deadline = Instant::now().checked_add(max_wait).ok_or(NativeSessionStartError::WorkerUnavailable)?;
         let attempt = StagingLoginAttempt::begin(browser, consent_url, token_endpoint)
             .map_err(NativeSessionStartError::Login)?;
+        if Instant::now() >= deadline {
+            return Err(NativeSessionStartError::WorkerUnavailable);
+        }
         let attempt_id = attempt.attempt_id().to_owned();
         let cancellation = attempt.cancellation_handle();
         let state = Arc::new(Mutex::new(SecretState::Pending));
@@ -86,16 +93,20 @@ impl NativeLoginSession {
         thread::Builder::new()
             .name("virgostars-staging-pkce".to_owned())
             .spawn(move || {
-                let outcome = attempt.wait_and_exchange(&transport, max_wait);
+                let outcome = attempt.wait_and_exchange(&transport, deadline.saturating_duration_since(Instant::now()));
                 if let Ok(mut current) = state_for_worker.lock() {
                     // Explicit disconnect/drop wins even when the backend
                     // response arrives after the native owner has gone away.
                     if matches!(*current, SecretState::Pending) {
-                        *current = match outcome {
+                        *current = if Instant::now() >= deadline {
+                            SecretState::Expired
+                        } else { match outcome {
                             Ok(grant) => SecretState::Connected(grant),
                             Err(StagingLoginError::Cancelled) => SecretState::Cancelled,
+                            Err(StagingLoginError::Listener(LoopbackError::Expired)) => SecretState::Expired,
+                            Err(StagingLoginError::TokenExchange(TokenExchangeError::Denied)) => SecretState::Denied,
                             Err(_) => SecretState::Failed,
-                        };
+                        }};
                     }
                 }
             })
@@ -104,7 +115,7 @@ impl NativeLoginSession {
                 NativeSessionStartError::WorkerUnavailable
             })?;
 
-        Ok(Self {attempt_id, cancellation, state})
+        Ok(Self {attempt_id, cancellation, state, deadline})
     }
 
     pub fn snapshot(&self) -> NativeLoginSnapshot {
@@ -118,7 +129,16 @@ impl NativeLoginSession {
             },
         };
         let (phase, remaining_seconds) = match &*state {
-            SecretState::Pending => (NativeLoginPhase::Pending, 0),
+            SecretState::Pending => {
+                if now >= self.deadline {
+                    self.cancellation.cancel();
+                    *state = SecretState::Expired;
+                    (NativeLoginPhase::Expired, 0)
+                } else {
+                    let remaining = self.deadline.duration_since(now);
+                    (NativeLoginPhase::Pending, remaining.as_secs() + u64::from(remaining.subsec_nanos() != 0))
+                }
+            },
             SecretState::Connected(grant) => {
                 let remaining = grant.remaining_seconds(now);
                 if remaining == 0 {
@@ -131,6 +151,7 @@ impl NativeLoginSession {
                 }
             }
             SecretState::Failed => (NativeLoginPhase::Failed, 0),
+            SecretState::Denied => (NativeLoginPhase::Denied, 0),
             SecretState::Cancelled => (NativeLoginPhase::Cancelled, 0),
             SecretState::Expired => (NativeLoginPhase::Expired, 0),
             SecretState::Disconnected => (NativeLoginPhase::Disconnected, 0),
@@ -198,6 +219,7 @@ mod tests {
                 body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes(),
             })
         }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> { Ok(()) }
     }
 
     #[test]
@@ -208,6 +230,7 @@ mod tests {
             &browser, FakeHttp { posts:Arc::clone(&posts) }, CONSENT, TOKEN, Duration::from_secs(2),
         ).unwrap();
         assert_eq!(session.snapshot().phase, NativeLoginPhase::Pending);
+        assert!((1..=2).contains(&session.snapshot().remaining_seconds));
         session.cancel();
         let status = session.snapshot();
         assert_eq!(status.phase, NativeLoginPhase::Cancelled);
@@ -272,5 +295,64 @@ mod tests {
         assert_eq!(session.snapshot().phase, NativeLoginPhase::Connected);
         session.disconnect();
         assert_eq!(session.snapshot().phase, NativeLoginPhase::Disconnected);
+    }
+
+    struct SlowVerify {
+        entered: std::sync::mpsc::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    }
+    impl TokenHttpTransport for SlowVerify {
+        fn post_form(&self, _: &Url, _: &str, _: Duration, _: usize) -> Result<TokenHttpResponse, ()> {
+            let jwt = format!("{}.{}.{}", "A".repeat(43), "B".repeat(43), "C".repeat(100));
+            Ok(TokenHttpResponse { status: 200, content_type: "application/json".to_owned(),
+                body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes() })
+        }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> {
+            self.entered.send(()).map_err(|_| ())?;
+            self.release.recv_timeout(Duration::from_secs(3)).map_err(|_| ())
+        }
+    }
+
+    #[test]
+    fn cancellation_during_session_verification_never_installs_late_grant() {
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let session = NativeLoginSession::start(&CallbackBrowser,
+            SlowVerify { entered: entered_tx, release: release_rx }, CONSENT, TOKEN, Duration::from_secs(2)).unwrap();
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        session.cancel();
+        assert_eq!(session.snapshot().phase, NativeLoginPhase::Cancelled);
+        release_tx.send(()).unwrap();
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(session.snapshot().phase, NativeLoginPhase::Cancelled);
+    }
+
+    #[test]
+    fn pending_authorization_expires_without_a_callback() {
+        let browser = SilentBrowser::default();
+        let posts = Arc::new(AtomicUsize::new(0));
+        let session = NativeLoginSession::start(&browser, FakeHttp { posts:Arc::clone(&posts) },
+            CONSENT, TOKEN, Duration::from_millis(100)).unwrap();
+        let until = Instant::now() + Duration::from_secs(2);
+        loop {
+            let status = session.snapshot();
+            if status.phase == NativeLoginPhase::Expired { break; }
+            assert!(Instant::now() < until);
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(posts.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn verification_finishing_after_deadline_cannot_install_grant() {
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let session = NativeLoginSession::start(&CallbackBrowser,
+            SlowVerify { entered: entered_tx, release: release_rx }, CONSENT, TOKEN, Duration::from_millis(200)).unwrap();
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        thread::sleep(Duration::from_millis(250));
+        release_tx.send(()).unwrap();
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(session.snapshot().phase, NativeLoginPhase::Expired);
     }
 }

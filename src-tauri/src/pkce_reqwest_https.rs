@@ -4,10 +4,10 @@
 #![allow(dead_code)]
 
 use crate::pkce_token_exchange::{
-    valid_staging_token_endpoint, TokenHttpResponse, TokenHttpTransport,
+    valid_staging_token_endpoint, NativeAccessGrant, TokenHttpResponse, TokenHttpTransport,
 };
 use reqwest::blocking::{Body, Client};
-use reqwest::header::{ACCEPT, CONTENT_TYPE};
+use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::redirect::Policy;
 use std::io::{self, Read};
 use std::time::Duration;
@@ -18,6 +18,33 @@ const MAX_TOKEN_FORM_BYTES: usize = 2048;
 const MAX_TOKEN_RESPONSE_BYTES: usize = 8192;
 const MAX_TOKEN_CONTENT_TYPE_BYTES: usize = 64;
 const MAX_TOKEN_DEADLINE: Duration = Duration::from_secs(10);
+const MAX_SESSION_RESPONSE_BYTES: u64 = 1024;
+
+fn restricted_client(timeout: Duration) -> Result<Client, ()> {
+    Client::builder()
+        .https_only(true)
+        .tls_backend_rustls()
+        .redirect(Policy::none())
+        .no_proxy()
+        .referer(false)
+        .timeout(timeout)
+        .connect_timeout(timeout)
+        .build()
+        .map_err(|_| ())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SessionResponse {
+    contract_version: u8,
+    status: String,
+    scope: String,
+}
+
+fn valid_session_response(bytes: &[u8]) -> bool {
+    serde_json::from_slice::<SessionResponse>(bytes).is_ok_and(|response|
+        response.contract_version == 1 && response.status == "active" && response.scope == "chart_sync:read")
+}
 
 /// Owns the only intentionally retained copy of the one-use form payload.
 /// The sending HTTP implementation may make additional transient copies;
@@ -65,16 +92,7 @@ impl TokenHttpTransport for StagingReqwestHttps {
         // A fresh, short-lived client avoids storing cookies/credentials or
         // inheriting a broader app HTTP client's configuration. No redirects,
         // proxy environment, custom trust roots, key logging or retries.
-        let client = Client::builder()
-            .https_only(true)
-            .tls_backend_rustls()
-            .redirect(Policy::none())
-            .no_proxy()
-            .referer(false)
-            .timeout(timeout)
-            .connect_timeout(timeout)
-            .build()
-            .map_err(|_| ())?;
+        let client = restricted_client(timeout)?;
 
         let reader = SecretFormReader::new(body);
         let response = client
@@ -117,6 +135,28 @@ impl TokenHttpTransport for StagingReqwestHttps {
             body: std::mem::take(&mut *bytes),
         })
     }
+
+    fn verify_grant(&self, endpoint: &Url, grant: &NativeAccessGrant) -> Result<(), ()> {
+        let mut session = valid_staging_token_endpoint(endpoint.as_str()).ok_or(())?;
+        session.set_path("/chart-sync/v1/session");
+        let client = restricted_client(MAX_TOKEN_DEADLINE)?;
+        let value = Zeroizing::new(format!("Bearer {}", grant.bearer()));
+        let mut auth = HeaderValue::from_str(&value).map_err(|_| ())?;
+        auth.set_sensitive(true);
+        let response = client.get(session).header(ACCEPT, "application/json")
+            .header(AUTHORIZATION, auth).send().map_err(|_| ())?;
+        if response.status().as_u16() != 200
+            || response.content_length().is_some_and(|n| n > MAX_SESSION_RESPONSE_BYTES) {
+            return Err(());
+        }
+        let content_type = response.headers().get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).ok_or(())?;
+        if !content_type.eq_ignore_ascii_case("application/json")
+            && !content_type.eq_ignore_ascii_case("application/json; charset=utf-8") { return Err(()); }
+        let mut body = Vec::new();
+        response.take(MAX_SESSION_RESPONSE_BYTES + 1).read_to_end(&mut body).map_err(|_| ())?;
+        if body.len() as u64 > MAX_SESSION_RESPONSE_BYTES || !valid_session_response(&body) { return Err(()); }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -153,5 +193,26 @@ mod tests {
         assert!(transport.post_form(&staging, "code=abc", Duration::ZERO, 8192).is_err());
         assert!(transport.post_form(&staging, "code=abc", Duration::from_secs(11), 8192).is_err());
         assert!(transport.post_form(&staging, "code=abc", Duration::from_secs(10), 8193).is_err());
+    }
+
+    #[test]
+    fn session_verification_requires_the_exact_public_contract() {
+        let body = br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read"}"#;
+        assert!(valid_session_response(body));
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../contracts/connected-session.v1.schema.json"
+        )).unwrap();
+        let response: serde_json::Value = serde_json::from_slice(body).unwrap();
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"].as_array().unwrap().len(), response.as_object().unwrap().len());
+        for key in ["contractVersion", "status", "scope"] {
+            assert_eq!(schema["properties"][key]["const"], response[key]);
+        }
+        for invalid in [
+            &br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read","deviceId":"x"}"#[..],
+            &br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read chart_sync:notes"}"#[..],
+            &br#"{"contractVersion":1,"status":"active","status":"active","scope":"chart_sync:read"}"#[..],
+            &br#"{"contractVersion":2,"status":"active","scope":"chart_sync:read"}"#[..],
+        ] { assert!(!valid_session_response(invalid)); }
     }
 }

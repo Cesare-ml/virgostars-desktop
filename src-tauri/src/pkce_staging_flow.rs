@@ -76,6 +76,12 @@ impl StagingLoginAttempt {
             result,
             Instant::now(),
         ).map_err(StagingLoginError::TokenExchange)?;
+        if self.cancellation.is_cancelled() { return Err(StagingLoginError::Cancelled); }
+        transport.verify_grant(&self.token_endpoint, &grant)
+            .map_err(|_| StagingLoginError::TokenExchange(TokenExchangeError::Rejected))?;
+        if grant.remaining_seconds(Instant::now()) == 0 {
+            return Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected));
+        }
         // Atomic finalization: if cancellation wins the race, the token is
         // dropped/zeroized. If completion wins, later cancellation is inert.
         if !self.cancellation.finish_success() { return Err(StagingLoginError::Cancelled); }
@@ -145,6 +151,7 @@ mod tests {
                 body:format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes(),
             })
         }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> { Ok(()) }
     }
 
     #[test]
@@ -157,6 +164,25 @@ mod tests {
         let grant = attempt.wait_and_exchange(&http, Duration::from_secs(3)).unwrap();
         assert_eq!(http.calls.get(), 1);
         assert_eq!(grant.scope(), TokenScope::Read);
+        browser.callback_worker.lock().unwrap().take().unwrap().join().unwrap();
+    }
+
+    struct UnverifiedHttp(FakeHttp);
+    impl TokenHttpTransport for UnverifiedHttp {
+        fn post_form(&self, endpoint: &Url, body: &str, timeout: Duration, max: usize) -> Result<TokenHttpResponse, ()> {
+            self.0.post_form(endpoint, body, timeout, max)
+        }
+        // The default verification intentionally fails closed.
+    }
+
+    #[test]
+    fn a_token_without_backend_session_confirmation_never_completes() {
+        let browser = SyntheticBrowser {send_callback:true, ..Default::default()};
+        let http = UnverifiedHttp(FakeHttp::default());
+        let attempt = StagingLoginAttempt::begin(&browser, CONSENT, TOKEN).unwrap();
+        assert!(matches!(attempt.wait_and_exchange(&http, Duration::from_secs(3)),
+            Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected))));
+        assert_eq!(http.0.calls.get(), 1);
         browser.callback_worker.lock().unwrap().take().unwrap().join().unwrap();
     }
 

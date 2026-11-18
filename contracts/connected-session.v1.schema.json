@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virgostars.it/contracts/connected-session.v1.schema.json",
+  "title": "Verified desktop connected session v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "status", "scope"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "status": { "const": "active" },
+    "scope": { "const": "chart_sync:read" }
+  }
+}
