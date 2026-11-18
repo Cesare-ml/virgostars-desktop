@@ -116,9 +116,16 @@ export async function requestReturns(
       request: {protocolVersion: 1, body: request.body, targetLongitudeDeg: request.targetLongitudeDeg, year: request.year},
     });
     const decoded = decodeReturnResponse(raw);
-    return decoded.status === 'ok'
-      ? {kind: 'ready', provider: decoded.provider, instants: decoded.instants}
-      : {kind: decoded.status};
+    if (decoded.status === 'ok') {
+      // The native search is scoped to one UTC calendar year. Do not display
+      // a return from an adjacent year as if it belonged to this request.
+      const yearText = String(request.year);
+      if (decoded.instants.some(instant => instant.utcIso.slice(0, 4) !== yearText)) {
+        return {kind: 'unavailable'};
+      }
+      return {kind: 'ready', provider: decoded.provider, instants: decoded.instants};
+    }
+    return {kind: decoded.status};
   } catch {
     return {kind: 'unavailable'};
   }
