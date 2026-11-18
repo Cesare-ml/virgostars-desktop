@@ -31,7 +31,7 @@ const EXPECTED_DEV_CSP = Object.freeze({
   'frame-src': ["'none'"],
 });
 
-const REVIEWED_ROOT_FIELDS = Object.freeze(['$schema', 'productName', 'version', 'identifier', 'build', 'app', 'bundle']);
+const REVIEWED_ROOT_FIELDS = Object.freeze(['$schema', 'productName', 'version', 'identifier', 'build', 'app', 'bundle', 'plugins']);
 const REVIEWED_BUILD_FIELDS = Object.freeze(['devUrl', 'frontendDist']);
 const REVIEWED_BUNDLE_FIELDS = Object.freeze(['active', 'icon']);
 const REVIEWED_BUNDLE_ICONS = Object.freeze(['icons/icon.png', 'icons/icon.ico', 'icons/icon.icns']);
@@ -83,6 +83,7 @@ export function verifyDevelopmentCsp(csp) {
 export function verifyTauriSecurityConfig(config) {
   assertSafe(isObject(config) && isObject(config.build) && isObject(config.app) &&
     isObject(config.app.security) && isObject(config.bundle), 'invalid Tauri config');
+  assertSafe(hasExactOwnKeys(config.plugins, ['updater']) && hasExactOwnKeys(config.plugins.updater, ['pubkey','endpoints','requireSignedVersion']) && config.plugins.updater.pubkey === '' && Array.isArray(config.plugins.updater.endpoints) && config.plugins.updater.endpoints.length === 0 && config.plugins.updater.requireSignedVersion === true, 'unreviewed updater configuration');
   // Restrict source packaging knobs independently from the WebView CSP.
   // Unknown top-level/build/bundle fields can add plugins, local resources,
   // executable sidecars, pre-build commands or unexpected distribution output.

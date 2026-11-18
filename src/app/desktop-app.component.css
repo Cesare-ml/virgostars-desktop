@@ -425,5 +425,6 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .desktop-app[data-theme="light"] .zodiac-glyph:not(.selected) img { filter:brightness(0); }
 .year-planet { display:flex; gap:5px; align-items:center; margin-top:5px; font-size:11px; color:var(--vs-text-secondary); }
 .year-planet img { width:24px; height:20px; object-fit:contain; }
+.update-notice { position:fixed; right:20px; bottom:20px; z-index:20; padding:10px 14px; border-radius:8px; cursor:pointer; }
 .chart-stage:not(.chart-dark) .year-planet img { filter:brightness(0); }
 .chart-stage.chart-dark .year-planet { color:#ddd; }

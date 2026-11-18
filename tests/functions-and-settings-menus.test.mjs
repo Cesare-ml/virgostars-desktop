@@ -48,7 +48,7 @@ test('the right panel has no tab strip: the left menu chooses what it shows', ()
 });
 
 test('every setting has a spoiler of its own, titles aligned to the left', () => {
-  const settings = html.match(/<section class="drawer" \*ngIf="view==='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
+  const settings = html.match(/<section class="drawer" \[hidden\]="view!=='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
   const titles = [...settings.matchAll(/<summary>\{\{t\('([a-z.]+)'\)\}\}<\/summary>/g)].map(match => match[1]);
   // The house system is first and has no spoiler; language and theme live in the main menu only.
   assert.deepEqual(titles, ['startup.title', 'functions.soon']);
@@ -66,7 +66,7 @@ test('every setting has a spoiler of its own, titles aligned to the left', () =>
 });
 
 test('no setting is offered twice', () => {
-  const settings = html.match(/<section class="drawer" \*ngIf="view==='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
+  const settings = html.match(/<section class="drawer" \[hidden\]="view!=='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
   const drawer = html.match(/<section class="drawer" \*ngIf="view==='functions'"[\s\S]*?<\/section>/)?.[0] ?? '';
   assert.doesNotMatch(drawer, /vs-chart-settings|setHouseSystem|startup/);
   assert.equal((settings.match(/setHouseSystem/g) ?? []).length, 1);

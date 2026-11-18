@@ -175,10 +175,15 @@ pub async fn search_offline_places(
         return Err("PLACE_LIMIT_INVALID".into());
     }
     let permit = gate.try_reserve().ok_or("PLACE_SEARCH_BUSY")?;
-    let path = app
+    let installed = app
         .path()
         .resolve("places/world-cities.sqlite", BaseDirectory::Resource)
         .map_err(|_| "PLACE_CATALOG_UNAVAILABLE")?;
+    let path = if installed.exists() { installed } else {
+        app.path().app_local_data_dir().ok()
+            .and_then(|folder| crate::update_backup::preserved_resource(&folder, "places/world-cities.sqlite"))
+            .ok_or("PLACE_CATALOG_UNAVAILABLE")?
+    };
 
     tauri::async_runtime::spawn_blocking(move || {
         let _permit = permit;

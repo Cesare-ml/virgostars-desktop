@@ -1,0 +1,22 @@
+import {readFileSync,writeFileSync,statSync} from 'node:fs';
+import {basename} from 'node:path';
+import {verifyDesktopVersions} from '../verify-desktop-version.mjs';
+const args=process.argv.slice(2); const flags={};
+if(args.length!==10 || args.length%2) throw Error('Usage: --channel stable|beta|testing --installer FILE --signature FILE --notes FILE --output FILE');
+for(let i=0;i<args.length;i+=2){const name=args[i];if(!['--channel','--installer','--signature','--notes','--output'].includes(name)||Object.hasOwn(flags,name))throw Error('Invalid argument');flags[name]=args[i+1];}
+const channel=flags['--channel'];if(channel!=='stable'&&channel!=='beta'&&channel!=='testing')throw Error('Invalid channel');
+const result=verifyDesktopVersions();const version=result.version;
+if(channel==='stable'&&version.includes('-'))throw Error('Stable requires a stable version');
+const installer=flags['--installer'];const name=basename(installer);
+const installerStat=statSync(installer);
+if(!/^[A-Za-z0-9_. -]+\.exe$/i.test(name)||!installerStat.isFile())throw Error('Expected NSIS installer');
+if(installerStat.size>512*1024*1024)throw Error('Installer exceeds updater limit of 512 MiB');
+const signature=readFileSync(flags['--signature'],'utf8').trim();
+if(signature.length>5000||! /^[A-Za-z0-9+/=]+$/.test(signature))throw Error('Invalid signature encoding');
+const decoded=Buffer.from(signature,'base64').toString('utf8');
+if(!decoded.split(/\r?\n/).some(line=>line.startsWith('trusted comment:') && line.split(/\s+/).includes(`version:${version}`))) throw Error('Signature does not contain the requested signed version');
+const notes=readFileSync(flags['--notes'],'utf8');if(notes.length>4000)throw Error('Release notes too long');
+const url='https://github.com/Cesare-ml/virgostars-desktop/releases/download/'+(channel==='testing'?'test-v':'v')+encodeURIComponent(version)+'/'+encodeURIComponent(name);
+const manifest={version,notes,pub_date:new Date().toISOString(),platforms:{'windows-x86_64':{signature,url}}};
+writeFileSync(flags['--output'],JSON.stringify(manifest,null,2)+'\n',{flag:'wx'});
+console.log(`Prepared ${channel} manifest for ${version}; nothing was published.`);

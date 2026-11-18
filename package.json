@@ -1,6 +1,6 @@
 {
   "name": "virgostars-desktop",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Open-source-ready experimental VirgoStars desktop Angular workstation with synthetic Astrological Charts renderer",
   "type": "module",
@@ -42,7 +42,7 @@
     "@angular-devkit/build-angular": "20.3.5",
     "@angular/cli": "20.3.5",
     "@angular/compiler-cli": "20.3.35",
-    "@tauri-apps/cli": "2.12.2",
+    "@tauri-apps/cli": "2.12.6",
     "@types/three": "0.170.0",
     "typescript": "5.8.3"
   },
@@ -51,16 +51,17 @@
   },
   "dependencies": {
     "@angular/common": "20.3.35",
-    "@angular/core": "20.3.35",
     "@angular/compiler": "20.3.35",
+    "@angular/core": "20.3.35",
     "@angular/platform-browser": "20.3.35",
+    "@tauri-apps/api": "2.12.2",
+    "@tauri-apps/plugin-updater": "2.14.1",
     "astrological-functions": "file:../astrological-functions",
     "grafici-astrologici": "file:../astrological-charts/dist/grafici-astrologici",
     "gsap": "^3.12.5",
     "moment-timezone": "^0.5.46",
     "rxjs": "^7.8.0",
     "three": "0.170.0",
-    "tslib": "^2.8.1",
-    "@tauri-apps/api": "2.12.2"
+    "tslib": "^2.8.1"
   }
 }

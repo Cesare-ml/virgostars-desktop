@@ -27,16 +27,24 @@ export function auditNativeIpc(sources) {
   const handlers=[...sources.entry.matchAll(/\.invoke_handler\(\s*tauri::generate_handler!\[([^\]]*)\]\s*\)/gs)];
   assert(handlers.length === 1, 'Expected one explicit native IPC handler registry');
   const tokens=handlers[0][1].split(',').map(x=>x.trim()).filter(Boolean);
-  assert(tokens.length === NATIVE_HANDLERS.length, 'Unexpected native command count');
+  const updaterEnabled = tokens.includes('updater::check_updates') || tokens.includes('updater::install_update');
+  const handlersExpected = updaterEnabled ? [...NATIVE_HANDLERS,'updater::check_updates','updater::install_update'] : NATIVE_HANDLERS;
+  const commandsExpected = updaterEnabled ? [...NATIVE_COMMANDS,'check_updates','install_update'] : NATIVE_COMMANDS;
+  const adaptersExpected = updaterEnabled ? [...ADAPTERS,'src/app/native/update.ts'] : ADAPTERS;
+  assert(tokens.length === handlersExpected.length, 'Unexpected native command count');
   assert(tokens.every(x=>/^[a-z_][a-z_0-9]*::[a-z_][a-z_0-9]*$/.test(x)), 'Invalid native handler entry');
   const registered=tokens.map(x=>x.split('::')[1]);
   assert(new Set(registered).size===registered.length, 'Duplicate native command');
-  assert(JSON.stringify([...tokens].sort())===JSON.stringify([...NATIVE_HANDLERS].sort()),
+  assert(JSON.stringify([...tokens].sort())===JSON.stringify([...handlersExpected].sort()),
     'Native command module or allowlist changed');
   // Registered plugins and plugin initializers can widen the native surface
   // without changing the explicit invoke handler list. Require manual review.
-  for(const rust of [sources.entry,...Object.values(sources.rustModules)]) {
-    assert(!/(?:\.\s*plugins?\s*\(|\btauri_plugin[_:-])/i.test(rust),
+  const plugin = '.plugin(tauri_plugin_updater::Builder::new().pubkey(option_env!("VIRGOSTARS_UPDATER_PUBLIC_KEY").unwrap_or("")).build())';
+  if (updaterEnabled) assert(sources.entry.split(plugin).length===2, 'Updater plugin registration changed');
+  for(const [name,rust] of [['entry',sources.entry],...Object.entries(sources.rustModules)]) {
+    const reviewed = updaterEnabled && (name==='entry' || name==='lib') ? rust.replace(plugin,'') :
+      updaterEnabled && name==='updater' ? rust.replace('use tauri_plugin_updater::{Update, UpdaterExt};','') : rust;
+    assert(!/(?:\.\s*plugins?\s*\(|\btauri_plugin[_:-])/i.test(reviewed),
       'Unexpected native Tauri plugin registration or reference');
   }
   for(const [name,contents] of Object.entries(sources.rustModules)) {
@@ -67,26 +75,29 @@ export function auditNativeIpc(sources) {
   for(const [path,content] of Object.entries(sources.tsFiles)) {
     const packages=[...content.matchAll(/@tauri-apps\/[a-z0-9][a-z0-9/._-]*/gi)].map(m=>m[0]);
     if(packages.length===0) continue;
-    assert(ADAPTERS.includes(path), 'Unexpected Tauri import outside reviewed adapters');
+    assert(adaptersExpected.includes(path), 'Unexpected Tauri import outside reviewed adapters');
     assert(packages.length===1 && packages[0]==='@tauri-apps/api/core',
       'Unexpected Tauri package or multiple Tauri references');
     const imports=[...content.matchAll(/\bimport\s*\{([^}]*)\}\s*from\s*['"]@tauri-apps\/api\/core['"]/g)];
     assert(imports.length===1, 'Tauri adapter must use one reviewed named import');
     const symbols=imports[0][1].split(',').map(x=>x.trim()).filter(Boolean).sort();
-    assert(JSON.stringify(symbols)===JSON.stringify(['invoke','isTauri']),
+    assert(JSON.stringify(symbols)===JSON.stringify(path==='src/app/native/update.ts' ? ['Channel','invoke','isTauri'] : ['invoke','isTauri']),
       'Unreviewed Tauri API import or alias');
     const calls=[...content.matchAll(/\binvoke\s*<unknown>\s*\(/g)];
     assert(calls.length===1 && /\binvoke\s*<unknown>\s*\(\s*command\b/.test(content),
       'Tauri adapter invoke changed or expanded');
   }
-  for(const adapter of ADAPTERS) assert(sources.tsFiles[adapter] !== undefined &&
+  for(const adapter of adaptersExpected) assert(sources.tsFiles[adapter] !== undefined &&
     /from\s*['"]@tauri-apps\/api\/core['"]/.test(sources.tsFiles[adapter]), 'Missing reviewed Tauri adapter');
+  if (updaterEnabled) {
+    assert(typeof sources.updateContract==='string' && /'check_updates'/.test(sources.updateContract) && /'install_update'/.test(sources.updateContract) && [...sources.updateContract.matchAll(/\.invoke\s*\(/g)].length===1, 'Updater contract changed');
+  }
   const cfg=sources.tauriConfig;
   assert(cfg && typeof cfg==='object' && !Array.isArray(cfg), 'Invalid Tauri configuration');
   assert(Array.isArray(cfg.app?.security?.capabilities) && cfg.app.security.capabilities.length===0,
     'Tauri capabilities changed; require explicit review');
   assert(cfg.app?.withGlobalTauri !== true, 'Global Tauri bridge must stay disabled');
-  return Object.freeze({commands:Object.freeze([...NATIVE_COMMANDS]), adapters:Object.freeze([...ADAPTERS])});
+  return Object.freeze({commands:Object.freeze([...commandsExpected]), adapters:Object.freeze([...adaptersExpected])});
 }
 
 /** Tauri 2 auto-loads capability files when capabilities is absent OR empty. */
@@ -132,6 +143,7 @@ export function auditCheckout(root=ROOT) {
     synodContract:read('src/app/native/synod-events-contract.ts'),
     historicalContract:read('src/app/native/historical-planets-contract.ts'),
     historicalCalendarContract:read('src/app/native/historical-calendar-contract.ts'),
+    updateContract:Object.hasOwn(rustModules,'updater') ? read('src/app/native/update-contract.ts') : undefined,
     tsFiles,
     tauriConfig:JSON.parse(read('src-tauri/tauri.conf.json')),
   });

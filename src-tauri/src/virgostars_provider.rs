@@ -100,7 +100,8 @@ fn data_paths(
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Option<DataPaths> {
     let file = config_folder.and_then(read_config).unwrap_or_default();
-    let shipped = |name: &str| bundled_folder.map(|folder| folder.join(BUNDLED_FOLDER).join(name)).filter(|path| path.exists());
+    let shipped = |name: &str| bundled_folder.map(|folder| folder.join(BUNDLED_FOLDER).join(name)).filter(|path| path.exists())
+        .or_else(|| config_folder.and_then(|folder| crate::update_backup::preserved_resource(folder, &format!("{BUNDLED_FOLDER}/{name}"))));
     let de441: PathBuf = match env("VIRGOSTARS_DE441_PATH").or(file.de441) {
         Some(path) => path.into(),
         None => shipped(BUNDLED_DE441)?,

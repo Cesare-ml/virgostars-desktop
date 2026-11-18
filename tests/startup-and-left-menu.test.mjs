@@ -63,7 +63,7 @@ test('functions and settings open from the left menu, not from the right panel',
   const inspector = html.match(/<aside class="inspector"[\s\S]*?<\/aside>/)?.[0] ?? '';
   assert.doesNotMatch(inspector, /id="tab-functions"|id="tab-settings"|vs-chart-settings|vs-returns-panel/);
   assert.match(html, /<section class="drawer" \*ngIf="view==='functions'"/);
-  assert.match(html, /<section class="drawer" \*ngIf="view==='settings'"/);
+  assert.match(html, /<section class="drawer" \[hidden\]="view!=='settings'"/);
 });
 
 test('planet info is one button away, on the chart; it is no longer in the left menu', () => {
@@ -77,7 +77,7 @@ test('planet info is one button away, on the chart; it is no longer in the left 
 });
 
 test('the city search is gone from the settings', () => {
-  const settings = html.match(/<section class="drawer" \*ngIf="view==='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
+  const settings = html.match(/<section class="drawer" \[hidden\]="view!=='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
   assert.ok(settings.length > 200);
   assert.doesNotMatch(settings, /vs-offline-city-picker|selectedCity|cityClock/);
   assert.doesNotMatch(component, /selectedCity|cityClock|onCitySelected|updateCityClock/);

@@ -44,6 +44,11 @@ const MAX_ZONE_BYTES: usize = 120;
 /// One reader-writer at a time: every change is a read, a change and a rewrite of the sealed file.
 static ARCHIVE_LOCK: Mutex<()> = Mutex::new(());
 
+/// Serialize the installer handoff with archive and local-photo operations.
+pub(crate) fn lock_for_update() -> std::sync::MutexGuard<'static, ()> {
+    ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArchiveRequestV1 {
@@ -518,6 +523,10 @@ fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, no
     }
     // Validate completely before touching the disk.
     let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // A stopped recovery must be rolled back before the application can touch the archive.
+    if paths.sealed.parent().ok_or("archive_unavailable")?.join("restore-in-progress.json").exists() {
+        return Err("archive_unavailable");
+    }
     match (request.operation.as_str(), &request.chart, &request.id, &request.photo_data) {
         ("list", None, None, None) => {
             let session = open_session(paths, keys)?;
@@ -679,6 +688,18 @@ mod tests {
         if !extra.is_empty() {
             connection.execute_batch(extra).unwrap();
         }
+    }
+
+    #[test]
+    fn interrupted_recovery_blocks_archive_reads_and_writes() {
+        let archive = TempArchive::new("recovery-pending");
+        let keys = FakeKeyStore::empty();
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_A, SENTINEL)), 1000).status, "ok");
+        let before = fs::read(&archive.paths.sealed).unwrap();
+        fs::write(archive.folder.join("restore-in-progress.json"), b"{}\n").unwrap();
+        assert_eq!(go(&archive, &keys, &list_request(), 2000).status, "archive_unavailable");
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_B, "Other")), 2000).status, "archive_unavailable");
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), before);
     }
 
     #[test]

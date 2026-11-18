@@ -1,30 +1,137 @@
-# Release, automatic updates and platform packaging
+# Aggiornamenti e distribuzione
 
-Status: **PROPOSAL**. There is no published installer, version, update endpoint or signer.
+Stato: **prototipo in revisione**. Un aggiornamento 0.0.2 → 0.0.3 è stato collaudato su Windows con installer, dati e chiavi sintetici isolati e un server HTTPS locale; non è una verifica delle release pubbliche né dei dati reali. La versione iniziale 0.0.1 non ha un updater: 0.0.2 va installata manualmente. L'updater di distribuzione non funziona finché non viene incorporata una chiave pubblica e non esistono endpoint accessibili.
 
-## Target
-- First public installers: Windows, with Windows 11 x64 as the initial test target.
-- Later: macOS (Apple Silicon + Intel after native build and tests); consider Windows 10/ARM64 separately.
-- Two channels may be introduced: stable and beta. No automatic roll-forward from stable to beta.
-- Automatic **check/download** permitted when online; apply on safe app restart after pending local edits have been durably saved, never abruptly during writing.
+L'host usa `tauri-plugin-updater` 2.14.1 e richiede firma e versione firmata (`requireSignedVersion`). I due endpoint sono fissi e puntano a `latest.json` nelle release GitHub con tag `updates-stable` e `updates-beta`. L'utente sceglie il canale; stable rifiuta prerelease e Tauri accetta solo versioni superiori a quella installata. Il controllo di avvio è asincrono; solo l'azione esplicita Aggiorna scarica e installa. Gli errori non interrompono l'uso offline. Il download viene verificato dal plugin prima dell'installazione. Il programma di installazione NSIS di Tauri riavvia per impostazione predefinita.
 
-## Tauri 2 updater
-- Updates **must** be signed using Tauri's mandatory update-signing mechanism, regardless of the transport/server.
-- Installer/code signing on Windows and macOS is a distinct platform trust process; plan Windows signing and Apple Developer ID signing/notarization before claiming warning-free installation.
-- Public key in client, private release key held securely outside repository and CI. Never put secret into GitHub issue, PR or sample.
-- Release manifest specifies version, platform/architecture, size/hash where supported, signature and compatible data schema.
-- Rollback app code and local schema are separate problems: take a safe migration snapshot and support explicit recovery; never casually downgrade an incompatible DB.
+La chiave pubblica viene incorporata in compilazione tramite `VIRGOSTARS_UPDATER_PUBLIC_KEY`. Senza di essa il bridge restituisce `not_configured`; la configurazione predefinita non contiene chiavi né endpoint. Il frontend non può scegliere un URL, una chiave o consentire downgrade. Nessun permesso del plugin è esposto direttamente alla WebView: l'IPC ha due comandi dedicati. Le informazioni della release sono mostrate come testo.
 
-## Process (manual at first; no GitHub Actions)
-1. Tag a reproducible pinned dependency revision from a reviewed PR and passed test matrix.
-2. Run manual Windows build and smoke tests on a clean Windows VM (including WebView2 availability).
-3. Test update staging against a throwaway profile, interrupted download, invalid signature and crash on restart.
-4. Sign artifacts offline/controlled environment; publish immutable binaries, manifests and release notes. GitHub Releases or a dedicated HTTPS origin are candidate distribution channels.
-5. Observe adoption/errors without collecting private natal or contact data.
-6. For macOS, build/test on a Mac, sign/notarize and verify native startup/update behavior before release.
+Prima del passaggio a NSIS, il bridge attende le operazioni sull'archivio e crea una copia verificata dell'archivio cifrato, delle fotografie cifrate, dell'eventuale `ephemeris.json` e delle risorse `places` ed `ephemeris` presenti nell'installazione. Ogni file viene copiato e confrontato con l'originale tramite SHA-256; un manifest descrive la copia. Una cartella `.pending-*` non è un backup completato: viene rinominata `before-*` solo al termine. Se la copia fallisce (per esempio spazio insufficiente o collegamenti nelle risorse), l'installazione è rifiutata. Le chiavi restano nel gestore credenziali del sistema e non sono esportate. Il backup è locale, può richiedere molto spazio, e non sostituisce una copia su un altro dispositivo. `ephemeris.json` può contenere percorsi locali e va trattato come dato personale. I file configurati in percorsi esterni all'installazione non vengono copiati né modificati dall'updater. Preferenze WebView, credenziali e altri dati locali restano nelle rispettive sedi. L'updater non cambia schema né esegue migrazioni.
 
-## Data and content updates
-App binaries, astronomical kernels and compressed event datasets should have **independent versions**. Kernel and event files must be provenance-checked, downloaded on demand or shipped only if distribution permissions allow, integrity-checked and kept available offline after a successful download. Do not silently swap to a less precise astronomy backend.
+Se dopo un aggiornamento non esiste più il catalogo città o una risorsa predefinita delle effemeridi, il programma prova a usare una copia integra da un backup completato. Le posizioni esplicitamente configurate mantengono la precedenza. Il ripristino di archivio e foto è un'operazione manuale distinta, descritta sotto; nessuna chiave viene ripristinata o esportata.
 
-## Required release gates
-Correct login/logout, offline startup, full sync round trip, conflict test, deterministic astrology fixtures, validated rendering with approved assets, database migrations/recovery, installer reputation, signatures, accessibility and Windows memory/WebGL test.
+## Ripristino locale, con applicazione chiusa
+
+La copia va usata sullo stesso profilo Windows e con la stessa chiave dell'archivio nel gestore credenziali: la sola copia cifrata non basta se la chiave è perduta. Chiudere VirgoStars e individuare la cartella dati dell'installazione e il nome `before-*` in `update-backups`. Dal checkout, con Node installato:
+
+```powershell
+$data = Join-Path $env:LOCALAPPDATA 'it.virgostars.desktop.rendererlab' # verificare l'identificativo della propria installazione
+Get-ChildItem -LiteralPath (Join-Path $data 'update-backups') -Directory -Filter 'before-*'
+$snapshot = 'before-SOSTITUIRE-CON-IL-NOME-EFFETTIVO'
+node .\scripts\updates\restore-backup.mjs --data-dir $data --snapshot $snapshot
+node .\scripts\updates\restore-backup.mjs --data-dir $data --snapshot $snapshot --apply
+```
+
+Il primo comando verifica tutte le impronte senza modificare dati. Il secondo ricontrolla le impronte, richiede che l'app non sia in esecuzione, conserva i file attuali in `restore-work-*` e ripristina archivio, foto e configurazione presenti nella copia. Non elimina foto aggiunte dopo il backup. Le risorse restano nel backup e sono utilizzabili come fallback; il comando non scrive nella cartella d'installazione. Se la procedura viene interrotta, lasciare l'app chiusa ed eseguire `node .\scripts\updates\restore-backup.mjs --data-dir $data --rollback`; l'archivio resta bloccato finché il ripristino interrotto non è stato annullato. Non cancellare manualmente `restore-in-progress.json`. I vecchi backup senza manifest non sono accettati da questo strumento.
+
+## Chiavi e firma
+
+Generare le chiavi **personalmente**, fuori da tutti i checkout, proteggendo la chiave privata con password e salvandone una copia offline sicura. Non inserirla in Git, issue, messaggi o release. Non usare `--force` su una chiave esistente. Per esempio, in PowerShell dalla radice Desktop:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\VirgoStarsSigning" | Out-Null
+npm ci --ignore-scripts
+npx tauri signer generate -w "$env:USERPROFILE\VirgoStarsSigning\updater.key"
+```
+
+La chiave pubblica (`updater.key.pub`) può essere distribuita. La firma Tauri degli aggiornamenti non è la firma Authenticode dell'installer Windows: certificato, protezione della chiave e firma Authenticode sono una procedura distinta.
+
+## Preparazione manuale
+
+Preparare prima i pacchetti autorizzati, il catalogo città e la configurazione delle effemeridi seguendo la documentazione di build esistente. Non caricare pacchetti privati o dati utente nelle release. Dalla radice del checkout:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\VirgoStarsSigning\updater.key"
+$updatePassword = Read-Host 'Password chiave updater' -AsSecureString
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = [System.Net.NetworkCredential]::new('', $updatePassword).Password
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\updates\build-signed-installer.ps1 -PublicKeyFile "$env:USERPROFILE\VirgoStarsSigning\updater.key.pub"
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PATH
+Remove-Variable updatePassword
+```
+
+Il comando produce l'installer NSIS e il file `.sig` con firma della versione, senza pubblicare. La password resta temporaneamente nell'ambiente del processo: usare un terminale fidato e chiuderlo dopo l'operazione. Creare manualmente un file UTF-8 `release-notes.txt` senza dati privati, quindi sostituire i percorsi con quelli effettivamente generati:
+
+```powershell
+node .\scripts\updates\prepare-manifest.mjs --channel stable --installer '.\src-tauri\target\release\bundle\nsis\NOME_INSTALLER.exe' --signature '.\src-tauri\target\release\bundle\nsis\NOME_INSTALLER.exe.sig' --notes '.\release-notes.txt' --output '.\latest.json'
+```
+
+Lo script controlla la presenza della versione nel commento firmato, ma **non verifica crittograficamente** il file: questa verifica resta compito dell'updater. Caricare manualmente installer e `.sig` nella release immutabile `v0.0.2`, quindi `latest.json` nella release di canale `updates-stable` oppure `updates-beta`. Gli asset e il manifest devono essere pubblicamente scaricabili senza credenziali: le release di un repository privato non soddisfano questa condizione. Nessuna modifica alla visibilità del repository viene effettuata da questi script.
+
+## Collaudo 0.0.2 → 0.0.3
+
+Il 18 novembre 2026 è stato eseguito un collaudo Windows 11 su un'installazione NSIS con identificativo e cartella separati, chiave di firma temporanea e server HTTPS `localhost`. La feature `updater-loopback-test` è compilabile solo in debug, impone un identificativo di prova e usa una chiave fittizia per l'archivio: **non distribuire questi binari**. Gli installer avevano versioni Tauri 0.0.2 e 0.0.3 (la versione Cargo del sorgente di test è rimasta 0.0.2). Sono stati osservati: assenza di aggiornamenti, errore di connessione, firma errata, download interrotto, avanzamento fino al 100%, installazione e riavvio alla 0.0.3; il tema e la foto sintetici erano leggibili dopo il riavvio, un valore di localStorage è rimasto presente e le impronte di archivio, foto, catalogo ed effemeridi sintetici coincidevano con il manifest. Su 0.0.3 entrambi i canali di prova hanno rifiutato la versione 0.0.2; un pacchetto 0.0.3 annunciato come 0.0.4 è stato rifiutato per versione firmata non corrispondente. La verifica dei canali reali GitHub e delle credenziali Windows reali resta separata.
+
+È stato inoltre verificato il fallback al catalogo sintetico salvato nel backup quando il file installato manca; il file sintetico non è un database città funzionante.
+
+### Ripetere la prova senza pubblicare
+
+Servono Windows 11, Node, Rust/Tauri, NSIS, OpenSSL nel `PATH`, le dipendenze del progetto e i repository fratelli previsti dalla guida di build. La porta 47831 deve essere libera. Da un checkout dedicato e dal suo percorso radice:
+
+```powershell
+$test = Join-Path $env:TEMP ('virgostars-updater-test-' + [guid]::NewGuid().ToString('N'))
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\updates\prepare-loopback-test.ps1 -TestRoot $test
+$env:VIRGOSTARS_ACCEPTANCE_ROOT = $test
+$server = Start-Process -FilePath (Get-Command node.exe).Source -ArgumentList 'scripts/updates/loopback-test-server.mjs' -WindowStyle Hidden -PassThru
+$install = Join-Path $test 'install'
+if (Test-Path -LiteralPath $install) { throw 'Cartella di prova già esistente.' }
+$setup = Start-Process -FilePath (Join-Path $test '002.exe') -ArgumentList @('/S', "/D=$install") -WindowStyle Hidden -Wait -PassThru
+if ($setup.ExitCode -ne 0) { throw 'Installazione di prova non riuscita.' }
+& (Join-Path $install 'virgostars-desktop-spike.exe')
+```
+
+Il comando finale apre l'app di prova; eseguire i successivi comandi in un secondo terminale PowerShell, con `$test` impostato allo stesso percorso. In `Impostazioni → Aggiornamenti`, premere «Verifica aggiornamenti» dopo ogni cambio di modalità. `same` mostra nessun aggiornamento, `offline` simula assenza di rete, `invalid` una firma errata, `interrupt` un download interrotto e `good` l'aggiornamento firmato. Salvare soltanto un tema e una foto fittizi, annotare le impronte locali, impostare `good` e premere «Aggiorna»: verificare progresso, riavvio e dati. Dopo il riavvio, `same` verifica il mancato downgrade e `version` annuncia 0.0.4 con una firma valida per 0.0.3, che deve essere respinta.
+
+```powershell
+[IO.File]::WriteAllText((Join-Path $test 'mode.txt'), 'good')
+# Al termine, nel primo terminale, dopo aver chiuso l'app di prova:
+Stop-Process -Id $server.Id
+```
+
+In un worktree annidato, il progetto può non trovare i repository fratelli durante la preparazione del frontend: se il frontend sintetico è già stato costruito e verificato, lo switch `-UseExistingFrontend` riutilizza `dist/desktop/browser` invece di ricostruirlo. Le chiavi temporanee e il certificato di prova restano nella cartella di prova; eliminarli secondo le proprie procedure dopo aver terminato, senza riusarli per release. Il server di prova non pubblica alcun file.
+
+La procedura seguente descrive un'ulteriore prova dei pacchetti di distribuzione in un ambiente autorizzato; non è stata eseguita con release pubbliche.
+
+Usare una VM Windows 11 e un profilo **di prova**, mai l'archivio personale. Installare 0.0.2 manualmente; salvare temi e foto sintetici e annotare versione, impostazioni e impronte dei file. Preparare su un checkout separato la versione 0.0.3 aggiornando insieme `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` e `src-tauri/tauri.conf.json`; eseguire `npm run verify:version`, poi il build firmato e il manifest come sopra. Pubblicare gli artefatti soltanto in un ambiente di test autorizzato, verificando che l'endpoint integrato sia effettivamente raggiungibile dal profilo di test.
+
+Nel checkout di test dedicato, partendo da 0.0.2, questi comandi preparano la versione 0.0.3 senza creare tag o pubblicare:
+
+```powershell
+npm version 0.0.3 --no-git-tag-version --ignore-scripts
+node -e 'const fs=require("fs");for(const f of ["src-tauri/Cargo.toml","src-tauri/tauri.conf.json"]){const s=fs.readFileSync(f,"utf8");if(!s.includes("0.0.2"))throw Error("Versione attesa assente");fs.writeFileSync(f,s.replace("0.0.2","0.0.3"));}'
+Push-Location src-tauri
+cargo check --offline
+Pop-Location
+npm run verify:version
+```
+
+Eseguire quindi lo script `build-signed-installer.ps1` precedente con la stessa chiave di test e generare `latest.json` usando i percorsi dell'installer 0.0.3 e della sua firma. Non riutilizzare una chiave di produzione per una VM usa e getta.
+
+Per isolare il controllo dai canali Stable e Beta, entrambe le build della prova devono essere create con `-TestChannel` e con la stessa **chiave di test separata**. Il client di prova usa soltanto il tag `updates-testing` e mostra `(test)` accanto alla versione; non distribuire mai queste build come release normali. Il manifest si prepara con `--channel testing` e punta alla release `test-v0.0.3`. Solo dopo autorizzazione alla pubblicazione, rendere disponibili installer e firma in quella release di prova e il manifest nella release `updates-testing`: questi tag non modificano i manifest `updates-stable` o `updates-beta`. I file non vengono pubblicati automaticamente.
+
+Con chiave di test già generata e percorsi di build privati predisposti, per ciascuna versione usare il comando sotto; dopo il build di 0.0.3, il blocco individua un solo installer e prepara il manifest senza pubblicarlo:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\VirgoStarsSigning\updater-test.key"
+$updatePassword = Read-Host 'Password chiave di test' -AsSecureString
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = [System.Net.NetworkCredential]::new('', $updatePassword).Password
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\updates\build-signed-installer.ps1 -PublicKeyFile "$env:USERPROFILE\VirgoStarsSigning\updater-test.key.pub" -TestChannel
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PATH
+Remove-Variable updatePassword
+$testInstallers = @(Get-ChildItem .\src-tauri\target\release\bundle\nsis\ -Filter '*0.0.3*x64-setup.exe')
+if ($testInstallers.Count -ne 1) { throw 'Serve esattamente un installer di prova 0.0.3.' }
+if (Test-Path .\release-notes-test.txt) { throw 'Il file release-notes-test.txt esiste già.' }
+Set-Content -Encoding utf8 .\release-notes-test.txt 'Aggiornamento di prova 0.0.3'
+node .\scripts\updates\prepare-manifest.mjs --channel testing --installer $testInstallers[0].FullName --signature ($testInstallers[0].FullName + '.sig') --notes .\release-notes-test.txt --output .\latest-testing.json
+```
+
+Verificare: versione corrente senza aggiornamento; notifica e note di 0.0.3; percentuale durante il download; interruzione di rete; firma errata e versione firmata alterata, entrambe rifiutate; consenso e riavvio; contenuto dell'archivio e foto dopo il riavvio; impostazioni, catalogo città ed effemeridi; installazione di 0.0.1 → 0.0.2; passaggio beta/stable senza downgrade; installer interrotto e recupero manuale da una copia verificata. Non dichiarare superati questi casi senza osservarli.
+
+## Limiti aperti prima della release
+
+- La compatibilità della release esistente 0.0.1 e la conservazione di cataloghi e DE441 reali richiedono ancora una prova con i pacchetti di distribuzione. Il collaudo locale ha usato soltanto file sintetici.
+- Il download è limitato a 512 MiB prima della verifica Tauri e resta in memoria; installer più grandi sono rifiutati. Dimensione e distribuzione separata di eventuali dataset molto grandi richiedono una prova reale.
+- Il ripristino manuale e il rollback di una sua interruzione sono coperti da test automatici sintetici; non è stato collaudato un ripristino dell'archivio personale né una migrazione di schema. Non spedire una migrazione finché non è stata progettata e collaudata.
+- Non è stata verificata la disponibilità pubblica degli endpoint GitHub di canale; l'aggiornamento richiede HTTPS accessibile senza segreti incorporati nel client.
+- Il canale GitHub `updates-testing` è predisposto ma non è stato pubblicato né collaudato end-to-end; richiede una VM, chiave e artefatti di test separati.
