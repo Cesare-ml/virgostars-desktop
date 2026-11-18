@@ -1,7 +1,8 @@
 # Offline authentication, account data and synchronization contract
 
-Status: **IMPLEMENTED_ISOLATED** for the candidate described below. It is disabled
-by default and has not been deployed or verified against production.
+Status: **IMPLEMENTED_ISOLATED** for the Desktop candidate described below. It
+is disabled by default; the connected backend and web consent are deployed, but
+the Desktop candidate is not released or verified end to end in production.
 
 Product requirement clarified on 2026-11-18: the same account's natal-chart
 groups should be available across Desktop and the website. This is not sharing
@@ -28,7 +29,7 @@ network I/O; a retry is completed before importing a snapshot. Ambiguous civil
 times and lossy subsecond values are refused. A definitive server rejection at
 the 500-chart limit can be cancelled without deleting the local chart. A network
 failure remains queued because the server may already have created the chart.
-Browser production consent, deployment and real end-to-end
+Browser production consent is deployed; Desktop release and real end-to-end
 verification remain outstanding. The proposed journey and API below describe
 the target, not capabilities proven in production.
 
@@ -98,6 +99,9 @@ An explicit `production-connected-account` build selects the fixed consent
 page `https://virgostars.it/collega-dispositivo` and API token endpoint
 `https://api.virgostars.it/chart-sync/v1/token`. Default builds still disable
 connected-account IPC, and the staging-only build rejects both production
-endpoints. This is a build-time candidate, not evidence of a deployed backend,
-published website, installed Desktop release, or successful live sync. The
-native host retains tokens and does not accept endpoint URLs from the WebView.
+endpoints. The backend and website are active in production, while this remains
+an unreleased Desktop build candidate without verified live end-to-end sync. A
+standalone binary must be built with the Tauri CLI (`tauri build --no-bundle
+--features production-connected-account`); a plain `cargo build --release` can
+still use the development URL instead of bundling the frontend. The native host
+retains tokens and does not accept endpoint URLs from the WebView.
