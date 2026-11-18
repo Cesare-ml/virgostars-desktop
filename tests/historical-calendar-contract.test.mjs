@@ -56,3 +56,24 @@ test('dispatches the selected model and checks source and uncertainty in the rep
   assert.equal((await requestHistoricalCalendar(transport, request)).kind, 'unavailable');
   assert.equal((await requestHistoricalCalendar({...transport, isNative:()=>false}, request)).kind, 'not_native');
 });
+
+test('optionally returns two detached sensitivity samples and rejects incomplete or inconsistent samples', async () => {
+  const requested = {...request, includeScenarios:true};
+  const raw = ok();
+  const calls = [];
+  const transport = {isNative:()=>true, invoke:async (...args)=>{calls.push(args); return raw;}};
+  assert.equal((await requestHistoricalCalendar(transport, requested)).kind, 'unavailable');
+  raw.result.sensitivity = {
+    lower:{deltaTSeconds:63.86 - 2, longitudeDeg:222.99, latitudeDeg:3.99},
+    upper:{deltaTSeconds:63.86 + 2, longitudeDeg:223.01, latitudeDeg:4.01},
+  };
+  const result = await requestHistoricalCalendar(transport, requested);
+  assert.equal(result.kind, 'ready');
+  assert.equal(calls.at(-1)[1].request.includeScenarios, true);
+  assert.ok(Object.isFrozen(result.planet.sensitivity.lower));
+  raw.result.sensitivity.lower.longitudeDeg = 100;
+  assert.equal(result.planet.sensitivity.lower.longitudeDeg, 222.99);
+  raw.result.sensitivity.upper.deltaTSeconds = 100;
+  assert.equal((await requestHistoricalCalendar(transport, requested)).kind, 'unavailable');
+  assert.equal(validHistoricalCalendar({...request, includeScenarios:'yes'}), false);
+});

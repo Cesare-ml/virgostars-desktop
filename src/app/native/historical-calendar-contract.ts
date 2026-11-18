@@ -4,7 +4,7 @@ export type DeltaTChoice = Readonly<{kind: 'supplied'; seconds: number; uncertai
   Readonly<{kind: 'espenakMeeus2006'; uncertaintySeconds: number}>;
 /** Calendar values are UT1, on the proleptic Gregorian calendar, using astronomical year numbering. */
 export type HistoricalCalendarRequest = Readonly<{body: HistoricalBody; year: number; month: number; day: number;
-  hour: number; minute: number; second: number; deltaT: DeltaTChoice}>;
+  hour: number; minute: number; second: number; deltaT: DeltaTChoice; includeScenarios?: boolean}>;
 export interface HistoricalCalendarTransport {
   isNative(): boolean;
   invoke(command: 'calculate_historical_planet_calendar', args: {request: HistoricalCalendarRequest & {protocolVersion: 1}}): Promise<unknown>;
@@ -14,7 +14,8 @@ export function validHistoricalCalendar(value: HistoricalCalendarRequest): boole
       !Number.isInteger(value.month) || value.month < 1 || value.month > 12 || !Number.isInteger(value.day) ||
       !Number.isInteger(value.hour) || value.hour < 0 || value.hour > 23 ||
       !Number.isInteger(value.minute) || value.minute < 0 || value.minute > 59 ||
-      !Number.isFinite(value.second) || value.second < 0 || value.second >= 60) return false;
+      !Number.isFinite(value.second) || value.second < 0 || value.second >= 60 ||
+      (value.includeScenarios !== undefined && typeof value.includeScenarios !== 'boolean')) return false;
   const leap = value.year % 4 === 0 && (value.year % 100 !== 0 || value.year % 400 === 0);
   const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (value.day < 1 || value.day > monthDays[value.month - 1]) return false;
@@ -33,9 +34,10 @@ export async function requestHistoricalCalendar(transport: HistoricalCalendarTra
       : {kind: 'espenakMeeus2006' as const, uncertaintySeconds: request.deltaT.uncertaintySeconds};
     const raw = await transport.invoke('calculate_historical_planet_calendar', {request: {protocolVersion: 1,
       body: request.body, year: request.year, month: request.month, day: request.day, hour: request.hour,
-      minute: request.minute, second: request.second, deltaT}});
+      minute: request.minute, second: request.second, deltaT, ...(request.includeScenarios ? {includeScenarios:true} : {})}});
     return decodeHistoricalPlanet(raw, {body: request.body, uncertaintySeconds: deltaT.uncertaintySeconds,
       deltaTSource: deltaT.kind === 'supplied' ? deltaT.source : 'Espenak-Meeus 2006',
+      includeScenarios: request.includeScenarios === true,
       ...(deltaT.kind === 'supplied' ? {deltaTSeconds: deltaT.seconds} : {})});
   } catch { return {kind: 'unavailable'}; }
 }

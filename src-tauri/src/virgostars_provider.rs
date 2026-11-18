@@ -192,6 +192,19 @@ pub(crate) fn historical_planet(
             request.uncertainty_seconds, &request.delta_t_source,
         ).map_err(|_| ())?;
         let fields = output.rates.base;
+        let sensitivity = if request.include_scenarios {
+            use crate::historical_planets::{HistoricalSensitivity, HistoricalSensitivitySample};
+            use virgostars_ephemeris_core::historical_delta_t_scenarios::{historical_delta_t_scenarios, ScenarioFrame};
+            let samples = historical_delta_t_scenarios(&mut engine.ephemeris, body, request.jd_ut1,
+                request.delta_t_seconds, request.uncertainty_seconds, ScenarioFrame::DirectObliquity).map_err(|_| ())?;
+            // A source/frame mismatch must never silently produce misleading samples.
+            if samples.nominal.fields != fields { return Err(()); }
+            let convert = |sample: virgostars_ephemeris_core::historical_delta_t_scenarios::HistoricalScenario| HistoricalSensitivitySample {
+                delta_t_seconds: sample.epoch.delta_t_seconds, longitude_deg: sample.fields.longitude_deg,
+                latitude_deg: sample.fields.latitude_deg,
+            };
+            Some(HistoricalSensitivity { lower: convert(samples.lower), upper: convert(samples.upper) })
+        } else { None };
         Ok(crate::historical_planets::HistoricalPlanetResult {
             body: request.body.clone(), jd_ut1: output.epoch.jd_ut1, jd_tt: output.epoch.jd_tt,
             jd_tdb: output.epoch.jd_tdb.0, delta_t_seconds: output.epoch.delta_t_seconds,
@@ -201,6 +214,7 @@ pub(crate) fn historical_planet(
             latitude_speed_deg_per_tdb_day: output.rates.latitude_deg_per_tdb_day,
             radial_speed_au_per_tdb_day: output.rates.radial_au_per_tdb_day,
             radial_correction_applied: output.rates.radial_correction_applied,
+            sensitivity,
         })
     })
 }
