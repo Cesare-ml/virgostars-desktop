@@ -1,13 +1,15 @@
 //! Bound loopback callback receiver for a future native Desktop OAuth sign-in.
 //!
 //! This module is not exposed as a Tauri command. It deliberately requires an
-//! injected **Rust-owned system browser opener**. The app does not yet ship an
-//! approved opener, token exchanger, login UI or capability grant.
+//! injected **Rust-owned system browser opener**. An inert native opener and
+//! exchange contract exist, but no live HTTPS adapter, login UI or capability
+//! grant has been enabled.
 #![allow(dead_code)]
 
 use crate::pkce_login::{CallbackDecision, LoginError, PendingPkceLogin};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::sync::{atomic::{AtomicU8, Ordering}, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 use url::Url;
@@ -23,6 +25,7 @@ const CALLBACK_PATH: &str = "/virgostars/oauth/callback";
 pub enum LoopbackError {
     Unavailable,
     BrowserUnavailable,
+    Cancelled,
     Expired,
     TooManyConnections,
 }
@@ -34,9 +37,30 @@ pub trait SystemBrowserOpener {
     fn open_in_system_browser(&self, consent_url: &Url) -> Result<(), ()>;
 }
 
+/// The only cross-thread handle for an in-progress attempt: an opaque
+/// cancellation signal, never a token, authorization URL or callback code.
+const LOGIN_ACTIVE: u8 = 0;
+const LOGIN_CANCELLED: u8 = 1;
+const LOGIN_COMPLETED: u8 = 2;
+
+#[derive(Clone)]
+pub struct LoginCancelHandle { state: Arc<AtomicU8> }
+
+impl LoginCancelHandle {
+    /// Cancellation wins only if no native success has been committed yet.
+    pub fn cancel(&self) {
+        let _ = self.state.compare_exchange(LOGIN_ACTIVE, LOGIN_CANCELLED, Ordering::SeqCst, Ordering::SeqCst);
+    }
+    pub fn is_cancelled(&self) -> bool { self.state.load(Ordering::SeqCst) == LOGIN_CANCELLED }
+    pub(crate) fn finish_success(&self) -> bool {
+        self.state.compare_exchange(LOGIN_ACTIVE, LOGIN_COMPLETED, Ordering::SeqCst, Ordering::SeqCst).is_ok()
+    }
+}
+
 pub struct LoopbackLogin {
     listener: TcpListener,
     attempt: PendingPkceLogin,
+    cancellation: LoginCancelHandle,
 }
 
 impl LoopbackLogin {
@@ -57,11 +81,18 @@ impl LoopbackLogin {
             attempt.cancel();
             return Err(LoopbackError::BrowserUnavailable);
         }
-        Ok(Self {listener, attempt})
+        Ok(Self {
+            listener, attempt,
+            cancellation: LoginCancelHandle {state: Arc::new(AtomicU8::new(LOGIN_ACTIVE))},
+        })
     }
 
     /// This opaque value is the only login identifier intended for the UI.
     pub fn attempt_id(&self) -> &str { self.attempt.attempt_id() }
+
+    pub(crate) fn bound_redirect_uri(&self) -> &str { self.attempt.bound_redirect_uri() }
+
+    pub fn cancellation_handle(&self) -> LoginCancelHandle { self.cancellation.clone() }
 
     /// The port is internal to Rust and can be used for local tests/telemetry
     /// that never includes state, verifier or callback query strings.
@@ -69,7 +100,10 @@ impl LoopbackLogin {
         self.listener.local_addr().map(|addr| addr.port()).map_err(|_| LoopbackError::Unavailable)
     }
 
-    pub fn cancel(&mut self) { self.attempt.cancel(); }
+    pub fn cancel(&mut self) {
+        self.cancellation.cancel();
+        self.attempt.cancel();
+    }
 
     /// Blocking host-only loop; must run on a dedicated worker, never the
     /// Angular thread or Tauri UI event loop. A malformed request gets a fixed
@@ -80,6 +114,10 @@ impl LoopbackLogin {
         let expected_host = format!("127.0.0.1:{}", self.bound_port()?);
         let mut attempts = 0u8;
         loop {
+            if self.cancellation.is_cancelled() {
+                self.cancel();
+                return Err(LoopbackError::Cancelled);
+            }
             let now = Instant::now();
             if now >= deadline || self.attempt.remaining_seconds(now) == 0 {
                 self.attempt.cancel();
@@ -102,14 +140,25 @@ impl LoopbackLogin {
                     let read_window = remaining.min(PER_CONNECTION_DEADLINE);
                     let callback = read_callback_target(&mut stream, &expected_host, read_window)
                         .and_then(|target| {
+                            if self.cancellation.is_cancelled() { return Err(LoopbackError::Cancelled); }
                             let full = format!("http://{expected_host}{target}");
                             self.attempt.accept_callback(&full, Instant::now())
                                 .map_err(|_| LoopbackError::Unavailable)
                         });
                     match callback {
                         Ok(decision) => {
+                            if self.cancellation.is_cancelled() {
+                                self.cancel();
+                                respond(&mut stream, false);
+                                return Err(LoopbackError::Cancelled);
+                            }
                             respond(&mut stream, true);
                             return Ok(decision);
+                        }
+                        Err(LoopbackError::Cancelled) => {
+                            self.cancel();
+                            respond(&mut stream, false);
+                            return Err(LoopbackError::Cancelled);
                         }
                         Err(_) => respond(&mut stream, false),
                     }
@@ -319,6 +368,36 @@ mod tests {
         let browser = FakeBrowser::default();
         let mut session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         assert!(matches!(session.wait_for_callback(Duration::from_millis(50)), Err(LoopbackError::Expired)));
+    }
+
+    #[test]
+    fn another_native_thread_can_cancel_a_pending_callback_wait() {
+        let browser = FakeBrowser::default();
+        let mut session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
+        let cancel = session.cancellation_handle();
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(30));
+            cancel.cancel();
+        });
+        assert!(matches!(session.wait_for_callback(Duration::from_secs(3)), Err(LoopbackError::Cancelled)));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn native_cancel_and_completion_cannot_both_win() {
+        let browser = FakeBrowser::default();
+        let session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
+        let completed = session.cancellation_handle();
+        assert!(completed.finish_success());
+        completed.cancel();
+        assert!(!completed.is_cancelled());
+        assert!(!completed.finish_success());
+
+        let session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
+        let cancelled = session.cancellation_handle();
+        cancelled.cancel();
+        assert!(cancelled.is_cancelled());
+        assert!(!cancelled.finish_success());
     }
 
     #[test]
