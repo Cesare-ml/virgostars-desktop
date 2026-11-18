@@ -53,7 +53,7 @@ fn random_base64url_256() -> Result<Zeroizing<String>, LoginError> {
     Ok(Zeroizing::new(URL_SAFE_NO_PAD.encode(&bytes[..])))
 }
 
-fn random_uuid_v4() -> Result<String, LoginError> {
+pub(crate) fn random_uuid_v4() -> Result<String, LoginError> {
     let mut bytes = Zeroizing::new([0u8; 16]);
     getrandom::fill(&mut bytes[..]).map_err(|_| LoginError::Unavailable)?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;

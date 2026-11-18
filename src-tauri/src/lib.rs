@@ -46,7 +46,7 @@ pub fn run() {
         })
         .manage(offline_places::PlaceSearchGate::default())
         .manage(pkce_native_registry::NativeLoginRegistry::new())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1])
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1, connected_account_ipc::desktop_chart_sync_v1])
         .build(tauri::generate_context!())
         .expect("failed to build the synthetic VirgoStars Desktop renderer spike")
         .run(|app, event| {

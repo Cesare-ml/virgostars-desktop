@@ -28,11 +28,24 @@ struct SnapshotCursor { epoch: String, change_seq: String }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SnapshotBirth {
+    local_date: String, local_time: Option<String>, time_unknown: bool, time_zone_iana: Option<String>,
+    resolved_instant_utc: Option<String>, utc_offset_seconds: Option<i32>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SnapshotPlace {
+    mode: String, label: String, city_ref: Option<String>,
+    latitude_microdegrees: Option<i32>, longitude_microdegrees: Option<i32>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct SnapshotChart {
     contract_version: u8, sync_id: String, groups: Vec<String>, notes: serde_json::Value,
-    name: serde::de::IgnoredAny, kind: serde::de::IgnoredAny, birth: serde::de::IgnoredAny,
-    place: serde::de::IgnoredAny, sex: serde::de::IgnoredAny, is_account_chart: serde::de::IgnoredAny,
-    revision: serde::de::IgnoredAny, updated_at: serde::de::IgnoredAny,
+    name: String, kind: String, birth: SnapshotBirth, place: SnapshotPlace, sex: Option<String>,
+    is_account_chart: bool, revision: i64, updated_at: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -44,18 +57,47 @@ pub(crate) trait GroupSnapshotTransport {
         -> Result<std::collections::HashMap<String, Vec<String>>, ()>;
 }
 
-fn parse_group_snapshot(bytes: &[u8], profile: &str) -> Result<std::collections::HashMap<String,Vec<String>>, ()> {
+pub(crate) trait CivilSnapshotTransport {
+    fn fetch_civil_charts(&self, token_endpoint: &Url, grant: &NativeAccessGrant)
+        -> Result<Vec<crate::chart_archive::RemoteCivilChart>, ()>;
+}
+
+fn parse_snapshot(bytes: &[u8], profile: &str) -> Result<GroupSnapshot, ()> {
     let response: GroupSnapshot = serde_json::from_slice(bytes).map_err(|_| ())?;
     if response.contract_version != 1 || response.cursor.epoch != profile || response.charts.len() > 500
         || response.cursor.change_seq.is_empty() || response.cursor.change_seq.len() > 19
         || !response.cursor.change_seq.bytes().all(|c| c.is_ascii_digit())
         || (response.cursor.change_seq.len() > 1 && response.cursor.change_seq.starts_with('0'))
         || response.cursor.change_seq.parse::<i64>().is_err() { return Err(()); }
-    let mut result = std::collections::HashMap::with_capacity(response.charts.len());
-    for chart in response.charts {
+    let mut ids = std::collections::HashSet::with_capacity(response.charts.len());
+    for chart in &response.charts {
         if chart.contract_version != 1 || !crate::chart_archive::valid_id(&chart.sync_id)
             || !crate::chart_archive::valid_groups(&chart.groups) || !chart.notes.is_null()
-            || result.insert(chart.sync_id,chart.groups).is_some() { return Err(()); }
+            || !ids.insert(&chart.sync_id) { return Err(()); }
+    }
+    Ok(response)
+}
+
+fn parse_group_snapshot(bytes: &[u8], profile: &str) -> Result<std::collections::HashMap<String,Vec<String>>, ()> {
+    Ok(parse_snapshot(bytes,profile)?.charts.into_iter().map(|chart|(chart.sync_id,chart.groups)).collect())
+}
+
+fn parse_civil_snapshot(bytes: &[u8], profile: &str) -> Result<Vec<crate::chart_archive::RemoteCivilChart>, ()> {
+    let mut result = Vec::new();
+    for chart in parse_snapshot(bytes,profile)?.charts {
+        // The current server does not supply an independently resolved UTC
+        // instant. Fail closed if that contract changes rather than discard it.
+        if chart.birth.resolved_instant_utc.is_some() || chart.birth.utc_offset_seconds.is_some() { return Err(()); }
+        let record = crate::chart_archive::RemoteCivilChart {
+            sync_id:chart.sync_id,name:chart.name,kind:chart.kind,civil_date:chart.birth.local_date,
+            civil_time:chart.birth.local_time,time_unknown:chart.birth.time_unknown,time_zone:chart.birth.time_zone_iana,
+            lat_micro:chart.place.latitude_microdegrees,lng_micro:chart.place.longitude_microdegrees,
+            place_name:chart.place.label,place_mode:chart.place.mode,city_ref:chart.place.city_ref,
+            sex:chart.sex,is_account_chart:chart.is_account_chart,revision:chart.revision,
+            updated_at:chart.updated_at,groups:chart.groups,
+        };
+        if !crate::chart_archive::valid_remote_chart(&record) { return Err(()); }
+        result.push(record);
     }
     Ok(result)
 }
@@ -144,13 +186,13 @@ impl Read for SecretFormReader {
 /// `post_form` is blocking: it MUST run on the dedicated native worker.
 pub struct StagingReqwestHttps;
 
-impl GroupSnapshotTransport for StagingReqwestHttps {
-    fn fetch_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant)
-        -> Result<std::collections::HashMap<String, Vec<String>>, ()> {
+impl StagingReqwestHttps {
+    fn snapshot_body(&self, token_endpoint: &Url, grant: &NativeAccessGrant)
+        -> Result<Zeroizing<Vec<u8>>, ()> {
         if !grant.matches_token_endpoint(token_endpoint) || grant.remaining_seconds(std::time::Instant::now()) == 0 {
             return Err(());
         }
-        let profile = grant.profile_ref().ok_or(())?;
+        grant.profile_ref().ok_or(())?;
         let mut destination = valid_staging_token_endpoint(token_endpoint.as_str()).ok_or(())?;
         destination.set_path("/chart-sync/v1/snapshot");
         let client = restricted_client(MAX_TOKEN_DEADLINE)?;
@@ -167,7 +209,23 @@ impl GroupSnapshotTransport for StagingReqwestHttps {
         let mut bytes = Zeroizing::new(Vec::new());
         response.take(MAX_SNAPSHOT_RESPONSE_BYTES + 1).read_to_end(&mut bytes).map_err(|_| ())?;
         if bytes.len() as u64 > MAX_SNAPSHOT_RESPONSE_BYTES { return Err(()); }
-        parse_group_snapshot(&bytes,profile)
+        Ok(bytes)
+    }
+}
+
+impl GroupSnapshotTransport for StagingReqwestHttps {
+    fn fetch_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant)
+        -> Result<std::collections::HashMap<String, Vec<String>>, ()> {
+        let bytes = self.snapshot_body(token_endpoint,grant)?;
+        parse_group_snapshot(&bytes,grant.profile_ref().ok_or(())?)
+    }
+}
+
+impl CivilSnapshotTransport for StagingReqwestHttps {
+    fn fetch_civil_charts(&self, token_endpoint: &Url, grant: &NativeAccessGrant)
+        -> Result<Vec<crate::chart_archive::RemoteCivilChart>, ()> {
+        let bytes = self.snapshot_body(token_endpoint,grant)?;
+        parse_civil_snapshot(&bytes,grant.profile_ref().ok_or(())?)
     }
 }
 
@@ -302,11 +360,18 @@ mod tests {
         let profile = "44444444-4444-4444-8444-444444444444";
         let chart_id = "11111111-1111-4111-8111-111111111111";
         let chart = serde_json::json!({"contractVersion":1,"syncId":chart_id,"groups":["Fittizio"],"notes":null,
-            "name":"Persona fittizia","kind":"person","birth":{},"place":{},"sex":null,
+            "name":"Persona fittizia","kind":"person","birth":{"localDate":"1984-03-25","localTime":null,
+                "timeUnknown":true,"timeZoneIana":"Europe/Rome","resolvedInstantUtc":null,"utcOffsetSeconds":null},
+            "place":{"mode":"manual","label":"Luogo fittizio","cityRef":null,"latitudeMicrodegrees":44000000,"longitudeMicrodegrees":11000000},"sex":null,
             "isAccountChart":false,"revision":1,"updatedAt":"2026-01-01T00:00:00Z"});
         let mut snapshot = serde_json::json!({"contractVersion":1,"cursor":{"epoch":profile,"changeSeq":"0"},"charts":[chart.clone()]});
         let bytes = serde_json::to_vec(&snapshot).unwrap();
         assert_eq!(parse_group_snapshot(&bytes,profile).unwrap().get(chart_id).unwrap(),&["Fittizio"]);
+        let imported = parse_civil_snapshot(&bytes,profile).unwrap();
+        assert_eq!(imported.len(),1);
+        assert!(imported[0].time_unknown);
+        assert!(imported[0].civil_time.is_none());
+        assert_eq!(imported[0].civil_date,"1984-03-25");
         assert!(parse_group_snapshot(&bytes,"55555555-5555-4555-8555-555555555555").is_err());
         snapshot["charts"] = serde_json::json!([chart.clone(),chart.clone()]);
         assert!(parse_group_snapshot(&serde_json::to_vec(&snapshot).unwrap(),profile).is_err());
@@ -314,6 +379,9 @@ mod tests {
         snapshot["charts"][0]["notes"] = serde_json::json!("private");
         assert!(parse_group_snapshot(&serde_json::to_vec(&snapshot).unwrap(),profile).is_err());
         snapshot["charts"][0]["notes"] = serde_json::Value::Null;
+        snapshot["charts"][0]["birth"]["resolvedInstantUtc"] = serde_json::json!("1984-03-25T00:00:00Z");
+        assert!(parse_civil_snapshot(&serde_json::to_vec(&snapshot).unwrap(),profile).is_err());
+        snapshot["charts"][0]["birth"]["resolvedInstantUtc"] = serde_json::Value::Null;
         snapshot["charts"][0]["groups"] = serde_json::json!((0..51).map(|n| format!("Group {n}")).collect::<Vec<_>>());
         assert!(parse_group_snapshot(&serde_json::to_vec(&snapshot).unwrap(),profile).is_err());
     }

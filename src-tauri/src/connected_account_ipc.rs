@@ -126,6 +126,107 @@ pub async fn desktop_group_conflicts_v1(
     { Ok(GroupConflictReply {protocol_version:1,status:"disabled",conflicts:None}) }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChartSyncRequest {
+    protocol_version: u8,
+    operation: String,
+    attempt_id: Option<String>,
+    chart_id: Option<String>,
+    base_groups: Option<Vec<String>>,
+    groups: Option<Vec<String>>,
+}
+
+impl ChartSyncRequest {
+    fn valid(&self) -> bool {
+        if self.protocol_version != 1 { return false; }
+        match self.operation.as_str() {
+            "sync" | "list" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
+                && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none(),
+            "offline_list" => self.attempt_id.is_none() && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none(),
+            "set_groups" | "offline_set_groups" => (if self.operation=="set_groups" {
+                self.attempt_id.as_deref().is_some_and(valid_attempt_id)
+            } else { self.attempt_id.is_none() }) && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
+                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups),
+            _ => false,
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChartSyncSummaryReply { imported: usize, updated: usize, already_linked: usize, uploaded: usize, conflicts: usize }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartSyncReply {
+    protocol_version: u8,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    charts: Option<Vec<crate::chart_archive::CivilChartView>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<ChartSyncSummaryReply>,
+}
+
+/// All account scoping and HTTP credentials are owned by native code. Network
+/// and archive operations run on a blocking worker, never the UI executor.
+#[tauri::command]
+pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHandle)
+    -> Result<ChartSyncReply, &'static str> {
+    if !request.valid() { return Err(NATIVE_UNAVAILABLE); }
+    #[cfg(feature = "staging-connected-account")]
+    {
+        let (Some(consent),Some(token)) = (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"),
+            option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) else {
+            return Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None});
+        };
+        if crate::pkce_login::valid_consent_origin(consent).is_none()
+            || crate::pkce_token_exchange::valid_staging_token_endpoint(token).is_none() {
+            return Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None});
+        }
+        let app = _app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let folder = app.path().app_local_data_dir().map_err(|_| NATIVE_UNAVAILABLE)?;
+            let paths = crate::chart_archive::ArchivePaths::in_folder(&folder);
+            let registry = app.state::<NativeLoginRegistry>();
+            let keys = crate::archive_keys::OsKeyStore;
+            match request.operation.as_str() {
+                "list" => {
+                    let charts=registry.list_civil_charts(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys).map_err(|_| NATIVE_UNAVAILABLE)?;
+                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:Some(charts),summary:None})
+                },
+                "offline_list" => {
+                    let charts=registry.list_offline_civil_charts(&paths,&keys).map_err(|_| NATIVE_UNAVAILABLE)?;
+                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:Some(charts),summary:None})
+                },
+                "sync" => {
+                    let summary=registry.sync_civil_charts(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,token,&paths,&keys,&crate::pkce_reqwest_https::StagingReqwestHttps)
+                        .map_err(|_| NATIVE_UNAVAILABLE)?;
+                    let summary=ChartSyncSummaryReply {imported:summary.imported,updated:summary.updated,
+                        already_linked:summary.already_linked,uploaded:summary.uploaded,conflicts:summary.conflicts};
+                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:None,summary:Some(summary)})
+                },
+                "set_groups" => {
+                    let result=registry.set_civil_groups(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
+                        request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,request.groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?);
+                    let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None})
+                },
+                "offline_set_groups" => {
+                    let result=registry.set_offline_civil_groups(&paths,&keys,request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
+                        request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,request.groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?);
+                    let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None})
+                },
+                _ => Err(NATIVE_UNAVAILABLE),
+            }
+        }).await.map_err(|_| NATIVE_UNAVAILABLE)?
+    }
+    #[cfg(not(feature = "staging-connected-account"))]
+    { Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None}) }
+}
+
 fn valid_request(value: &Value) -> bool {
     let Some(obj) = value.as_object() else { return false; };
     if obj.get("protocolVersion").and_then(Value::as_u64) != Some(PROTOCOL_VERSION) {
@@ -250,6 +351,26 @@ mod tests {
         let mut bad = resolve;
         bad["localGroups"] = json!((0..51).map(|n| format!("Gruppo {n}")).collect::<Vec<_>>());
         assert!(!serde_json::from_value::<GroupConflictRequest>(bad).unwrap().valid());
+    }
+
+    #[test]
+    fn chart_sync_requests_are_bounded_and_never_accept_profile_or_remote_identity() {
+        for op in ["sync","list"] {
+            let request=json!({"protocolVersion":1,"operation":op,"attemptId":UUID});
+            assert!(serde_json::from_value::<ChartSyncRequest>(request).unwrap().valid());
+        }
+        assert!(serde_json::from_value::<ChartSyncRequest>(json!({"protocolVersion":1,"operation":"offline_list"})).unwrap().valid());
+        assert!(!serde_json::from_value::<ChartSyncRequest>(json!({"protocolVersion":1,"operation":"offline_list","attemptId":UUID})).unwrap().valid());
+        let request=json!({"protocolVersion":1,"operation":"set_groups","attemptId":UUID,
+            "chartId":"11111111-1111-4111-8111-111111111111","baseGroups":[],"groups":["Fittizio"]});
+        assert!(serde_json::from_value::<ChartSyncRequest>(request.clone()).unwrap().valid());
+        let offline=json!({"protocolVersion":1,"operation":"offline_set_groups",
+            "chartId":"11111111-1111-4111-8111-111111111111","baseGroups":[],"groups":["Fittizio"]});
+        assert!(serde_json::from_value::<ChartSyncRequest>(offline).unwrap().valid());
+        let mut extra=request.clone(); extra["profileRef"]=json!(UUID);
+        assert!(serde_json::from_value::<ChartSyncRequest>(extra).is_err());
+        let mut invalid=request; invalid["groups"]=json!(["dup","dup"]);
+        assert!(!serde_json::from_value::<ChartSyncRequest>(invalid).unwrap().valid());
     }
 
     #[cfg(feature = "staging-connected-account")]

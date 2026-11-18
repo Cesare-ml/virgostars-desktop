@@ -1,6 +1,8 @@
 # Local chart archive (SQLite)
 
-**Status: Prototype / locally tested (2026-11-15).** Not a released feature. It keeps saved charts on one device; it is not the encrypted, account-aware store described in [Security and privacy](SECURITY_AND_PRIVACY.md) and [Offline auth and sync](OFFLINE_AUTH_AND_SYNC.md).
+**Status: IMPLEMENTED_ISOLATED / locally tested.** Not a released feature. A
+default-disabled candidate adds an account-bound encrypted copy of website charts
+and group synchronization; see [Offline auth and sync](OFFLINE_AUTH_AND_SYNC.md).
 
 ## What it stores
 
@@ -14,9 +16,9 @@ Since 2026-11-17 the archive is a single file encrypted and authenticated as a w
 
 The local archive can now assign ordered group names to saved charts and search
 them by group. Groups are stored inside the same sealed file; they are local
-only and are not yet synchronized. There are no account profiles, notes or
-outbox. Deleting a chart removes its group assignments; it does not securely
-erase disk blocks.
+local for ordinary charts. The guarded candidate additionally keeps imported
+civil records, account-bound links and pending group edits in the sealed file.
+Notes are not imported. Deleting a chart does not securely erase disk blocks.
 
 ## Command
 
@@ -46,9 +48,9 @@ Rules enforced on both sides: lowercase UUID id; name up to 80 characters and pl
 Saving the same id again updates the row in place, keeps its creation time and
 preserves groups. Group replacement is transactional; deleting a chart also
 removes its assignments. Schema changes are tracked with `PRAGMA user_version`
-(currently 3). Version 1 and 2 encrypted databases are upgraded in memory, leaving
+(currently 4). Versions 1, 2 and 3 encrypted databases are upgraded in memory, leaving
 the old ciphertext untouched until the next successful atomic write. Older
-application versions cannot open a version 3 archive. There is no automatic
+application versions cannot open a version 4 archive. There is no automatic
 repair, deletion or downgrade.
 
 The encrypted database also has a candidate account-bound group sync record.
@@ -59,9 +61,12 @@ chart, detects concurrent edits and preserves unresolved conflicts. It checks
 the captured base before writing the encrypted archive. The guarded account UI
 can display and resolve existing conflicts; both displayed versions are checked
 again atomically, and selecting the local version requires group-write consent.
-Linking and network synchronization are not exposed in the app yet. Linking requires a
-verified profile and explicit chart identity; local charts are never silently
-assigned to an account.
+The guarded account interface imports website charts with independent local IDs,
+refreshes their civil data and reconciles their groups. It retains missing remote
+charts locally, queues offline group edits and provides explicit conflict choices.
+Existing local charts are never silently matched; explicit association and upload
+of local-only charts remain unimplemented. Imported records retain an unknown birth
+time as unknown; the older archive command cannot overwrite or delete those rows.
 
 ## Interface
 

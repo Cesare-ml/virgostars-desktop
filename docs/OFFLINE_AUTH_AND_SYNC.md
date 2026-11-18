@@ -1,39 +1,29 @@
 # Offline authentication, account data and synchronization contract
 
-Status: **PROPOSED**. No production routes or synchronization engine exist here.
+Status: **IMPLEMENTED_ISOLATED** for the candidate described below. It is disabled
+by default and has not been deployed or verified against production.
 
 Product requirement clarified on 2026-11-18: the same account's natal-chart
 groups should be available across Desktop and the website. This is not sharing
 with other accounts. The candidate server read model contains group names, but
-the current local encrypted archive stores groups but does not synchronize them.
-An actual implementation also needs account-isolated storage, an explicit
-write authorization, durable offline edits and conflict handling. Do not
-present the connected login as completed group synchronization.
+the guarded Desktop candidate imports the verified account's complete snapshot
+into the encrypted archive, maintains native account-bound identities, and
+periodically reconciles groups. Edits are recorded atomically for retry, require
+separate group-write consent to upload, and expose concurrent conflicts for an
+explicit choice. Missing remote charts retain their local copy and pending edits.
+Notes are excluded. The most recently synchronized profile remains available
+offline; selecting another account cannot expose or edit that profile. The
+native server-provided profile reference never crosses IPC.
 
-The candidate native HTTPS adapter can validate and send an owner-authorized
-group replacement and parse a conflict response. It is not invoked by the app:
-chart identity/creation and reconciliation are still required before exposing
-group synchronization in the UI.
-
-The local archive contains an unexposed candidate link/pending record for group
-updates, including profile binding and stale-acknowledgement protection. An
-unexposed native worker can submit linked pending changes; a separate candidate
-fetches an authenticated snapshot and reconciles groups for already linked
-charts. It rejects mismatched account epochs, notes, duplicate identities and
-groups that cannot be represented locally. Neither worker is invoked by the app.
-The guarded account UI can display existing conflicts and explicitly choose
-either the local or server group set. Native code checks the verified profile,
-requires write consent for the local choice, and rejects a choice if either
-shown version changed. This cannot create links or run the workers: safe initial
-link creation and automatic scheduling are not connected.
-The native grant receives the authenticated server's sync epoch as its
-profile reference; it does not cross IPC. If the server epoch changes, the
-old local profile remains separate and must not be silently reassigned.
-
-An isolated civil-time classifier preserves unknown birth times as unknown and
-requires review for missing zones, ambiguous/nonexistent times or inconsistent
-instants. It is tested with fictional data but is not yet connected to archive
-import; the current archive still requires an actual UTC instant.
+Imported civil data preserve unknown times without inventing an instant. A
+known time is calculated only when its time zone resolves unambiguously; missing,
+ambiguous or nonexistent local times require review. The snapshot is limited to
+500 charts and each chart to 50 groups; unsupported snapshots fail without
+truncation. The candidate creates a separate local copy for each remote identity:
+explicit association of pre-existing local charts and upload of local-only charts
+are not implemented. Browser production consent, deployment and real end-to-end
+verification remain outstanding. The proposed journey and API below describe
+the target, not capabilities proven in production.
 
 ## Required user journey
 1. **First online login:** open trusted VirgoStars identity flow in the system browser using OAuth 2 Authorization Code + PKCE (or a rigorously reviewed desktop-safe equivalent). Register this installation with a per-device identifier; obtain only account-scoped privileges.

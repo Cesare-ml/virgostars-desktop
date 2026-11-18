@@ -7,6 +7,7 @@ type Request = (operation: ConnectedAccountOperation) => Promise<ConnectedAccoun
 export class ConnectedAccountState {
   status: AccountViewStatus = 'idle';
   remainingSeconds = 0;
+  scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | null = null;
   private attemptId: string | null = null;
   private generation = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -25,6 +26,7 @@ export class ConnectedAccountState {
 
   private update(status: AccountViewStatus, seconds = 0): void {
     if (this.destroyed) return;
+    if (status !== 'connected') this.scope = null;
     this.status = status;
     this.remainingSeconds = seconds;
     this.changed();
@@ -90,7 +92,7 @@ export class ConnectedAccountState {
     const result = await this.request({operation:'status', attemptId});
     if (this.destroyed || generation !== this.generation || this.attemptId !== attemptId) return;
     if (result.kind === 'pending') { this.update('pending', result.expiresInSeconds); this.schedule(generation); return; }
-    if (result.kind === 'connected') { this.update('connected'); this.schedule(generation); return; }
+    if (result.kind === 'connected') { this.scope = result.scope; this.update('connected'); this.schedule(generation); return; }
     if (result.kind === 'expired' || result.kind === 'denied' || result.kind === 'failed') { this.update(result.kind); return; }
     if (result.kind === 'cancelled' || result.kind === 'disconnected') { this.update('idle'); return; }
     this.update('unavailable');

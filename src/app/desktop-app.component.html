@@ -231,6 +231,31 @@
                 <button type="button" class="small-control" [disabled]="archiveBusy || !groupDrafts[saved.id]?.trim()" (click)="addSavedGroup(saved)">{{t('archive.groups.add')}}</button>
               </div>
             </div>
+            <div *ngIf="(account.status==='connected' && syncedAttempt===account.connectedAttemptId) || (syncOfflineMode && syncedCharts.length)">
+              <h3 class="panel-title">{{t('sync.charts')}} ({{syncedCharts.length}})</h3>
+              <button type="button" class="small-control wide" *ngIf="account.status==='connected'" [disabled]="syncBusy" (click)="syncNow()">{{t('sync.refresh')}}</button>
+              <p class="inspector-hint" *ngIf="syncOfflineMode">{{t('sync.offlineView')}}</p>
+              <p class="inspector-hint" role="status" *ngIf="syncMessage">{{t(syncMessage)}}</p>
+              <div class="archive-entry" *ngFor="let chart of syncedCharts; trackBy:trackSynced">
+                <div class="session-chart">
+                  <button type="button" class="session-open" [disabled]="calcBusy || busy || chart.timeUnknown || !chart.civilTime || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">
+                    <strong>{{chart.name}}</strong>
+                    <span>{{chart.civilDate}} · {{chart.timeUnknown ? t('sync.unknownTime') : chart.civilTime}}</span>
+                    <span>{{chart.placeName}} <ng-container *ngIf="chart.timeZone">· {{chart.timeZone}}</ng-container></span>
+                    <span>{{t(syncedStatusKey(chart))}}</span>
+                  </button>
+                </div>
+                <div class="archive-groups" [attr.aria-label]="t('archive.groups')">
+                  <span>{{t('archive.groups')}}:</span>
+                  <span class="archive-group" *ngFor="let group of chart.groups">{{group}}
+                    <button type="button" [disabled]="syncGroupBusy" [attr.aria-label]="t('archive.groups.remove') + ': ' + group" (click)="removeSyncedGroup(chart,group)">×</button>
+                  </span>
+                  <input type="text" maxlength="160" autocomplete="off" [attr.aria-label]="t('archive.groups.new')"
+                    [value]="syncGroupDrafts[chart.id] || ''" (input)="setSyncedGroupDraft(chart.id,$event)">
+                  <button type="button" class="small-control" [disabled]="syncGroupBusy || !syncGroupDrafts[chart.id]?.trim()" (click)="addSyncedGroup(chart)">{{t('archive.groups.add')}}</button>
+                </div>
+              </div>
+            </div>
             <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.confirm')" *ngIf="pendingDeleteId">
               <p>{{t('archive.confirm')}}</p>
               <button type="button" class="danger-control" [disabled]="archiveBusy" (click)="confirmDeleteSaved()">{{t('archive.confirm.yes')}}</button>

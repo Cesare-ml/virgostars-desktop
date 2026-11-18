@@ -41,8 +41,8 @@ function groups(x: unknown): readonly string[] {
 function conflict(x: unknown): GroupConflict {
   if (!obj(x) || !keys(x,['chartId','chartName','localGroups','serverGroups'])) throw new Error('Invalid conflict');
   const chartId=prop(x,'chartId'), chartName=prop(x,'chartName');
-  if (typeof chartId !== 'string' || !ID.test(chartId) ||
-      !(chartName === '' || text(chartName,80))) throw new Error('Invalid conflict');
+  if (typeof chartId !== 'string' || !ID.test(chartId) || typeof chartName !== 'string' ||
+      [...chartName].length > 255 || UNSAFE.test(chartName)) throw new Error('Invalid conflict');
   return Object.freeze({chartId,chartName,localGroups:groups(prop(x,'localGroups')),serverGroups:groups(prop(x,'serverGroups'))});
 }
 export async function requestConflicts(port: ConflictTransport, operation: ConflictOperation): Promise<ConflictResult> {

@@ -31,9 +31,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 const PROTOCOL_VERSION: u8 = 1;
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 const LEGACY_SCHEMA_VERSION: i64 = 1;
 const GROUPS_SCHEMA_VERSION: i64 = 2;
+const GROUP_LINKS_SCHEMA_VERSION: i64 = 3;
 const LEGACY_FILE_NAME: &str = "charts-v1.sqlite3";
 const SEALED_FILE_NAME: &str = "charts-v2.vsarchive";
 const STAGING_FILE_NAME: &str = "charts-v2.vsarchive.tmp";
@@ -163,6 +164,70 @@ pub(crate) fn valid_groups(groups: &[String]) -> bool {
         !name.is_empty() && valid_text(name, MAX_GROUP_CHARS) && !groups[..index].contains(name))
 }
 
+/// Owner-scoped data already obtained through a verified native session.
+/// It has no UTC instant: civil times are kept unchanged until independently
+/// resolved, and an unknown time is never replaced by midnight.
+pub(crate) struct RemoteCivilChart {
+    pub sync_id: String,
+    pub name: String,
+    pub kind: String,
+    pub civil_date: String,
+    pub civil_time: Option<String>,
+    pub time_unknown: bool,
+    pub time_zone: Option<String>,
+    pub lat_micro: Option<i32>,
+    pub lng_micro: Option<i32>,
+    pub place_name: String,
+    pub place_mode: String,
+    pub city_ref: Option<String>,
+    pub sex: Option<String>,
+    pub is_account_chart: bool,
+    pub revision: i64,
+    pub updated_at: String,
+    pub groups: Vec<String>,
+}
+
+fn safe_remote_text(value: &str, max: usize, nonempty: bool) -> bool {
+    value.chars().count() <= max && (!nonempty || !value.trim().is_empty())
+        && !value.chars().any(|ch| ch.is_control() || matches!(ch, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'))
+}
+
+fn valid_civil_date(value: &str) -> bool {
+    let b=value.as_bytes();
+    if b.len()!=10 || b[4]!=b'-' || b[7]!=b'-'
+        || !b.iter().enumerate().all(|(i,c)| i==4 || i==7 || c.is_ascii_digit()) { return false; }
+    let number = |indices: &[usize]| -> u32 { indices.iter().fold(0,|n,&i|n*10+u32::from(b[i]-b'0')) };
+    let year=number(&[0,1,2,3]); let month=number(&[5,6]); let day=number(&[8,9]);
+    if year==0 || !(1..=12).contains(&month) || day==0 { return false; }
+    let leap=year%4==0 && (year%100!=0 || year%400==0);
+    let days=[31,if leap {29} else {28},31,30,31,30,31,31,30,31,30,31];
+    day<=days[(month-1) as usize]
+}
+
+fn valid_civil_clock(value: &str) -> bool {
+    let b=value.as_bytes();
+    if b.len()!=8 || b[2]!=b':' || b[5]!=b':'
+        || !b.iter().enumerate().all(|(i,c)| i==2 || i==5 || c.is_ascii_digit()) { return false; }
+    let pair=|i:usize| (b[i]-b'0')*10+(b[i+1]-b'0');
+    pair(0)<=23 && pair(3)<=59 && pair(6)<=59
+}
+
+pub(crate) fn valid_remote_chart(chart: &RemoteCivilChart) -> bool {
+    valid_id(&chart.sync_id) && safe_remote_text(&chart.name,255,true)
+        && matches!(chart.kind.as_str(),"unclassified" | "self" | "person" | "event" | "public_subject")
+        && valid_civil_date(&chart.civil_date)
+        && if chart.time_unknown { chart.civil_time.is_none() }
+           else { chart.civil_time.as_deref().is_some_and(valid_civil_clock) }
+        && chart.time_zone.as_deref().is_none_or(valid_zone)
+        && matches!((chart.lat_micro,chart.lng_micro), (None,None) | (Some(-90_000_000..=90_000_000),Some(-180_000_000..=180_000_000)))
+        && safe_remote_text(&chart.place_name,160,false)
+        && matches!(chart.place_mode.as_str(),"city" | "manual" | "unknown")
+        && chart.city_ref.as_deref().is_none_or(|s|safe_remote_text(s,80,true))
+        && chart.sex.as_deref().is_none_or(|s|safe_remote_text(s,80,false))
+        && chart.revision > 0 && safe_remote_text(&chart.updated_at,64,true)
+        && valid_groups(&chart.groups)
+}
+
 fn classify(error: &rusqlite::Error) -> Failure {
     match error.sqlite_error_code() {
         Some(ErrorCode::NotADatabase | ErrorCode::DatabaseCorrupt) => "archive_corrupt",
@@ -173,13 +238,22 @@ fn classify(error: &rusqlite::Error) -> Failure {
 const SCHEMA: &str = "CREATE TABLE saved_charts (
        id TEXT PRIMARY KEY NOT NULL CHECK (length(id) = 36),
        name TEXT NOT NULL,
-       utc_iso TEXT NOT NULL,
-       time_zone TEXT NOT NULL,
-       lat_micro INTEGER NOT NULL CHECK (lat_micro BETWEEN -90000000 AND 90000000),
-       lng_micro INTEGER NOT NULL CHECK (lng_micro BETWEEN -180000000 AND 180000000),
+       utc_iso TEXT,
+       time_zone TEXT,
+       lat_micro INTEGER CHECK (lat_micro BETWEEN -90000000 AND 90000000),
+       lng_micro INTEGER CHECK (lng_micro BETWEEN -180000000 AND 180000000),
        place_name TEXT NOT NULL,
        created_at_ms INTEGER NOT NULL,
-       updated_at_ms INTEGER NOT NULL
+       updated_at_ms INTEGER NOT NULL,
+       civil_date TEXT,
+       civil_time TEXT,
+       time_unknown INTEGER NOT NULL DEFAULT 0 CHECK (time_unknown IN (0,1)),
+       source_kind TEXT, source_sex TEXT, source_account INTEGER CHECK (source_account IN (0,1)),
+       source_place_mode TEXT, source_city_ref TEXT, source_revision INTEGER, source_updated_at TEXT,
+       CHECK ((lat_micro IS NULL) = (lng_micro IS NULL)),
+       CHECK ((civil_date IS NULL AND civil_time IS NULL AND time_unknown=0 AND utc_iso IS NOT NULL)
+         OR (civil_date IS NOT NULL AND ((time_unknown=1 AND civil_time IS NULL AND utc_iso IS NULL)
+           OR (time_unknown=0 AND civil_time IS NOT NULL))))
      ) STRICT;
      CREATE TABLE saved_chart_groups (
        chart_id TEXT NOT NULL REFERENCES saved_charts(id) ON DELETE CASCADE,
@@ -195,9 +269,13 @@ const SCHEMA: &str = "CREATE TABLE saved_charts (
        base_groups_json TEXT NOT NULL,
        conflict_groups_json TEXT,
        pending INTEGER NOT NULL CHECK (pending IN (0, 1, 2)),
+       remote_missing INTEGER NOT NULL DEFAULT 0 CHECK (remote_missing IN (0,1)),
        UNIQUE (profile_ref, remote_sync_id)
      ) STRICT;
-     PRAGMA user_version = 3;";
+     CREATE TABLE chart_sync_offline_profile (
+       singleton INTEGER PRIMARY KEY CHECK (singleton=1), profile_ref TEXT NOT NULL
+     ) STRICT;
+     PRAGMA user_version = 4;";
 
 const MIGRATE_GROUPS: &str = "BEGIN IMMEDIATE;
     CREATE TABLE saved_chart_groups (
@@ -223,6 +301,34 @@ const MIGRATE_GROUP_LINKS: &str = "BEGIN IMMEDIATE;
     PRAGMA user_version = 3;
     COMMIT;";
 
+// Rebuild only in memory. Disabling foreign-key enforcement is necessary
+// while replacing the parent table; verify every reference before commit.
+const MIGRATE_CIVIL_CHARTS: &str = "BEGIN IMMEDIATE;
+    CREATE TABLE saved_charts_v4 (
+      id TEXT PRIMARY KEY NOT NULL CHECK (length(id)=36), name TEXT NOT NULL,
+      utc_iso TEXT, time_zone TEXT,
+      lat_micro INTEGER CHECK (lat_micro BETWEEN -90000000 AND 90000000),
+      lng_micro INTEGER CHECK (lng_micro BETWEEN -180000000 AND 180000000),
+      place_name TEXT NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL,
+      civil_date TEXT, civil_time TEXT,
+      time_unknown INTEGER NOT NULL DEFAULT 0 CHECK (time_unknown IN (0,1)),
+      source_kind TEXT, source_sex TEXT, source_account INTEGER CHECK (source_account IN (0,1)),
+      source_place_mode TEXT, source_city_ref TEXT, source_revision INTEGER, source_updated_at TEXT,
+      CHECK ((lat_micro IS NULL) = (lng_micro IS NULL)),
+      CHECK ((civil_date IS NULL AND civil_time IS NULL AND time_unknown=0 AND utc_iso IS NOT NULL)
+        OR (civil_date IS NOT NULL AND ((time_unknown=1 AND civil_time IS NULL AND utc_iso IS NULL)
+          OR (time_unknown=0 AND civil_time IS NOT NULL))))
+    ) STRICT;
+    INSERT INTO saved_charts_v4 (id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms)
+      SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms FROM saved_charts;
+    DROP TABLE saved_charts;
+    ALTER TABLE saved_charts_v4 RENAME TO saved_charts;
+    ALTER TABLE chart_group_sync_links ADD COLUMN remote_missing INTEGER NOT NULL DEFAULT 0 CHECK (remote_missing IN (0,1));
+    CREATE TABLE chart_sync_offline_profile (
+      singleton INTEGER PRIMARY KEY CHECK (singleton=1), profile_ref TEXT NOT NULL
+    ) STRICT;
+    PRAGMA user_version=4;";
+
 /// An empty database at the current schema, in memory only.
 fn fresh_connection() -> Result<Connection, Failure> {
     let connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
@@ -241,7 +347,7 @@ fn check_connection(connection: &Connection) -> Result<(), Failure> {
     let version: i64 =
         connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     match version {
-        SCHEMA_VERSION | GROUPS_SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
+        SCHEMA_VERSION | GROUP_LINKS_SCHEMA_VERSION | GROUPS_SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
         // Written by a newer application: reading it with old rules could lose data.
         newer if newer > SCHEMA_VERSION => Err("archive_newer"),
         _ => Err("archive_corrupt"),
@@ -274,6 +380,19 @@ fn connection_from_bytes(bytes: &[u8]) -> Result<Connection, Failure> {
     if version == LEGACY_SCHEMA_VERSION || version == GROUPS_SCHEMA_VERSION {
         connection.execute_batch(MIGRATE_GROUP_LINKS).map_err(|error| classify(&error))?;
     }
+    if version < SCHEMA_VERSION {
+        connection.execute_batch("PRAGMA foreign_keys=OFF;").map_err(|error| classify(&error))?;
+        let migrated = (|| -> Result<(),Failure> {
+            connection.execute_batch(MIGRATE_CIVIL_CHARTS).map_err(|error| classify(&error))?;
+            let violations: i64 = connection.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
+                .map_err(|error| classify(&error))?;
+            if violations != 0 { return Err("archive_corrupt"); }
+            connection.execute_batch("COMMIT;").map_err(|error| classify(&error))
+        })();
+        if migrated.is_err() { let _ = connection.execute_batch("ROLLBACK;"); }
+        connection.execute_batch("PRAGMA foreign_keys=ON;").map_err(|error| classify(&error))?;
+        migrated?;
+    }
     Ok(connection)
 }
 
@@ -283,11 +402,17 @@ fn bytes_from_connection(connection: &Connection) -> Result<zeroize::Zeroizing<V
 }
 
 fn list(connection: &Connection, groups_supported: bool) -> Result<Vec<SavedChartV1>, Failure> {
+    // The old IPC contract cannot represent civil-only imported records.
+    // Legacy plaintext v1 databases do not contain the civil_date column.
+    let sql = if groups_supported {
+        "SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms
+         FROM saved_charts WHERE civil_date IS NULL ORDER BY name COLLATE NOCASE, created_at_ms, id LIMIT ?1"
+    } else {
+        "SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms
+         FROM saved_charts ORDER BY name COLLATE NOCASE, created_at_ms, id LIMIT ?1"
+    };
     let mut statement = connection
-        .prepare(
-            "SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms
-             FROM saved_charts ORDER BY name COLLATE NOCASE, created_at_ms, id LIMIT ?1",
-        )
+        .prepare(sql)
         .map_err(|error| classify(&error))?;
     let rows = statement
         .query_map([MAX_CHARTS], |row| {
@@ -527,6 +652,216 @@ pub(crate) struct LinkedGroupBaseline {
     pub base_groups: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CivilImportSummary { pub inserted: usize, pub updated: usize, pub already_linked: usize }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CivilChartView {
+    pub id: String,
+    pub name: String,
+    pub civil_date: String,
+    pub civil_time: Option<String>,
+    pub time_unknown: bool,
+    pub time_zone: Option<String>,
+    pub lat_micro: Option<i32>,
+    pub lng_micro: Option<i32>,
+    pub place_name: String,
+    pub groups: Vec<String>,
+    pub sync_status: &'static str,
+}
+
+#[allow(dead_code)]
+pub(crate) fn list_civil_charts_for_profile(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str) -> Result<Vec<CivilChartView>, Failure> {
+    if !valid_id(profile_ref) { return Err("invalid_request"); }
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let session = open_session(paths,keys)?;
+    list_civil_charts(&session.connection,profile_ref)
+}
+
+fn list_civil_charts(connection: &Connection, profile_ref: &str) -> Result<Vec<CivilChartView>, Failure> {
+    let mut query = connection.prepare(
+        "SELECT c.id,c.name,c.civil_date,c.civil_time,c.time_unknown,c.time_zone,c.lat_micro,c.lng_micro,c.place_name,l.pending,l.remote_missing
+         FROM saved_charts c JOIN chart_group_sync_links l ON l.chart_id=c.id
+         WHERE l.profile_ref=?1 AND c.civil_date IS NOT NULL ORDER BY c.name COLLATE NOCASE,c.id LIMIT ?2"
+    ).map_err(|error| classify(&error))?;
+    let rows = query.query_map(params![profile_ref,MAX_CHARTS], |r| Ok((
+        r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,Option<String>>(3)?,
+        r.get::<_,i64>(4)?,r.get::<_,Option<String>>(5)?,r.get::<_,Option<i32>>(6)?,r.get::<_,Option<i32>>(7)?,
+        r.get::<_,String>(8)?,r.get::<_,i64>(9)?,r.get::<_,i64>(10)?,
+    ))).map_err(|error| classify(&error))?.collect::<Result<Vec<_>,_>>().map_err(|error| classify(&error))?;
+    let mut result = Vec::with_capacity(rows.len());
+    for (id,name,date,time,unknown,zone,lat,lng,place,pending,missing) in rows {
+        let status = match (pending,missing) {(0..=2,1)=>"missing",(0,0)=>"clean",(1,0)=>"pending",(2,0)=>"conflict",_=>return Err("archive_corrupt")};
+        if !valid_id(&id) || !safe_remote_text(&name,255,true) || !valid_civil_date(&date)
+            || !matches!(unknown,0 | 1) || (unknown==1 && time.is_some())
+            || (unknown==0 && !time.as_deref().is_some_and(valid_civil_clock))
+            || !zone.as_deref().is_none_or(valid_zone)
+            || !matches!((lat,lng),(None,None) | (Some(-90_000_000..=90_000_000),Some(-180_000_000..=180_000_000)))
+            || !safe_remote_text(&place,160,false) { return Err("archive_corrupt"); }
+        let groups = chart_groups(connection,&id)?;
+        result.push(CivilChartView {id,name,civil_date:date,civil_time:time,time_unknown:unknown==1,
+            time_zone:zone,lat_micro:lat,lng_micro:lng,place_name:place,groups,sync_status:status});
+    }
+    Ok(result)
+}
+
+#[allow(dead_code)]
+pub(crate) fn set_civil_groups_for_profile(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str, chart_id: &str, expected: &[String], groups: &[String]) -> Result<(), Failure> {
+    if !valid_id(profile_ref) || !valid_id(chart_id) || !valid_groups(expected) || !valid_groups(groups) { return Err("invalid_request"); }
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut session = open_session(paths,keys)?;
+    set_scoped_civil_groups(&mut session.connection,profile_ref,chart_id,expected,groups)?;
+    persist(paths,keys,&session.connection)
+}
+
+fn set_scoped_civil_groups(connection: &mut Connection, profile_ref: &str,
+    chart_id: &str, expected: &[String], groups: &[String]) -> Result<(), Failure> {
+    let exists: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM saved_charts c JOIN chart_group_sync_links l ON l.chart_id=c.id WHERE c.id=?1 AND l.profile_ref=?2 AND c.civil_date IS NOT NULL)",
+        params![chart_id,profile_ref],|r|r.get(0),
+    ).map_err(|error| classify(&error))?;
+    if !exists { return Err("profile_conflict"); }
+    if chart_groups(connection,chart_id)? != expected { return Err("stale_sync"); }
+    set_groups(connection,chart_id,groups)
+}
+
+fn last_offline_profile(connection: &Connection) -> Result<Option<String>, Failure> {
+    let profile: Option<String> = connection.query_row(
+        "SELECT profile_ref FROM chart_sync_offline_profile WHERE singleton=1",[],|r|r.get(0),
+    ).optional().map_err(|error| classify(&error))?;
+    if profile.as_deref().is_some_and(|p|!valid_id(p)) { return Err("archive_corrupt"); }
+    Ok(profile)
+}
+
+pub(crate) fn list_offline_civil_charts(paths: &ArchivePaths, keys: &dyn KeyStore) -> Result<Vec<CivilChartView>, Failure> {
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let session = open_session(paths,keys)?;
+    match last_offline_profile(&session.connection)? {
+        Some(profile) => list_civil_charts(&session.connection,&profile),
+        None => Ok(Vec::new()),
+    }
+}
+
+pub(crate) fn set_offline_civil_groups(paths: &ArchivePaths, keys: &dyn KeyStore,
+    chart_id: &str, expected: &[String], groups: &[String]) -> Result<(), Failure> {
+    if !valid_id(chart_id) || !valid_groups(expected) || !valid_groups(groups) { return Err("invalid_request"); }
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut session = open_session(paths,keys)?;
+    let profile=last_offline_profile(&session.connection)?.ok_or("profile_conflict")?;
+    set_scoped_civil_groups(&mut session.connection,&profile,chart_id,expected,groups)?;
+    persist(paths,keys,&session.connection)
+}
+
+/// Import a verified owner's bounded snapshot in one encrypted archive write.
+/// Existing links are never overwritten or inferred from names or birth data.
+#[allow(dead_code)]
+pub(crate) fn import_remote_civil_charts(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str, charts: &[RemoteCivilChart], now_ms: i64) -> Result<CivilImportSummary, Failure> {
+    if !valid_id(profile_ref) || now_ms < 0 || charts.len() > 500
+        || charts.iter().any(|chart| !valid_remote_chart(chart)) { return Err("invalid_request"); }
+    let mut ids = std::collections::HashSet::new();
+    if charts.iter().any(|chart| !ids.insert(chart.sync_id.as_str())) { return Err("invalid_request"); }
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut session = open_session(paths,keys)?;
+    let tx = session.connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| classify(&error))?;
+    let mut total: i64 = tx.query_row("SELECT count(*) FROM saved_charts",[],|r|r.get(0))
+        .map_err(|error| classify(&error))?;
+    if total > MAX_CHARTS { return Err("archive_corrupt"); }
+    let previous_profile: Option<String> = tx.query_row(
+        "SELECT profile_ref FROM chart_sync_offline_profile WHERE singleton=1",[],|r|r.get(0),
+    ).optional().map_err(|error| classify(&error))?;
+    let profile_changed = previous_profile.as_deref() != Some(profile_ref);
+    if profile_changed {
+        tx.execute("INSERT INTO chart_sync_offline_profile(singleton,profile_ref) VALUES (1,?1)
+          ON CONFLICT(singleton) DO UPDATE SET profile_ref=excluded.profile_ref",[profile_ref])
+            .map_err(|error| classify(&error))?;
+    }
+    let mut summary = CivilImportSummary {inserted:0,updated:0,already_linked:0};
+    for chart in charts {
+        let existing: Option<(String,Option<String>)> = tx.query_row(
+            "SELECT c.id,c.civil_date FROM chart_group_sync_links l JOIN saved_charts c ON c.id=l.chart_id
+             WHERE l.profile_ref=?1 AND l.remote_sync_id=?2",
+            params![profile_ref,chart.sync_id], |r|Ok((r.get(0)?,r.get(1)?)),
+        ).optional().map_err(|error| classify(&error))?;
+        if let Some((id,civil_date))=existing {
+            summary.already_linked += 1;
+            // Locally-created linked charts are never rewritten from a remote
+            // record. Imported civil charts have no local birth-data editor;
+            // refresh their source fields without touching local group edits.
+            if civil_date.is_some() {
+                let changed=tx.execute("UPDATE saved_charts SET
+                    name=?2,time_zone=?3,lat_micro=?4,lng_micro=?5,place_name=?6,updated_at_ms=?7,
+                    civil_date=?8,civil_time=?9,time_unknown=?10,source_kind=?11,source_sex=?12,
+                    source_account=?13,source_place_mode=?14,source_city_ref=?15,source_revision=?16,source_updated_at=?17
+                  WHERE id=?1 AND (name IS NOT ?2 OR time_zone IS NOT ?3 OR lat_micro IS NOT ?4 OR lng_micro IS NOT ?5
+                    OR place_name IS NOT ?6 OR civil_date IS NOT ?8 OR civil_time IS NOT ?9 OR time_unknown IS NOT ?10
+                    OR source_kind IS NOT ?11 OR source_sex IS NOT ?12 OR source_account IS NOT ?13
+                    OR source_place_mode IS NOT ?14 OR source_city_ref IS NOT ?15 OR source_revision IS NOT ?16 OR source_updated_at IS NOT ?17)",
+                  params![id,chart.name,chart.time_zone,chart.lat_micro,chart.lng_micro,chart.place_name,now_ms,
+                    chart.civil_date,chart.civil_time,i64::from(chart.time_unknown),chart.kind,chart.sex,
+                    i64::from(chart.is_account_chart),chart.place_mode,chart.city_ref,chart.revision,chart.updated_at])
+                    .map_err(|error| classify(&error))?;
+                summary.updated+=changed;
+            }
+            continue;
+        }
+        if total >= MAX_CHARTS { return Err("archive_full"); }
+        // A new local ID is never derived from a site ID or matched by name.
+        let mut local_id = None;
+        for _ in 0..4 {
+            let candidate = crate::pkce_login::random_uuid_v4().map_err(|_| "archive_unavailable")?;
+            let used: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts WHERE id=?1)",[&candidate],|r|r.get(0))
+                .map_err(|error| classify(&error))?;
+            if !used { local_id=Some(candidate); break; }
+        }
+        let local_id = local_id.ok_or("archive_unavailable")?;
+        tx.execute("INSERT INTO saved_charts
+          (id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms,civil_date,civil_time,time_unknown,
+           source_kind,source_sex,source_account,source_place_mode,source_city_ref,source_revision,source_updated_at)
+          VALUES (?1,?2,NULL,?3,?4,?5,?6,?7,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+          params![local_id,chart.name,chart.time_zone,chart.lat_micro,chart.lng_micro,chart.place_name,now_ms,
+            chart.civil_date,chart.civil_time,i64::from(chart.time_unknown),chart.kind,chart.sex,
+            i64::from(chart.is_account_chart),chart.place_mode,chart.city_ref,chart.revision,chart.updated_at])
+            .map_err(|error| classify(&error))?;
+        for (position,name) in chart.groups.iter().enumerate() {
+            tx.execute("INSERT INTO saved_chart_groups (chart_id,position,name) VALUES (?1,?2,?3)",
+                params![local_id,position as i64,name]).map_err(|error| classify(&error))?;
+        }
+        let base = serde_json::to_string(&chart.groups).map_err(|_| "archive_unavailable")?;
+        tx.execute("INSERT INTO chart_group_sync_links (chart_id,profile_ref,remote_sync_id,base_groups_json,conflict_groups_json,pending)
+          VALUES (?1,?2,?3,?4,NULL,0)",params![local_id,profile_ref,chart.sync_id,base])
+            .map_err(|error| classify(&error))?;
+        total += 1;
+        summary.inserted += 1;
+    }
+    // A complete, verified snapshot can mark an absent linked object without
+    // deleting its local data or queued edits. Failed, malformed or partial
+    // HTTP responses never reach here as a valid snapshot.
+    let links: Vec<(String,String,i64)> = {
+        let mut query=tx.prepare("SELECT chart_id,remote_sync_id,remote_missing FROM chart_group_sync_links WHERE profile_ref=?1")
+            .map_err(|error| classify(&error))?;
+        let values=query.query_map([profile_ref],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))
+            .map_err(|error| classify(&error))?.collect::<Result<Vec<_>,_>>().map_err(|error| classify(&error))?;
+        values
+    };
+    for (id,remote,old_missing) in links {
+        if !valid_id(&id) || !valid_id(&remote) || !matches!(old_missing,0 | 1) { return Err("archive_corrupt"); }
+        let missing=i64::from(!ids.contains(remote.as_str()));
+        if missing!=old_missing {
+            tx.execute("UPDATE chart_group_sync_links SET remote_missing=?2 WHERE chart_id=?1",params![id,missing])
+                .map_err(|error| classify(&error))?;
+            summary.updated+=1;
+        }
+    }
+    tx.commit().map_err(|error| classify(&error))?;
+    if summary.inserted > 0 || summary.updated > 0 || profile_changed { persist(paths,keys,&session.connection)?; }
+    Ok(summary)
+}
+
 /// The browser can display only chart labels and the two versions of the
 /// groups; account references and remote identifiers remain native-only.
 #[derive(serde::Serialize)]
@@ -553,7 +888,7 @@ pub(crate) fn group_conflicts_for_profile(paths: &ArchivePaths, keys: &dyn KeySt
     let mut result = Vec::with_capacity(rows.len());
     for (chart_id,chart_name,json) in rows {
         let server_groups: Vec<String> = serde_json::from_str(&json).map_err(|_| "archive_corrupt")?;
-        if !valid_id(&chart_id) || !valid_text(&chart_name,MAX_NAME_CHARS)
+        if !valid_id(&chart_id) || !safe_remote_text(&chart_name,255,false)
             || !valid_groups(&server_groups) { return Err("archive_corrupt"); }
         let local_groups = chart_groups(&session.connection,&chart_id)?;
         result.push(GroupConflictView {chart_id,chart_name,local_groups,server_groups});
@@ -616,7 +951,7 @@ pub(crate) fn apply_remote_group_snapshot(paths: &ArchivePaths, keys: &dyn KeySt
 fn pending_group_updates(connection: &Connection, profile_ref: &str) -> Result<Vec<PendingGroupUpdate>, Failure> {
     if !valid_id(profile_ref) { return Err("invalid_request"); }
     let mut query = connection.prepare(
-        "SELECT chart_id,remote_sync_id,base_groups_json FROM chart_group_sync_links WHERE profile_ref=?1 AND pending=1 ORDER BY chart_id LIMIT ?2"
+        "SELECT chart_id,remote_sync_id,base_groups_json FROM chart_group_sync_links WHERE profile_ref=?1 AND pending=1 AND remote_missing=0 ORDER BY chart_id LIMIT ?2"
     ).map_err(|error| classify(&error))?;
     let rows = query.query_map(params![profile_ref,MAX_CHARTS], |r|
         Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))
@@ -676,6 +1011,12 @@ fn save(connection: &mut Connection, chart: &ChartRecordV1, now_ms: i64, limit: 
     let exists: bool = transaction
         .query_row("SELECT EXISTS(SELECT 1 FROM saved_charts WHERE id=?1)", [&chart.id], |row| row.get(0))
         .map_err(|error| classify(&error))?;
+    if exists {
+        let civil_record: bool = transaction.query_row(
+            "SELECT civil_date IS NOT NULL FROM saved_charts WHERE id=?1", [&chart.id], |row| row.get(0),
+        ).map_err(|error| classify(&error))?;
+        if civil_record { return Err("invalid_request"); }
+    }
     if !exists {
         let count: i64 = transaction
             .query_row("SELECT COUNT(*) FROM saved_charts", [], |row| row.get(0))
@@ -912,6 +1253,15 @@ fn outcome(paths: &ArchivePaths, connection: &Connection) -> Result<Outcome, Fai
     Ok(Outcome { charts: list(connection, true)?, legacy_present: paths.legacy.exists() })
 }
 
+/// The legacy unscoped IPC cannot modify account-bound imported charts.
+fn require_legacy_chart(connection: &Connection, id: &str) -> Result<(), Failure> {
+    let civil_date: Option<Option<String>> = connection.query_row(
+        "SELECT civil_date FROM saved_charts WHERE id=?1",[id],|r|r.get(0),
+    ).optional().map_err(|error| classify(&error))?;
+    if matches!(civil_date,Some(Some(_))) { return Err("not_found"); }
+    Ok(())
+}
+
 fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, now_ms: i64, limit: i64) -> Result<Outcome, Failure> {
     if request.protocol_version != PROTOCOL_VERSION {
         return Err("invalid_request");
@@ -931,12 +1281,14 @@ fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, no
         }
         ("delete", None, Some(id), None) if valid_id(id) => {
             let session = open_session(paths, keys)?;
+            require_legacy_chart(&session.connection,id)?;
             delete(&session.connection, id)?;
             persist(paths, keys, &session.connection)?;
             outcome(paths, &session.connection)
         }
         ("set_groups", None, Some(id), Some(groups)) if valid_id(id) && valid_groups(groups) => {
             let mut session = open_session(paths, keys)?;
+            require_legacy_chart(&session.connection,id)?;
             set_groups(&mut session.connection, id, groups)?;
             persist(paths, keys, &session.connection)?;
             outcome(paths, &session.connection)
@@ -1024,6 +1376,14 @@ mod tests {
             place_name: "Luogo di prova".to_string(),
         }
     }
+    fn remote_chart(id: &str, unknown: bool) -> RemoteCivilChart {
+        RemoteCivilChart {sync_id:id.into(),name:"Persona fittizia".into(),kind:"person".into(),
+            civil_date:"1984-03-25".into(),civil_time:if unknown {None} else {Some("12:30:00".into())},
+            time_unknown:unknown,time_zone:Some("Europe/Rome".into()),lat_micro:Some(44_000_000),
+            lng_micro:Some(11_000_000),place_name:"Luogo fittizio".into(),place_mode:"manual".into(),
+            city_ref:None,sex:None,is_account_chart:false,revision:1,updated_at:"2026-11-18T10:00:00Z".into(),
+            groups:vec!["Gruppo fittizio".into()]}
+    }
     fn request(operation: &str) -> ArchiveRequestV1 {
         ArchiveRequestV1 { protocol_version: 1, operation: operation.into(), chart: None, id: None, groups: None }
     }
@@ -1038,11 +1398,30 @@ mod tests {
         handle(&archive.paths, keys, request, now_ms)
     }
 
+    const TEST_OLD_SCHEMA: &str = "CREATE TABLE saved_charts (
+      id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, utc_iso TEXT NOT NULL,
+      time_zone TEXT NOT NULL, lat_micro INTEGER NOT NULL, lng_micro INTEGER NOT NULL,
+      place_name TEXT NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE saved_chart_groups (chart_id TEXT NOT NULL REFERENCES saved_charts(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(chart_id,position), UNIQUE(chart_id,name)) STRICT;
+    CREATE TABLE chart_group_sync_links (chart_id TEXT PRIMARY KEY NOT NULL REFERENCES saved_charts(id) ON DELETE CASCADE,
+      profile_ref TEXT NOT NULL, remote_sync_id TEXT NOT NULL, base_groups_json TEXT NOT NULL,
+      conflict_groups_json TEXT, pending INTEGER NOT NULL, UNIQUE(profile_ref,remote_sync_id)) STRICT;
+    PRAGMA user_version=3;";
+
+    fn old_connection() -> Connection {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(TEST_OLD_SCHEMA).unwrap();
+        connection.execute("INSERT INTO saved_charts VALUES (?1,'Fittizio','2001-02-03T04:05:06.000Z','Europe/Rome',44697805,11805778,'Luogo di prova',1000,1000)",[ID_A]).unwrap();
+        connection
+    }
+
     /// A plain SQLite archive of the first prototype, as it was written then.
     fn write_legacy(archive: &TempArchive, rows: &[(&str, &str, i64, i64)], extra: &str) {
         fs::create_dir_all(&archive.folder).unwrap();
         let connection = Connection::open(&archive.paths.legacy).unwrap();
-        connection.execute_batch(SCHEMA).unwrap();
+        connection.execute_batch(TEST_OLD_SCHEMA).unwrap();
         connection.execute_batch("DROP TABLE chart_group_sync_links; DROP TABLE saved_chart_groups; PRAGMA user_version = 1;").unwrap();
         for (id, name, created, updated) in rows {
             connection
@@ -1094,8 +1473,7 @@ mod tests {
         let archive = TempArchive::new("groups-upgrade");
         let keys = FakeKeyStore::empty();
         fs::create_dir_all(&archive.folder).unwrap();
-        let mut connection = fresh_connection().unwrap();
-        save(&mut connection, &record(ID_A, "Preesistente"), 1000, MAX_CHARTS).unwrap();
+        let connection = old_connection();
         connection.execute_batch("DROP TABLE chart_group_sync_links; DROP TABLE saved_chart_groups; PRAGMA user_version=1;").unwrap();
         persist(&archive.paths, &keys, &connection).unwrap();
         let original = fs::read(&archive.paths.sealed).unwrap();
@@ -1107,7 +1485,7 @@ mod tests {
         assert_eq!(go(&archive, &keys, &list_request(), 4000).charts.unwrap()[0].groups, ["Famiglia fittizia"]);
         let upgraded = load_sealed(&archive.paths, &keys).unwrap();
         let version: i64 = upgraded.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[test]
@@ -1115,14 +1493,147 @@ mod tests {
         let archive = TempArchive::new("group-v2-upgrade");
         let keys = FakeKeyStore::empty();
         fs::create_dir_all(&archive.folder).unwrap();
-        let mut connection = fresh_connection().unwrap();
-        save(&mut connection, &record(ID_A,"Fittizio"),1000,MAX_CHARTS).unwrap();
-        set_groups(&mut connection, ID_A, &["Gruppo fittizio".into()]).unwrap();
+        let connection = old_connection();
+        connection.execute("INSERT INTO saved_chart_groups VALUES (?1,0,'Gruppo fittizio')",[ID_A]).unwrap();
         connection.execute_batch("DROP TABLE chart_group_sync_links; PRAGMA user_version=2;").unwrap();
         persist(&archive.paths,&keys,&connection).unwrap();
         let original = fs::read(&archive.paths.sealed).unwrap();
         assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].groups,["Gruppo fittizio"]);
         assert_eq!(fs::read(&archive.paths.sealed).unwrap(),original);
+    }
+
+    #[test]
+    fn version_three_preserves_groups_links_and_ciphertext_until_successful_write() {
+        let archive = TempArchive::new("civil-v4-upgrade");
+        let keys = FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        let connection = old_connection();
+        connection.execute("INSERT INTO saved_chart_groups VALUES (?1,0,'Locale')",[ID_A]).unwrap();
+        connection.execute("INSERT INTO chart_group_sync_links VALUES (?1,?2,?1,'[]',NULL,1)",params![ID_A,ID_B]).unwrap();
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let original = fs::read(&archive.paths.sealed).unwrap();
+        assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].groups,["Locale"]);
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(),original);
+        let pending = pending_groups_for_profile(&archive.paths,&keys,ID_B).unwrap();
+        assert_eq!(pending.len(),1);
+        assert_eq!(pending[0].groups,["Locale"]);
+        assert_eq!(go(&archive,&keys,&save_request(record(ID_A,"Aggiornato")),3000).status,"ok");
+        let reopened = load_sealed(&archive.paths,&keys).unwrap();
+        let version: i64 = reopened.query_row("PRAGMA user_version",[],|r|r.get(0)).unwrap();
+        assert_eq!(version,4);
+        assert_eq!(pending_groups_for_profile(&archive.paths,&keys,ID_B).unwrap().len(),1);
+    }
+
+    #[test]
+    fn imports_unknown_and_known_civil_times_without_fabricating_utc_or_matching_other_profiles() {
+        let archive = TempArchive::new("civil-import");
+        let keys = FakeKeyStore::empty();
+        let charts = [remote_chart(ID_A,true),remote_chart(ID_B,false)];
+        let profile = "44444444-4444-4444-8444-444444444444";
+        let other = "55555555-5555-4555-8555-555555555555";
+        assert_eq!(import_remote_civil_charts(&archive.paths,&keys,profile,&charts,1000),
+            Ok(CivilImportSummary {inserted:2,updated:0,already_linked:0}));
+        let ciphertext = fs::read(&archive.paths.sealed).unwrap();
+        assert!(!ciphertext.windows("Persona fittizia".len()).any(|w|w==b"Persona fittizia"));
+        assert!(go(&archive,&keys,&list_request(),2000).charts.unwrap().is_empty());
+        let connection=load_sealed(&archive.paths,&keys).unwrap();
+        let rows: Vec<(Option<String>,String,Option<String>,i64)> = {
+            let mut query=connection.prepare("SELECT utc_iso,civil_date,civil_time,time_unknown FROM saved_charts ORDER BY time_unknown DESC").unwrap();
+            query.query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap().map(Result::unwrap).collect()
+        };
+        assert_eq!(rows[0],(None,"1984-03-25".into(),None,1));
+        assert_eq!(rows[1],(None,"1984-03-25".into(),Some("12:30:00".into()),0));
+        let links=group_baselines_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(links.len(),2);
+        assert!(links.iter().all(|link|link.chart_id!=link.remote_sync_id));
+        let visible=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(visible.len(),2);
+        assert!(visible.iter().any(|chart|chart.time_unknown && chart.civil_time.is_none()));
+        assert!(list_civil_charts_for_profile(&archive.paths,&keys,other).unwrap().is_empty());
+        let target=&visible[0].id;
+        let new_groups=vec!["Altro gruppo".to_string()];
+        assert_eq!(set_civil_groups_for_profile(&archive.paths,&keys,other,target,&visible[0].groups,&new_groups),Err("profile_conflict"));
+        let unscoped = ArchiveRequestV1 {id:Some(target.clone()),groups:Some(new_groups.clone()),..request("set_groups")};
+        assert_eq!(go(&archive,&keys,&unscoped,2200).status,"not_found");
+        assert_eq!(go(&archive,&keys,&delete_request(target),2300).status,"not_found");
+        set_civil_groups_for_profile(&archive.paths,&keys,profile,target,&visible[0].groups,&new_groups).unwrap();
+        assert_eq!(set_civil_groups_for_profile(&archive.paths,&keys,profile,target,&visible[0].groups,&[]),Err("stale_sync"));
+        assert_eq!(pending_groups_for_profile(&archive.paths,&keys,profile).unwrap().len(),1);
+        let after_edit=fs::read(&archive.paths.sealed).unwrap();
+        assert_eq!(import_remote_civil_charts(&archive.paths,&keys,profile,&charts,3000),
+            Ok(CivilImportSummary {inserted:0,updated:0,already_linked:2}));
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(),after_edit);
+        assert_eq!(import_remote_civil_charts(&archive.paths,&keys,other,&charts[..1],4000),
+            Ok(CivilImportSummary {inserted:1,updated:0,already_linked:0}));
+        assert_eq!(group_baselines_for_profile(&archive.paths,&keys,profile).unwrap().len(),2);
+        assert_eq!(group_baselines_for_profile(&archive.paths,&keys,other).unwrap().len(),1);
+        let offline=list_offline_civil_charts(&archive.paths,&keys).unwrap();
+        assert_eq!(offline.len(),1);
+        assert_eq!(set_offline_civil_groups(&archive.paths,&keys,target,&new_groups,&[]),Err("profile_conflict"));
+        set_offline_civil_groups(&archive.paths,&keys,&offline[0].id,&offline[0].groups,&["Offline".into()]).unwrap();
+        assert_eq!(pending_groups_for_profile(&archive.paths,&keys,other).unwrap().len(),1);
+        assert_eq!(pending_groups_for_profile(&archive.paths,&keys,profile).unwrap().len(),1);
+    }
+
+    #[test]
+    fn rejects_invalid_or_duplicate_civil_snapshot_before_creating_archive() {
+        let archive = TempArchive::new("civil-import-invalid");
+        let keys = FakeKeyStore::empty();
+        let profile = "44444444-4444-4444-8444-444444444444";
+        let mut invalid = remote_chart(ID_A,true);
+        invalid.civil_time=Some("00:00:00".into());
+        assert_eq!(import_remote_civil_charts(&archive.paths,&keys,profile,&[invalid],1000),Err("invalid_request"));
+        assert_eq!(import_remote_civil_charts(&archive.paths,&keys,profile,&[remote_chart(ID_A,true),remote_chart(ID_A,false)],1000),Err("invalid_request"));
+        let mut invalid_date=remote_chart(ID_B,false);
+        invalid_date.civil_date="1900-02-29".into();
+        assert_eq!(import_remote_civil_charts(&archive.paths,&keys,profile,&[invalid_date],1000),Err("invalid_request"));
+        assert!(archive.files().is_empty());
+    }
+
+    #[test]
+    fn remote_birth_change_updates_import_without_erasing_pending_local_groups() {
+        let archive=TempArchive::new("civil-refresh");
+        let keys=FakeKeyStore::empty();
+        let profile="44444444-4444-4444-8444-444444444444";
+        import_remote_civil_charts(&archive.paths,&keys,profile,&[remote_chart(ID_A,true)],1000).unwrap();
+        let first=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        set_civil_groups_for_profile(&archive.paths,&keys,profile,&first[0].id,&first[0].groups,&["Locale".into()]).unwrap();
+        let mut changed=remote_chart(ID_A,false);
+        changed.name="Nome modificato".into();
+        changed.civil_date="1984-03-26".into();
+        assert_eq!(import_remote_civil_charts(&archive.paths,&keys,profile,&[changed],2000),
+            Ok(CivilImportSummary {inserted:0,updated:1,already_linked:1}));
+        let after=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(after[0].id,first[0].id);
+        assert_eq!(after[0].civil_date,"1984-03-26");
+        assert_eq!(after[0].civil_time.as_deref(),Some("12:30:00"));
+        assert!(!after[0].time_unknown);
+        assert_eq!(after[0].groups,["Locale"]);
+        assert_eq!(after[0].sync_status,"pending");
+        let pending=pending_groups_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(pending[0].base_groups,["Gruppo fittizio"]);
+    }
+
+    #[test]
+    fn absent_remote_chart_keeps_local_copy_and_pending_edits_until_it_returns() {
+        let archive=TempArchive::new("civil-missing");
+        let keys=FakeKeyStore::empty();
+        let profile="44444444-4444-4444-8444-444444444444";
+        import_remote_civil_charts(&archive.paths,&keys,profile,&[remote_chart(ID_A,true)],1000).unwrap();
+        let first=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        set_civil_groups_for_profile(&archive.paths,&keys,profile,&first[0].id,&first[0].groups,&["Locale".into()]).unwrap();
+        let summary=import_remote_civil_charts(&archive.paths,&keys,profile,&[],2000).unwrap();
+        assert_eq!(summary.updated,1);
+        let missing=list_offline_civil_charts(&archive.paths,&keys).unwrap();
+        assert_eq!(missing[0].sync_status,"missing");
+        assert_eq!(missing[0].groups,["Locale"]);
+        assert!(pending_groups_for_profile(&archive.paths,&keys,profile).unwrap().is_empty());
+        import_remote_civil_charts(&archive.paths,&keys,profile,&[remote_chart(ID_A,true)],3000).unwrap();
+        let restored=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(restored[0].sync_status,"pending");
+        let pending=pending_groups_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(pending[0].base_groups,["Gruppo fittizio"]);
+        assert_eq!(pending[0].groups,["Locale"]);
     }
 
     #[test]

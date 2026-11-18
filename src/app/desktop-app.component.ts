@@ -16,6 +16,9 @@ import { connectedAccount } from './native/connected-account';
 import { ConnectedAccountState, type AccountViewStatus } from './native/connected-account-state';
 import { groupConflicts } from './native/group-conflicts';
 import type { GroupConflict } from './native/group-conflicts-contract';
+import { chartSync } from './native/chart-sync';
+import type { SyncedChart } from './native/chart-sync-contract';
+import { resolveCivilTime } from './native/civil-time';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
@@ -148,12 +151,134 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
 
   private readonly cd = inject(ChangeDetectorRef);
-  readonly account = new ConnectedAccountState(connectedAccount, () => this.cd.markForCheck());
+  readonly account = new ConnectedAccountState(connectedAccount, () => { this.onAccountChange(); this.cd.markForCheck(); });
   get accountStatusKey(): MessageKey { return ACCOUNT_STATUS_KEYS[this.account.status]; }
   conflicts: readonly GroupConflict[] = [];
   conflictsForAttempt: string | null = null;
   conflictsBusy = false;
   conflictsMessage: MessageKey | null = null;
+  syncedCharts: readonly SyncedChart[] = [];
+  syncedAttempt: string | null = null;
+  syncOfflineMode = false;
+  syncBusy = false;
+  syncGroupBusy = false;
+  syncMessage: MessageKey | null = null;
+  syncGroupDrafts: Record<string,string> = {};
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+  private syncGeneration = 0;
+  private syncListGeneration = 0;
+  private syncRequested = false;
+  private syncContext = '';
+
+  private onAccountChange(): void {
+    const attempt = this.account.connectedAttemptId;
+    const offline = !attempt && !['starting','pending','canceling'].includes(this.account.status);
+    const context = attempt ? 'online:' + attempt : offline ? 'offline' : 'transition';
+    if (context === this.syncContext) return;
+    if (this.syncTimer !== null) clearTimeout(this.syncTimer);
+    this.syncTimer = null;
+    ++this.syncGeneration;
+    ++this.syncListGeneration;
+    this.syncContext = context;
+    this.syncedAttempt = attempt;
+    this.syncOfflineMode = offline;
+    this.syncedCharts = [];
+    this.syncGroupDrafts = {};
+    this.syncBusy = false;
+    this.syncGroupBusy = false;
+    this.syncMessage = null;
+    if (attempt && !this.destroyed) {
+      void this.loadSyncedCharts();
+      void this.syncNow();
+    } else if (offline && !this.destroyed) void this.loadSyncedCharts();
+  }
+
+  private scheduleSync(delayMs: number): void {
+    if (this.syncTimer !== null) clearTimeout(this.syncTimer);
+    this.syncTimer = null;
+    if (this.destroyed || !this.account.connectedAttemptId) return;
+    this.syncTimer = setTimeout(() => { this.syncTimer = null; void this.syncNow(); },delayMs);
+  }
+
+  async loadSyncedCharts(): Promise<void> {
+    const attemptId=this.account.connectedAttemptId;
+    const offline=!attemptId && this.syncOfflineMode;
+    if ((!attemptId && !offline) || this.destroyed) return;
+    const generation=this.syncGeneration;
+    const ticket=++this.syncListGeneration;
+    const result=attemptId ? await chartSync({operation:'list',attemptId}) : await chartSync({operation:'offline_list'});
+    if (this.destroyed || this.account.connectedAttemptId!==attemptId || generation!==this.syncGeneration || ticket!==this.syncListGeneration) return;
+    if (result.kind==='list') this.syncedCharts=result.charts;
+    else if (!offline) this.syncMessage='sync.unavailable';
+    this.cd.markForCheck();
+  }
+
+  async syncNow(): Promise<void> {
+    const attemptId=this.account.connectedAttemptId;
+    if (!attemptId || this.destroyed || this.syncBusy) return;
+    if (this.syncTimer !== null) clearTimeout(this.syncTimer);
+    this.syncTimer=null;
+    const generation=this.syncGeneration;
+    this.syncBusy=true;
+    this.syncRequested=false;
+    this.syncMessage='sync.running';
+    this.cd.markForCheck();
+    const result=await chartSync({operation:'sync',attemptId});
+    if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+    this.syncBusy=false;
+    this.syncMessage=result.kind==='sync' ? 'sync.complete' : 'sync.offline';
+    await this.loadSyncedCharts();
+    if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+    this.scheduleSync(this.syncRequested ? 0 : 60_000);
+    this.cd.markForCheck();
+  }
+
+  setSyncedGroupDraft(id:string,event:Event):void {
+    this.syncGroupDrafts={...this.syncGroupDrafts,[id]:(event.target as HTMLInputElement).value.slice(0,160)};
+  }
+
+  async updateSyncedGroups(chart:SyncedChart, groups:readonly string[]):Promise<void> {
+    const attemptId=this.account.connectedAttemptId;
+    const offline=!attemptId && this.syncOfflineMode;
+    if ((!attemptId && !offline) || this.syncGroupBusy || this.destroyed) return;
+    const generation=this.syncGeneration;
+    this.syncGroupBusy=true;
+    ++this.syncListGeneration; // A previously requested list cannot replace this edit.
+    const result=attemptId
+      ? await chartSync({operation:'set_groups',attemptId,chartId:chart.id,baseGroups:chart.groups,groups})
+      : await chartSync({operation:'offline_set_groups',chartId:chart.id,baseGroups:chart.groups,groups});
+    if (this.destroyed || this.account.connectedAttemptId!==attemptId || generation!==this.syncGeneration) return;
+    this.syncGroupBusy=false;
+    if (result.kind==='saved') {
+      this.syncGroupDrafts={...this.syncGroupDrafts,[chart.id]:''};
+      this.syncMessage=offline ? 'sync.pendingOffline' : this.account.scope==='chart_sync:read' ? 'sync.writeRequired' : 'sync.pending';
+      if (!offline) { if (this.syncBusy) this.syncRequested=true; else this.scheduleSync(0); }
+    } else this.syncMessage=result.kind==='stale' ? 'sync.changed' : 'sync.unavailable';
+    await this.loadSyncedCharts();
+  }
+
+  addSyncedGroup(chart:SyncedChart):void {
+    const name=(this.syncGroupDrafts[chart.id] ?? '').trim();
+    if (name && !chart.groups.includes(name)) void this.updateSyncedGroups(chart,[...chart.groups,name]);
+  }
+  removeSyncedGroup(chart:SyncedChart,name:string):void {
+    void this.updateSyncedGroups(chart,chart.groups.filter(group=>group!==name));
+  }
+  trackSynced(_index:number,chart:SyncedChart):string { return chart.id; }
+  syncedStatusKey(chart:SyncedChart):MessageKey {
+    return chart.syncStatus==='clean' ? 'sync.status.clean' : chart.syncStatus==='pending' ? 'sync.status.pending'
+      : chart.syncStatus==='missing' ? 'sync.status.missing' : 'sync.status.conflict';
+  }
+
+  openSyncedChart(chart:SyncedChart):void {
+    if (this.calcBusy || this.exporting || chart.timeUnknown || !chart.civilTime || !chart.timeZone ||
+        chart.latMicro===null || chart.lngMicro===null) return;
+    const resolved=resolveCivilTime({date:chart.civilDate,time:chart.civilTime,timeZone:chart.timeZone});
+    if (resolved.status!=='resolved') { this.syncMessage='sync.timeReview'; this.cd.markForCheck(); return; }
+    void this.onChartRequested({name:chart.name,utcIso:resolved.choice.instantUtc,localDate:chart.civilDate,
+      localTime:chart.civilTime,timeZone:resolved.timeZone,offsetSeconds:resolved.choice.offsetSeconds,
+      latMicro:chart.latMicro,lngMicro:chart.lngMicro,placeName:chart.placeName},null,false);
+  }
 
   async loadGroupConflicts(): Promise<void> {
     const attemptId = this.account.connectedAttemptId;
@@ -184,6 +309,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.conflicts = this.conflicts.filter(item => item.chartId !== conflict.chartId);
       this.conflictsMessage = choice === 'local' ? 'sync.conflicts.queued' : 'sync.conflicts.resolved';
       await this.loadArchive();
+      await this.loadSyncedCharts();
     } else if (result.kind === 'stale') {
       await this.loadGroupConflicts();
       if (this.destroyed || this.account.connectedAttemptId !== attemptId) return;
@@ -1137,6 +1263,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     document.documentElement.lang = this.locale;
+    this.onAccountChange();
     // Inspect applied WebView CSS after Angular's initial view check.
     queueMicrotask(() => this.checkStyles());
     // Local clock is independent of renderer success, astronomy and account auth.
@@ -1173,6 +1300,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    if (this.syncTimer !== null) clearTimeout(this.syncTimer);
+    this.syncTimer = null;
+    ++this.syncGeneration;
+    ++this.syncListGeneration;
     this.account.dispose();
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
