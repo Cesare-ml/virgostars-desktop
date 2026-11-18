@@ -10,6 +10,29 @@
 - The prior `PendingPkceLogin` code checks the absolute reconstructed callback URL, one-time OAuth state, authorization code syntax and expiry. Invalid requests receive a constant 400 page; the valid return receives a constant 200 page with `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, restrictive CSP and no reflected authorization code.
 - A reviewed concrete OS-browser adapter **is intentionally not supplied**. The trait allows a fake browser in tests, but does not launch one in the actual packaged app. The backend consent route is still disabled, and no account is activated.
 
+## Staging origin guard (follow-up draft)
+
+The native listener **no longer has a hardcoded public website consent
+fallback**. The `LoopbackLogin::start(browser, staging_consent_page)` caller
+must supply the URL explicitly from reviewed native staging configuration.
+Before the system-browser adapter is invoked, the PKCE core enforces:
+
+- HTTPS only, path exactly `/collega-dispositivo`, no query, fragment,
+  userinfo or custom port;
+- canonical URL string and a VirgoStars-owned `*.virgostars.it` hostname whose
+  labels include exactly `staging` or `preview`;
+- no production `virgostars.it` or `www.virgostars.it`, no attacker-controlled
+  lookalike domain, no silent fallback to a different origin.
+
+The sample `https://staging.virgostars.it/collega-dispositivo` in synthetic
+tests is an **illustrative candidate**, not a claim that staging DNS/site
+exists or has been deployed. The actual origin must be approved and matched
+against the staging backend CORS/CSRF allowlist before a real browser test.
+This change does not open a system browser, register a Tauri command,
+exchange tokens or enable the login UI. Existing Node source tests plus a
+new Rust guard test cover the intended boundary; Rust compilation remains
+outstanding.
+
 ## Safety boundaries and remaining integration
 
 The native result is a Rust-only `CallbackDecision` whose authorization code and verifier are zeroized when dropped. It is *not* an access token. The next host slice must implement a reviewed system-browser opener (for example an approved Rust-only Tauri opener API), native HTTPS token exchange, scope/audience validation and OS credential store. Then, after security review, register a dedicated scoped Tauri IPC command and expose **only** the opaque status/result contract from Desktop draft PR #353.
