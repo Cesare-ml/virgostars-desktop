@@ -4008,15 +4008,15 @@ version = "0.0.1"
 dependencies = [
  "base64 0.23.1",
  "chacha20poly1305",
- "sha2",
- "url",
  "getrandom 0.3.4",
  "keyring",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
+ "url",
  "virgostars-ephemeris-core",
  "zeroize",
 ]
