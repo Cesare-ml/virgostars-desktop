@@ -9,6 +9,8 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 const STABLE: &str = "https://github.com/Cesare-ml/virgostars-desktop/releases/download/updates-stable/latest.json";
 const BETA: &str = "https://github.com/Cesare-ml/virgostars-desktop/releases/download/updates-beta/latest.json";
 const TESTING: &str = "https://github.com/Cesare-ml/virgostars-desktop/releases/download/updates-testing/latest.json";
+#[cfg(feature = "updater-loopback-test")]
+const LOOPBACK: &str = "https://localhost:47831/latest.json";
 const TEST_BUILD: &str = match option_env!("VIRGOSTARS_UPDATER_TEST_CHANNEL") { Some(value) => value, None => "" };
 const KEY: &str = match option_env!("VIRGOSTARS_UPDATER_PUBLIC_KEY") { Some(k) => k, None => "" };
 const MAX_PACKAGE_BYTES: usize = 512 * 1024 * 1024;
@@ -29,14 +31,30 @@ fn reply(app: &AppHandle, status: &'static str) -> UpdateReply {
     UpdateReply { status, current_version: if TEST_BUILD == "1" { format!("{version} (test)") } else { version }, version: None, notes: None }
 }
 fn channel_endpoint(channel: &str, test_build: bool) -> Option<&'static str> {
+    #[cfg(feature = "updater-loopback-test")]
+    if channel == "stable" || channel == "beta" { return Some(LOOPBACK); }
     match channel { "stable" | "beta" if test_build => Some(TESTING), "stable" => Some(STABLE), "beta" => Some(BETA), _ => None }
+}
+fn configure_http(client: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    let client = client.https_only(true);
+    #[cfg(feature = "updater-loopback-test")]
+    let client = match option_env!("VIRGOSTARS_UPDATER_LOOPBACK_CA").and_then(|pem| reqwest::Certificate::from_pem(pem.as_bytes()).ok()) {
+        Some(cert) => client.add_root_certificate(cert),
+        None => client,
+    };
+    client
+}
+fn allowed_artifact(url: &tauri::Url) -> bool {
+    #[cfg(feature = "updater-loopback-test")]
+    if url.scheme() == "https" && url.host_str() == Some("localhost") && url.port() == Some(47831) && url.path() == "/installer.exe" { return true; }
+    url.scheme() == "https" && url.host_str() == Some("github.com") && url.path().starts_with("/Cesare-ml/virgostars-desktop/releases/download/")
 }
 fn fits_download(current: usize, next: usize) -> bool {
     current.checked_add(next).is_some_and(|size| size <= MAX_PACKAGE_BYTES)
 }
 
 async fn download_verified(update: &Update, progress: &Channel<DownloadProgress>) -> Result<Vec<u8>, &'static str> {
-    let client = reqwest::Client::builder().https_only(true).timeout(Duration::from_secs(600)).build().map_err(|_| "download_failed")?;
+    let client = configure_http(reqwest::Client::builder()).timeout(Duration::from_secs(600)).build().map_err(|_| "download_failed")?;
     let response = client.get(update.download_url.clone()).send().await.map_err(|_| "download_failed")?;
     if !response.status().is_success() { return Err("download_failed") }
     let total = response.content_length();
@@ -66,15 +84,14 @@ pub async fn check_updates(app: AppHandle, channel: String) -> UpdateReply {
     }
     let result = async {
         let updater = app.updater_builder().endpoints(vec![url.parse().map_err(|_| ())?]).map_err(|_| ())?
-            .configure_client(|client| client.https_only(true))
+            .configure_client(configure_http)
             .timeout(Duration::from_secs(20)).build().map_err(|_| ())?;
         updater.check().await.map_err(|_| ())
     }.await;
     let Ok(mut inner) = state.0.lock() else { return reply(&app, "unavailable") };
     inner.busy = false;
     match result {
-        Ok(Some(update)) if (channel != "stable" || !update.version.contains('-')) && update.download_url.scheme() == "https" && update.download_url.host_str() == Some("github.com") &&
-            update.download_url.path().starts_with("/Cesare-ml/virgostars-desktop/releases/download/") => {
+        Ok(Some(update)) if (channel != "stable" || !update.version.contains('-')) && allowed_artifact(&update.download_url) => {
             let mut out = reply(&app, "available");
             out.version = Some(update.version.clone());
             out.notes = update.body.as_ref().map(|s| s.chars().take(4000).collect());
@@ -94,10 +111,18 @@ mod tests {
     const SIGNATURE: &str = "untrusted comment: signature from tauri secret key\nRUTX5qZvdPSepPF2zsjvP/L/TQtBLRnWRvaq+4omK1UEugtQp/USrGiI1v762sDy3id3aor7bRC9ETyeot6lMHHrWoZ5hjUM1Qc=\ntrusted comment: timestamp:1791649051\tfile:payload\tversion:2.0.0\nDDq2CLOEl5cQmC2eJRHlnZPVViOZsu1CjpPKQoei4A/XBfkDqGO0B+QMrcrHgEQ5qV3mne75tdFWhJpqUXh9AA==";
     #[test]
     fn channels_are_fixed_and_invalid_input_is_rejected() {
+        #[cfg(not(feature = "updater-loopback-test"))]
+        {
         assert_eq!(channel_endpoint("stable",false), Some(STABLE));
         assert_eq!(channel_endpoint("beta",false), Some(BETA));
         assert_eq!(channel_endpoint("stable",true), Some(TESTING));
         assert_eq!(channel_endpoint("beta",true), Some(TESTING));
+        }
+        #[cfg(feature = "updater-loopback-test")]
+        {
+        assert_eq!(channel_endpoint("stable",false), Some(LOOPBACK));
+        assert_eq!(channel_endpoint("beta",true), Some(LOOPBACK));
+        }
         assert_eq!(channel_endpoint("https://example.test",true), None);
         assert_eq!(channel_endpoint("Stable",false), None);
         assert!(fits_download(MAX_PACKAGE_BYTES - 1, 1));
@@ -132,7 +157,9 @@ pub async fn install_update(app: AppHandle, channel: String, version: String,
         Ok(bytes) => {
             // Wait until any active encrypted archive/photo operation has finished before NSIS closes us.
             let _archive_guard = crate::chart_archive::lock_for_update();
-            match app.path().app_local_data_dir().ok().and_then(|p| crate::update_backup::snapshot(&p).ok()) {
+            let snapshot = app.path().app_local_data_dir().ok().zip(app.path().resource_dir().ok())
+                .and_then(|(data, resources)| crate::update_backup::snapshot(&data, Some(&resources)).ok());
+            match snapshot {
                 Some(_) => match update.install(bytes) { Ok(()) => "install_started", Err(_) => "install_failed" },
                 None => "backup_failed",
             }

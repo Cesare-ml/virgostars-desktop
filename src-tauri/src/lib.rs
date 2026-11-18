@@ -14,6 +14,8 @@ mod synod_events;
 mod historical_planets;
 mod updater;
 mod update_backup;
+#[cfg(all(feature = "updater-loopback-test", not(debug_assertions)))]
+compile_error!("The loopback acceptance feature is forbidden in release builds");
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
 #[cfg(feature = "virgostars-ephemeris")]
 mod virgostars_provider;
@@ -23,6 +25,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().pubkey(option_env!("VIRGOSTARS_UPDATER_PUBLIC_KEY").unwrap_or("")).build())
         .manage(updater::UpdateState::default())
         .setup(|_app| {
+            #[cfg(feature = "updater-loopback-test")]
+            if !_app.config().identifier.starts_with("it.virgostars.desktop.updatertest.") {
+                return Err("loopback acceptance build requires an isolated application identifier".into());
+            }
             // The ephemeris data files are found by the host (environment or ephemeris.json), never by the WebView.
             #[cfg(feature = "virgostars-ephemeris")]
             {

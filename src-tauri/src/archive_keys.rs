@@ -49,6 +49,9 @@ impl OsKeyStore {
 
 impl KeyStore for OsKeyStore {
     fn load(&self) -> Result<Option<Key>, KeyError> {
+        #[cfg(feature = "updater-loopback-test")]
+        return Ok(Some(Zeroizing::new([0x42; KEY_LEN])));
+        #[cfg(not(feature = "updater-loopback-test"))]
         match Self::entry()?.get_secret() {
             Ok(bytes) => {
                 let bytes = Zeroizing::new(bytes);
@@ -66,6 +69,9 @@ impl KeyStore for OsKeyStore {
     }
 
     fn store(&self, key: &Key) -> Result<(), KeyError> {
+        #[cfg(feature = "updater-loopback-test")]
+        return if key[..] == [0x42; KEY_LEN] { Ok(()) } else { Err(KeyError::Unavailable) };
+        #[cfg(not(feature = "updater-loopback-test"))]
         Self::entry()?.set_secret(&key[..]).map_err(|_| KeyError::Unavailable)
     }
 }

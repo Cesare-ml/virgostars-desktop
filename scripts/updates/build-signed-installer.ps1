@@ -16,7 +16,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY = $privatePath
 $env:VIRGOSTARS_UPDATER_TEST_CHANNEL = if ($TestChannel) { '1' } else { '0' }
 try {
   New-Item -ItemType Directory -Force .local/updater | Out-Null
-  $overlay = @{ bundle = @{ createUpdaterArtifacts = $true } } | ConvertTo-Json -Depth 5
+  $overlay = @{ bundle = @{ createUpdaterArtifacts = $true }; plugins = @{ updater = @{ pubkey = $publicKey } } } | ConvertTo-Json -Depth 5
   [IO.File]::WriteAllText((Join-Path (Get-Location) '.local/updater/tauri-release.conf.json'), $overlay, [Text.UTF8Encoding]::new($false))
   npm run verify:version
   if ($LASTEXITCODE -ne 0) { throw 'Versioni incoerenti.' }

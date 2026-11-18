@@ -13,8 +13,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 # The canonical astronomy provider, VirgoStars-Ephemeris (CPAL-1.0). Without it nothing is calculated.
 default = ["virgostars-ephemeris", "virgostars-event-ephemeris"]
-virgostars-ephemeris = ["dep:virgostars-ephemeris-core", "dep:serde_json"]
+virgostars-ephemeris = ["dep:virgostars-ephemeris-core"]
 virgostars-event-ephemeris = ["dep:virgostars-events"]
+# Only for disposable local Windows acceptance builds; never used by release scripts.
+updater-loopback-test = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -30,10 +32,11 @@ keyring = { version = "3", default-features = false, features = ["windows-native
 # Pinned to one reviewed commit of the Ephemeris repository; never a floating branch.
 virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "5491f828af1caf24db356ffbbfa5b9c878ee0660", optional = true }
 virgostars-events = { package = "virgostars-event-ephemeris", git = "https://github.com/Cesare-ml/VirgoStars-Event-Ephemeris", rev = "f78a3b65d771dfd14e0028b3c767397be7fb93d7", optional = true }
-serde_json = { version = "1", optional = true }
+serde_json = "1"
 tauri-plugin-updater = "=2.14.1"
 reqwest = { version = "=0.13.5", default-features = false, features = ["rustls-no-provider", "stream"] }
 futures-util = "0.3"
+sha2 = "0.10"
 [dev-dependencies]
 serde_json = "1"
 tempfile = "3"
