@@ -1,6 +1,6 @@
 // Local-only IPC: a read-only runtime probe, an offline place search, a chart calculation
 // a local chart archive and a solar/lunar return search.
-// No privileged account, storage or network command.
+// Account IPC is a fail-closed disabled-only status stub; no network or credential command.
 mod runtime_probe;
 mod offline_places;
 mod chart_calculation;
@@ -21,6 +21,8 @@ mod pkce_staging_flow;
 mod pkce_native_session;
 // One native-only login owner with admission control; no IPC registration.
 mod pkce_native_registry;
+// Fail-closed, disabled staging account IPC; never starts or authenticates.
+mod connected_account_ipc;
 mod houses;
 mod return_search;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
@@ -41,7 +43,8 @@ pub fn run() {
             Ok(())
         })
         .manage(offline_places::PlaceSearchGate::default())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns])
+        .manage(pkce_native_registry::NativeLoginRegistry::new())
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, connected_account_ipc::desktop_connected_account_v1])
         .run(tauri::generate_context!())
         .expect("failed to launch the synthetic VirgoStars Desktop renderer spike");
 }
