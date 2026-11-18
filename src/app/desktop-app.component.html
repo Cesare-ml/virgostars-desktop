@@ -78,9 +78,6 @@
           <button type="button" class="nav-item" [class.selected]="view==='functions'" [attr.title]="t('tab.functions')" (click)="openFunctions()">
             <span class="nav-mark" aria-hidden="true">≣</span><span class="nav-label">{{t('tab.functions')}}</span>
           </button>
-          <button type="button" class="nav-item" [class.selected]="view==='historical'" [attr.title]="t('historical.title')" (click)="openHistoricalPlanets()">
-            <span class="nav-mark" aria-hidden="true">◷</span><span class="nav-label">{{t('historical.title')}}</span>
-          </button>
           <button type="button" class="nav-item" [class.selected]="view==='settings'" [attr.title]="t('tab.settings')" (click)="openSettings()">
             <span class="nav-mark" aria-hidden="true">⚙</span><span class="nav-label">{{t('tab.settings')}}</span>
           </button>
@@ -180,16 +177,6 @@
         </div>
 
         <!-- New chart: its own panel, nothing else in it. -->
-        <section class="sheet" *ngIf="view==='historical'" [attr.aria-label]="t('historical.title')">
-          <div class="sheet-inner">
-            <header class="sheet-head">
-              <h2>{{t('historical.title')}}</h2>
-              <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
-            </header>
-            <vs-historical-planets [locale]="locale"></vs-historical-planets>
-          </div>
-        </section>
-
         <section class="sheet" *ngIf="view==='new'" [attr.aria-label]="t('form.title')">
           <div class="sheet-inner">
             <header class="sheet-head">
