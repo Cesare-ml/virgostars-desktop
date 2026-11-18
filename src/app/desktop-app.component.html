@@ -93,6 +93,16 @@
           [showTransaturnians]="showTransaturnians" (toggleTransaturnians)="toggleTransaturnians()"></vs-elements-view>
 
         <section class="monomeric-stage" *ngIf="view==='chart' && activeChart && chartPresentation==='monomeric-cross'" aria-label="Croce monomerica">
+          <div class="monomeric-automatic-status" role="status">
+            <span class="monomeric-auto-symbol" aria-hidden="true">☼</span>
+            <div>
+              <strong>{{locale==='it' ? "Maestro dell'Ora · calcolo automatico" : 'Hour ruler · automatic calculation'}}</strong>
+              <p>{{locale==='it' ? 'Il Maestro dell’Ora dipende dall’ora di nascita e dalle albe e tramonti astronomici del luogo. Il collegamento alle effemeridi Rust non è ancora attivo in questa build: nessun pianeta viene indovinato.' : 'The planetary-hour ruler depends on the birth instant and astronomical sunrise and sunset at the location. The Rust ephemeris connection is not active in this build: no planet is guessed.'}}</p>
+            </div>
+          </div>
+          <details class="monomeric-prototype-tools">
+            <summary>{{locale==='it' ? 'Strumenti di prova temporanei · inserimento manuale' : 'Temporary preview tools · manual inputs'}}</summary>
+            <p>{{locale==='it' ? 'Solo per provare la grafica, non è il calcolo automatico del tema natale. La selezione manuale definitiva sarà valutata per gli articoli didattici sul sito.' : 'For previewing the graphic only, not automatic natal calculation. A manual teaching tool may be added to educational website articles later.'}}</p>
           <div class="monomeric-controls" role="group" [attr.aria-label]="locale==='it' ? 'Impostazioni della Croce' : 'Cross settings'">
             <div class="monomeric-ruler-picker">
               <div class="monomeric-ruler-header">
@@ -152,7 +162,8 @@
               </ng-container>
             </p>
           </details>
-          <p class="monomeric-caution" role="note">{{ locale==='it' ? "Puoi scegliere un pianeta manualmente oppure far calcolare il governatore dagli orari solari inseriti. Il calcolo usa ore temporali e sequenza caldaica, senza attribuire automaticamente la variante storica a un autore." : 'Choose a ruler manually or calculate it from the supplied solar times. The calculation uses seasonal hours and the Chaldean sequence without automatically attributing the variant to a specific author.' }}</p>
+          </details>
+          <p class="monomeric-caution" role="note">{{ locale==='it' ? "Un Maestro dell'Ora scelto negli strumenti di prova non è un risultato astronomico del tema. Il calcolo corretto richiede alba e tramonto del luogo, ore temporali e sequenza caldaica; il governatore del segno deriva invece dai domicili primario e secondario." : 'An hour ruler selected in the preview tools is not an astronomical natal result. The actual calculation requires local sunrise/sunset, seasonal hours and the Chaldean sequence; the sign ruler instead follows primary and secondary domiciles.' }}</p>
           <vs-monomeric-cross [cross]="monomericCross" [locale]="locale"></vs-monomeric-cross>
           <section class="monomeric-neighbors" *ngIf="monomericAdjacentRows.length" [attr.aria-label]="locale==='it' ? 'Monomeri adiacenti attivi' : 'Active adjacent monomers'">
             <div class="monomeric-neighbors-heading">

@@ -13,13 +13,24 @@ La schermata collega anche **360 descrizioni source-label** conservate nel vecch
 Un piccolo resolver locale, testato e senza rete, restituisce i testi dei quattro
 punti e i testi dei relativi governatori. La vista espone due modalità:
 
-La scelta manuale del Maestro dell'Ora è accessibile attraverso **sette pulsanti
-con glifi astronomici**, visibili senza aprire un menu. Il pulsante separato
-«Dagli orari solari» ripristina la modalità basata sulle tre letture inserite;
-non implica che il Sole sia calcolato automaticamente. I pulsanti espongono
-lo stato di selezione ai lettori di schermo, usano le etichette IT/EN già
-presenti e si dispongono su più righe quando si restringe la colonna del tema,
-anche con l'ispettore aperto. Non cambia alcuna formula astrologica.
+**Priorità aggiornata dal mantenitore:** in Desktop il Maestro dell'Ora deve
+essere calcolato **automaticamente** dalla data/ora UTC del tema, dal luogo e
+da tre eventi solari reali (alba prima della nascita, tramonto, alba dopo).
+Non dipende dai domicili: questi servono **solo** a trovare il governatore del
+segno del singolo braccio. `astrological-functions/monomeric-cross` conserva
+ora anche `signRulerDomicile` (`PRIMARY`/`SECONDARY`), derivato dai codici
+`dop` e `dos` della *Tabella dei peregrini* fornita dal mantenitore. Le altre
+dignità (`esa`, `cad`, `esp`, `ess`, `pa`, `pm`, `pb`) non attribuiscono il
+governatore del segno.
+
+Il produttore automatico in Rust è **ancora bloccato** dalle PR Ephemeris non
+integrate. La schermata dichiara apertamente questa indisponibilità. I sette
+pulsanti manuali e l'inserimento manuale dei tre eventi sono conservati solo
+in un `<details>` **chiuso per impostazione predefinita e marcato "strumenti
+di prova temporanei"**, per permettere QA grafico senza fingere un risultato
+natalizio. Una futura interfaccia manuale didattica è candidata per gli articoli
+del sito, non per il flusso primario Desktop. Lo stato del Maestro automatico
+non deve mai essere dedotto dal solo giorno della settimana.
 
 - **Grado mostrato (0–29)**: usa la parte intera del grado nel segno, come nel
   mockup 4°56′ Ariete → etichetta 4. È una scelta di visualizzazione
