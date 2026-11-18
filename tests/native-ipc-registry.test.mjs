@@ -7,13 +7,14 @@ import {auditNativeIpc, auditCheckout} from '../scripts/verify-native-ipc.mjs';
 
 function fixture() {
   return {
-    entry:'tauri::Builder::default().invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns])',
+    entry:'tauri::Builder::default().plugin(tauri_plugin_opener::init()).invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, support_center::open_support_center])',
     rustModules:{
       runtime_probe:'#[tauri::command]\npub fn desktop_runtime_info() {}',
       offline_places:'#[tauri::command]\npub async fn search_offline_places() {}',
       chart_calculation:'#[tauri::command]\npub fn calculate_chart() {}',
       chart_archive:'#[tauri::command]\npub fn chart_archive() {}',
       return_search:'#[tauri::command]\npub fn find_returns() {}',
+      support_center:'use tauri_plugin_opener::OpenerExt;\nconst DESKTOP_SUPPORT_URL: &str = "https://www.virgostars.it/supporto?source=desktop";\n#[tauri::command]\npub fn open_support_center(app: tauri::AppHandle) -> Result<(), String> { app.opener().open_url(DESKTOP_SUPPORT_URL, None::<&str>).map_err(|_| "unavailable".to_owned()) }',
     },
     runtimeContract:"async function run(port) { return port.invoke('desktop_runtime_info'); }",
     placesContract:"async function search(port) { return port.invoke('search_offline_places', {query:'A'}); }",
@@ -26,6 +27,7 @@ function fixture() {
       'src/app/native/chart-calculation.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/chart-archive.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/return-search.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
+      'src/app/native/support-center.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const url='https://www.virgostars.it/supporto?source=desktop'; const open=()=>invoke<unknown>('open_support_center');",
       'src/app/workspace-state.ts':'export const state=1;',
     },
     tauriConfig:{app:{security:{capabilities:[]}}},
@@ -34,10 +36,10 @@ function fixture() {
 
 test('reviewed read-only registry and restricted adapters pass',()=>{
   const checked=auditNativeIpc(fixture());
-  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns']);
+  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','open_support_center']);
 });
 test('extra native command cannot enter without a conscious allowlist review',()=>{
-  const f=fixture();f.entry=f.entry.replace('return_search::find_returns]', 'return_search::find_returns, account::read_token]');
+  const f=fixture();f.entry=f.entry.replace('support_center::open_support_center]', 'support_center::open_support_center, account::read_token]');
   assert.throws(()=>auditNativeIpc(f),/command count/);
 });
 test('duplicate or missing native commands fail',()=>{
@@ -132,6 +134,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       'src-tauri/src/chart_calculation.rs':f.rustModules.chart_calculation,
       'src-tauri/src/chart_archive.rs':f.rustModules.chart_archive,
       'src-tauri/src/return_search.rs':f.rustModules.return_search,
+      'src-tauri/src/support_center.rs':f.rustModules.support_center,
       'src-tauri/tauri.conf.json':JSON.stringify(f.tauriConfig),
       'src-tauri/build.rs':'fn main() { tauri_build::build(); }',
       'src/app/native/runtime-protocol.ts':f.runtimeContract,
@@ -142,7 +145,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       ...f.tsFiles,
       'src/main.ts':'export const demo = true;',
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','open_support_center']);
     for(const [path,content] of [
       ['src/main.ts',"import('@tauri-apps/api/core');"],
       ['src/app/misc/native.tsx',"import {invoke} from '@tauri-apps/api/core';"],
@@ -153,7 +156,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       assert.throws(()=>auditCheckout(root),/Unexpected Tauri import/,path);
       write(path,'export const ok = true;');
     }
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','open_support_center']);
     // In Tauri 2 an empty capabilities array still auto-loads capability files.
     // An unexpected JSON/TOML permission file must fail closed.
     for(const name of ['unexpected.json','unexpected.toml','readme.txt']) {
@@ -166,13 +169,13 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
     mkdirSync(join(root,'src-tauri/capabilities','nested'));
     assert.throws(()=>auditCheckout(root),/auto-discovered capability files/);
     rmSync(join(root,'src-tauri/capabilities','nested'),{recursive:true});
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','open_support_center']);
     // A command in a newly added nested Rust file must not evade the audit.
     write('src-tauri/src/features/new_command.rs',
       '#[tauri::command]\npub fn reveal_secret() {}');
     assert.throws(()=>auditCheckout(root),/Unregistered native command/);
     write('src-tauri/src/features/new_command.rs','pub fn helper() {}');
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','open_support_center']);
 
     // Distinct Rust files with identical basenames are ambiguous in the flat
     // module-name inventory and must be reviewed rather than silently merged.
@@ -216,6 +219,7 @@ test('changing Tauri build.rs from its reviewed build-only form fails closed',()
       'src-tauri/src/chart_calculation.rs':f.rustModules.chart_calculation,
       'src-tauri/src/chart_archive.rs':f.rustModules.chart_archive,
       'src-tauri/src/return_search.rs':f.rustModules.return_search,
+      'src-tauri/src/support_center.rs':f.rustModules.support_center,
       'src-tauri/tauri.conf.json':JSON.stringify(f.tauriConfig),
       'src-tauri/build.rs':'fn main() { tauri_build::build(); }',
       'src/app/native/runtime-protocol.ts':f.runtimeContract,
@@ -225,7 +229,7 @@ test('changing Tauri build.rs from its reviewed build-only form fails closed',()
       'src/app/native/return-search-contract.ts':f.returnContract,
       ...f.tsFiles,
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','open_support_center']);
     write('src-tauri/build.rs','fn main() { tauri_build::try_build(custom_attributes()); }');
     assert.throws(()=>auditCheckout(root),/build configuration changed/);
   } finally {rmSync(root,{recursive:true,force:true});}
@@ -248,4 +252,23 @@ test('Rust Tauri plugins require explicit review even without a new invoke handl
   const g=fixture();
   g.rustModules.extra_module='fn install() { let _ = tauri_plugin_fs::init(); }';
   assert.throws(()=>auditNativeIpc(g),/Unexpected native Tauri plugin/);
+});
+
+test('native support URL is immutable, with no arguments or broad plugin capability',()=>{
+  const f=fixture();
+  assert.deepEqual(auditNativeIpc(f).commands.includes('open_support_center'), true);
+  const unsafe=fixture();
+  unsafe.rustModules.support_center=unsafe.rustModules.support_center.replace(
+    'https://www.virgostars.it/supporto?source=desktop', 'https://example.org/collect');
+  assert.throws(()=>auditNativeIpc(unsafe),/Support Center native URL boundary/);
+  const other=fixture();
+  other.entry=other.entry.replace('.invoke_handler(','.plugin(tauri_plugin_fs::init()).invoke_handler(');
+  assert.throws(()=>auditNativeIpc(other),/Unexpected native Tauri plugin/);
+  const web=fixture();
+  web.tsFiles['src/app/native/support-center.ts'] += "\nimport {openUrl} from '@tauri-apps/plugin-opener';";
+  assert.throws(()=>auditNativeIpc(web),/Unexpected Tauri package/);
+  const input=fixture();
+  input.tsFiles['src/app/native/support-center.ts']=input.tsFiles['src/app/native/support-center.ts']
+    .replace("'open_support_center');", "'open_support_center', { chartId: 626 });");
+  assert.throws(()=>auditNativeIpc(input),/Support Center native invocation changed|Support Center adapter command/);
 });

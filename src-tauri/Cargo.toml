@@ -20,6 +20,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# Native-only system browser access for the one fixed public help URL.
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 chacha20poly1305 = "0.10"

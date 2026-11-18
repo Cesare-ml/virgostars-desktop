@@ -5,9 +5,9 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns']);
-const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns']);
-const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts']);
+const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns', 'open_support_center']);
+const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns', 'support_center::open_support_center']);
+const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts', 'src/app/native/support-center.ts']);
 const FRONTEND_EXTENSIONS = /\.(?:ts|tsx|js|mjs)$/;
 
 function assert(ok, message) { if (!ok) throw new Error(message); }
@@ -33,12 +33,26 @@ export function auditNativeIpc(sources) {
   assert(new Set(registered).size===registered.length, 'Duplicate native command');
   assert(JSON.stringify([...tokens].sort())===JSON.stringify([...NATIVE_HANDLERS].sort()),
     'Native command module or allowlist changed');
-  // Registered plugins and plugin initializers can widen the native surface
-  // without changing the explicit invoke handler list. Require manual review.
-  for(const rust of [sources.entry,...Object.values(sources.rustModules)]) {
-    assert(!/(?:\.\s*plugins?\s*\(|\btauri_plugin[_:-])/i.test(rust),
-      'Unexpected native Tauri plugin registration or reference');
+  // One reviewed native-only opener; the WebView has NO opener plugin capability.
+  // Every other Rust plugin and every extra initializer fails closed.
+  const openerInit='.plugin(tauri_plugin_opener::init())';
+  assert(sources.entry.split(openerInit).length===2, 'Unexpected native Tauri plugin registration or reference');
+  const registeredSource=sources.entry.replace(openerInit,'');
+  const deniedPlugin=/(?:\.\s*plugins?\s*\(|\btauri_plugin[_:-])/i;
+  assert(!deniedPlugin.test(registeredSource), 'Unexpected native Tauri plugin registration or reference');
+  for(const [name,rust] of Object.entries(sources.rustModules)) {
+    const reviewed=name==='lib' ? rust.replace(openerInit,'') :
+      name==='support_center' ? rust.replace('use tauri_plugin_opener::OpenerExt;', '') : rust;
+    assert(!deniedPlugin.test(reviewed), 'Unexpected native Tauri plugin registration or reference');
   }
+  const nativeSupport=sources.rustModules.support_center;
+  assert(typeof nativeSupport==='string' &&
+    /const DESKTOP_SUPPORT_URL: &str = "https:\/\/www\.virgostars\.it\/supporto\?source=desktop";/.test(nativeSupport) &&
+    /pub fn open_support_center\(app: tauri::AppHandle\) -> Result<\(\), String>/.test(nativeSupport) &&
+    (nativeSupport.match(/\.open_url\(/g)||[]).length===1 &&
+    /\.open_url\(DESKTOP_SUPPORT_URL, None::<&str>\)/.test(nativeSupport) &&
+    !/(?:Command::new|std::process|reqwest|fetch\()/.test(nativeSupport),
+    'Support Center native URL boundary changed');
   for(const [name,contents] of Object.entries(sources.rustModules)) {
     const defined=[...contents.matchAll(/#\[tauri::command\]\s*pub\s+(?:async\s+)?fn\s+([a-z_][a-z_0-9]*)\s*\(/g)].map(m=>m[1]);
     const expected=tokens.filter(x=>x.startsWith(name+'::')).map(x=>x.split('::')[1]);
@@ -73,9 +87,21 @@ export function auditNativeIpc(sources) {
     assert(JSON.stringify(symbols)===JSON.stringify(['invoke','isTauri']),
       'Unreviewed Tauri API import or alias');
     const calls=[...content.matchAll(/\binvoke\s*<unknown>\s*\(/g)];
-    assert(calls.length===1 && /\binvoke\s*<unknown>\s*\(\s*command\b/.test(content),
-      'Tauri adapter invoke changed or expanded');
+    if (path === 'src/app/native/support-center.ts') {
+      assert(calls.length === 1 && /invoke<unknown>\('open_support_center'\)/.test(content),
+        'Support Center native invocation changed');
+    } else {
+      assert(calls.length===1 && /\binvoke\s*<unknown>\s*\(\s*command\b/.test(content),
+        'Tauri adapter invoke changed or expanded');
+    }
   }
+  const supportAdapter=sources.tsFiles['src/app/native/support-center.ts'];
+  assert(typeof supportAdapter==='string' &&
+    (supportAdapter.match(/invoke<unknown>\s*\(/g)||[]).length===1 &&
+    /invoke<unknown>\('open_support_center'\)/.test(supportAdapter) &&
+    /https:\/\/www\.virgostars\.it\/supporto\?source=desktop/.test(supportAdapter) &&
+    !/invoke<unknown>\('open_support_center'\s*,/.test(supportAdapter),
+    'Support Center adapter command or fixed URL changed');
   for(const adapter of ADAPTERS) assert(sources.tsFiles[adapter] !== undefined &&
     /from\s*['"]@tauri-apps\/api\/core['"]/.test(sources.tsFiles[adapter]), 'Missing reviewed Tauri adapter');
   const cfg=sources.tauriConfig;
@@ -115,7 +141,7 @@ export function auditCheckout(root=ROOT) {
     assert(!Object.hasOwn(rustModules,moduleName), 'Ambiguous Rust module filename');
     rustModules[moduleName]=read(path);
   }
-  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','chart_archive','return_search']) {
+  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','chart_archive','return_search','support_center']) {
     assert(Object.hasOwn(rustModules,moduleName), 'Missing reviewed Rust command module');
   }
   return auditNativeIpc({
