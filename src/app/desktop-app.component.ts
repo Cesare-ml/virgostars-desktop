@@ -161,6 +161,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
   chartPresentation: 'wheel' | 'elements' | 'aspects' | 'monomeric-cross' = 'wheel';
   readonly hourRulerOptions: readonly TraditionalPlanet[] = ['SUN','MOON','MERCURY','VENUS','MARS','JUPITER','SATURN'];
+  readonly hourRulerGlyph: Readonly<Record<TraditionalPlanet,string>> = {
+    SUN:'☉', MOON:'☽', MERCURY:'☿', VENUS:'♀', MARS:'♂', JUPITER:'♃', SATURN:'♄',
+  };
   manualHourRuler: TraditionalPlanet | '' = '';
   solarClockInputs: ManualSolarClockInputs = {sunriseLocal:'',sunsetLocal:'',nextSunriseLocal:''};
   monomericDegreeMode: MonomericDegreeMode = 'shown-degree';
@@ -911,9 +914,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     };
     return this.t(BODY_KEYS[names[value]]);
   }
-  setManualHourRuler(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    this.manualHourRuler = this.hourRulerOptions.includes(value as TraditionalPlanet) ? value as TraditionalPlanet : '';
+  chooseCrossHourRuler(value: TraditionalPlanet | ''): void {
+    if (value !== '' && !this.hourRulerOptions.includes(value)) return;
+    this.manualHourRuler = value;
     this.cd.markForCheck();
   }
   setSolarClockInput(field: keyof ManualSolarClockInputs, event: Event): void {

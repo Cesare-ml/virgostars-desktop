@@ -13,6 +13,14 @@ La schermata collega anche **360 descrizioni source-label** conservate nel vecch
 Un piccolo resolver locale, testato e senza rete, restituisce i testi dei quattro
 punti e i testi dei relativi governatori. La vista espone due modalità:
 
+La scelta manuale del Maestro dell'Ora è accessibile attraverso **sette pulsanti
+con glifi astronomici**, visibili senza aprire un menu. Il pulsante separato
+«Dagli orari solari» ripristina la modalità basata sulle tre letture inserite;
+non implica che il Sole sia calcolato automaticamente. I pulsanti espongono
+lo stato di selezione ai lettori di schermo, usano le etichette IT/EN già
+presenti e si dispongono su più righe quando si restringe la colonna del tema,
+anche con l'ispettore aperto. Non cambia alcuna formula astrologica.
+
 - **Grado mostrato (0–29)**: usa la parte intera del grado nel segno, come nel
   mockup 4°56′ Ariete → etichetta 4. È una scelta di visualizzazione
   **non attribuita alla procedura storica di Angelini**.

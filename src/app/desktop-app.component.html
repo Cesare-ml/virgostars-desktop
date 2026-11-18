@@ -94,21 +94,36 @@
 
         <section class="monomeric-stage" *ngIf="view==='chart' && activeChart && chartPresentation==='monomeric-cross'" aria-label="Croce monomerica">
           <div class="monomeric-controls" role="group" [attr.aria-label]="locale==='it' ? 'Impostazioni della Croce' : 'Cross settings'">
-            <label class="monomeric-option">
-              <span>{{ locale==='it' ? "Maestro dell'ora planetaria" : 'Planetary-hour ruler' }}</span>
-              <select [value]="manualHourRuler" (change)="setManualHourRuler($event)">
-                <option value="">{{ locale==='it' ? 'Automatico dagli orari solari' : 'From supplied solar times' }}</option>
-                <option *ngFor="let planet of hourRulerOptions" [value]="planet">{{hourRulerLabel(planet)}}</option>
-              </select>
-            </label>
-            <label class="monomeric-option">
-              <span>{{ locale==='it' ? 'Corrispondenza dei gradi' : 'Degree correspondence' }}</span>
-              <select [value]="monomericDegreeMode" (change)="setMonomericDegreeMode($event)">
-                <option value="shown-degree">{{ locale==='it' ? 'Grado mostrato (0–29)' : 'Displayed degree (0–29)' }}</option>
-                <option value="costeseque-1940">Costesèque · 1940</option>
-              </select>
-            </label>
-            <span class="monomeric-source-tag">✦ {{ locale==='it' ? '360 simboli · catalogo legacy' : '360 symbols · legacy catalog' }}</span>
+            <div class="monomeric-ruler-picker">
+              <div class="monomeric-ruler-header">
+                <div class="monomeric-ruler-heading">
+                  <strong>{{locale==='it' ? "Maestro dell'Ora" : 'Ruler of the hour'}}</strong>
+                  <p>{{locale==='it' ? 'Se conosci il Maestro dell’Ora, selezionalo; altrimenti inserisci gli eventi solari qui sotto.' : 'Select the hour ruler if known; otherwise enter the solar events below.'}}</p>
+                </div>
+                <button type="button" class="monomeric-from-solar" [class.selected]="manualHourRuler === ''"
+                  [attr.aria-pressed]="manualHourRuler === ''" (click)="chooseCrossHourRuler('')">
+                  <span aria-hidden="true">◷</span> {{locale==='it' ? 'Dagli orari solari' : 'From solar times'}}
+                </button>
+              </div>
+              <div class="monomeric-planet-grid" role="group" [attr.aria-label]="locale==='it' ? 'Selezione manuale del Maestro dell’Ora' : 'Manual hour-ruler selection'">
+                <button *ngFor="let planet of hourRulerOptions" type="button" class="monomeric-planet-button"
+                  [class.selected]="manualHourRuler === planet" [attr.aria-pressed]="manualHourRuler === planet"
+                  (click)="chooseCrossHourRuler(planet)">
+                  <span class="monomeric-planet-glyph" aria-hidden="true">{{hourRulerGlyph[planet]}}</span>
+                  <span>{{hourRulerLabel(planet)}}</span>
+                </button>
+              </div>
+            </div>
+            <div class="monomeric-mode-row">
+              <label class="monomeric-option">
+                <span>{{ locale==='it' ? 'Corrispondenza dei gradi' : 'Degree correspondence' }}</span>
+                <select [value]="monomericDegreeMode" (change)="setMonomericDegreeMode($event)">
+                  <option value="shown-degree">{{ locale==='it' ? 'Grado mostrato (0–29)' : 'Displayed degree (0–29)' }}</option>
+                  <option value="costeseque-1940">Costesèque · 1940</option>
+                </select>
+              </label>
+              <span class="monomeric-source-tag">✦ {{ locale==='it' ? '360 simboli · catalogo legacy' : '360 symbols · legacy catalog' }}</span>
+            </div>
           </div>
           <details class="monomeric-solar-panel">
             <summary>{{locale==='it' ? 'Calcola il Maestro dell’Ora da alba e tramonto' : 'Calculate the hour ruler from sunrise and sunset'}}</summary>
