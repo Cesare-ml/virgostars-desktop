@@ -63,3 +63,13 @@ Poi verificare snapshot pubblici senza segreti, spegnimento della finestra
 durante callback, race cancel/HTTP/disconnect, scadenza e ritorno offline su
 Windows. Il real client HTTP resta nella separata PR review-only #361 finché
 un toolchain Rust non rigenera e verifica `Cargo.lock` con TLS.
+
+## Verifica successiva nello stesso giorno
+
+La sezione precedente descrive il checkpoint originario. Nella branch che
+include il collegamento IPC, il client HTTPS e il lockfile sono stati compilati
+e 112 test Rust sono passati con la feature staging. Su Windows 11 una build
+debug con identificativo e archivio separati ha mostrato «Accesso in corso»
+premendo «Accedi» ed è tornata a «Nessun account collegato» dopo «Annulla».
+Questo non verifica login reale, callback del sito, revoca server, calcolo
+offline o la sicurezza dell'intero flusso. Nessuna attivazione di produzione.
