@@ -4,8 +4,10 @@ import {
   ViewChild, inject
 } from '@angular/core';
 import {
-  defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
+  defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender,
+  MonomericCrossComponent, monomericCrossViewFromGeometry, type MonomericCrossView
 } from 'grafici-astrologici';
+import { buildMonomericCrossGeometry, type TraditionalPlanet } from 'astrological-functions/monomeric-cross';
 import {
   chartSide, CHART_MARGIN_PX, CHART_MODES, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
 } from './workspace-state';
@@ -18,6 +20,8 @@ import {requestSyntheticPngDownload} from './png-download';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock } from './device-clock';
 import { aspectSymbol } from './aspect-symbols';
+import { monomerPointLabel, resolveMonomers, type MonomericDegreeMode } from './astro/monomeric-catalog';
+import { resolveManualPlanetaryHour, type ManualSolarClockInputs, type ManualPlanetaryHourResult } from './astro/manual-planetary-hour';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import {
@@ -128,7 +132,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, MonomericCrossComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -155,7 +159,82 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
-  chartPresentation: 'wheel' | 'elements' | 'aspects' = 'wheel';
+  chartPresentation: 'wheel' | 'elements' | 'aspects' | 'monomeric-cross' = 'wheel';
+  readonly hourRulerOptions: readonly TraditionalPlanet[] = ['SUN','MOON','MERCURY','VENUS','MARS','JUPITER','SATURN'];
+  readonly hourRulerGlyph: Readonly<Record<TraditionalPlanet,string>> = {
+    SUN:'☉', MOON:'☽', MERCURY:'☿', VENUS:'♀', MARS:'♂', JUPITER:'♃', SATURN:'♄',
+  };
+  manualHourRuler: TraditionalPlanet | '' = '';
+  solarClockInputs: ManualSolarClockInputs = {sunriseLocal:'',sunsetLocal:'',nextSunriseLocal:''};
+  monomericDegreeMode: MonomericDegreeMode = 'shown-degree';
+  /** Hour calculation is available only when the user explicitly supplies all
+   * three local solar-event readings; no astronomical times are fabricated. */
+  get manuallyResolvedSolarHour(): ManualPlanetaryHourResult {
+    const chart = this.activeChart;
+    return chart ? resolveManualPlanetaryHour(chart.utcIso, chart.timeZone, this.solarClockInputs) : {status:'INCOMPLETE',ruler:null};
+  }
+  get selectedCrossHourRuler(): TraditionalPlanet | '' {
+    const hour = this.manuallyResolvedSolarHour;
+    return this.manualHourRuler || (hour.status === 'READY' ? hour.ruler : '');
+  }
+  get manualSolarHourSummary(): string {
+    const hour = this.manuallyResolvedSolarHour;
+    if (hour.status !== 'READY') return '';
+    const planet = this.hourRulerLabel(hour.ruler);
+    const phase = hour.segment === 'DAY' ? (this.locale === 'it' ? 'diurna' : 'day') : (this.locale === 'it' ? 'notturna' : 'night');
+    return `${this.locale === 'it' ? 'Ora planetaria' : 'Planetary hour'} ${hour.number} · ${planet} · ${phase}`;
+  }
+  get monomericCross(): MonomericCrossView | null {
+    const chart = this.activeChart;
+    const houses = chart?.data.houses[this.houseSystem];
+    const hourRuler = this.selectedCrossHourRuler;
+    if (!chart || !houses || !hourRuler) return null;
+    const names: Record<TraditionalPlanet,string> = {
+      SUN:'Sun', MOON:'Moon', MERCURY:'Mercury', VENUS:'Venus', MARS:'Mars', JUPITER:'Jupiter', SATURN:'Saturn',
+    };
+    const longitudes = {} as Record<TraditionalPlanet,number>;
+    for (const planet of this.hourRulerOptions) {
+      const longitude = chart.data.planets[names[planet]]?.longitude;
+      if (!Number.isFinite(longitude)) return null;
+      longitudes[planet] = longitude;
+    }
+    try {
+      const geometry = buildMonomericCrossGeometry({
+        hourRuler, planetLongitudesDeg:longitudes,
+        houseCuspsDeg:houses.house, houseSystemId:this.houseSystem,
+      });
+      const view = monomericCrossViewFromGeometry(geometry, this.locale);
+      return {
+        ...view,
+        degreeConvention: this.monomericDegreeMode === 'shown-degree'
+          ? (this.locale === 'it' ? 'Etichette del grado visualizzato 0–29 (scelta grafica, non regola Angelini verificata)' : 'Displayed degree labels 0–29 (visual choice, not a verified Angelini rule)')
+          : (this.locale === 'it' ? 'Costesèque 1940: punto a minuti interi, con due simboli adiacenti attivi' : 'Costesèque 1940: whole-minute point and both adjacent symbols active'),
+        catalogAttribution: this.locale === 'it'
+          ? 'Testi dal catalogo legacy VirgoStars / Serto di Iside; provenienza e diritti da verificare prima della distribuzione'
+          : 'Texts from VirgoStars legacy / Serto di Iside; provenance and rights pending release review',
+        arms: view.arms.map((arm, index) => {
+          const point = resolveMonomers(geometry.arms[index].longitudeDeg, this.monomericDegreeMode).primary;
+          const rulerPoint = resolveMonomers(geometry.arms[index].rulerLongitudeDeg, this.monomericDegreeMode).primary;
+          return {
+            ...arm,
+            description: `${monomerPointLabel(point, this.locale)} · ${point.sourceText}`,
+            rulerDescription: `${monomerPointLabel(rulerPoint, this.locale)} · ${rulerPoint.sourceText}`,
+          };
+        }),
+      };
+    } catch { return null; }
+  }
+  get monomericAdjacentRows(): readonly {label: string; symbols: readonly {label: string; text: string}[]}[] {
+    if (this.monomericDegreeMode !== 'costeseque-1940') return [];
+    return (this.monomericCross?.arms ?? []).map(arm => ({
+      label: arm.sign + ' · ' + (arm.position === 'master' ? (this.locale === 'it' ? "Maestro dell'ora" : 'Hour ruler') :
+        arm.position === 'opposite' ? (this.locale === 'it' ? 'Opposizione' : 'Opposition') :
+        arm.position === 'square-left' ? '+90°' : '−90°'),
+      symbols: resolveMonomers(arm.longitudeDeg, 'costeseque-1940').adjacent.map(symbol => ({
+        label: monomerPointLabel(symbol, this.locale), text: symbol.sourceText,
+      })),
+    }));
+  }
   showDodecatemoria = false;
   showTransaturnians = false;
   inspectorTab: InspectorTab = 'planets';
@@ -460,6 +539,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private showChart(chart: SessionChart | null): void {
     this.activeChartId = chart ? chart.id : null;
+    this.manualHourRuler = '';
+    this.solarClockInputs = {sunriseLocal:'',sunsetLocal:'',nextSunriseLocal:''};
     this.transitChart = null;
     this.rowsCache = null;
     if (chart) this.useAvailableHouseSystem(chart);
@@ -820,6 +901,32 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   toggleAspects(): void {
     if (!this.activeChart || this.destroyed) return;
     this.chartPresentation = this.chartPresentation === 'aspects' ? 'wheel' : 'aspects';
+    this.cd.markForCheck();
+  }
+  toggleMonomericCross(): void {
+    if (!this.activeChart || this.destroyed) return;
+    this.chartPresentation = this.chartPresentation === 'monomeric-cross' ? 'wheel' : 'monomeric-cross';
+    this.cd.markForCheck();
+  }
+  hourRulerLabel(value: TraditionalPlanet): string {
+    const names: Record<TraditionalPlanet,DemoPlanet> = {
+      SUN:'Sun', MOON:'Moon', MERCURY:'Mercury', VENUS:'Venus', MARS:'Mars', JUPITER:'Jupiter', SATURN:'Saturn',
+    };
+    return this.t(BODY_KEYS[names[value]]);
+  }
+  chooseCrossHourRuler(value: TraditionalPlanet | ''): void {
+    if (value !== '' && !this.hourRulerOptions.includes(value)) return;
+    this.manualHourRuler = value;
+    this.cd.markForCheck();
+  }
+  setSolarClockInput(field: keyof ManualSolarClockInputs, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.solarClockInputs = {...this.solarClockInputs, [field]:value};
+    this.cd.markForCheck();
+  }
+  setMonomericDegreeMode(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.monomericDegreeMode = value === 'costeseque-1940' ? 'costeseque-1940' : 'shown-degree';
     this.cd.markForCheck();
   }
   toggleDodecatemoria(): void {
