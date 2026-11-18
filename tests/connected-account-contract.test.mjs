@@ -18,6 +18,32 @@ test('default disabled, no native probe or invocation', async () => {
   assert.equal(called, 0);
 });
 
+test('registered native stub explicitly returns disabled even when enabled by caller', async () => {
+  let calls = 0;
+  const disabled = {protocolVersion: 1, status: 'disabled'};
+  const transport = {isNative: () => true, invoke: async (name, args) => {
+    calls++;
+    assert.equal(name, 'desktop_connected_account_v1');
+    assert.equal(args.request.protocolVersion, 1);
+    return disabled;
+  }};
+  assert.deepEqual(await requestConnectedAccount(transport, {operation: 'start'}, {enabled: true}), {kind: 'disabled'});
+  assert.deepEqual(await requestConnectedAccount(transport, {operation: 'status', attemptId: ATTEMPT}, {enabled: true}), {kind: 'disabled'});
+  assert.deepEqual(await requestConnectedAccount(transport, {operation: 'cancel', attemptId: ATTEMPT}, {enabled: true}), {kind: 'disabled'});
+  assert.equal(calls, 3);
+});
+
+test('disabled native response is exact, versioned and cannot carry private fields', () => {
+  for (const operation of [{operation: 'start'}, {operation: 'status', attemptId: ATTEMPT}]) {
+    assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status: 'disabled'}, operation), {kind: 'disabled'});
+    for (const raw of [
+      {protocolVersion: 1, status: 'disabled', attemptId: ATTEMPT},
+      {protocolVersion: 1, status: 'disabled', token: 'secret'},
+      {protocolVersion: 2, status: 'disabled'},
+    ]) assert.throws(() => decodeConnectedAccountResponse(raw, operation));
+  }
+});
+
 test('browser preview never starts authorization', async () => {
   let called = 0;
   const result = await requestConnectedAccount({

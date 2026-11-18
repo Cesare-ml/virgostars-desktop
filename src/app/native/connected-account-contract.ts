@@ -4,7 +4,8 @@
  * The Rust host (not the Angular WebView) must own the PKCE verifier/state,
  * system-browser launch, loopback listener, token exchange and OS keychain.
  * No OAuth code, URL, token, verifier or state may cross this interface.
- * THIS IS NOT WIRED TO A TAURI COMMAND YET.
+ * The registered Tauri command is currently a disabled-only stub. Even when
+ * explicitly invoked, it cannot start a session or return native secrets.
  */
 export type ConnectedAccountOperation =
   | Readonly<{ operation: 'start' }>
@@ -53,9 +54,14 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boo
  */
 export function decodeConnectedAccountResponse(
   raw: unknown, operation: ConnectedAccountOperation,
-): Exclude<ConnectedAccountResult, { kind: 'disabled' | 'not_native' | 'native_unavailable' }> {
+): ConnectedAccountResult {
   if (!dataObject(raw) || ownData(raw, 'protocolVersion') !== 1) throw new Error(ERROR);
   const status = ownData(raw, 'status');
+  // A native host that has not passed the staging security gates responds
+  // with precisely these two fields. No synthetic ID/connection is invented.
+  if (status === 'disabled' && exactKeys(raw, ['protocolVersion', 'status'])) {
+    return Object.freeze({kind: 'disabled'});
+  }
   const attemptId = ownData(raw, 'attemptId');
   if (typeof attemptId !== 'string' || !ID.test(attemptId) ||
       (operation.operation !== 'start' && attemptId !== operation.attemptId)) throw new Error(ERROR);
