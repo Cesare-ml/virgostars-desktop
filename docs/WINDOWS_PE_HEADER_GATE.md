@@ -23,6 +23,18 @@ A preflight pass requires:
   on-disk file size. A valid-looking PE header with truncated sections fails closed.
   Section metadata is inspected in the initial bounded header read; executable
   section contents are **not** loaded or cryptographically verified.
+- No two sections may overlap in their mapped image extents or in their nonempty
+  raw file ranges. Adjacent non-overlapping sections are allowed. This prevents
+  a malformed section table from passing merely because each range is in bounds.
+- Sections must not map over the PE headers; the entrypoint must be backed by
+  raw bytes of an executable section, not merely its zero-initialized virtual tail.
+- For this conventional **Windows x64/MSVC** prototype, section alignment must
+  be a power of two of at least 4 KiB and at least as large as file alignment;
+  file alignment must be a power of two between 512 B and 64 KiB. Section RVAs,
+  nonempty raw offsets/sizes, `SizeOfHeaders`, and `SizeOfImage` must respect
+  their corresponding declared alignments. The intentionally scoped gate rejects
+  PE's exceptional sub-page-aligned images; it is not a general-purpose PE loader.
+  Reference: [Microsoft PE specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format).
 
 The inspection reads at most **8 KiB**, performs no writes and sends no telemetry.
 Expected failures use fixed `WINDOWS_PE_...` status strings; local file paths

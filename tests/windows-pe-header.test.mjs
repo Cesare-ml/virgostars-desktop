@@ -20,6 +20,8 @@ const pe = (opts = {}) => {
   b.writeUInt16LE(0x20b, 0x98);
   b.writeUInt16LE(2, 0x98 + 68);
   // Fictional but structurally consistent .text/.rdata/.data section layout.
+  b.writeUInt32LE(0x1000, 0x98 + 32); // SectionAlignment (Windows x64)
+  b.writeUInt32LE(0x200, 0x98 + 36); // FileAlignment
   b.writeUInt32LE(0x1000, 0x98 + 16); // AddressOfEntryPoint in .text
   b.writeUInt32LE(0x4000, 0x98 + 56); // SizeOfImage
   b.writeUInt32LE(0x200, 0x98 + 60); // SizeOfHeaders
@@ -83,6 +85,7 @@ test('rejects missing executable section contents and inconsistent PE image layo
     [0x188 + 20, 64, /SECTION_RAW_BOUNDS/], // overlaps header
     [0x188 + 20, 2048, /SECTION_RAW_BOUNDS/], // truncated executable section
     [0x188 + 40 + 12, 0x3f00, /SECTION_IMAGE_BOUNDS/], // section past image
+    [0x188 + 80 + 12, 0x100, /SECTION_HEADER_OVERLAP/], // section aliases PE headers
   ];
   for (const [offset, value, reason] of failures) {
     const bad = pe();
@@ -93,6 +96,59 @@ test('rejects missing executable section contents and inconsistent PE image layo
     [0x188 + 16, 0, 4], [0x188 + 40 + 16, 0, 4], [0x188 + 80 + 16, 0, 4]
   ]});
   assert.throws(() => inspectWindowsPeHeader(withoutRaw), /NO_RAW_SECTION/);
+});
+
+test('rejects overlapping PE image and raw section ranges, but accepts adjacent ranges', () => {
+  // Individually valid extents must not alias bytes belonging to other sections.
+  // Overlap even though both RVAs remain aligned to 0x1000.
+  const virtualOverlap = pe({patch:[[0x188 + 8, 0x1200, 4]]});
+  assert.throws(() => inspectWindowsPeHeader(virtualOverlap), /SECTION_VIRTUAL_OVERLAP/);
+  const rawOverlap = pe({patch:[[0x188 + 40 + 20, 0x200, 4]]});
+  assert.throws(() => inspectWindowsPeHeader(rawOverlap), /SECTION_RAW_OVERLAP/);
+  // Default fixture has touching raw sections: [0x200,0x400), [0x400,0x600).
+  assert.equal(inspectWindowsPeHeader(pe()).kind, 'windows_x64_gui');
+  // Full-page .text followed by .rdata at 0x2000: adjoining, aligned, non-overlapping.
+  const virtualAdjacent = pe({patch:[[0x188 + 8, 0x1000, 4]]});
+  assert.equal(inspectWindowsPeHeader(virtualAdjacent).kind, 'windows_x64_gui');
+});
+
+test('rejects malformed PE alignment while accepting nondefault valid page alignment', () => {
+  const invalid = [
+    [[0x98 + 36, 0, 4], /ALIGNMENT_FIELDS/],
+    [[0x98 + 36, 256, 4], /ALIGNMENT_FIELDS/],
+    [[0x98 + 36, 768, 4], /ALIGNMENT_FIELDS/],
+    [[0x98 + 32, 0x200, 4], /ALIGNMENT_FIELDS/], // sub-page: outside x64 MSVC scope
+    [[0x98 + 32, 0x1800, 4], /ALIGNMENT_FIELDS/],
+    [[0x98 + 60, 0x201, 4], /IMAGE_ALIGNMENT/],
+    [[0x98 + 56, 0x4100, 4], /IMAGE_ALIGNMENT/],
+    [[0x188 + 40 + 12, 0x2100, 4], /SECTION_RVA_ALIGNMENT/],
+    [[0x188 + 40 + 20, 0x300, 4], /SECTION_RAW_ALIGNMENT/],
+    [[0x188 + 40 + 16, 0x201, 4], /SECTION_RAW_ALIGNMENT/],
+  ];
+  for (const [patch, error] of invalid) {
+    assert.throws(() => inspectWindowsPeHeader(pe({patch:[patch]})), error);
+  }
+  // SectionAlignment need not be exactly 4096; 8192 remains valid here.
+  const higherPageAlignment = pe({patch:[
+    [0x98 + 32, 0x2000, 4], [0x98 + 56, 0x8000, 4],
+    [0x98 + 16, 0x2000, 4],
+    [0x188 + 12, 0x2000, 4],
+    [0x188 + 40 + 12, 0x4000, 4],
+    [0x188 + 80 + 12, 0x6000, 4],
+  ]});
+  assert.equal(inspectWindowsPeHeader(higherPageAlignment).kind, 'windows_x64_gui');
+});
+
+test('entrypoint must be backed by executable file bytes, not just a virtual tail', () => {
+  const virtualTail = pe({patch:[
+    [0x188 + 8, 0x400, 4], // VirtualSize extends beyond .text raw bytes
+    [0x98 + 16, 0x1200, 4], // First byte beyond its [0x1000, 0x1200) raw backing
+  ]});
+  assert.throws(() => inspectWindowsPeHeader(virtualTail), /ENTRYPOINT_SECTION/);
+  const lastBackedByte = pe({patch:[
+    [0x188 + 8, 0x400, 4], [0x98 + 16, 0x11ff, 4],
+  ]});
+  assert.equal(inspectWindowsPeHeader(lastBackedByte).kind, 'windows_x64_gui');
 });
 
 test('rejects wrong on-disk length while supporting bounded header reads and Uint8Array offsets', () => {
