@@ -86,11 +86,23 @@
         </div>
 
         <!-- A light DOM view of the same calculated longitudes, never a second wheel renderer. -->
-        <vs-elements-view *ngIf="view==='chart' && activeChart && chartPresentation!=='wheel'"
+        <vs-elements-view *ngIf="view==='chart' && activeChart && (chartPresentation==='elements' || chartPresentation==='aspects')"
           [data]="activeChart.data" [houseSystem]="houseSystem" [locale]="locale"
           [theme]="theme" [aspects]="matrixAspectRows" [presentation]="chartPresentation==='aspects' ? 'aspects' : 'elements'"
           [showDodecatemoria]="showDodecatemoria" (toggleDodecatemoria)="toggleDodecatemoria()"
           [showTransaturnians]="showTransaturnians" (toggleTransaturnians)="toggleTransaturnians()"></vs-elements-view>
+
+        <section class="monomeric-stage" *ngIf="view==='chart' && activeChart && chartPresentation==='monomeric-cross'" aria-label="Croce monomerica">
+          <label class="monomeric-manual-ruler">
+            {{ locale==='it' ? "Maestro dell'ora planetaria" : 'Planetary-hour ruler' }}
+            <select [value]="manualHourRuler" (change)="setManualHourRuler($event)">
+              <option value="">{{ locale==='it' ? 'Seleziona il pianeta' : 'Select planet' }}</option>
+              <option *ngFor="let planet of hourRulerOptions" [value]="planet">{{planet}}</option>
+            </select>
+          </label>
+          <p class="monomeric-caution">{{ locale==='it' ? "Selezione manuale: la determinazione astronomica dell'ora planetaria e il catalogo storico non sono ancora collegati a questa vista." : 'Manual selection: planetary-hour solar events and the historical monomer catalog are not connected yet.' }}</p>
+          <vs-monomeric-cross [cross]="monomericCross" [locale]="locale"></vs-monomeric-cross>
+        </section>
 
         <div class="stage-tools">
           <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
@@ -105,6 +117,9 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
             [class.selected]="chartPresentation==='aspects'" [attr.aria-pressed]="chartPresentation==='aspects'"
             (click)="toggleAspects()">{{t('elements.aspectsButton')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
+            [class.selected]="chartPresentation==='monomeric-cross'" [attr.aria-pressed]="chartPresentation==='monomeric-cross'"
+            (click)="toggleMonomericCross()">{{locale==='it' ? 'Croce' : 'Cross'}}</button>
           <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
             [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
         </div>

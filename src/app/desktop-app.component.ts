@@ -4,8 +4,10 @@ import {
   ViewChild, inject
 } from '@angular/core';
 import {
-  defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
+  defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender,
+  MonomericCrossComponent, monomericCrossViewFromGeometry, type MonomericCrossView
 } from 'grafici-astrologici';
+import { buildMonomericCrossGeometry, type TraditionalPlanet } from 'astrological-functions/monomeric-cross';
 import {
   chartSide, CHART_MARGIN_PX, CHART_MODES, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
 } from './workspace-state';
@@ -128,7 +130,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, MonomericCrossComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -155,7 +157,31 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
-  chartPresentation: 'wheel' | 'elements' | 'aspects' = 'wheel';
+  chartPresentation: 'wheel' | 'elements' | 'aspects' | 'monomeric-cross' = 'wheel';
+  readonly hourRulerOptions: readonly TraditionalPlanet[] = ['SUN','MOON','MERCURY','VENUS','MARS','JUPITER','SATURN'];
+  manualHourRuler: TraditionalPlanet | '' = '';
+  /** No source-backed sunrise/sunset in this client yet; the user must enter a known ruler. */
+  get monomericCross(): MonomericCrossView | null {
+    const chart = this.activeChart;
+    const houses = chart?.data.houses[this.houseSystem];
+    if (!chart || !houses || !this.manualHourRuler) return null;
+    const names: Record<TraditionalPlanet,string> = {
+      SUN:'Sun', MOON:'Moon', MERCURY:'Mercury', VENUS:'Venus', MARS:'Mars', JUPITER:'Jupiter', SATURN:'Saturn',
+    };
+    const longitudes = {} as Record<TraditionalPlanet,number>;
+    for (const planet of this.hourRulerOptions) {
+      const longitude = chart.data.planets[names[planet]]?.longitude;
+      if (!Number.isFinite(longitude)) return null;
+      longitudes[planet] = longitude;
+    }
+    try {
+      const geometry = buildMonomericCrossGeometry({
+        hourRuler:this.manualHourRuler, planetLongitudesDeg:longitudes,
+        houseCuspsDeg:houses.house, houseSystemId:this.houseSystem,
+      });
+      return monomericCrossViewFromGeometry(geometry, this.locale);
+    } catch { return null; }
+  }
   showDodecatemoria = false;
   showTransaturnians = false;
   inspectorTab: InspectorTab = 'planets';
@@ -460,6 +486,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private showChart(chart: SessionChart | null): void {
     this.activeChartId = chart ? chart.id : null;
+    this.manualHourRuler = '';
     this.transitChart = null;
     this.rowsCache = null;
     if (chart) this.useAvailableHouseSystem(chart);
@@ -820,6 +847,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   toggleAspects(): void {
     if (!this.activeChart || this.destroyed) return;
     this.chartPresentation = this.chartPresentation === 'aspects' ? 'wheel' : 'aspects';
+    this.cd.markForCheck();
+  }
+  toggleMonomericCross(): void {
+    if (!this.activeChart || this.destroyed) return;
+    this.chartPresentation = this.chartPresentation === 'monomeric-cross' ? 'wheel' : 'monomeric-cross';
+    this.cd.markForCheck();
+  }
+  setManualHourRuler(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.manualHourRuler = this.hourRulerOptions.includes(value as TraditionalPlanet) ? value as TraditionalPlanet : '';
     this.cd.markForCheck();
   }
   toggleDodecatemoria(): void {
