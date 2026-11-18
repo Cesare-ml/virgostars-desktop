@@ -159,11 +159,14 @@ mod tests {
     #[test]
     fn rejects_untrusted_origins_and_added_query_parameters() {
         let original = valid();
-        for host in ["www.virgostars.it", "virgostars.it", "staging.virgostars.it.evil.invalid"] {
+        for host in ["www.virgostars.it", "staging.virgostars.it.evil.invalid"] {
             let mut modified = original.clone();
             modified.set_host(Some(host)).unwrap();
             assert!(!approved_pkce_browser_url(&modified));
         }
+        let mut public = original.clone();
+        public.set_host(Some("virgostars.it")).unwrap();
+        assert_eq!(approved_pkce_browser_url(&public), cfg!(feature = "production-connected-account"));
         let mut modified = original.clone();
         modified.query_pairs_mut().append_pair("next", "https://evil.invalid");
         assert!(!approved_pkce_browser_url(&modified));

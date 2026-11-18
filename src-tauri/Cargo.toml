@@ -16,6 +16,8 @@ default = ["virgostars-ephemeris"]
 virgostars-ephemeris = ["dep:virgostars-ephemeris-core"]
 # Explicit build-time staging opt-in; never permits production endpoints.
 staging-connected-account = []
+# An explicit release build uses a fixed production origin pair.
+production-connected-account = ["staging-connected-account"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

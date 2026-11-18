@@ -130,10 +130,15 @@ pub(crate) fn valid_staging_token_endpoint(value: &str) -> Option<Url> {
         !uri.username().is_empty() || uri.password().is_some() || uri.as_str() != value {
         return None;
     }
-    // Reuse the browser allowlist, including the refusal of production hosts.
+    // The production API has a different hostname from its consent page.
+    if cfg!(feature = "production-connected-account") && uri.host_str() == Some("api.virgostars.it") {
+        return Some(uri);
+    }
+    // Reuse the browser allowlist for staging.
     let mut browser_page = uri.clone();
     browser_page.set_path("/collega-dispositivo");
     valid_consent_origin(browser_page.as_str())?;
+    if uri.host_str() == Some("virgostars.it") { return None; }
     Some(uri)
 }
 
@@ -265,6 +270,14 @@ mod tests {
         assert_eq!(grant.scope(), TokenScope::Read);
         assert_eq!(grant.remaining_seconds(now), 900);
         assert!(plausible_bearer(grant.bearer()));
+    }
+
+    #[test]
+    fn production_endpoint_requires_opt_in_and_exact_api_host() {
+        assert_eq!(valid_staging_token_endpoint("https://api.virgostars.it/chart-sync/v1/token").is_some(), cfg!(feature = "production-connected-account"));
+        for endpoint in ["https://virgostars.it/chart-sync/v1/token", "https://api.virgostars.it.evil.test/chart-sync/v1/token", "https://api.virgostars.it/chart-sync/v1/token?next=evil", "http://api.virgostars.it/chart-sync/v1/token"] {
+            assert!(valid_staging_token_endpoint(endpoint).is_none());
+        }
     }
 
     #[test]

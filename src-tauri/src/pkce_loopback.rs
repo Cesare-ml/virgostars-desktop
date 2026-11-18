@@ -418,9 +418,13 @@ mod tests {
 
     #[test]
     fn rejects_public_or_untrusted_consent_before_invoking_browser() {
+        if !cfg!(feature = "production-connected-account") {
+            let browser = FakeBrowser::default();
+            assert!(matches!(LoopbackLogin::start(&browser, "https://virgostars.it/collega-dispositivo"), Err(LoopbackError::Unavailable)));
+            assert!(browser.opened.lock().unwrap().is_none());
+        }
         for url in [
             "https://www.virgostars.it/collega-dispositivo",
-            "https://virgostars.it/collega-dispositivo",
             "https://staging.virgostars.it.evil.invalid/collega-dispositivo",
             "http://staging.virgostars.it/collega-dispositivo",
             "https://staging.virgostars.it/collega-dispositivo?next=evil",

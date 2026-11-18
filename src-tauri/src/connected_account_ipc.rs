@@ -8,6 +8,15 @@ use tauri::State;
 #[cfg(feature = "staging-connected-account")]
 use tauri::Manager;
 
+// Production endpoints form a fixed pair, never supplied by the WebView.
+#[cfg(feature = "staging-connected-account")]
+fn configured_endpoints() -> (Option<&'static str>, Option<&'static str>) {
+    #[cfg(feature = "production-connected-account")]
+    { (Some("https://virgostars.it/collega-dispositivo"), Some("https://api.virgostars.it/chart-sync/v1/token")) }
+    #[cfg(not(feature = "production-connected-account"))]
+    { (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"), option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) }
+}
+
 const PROTOCOL_VERSION: u64 = 1;
 const NATIVE_UNAVAILABLE: &str = "native_unavailable";
 
@@ -91,8 +100,7 @@ pub async fn desktop_group_conflicts_v1(
     {
         use crate::chart_archive::ArchivePaths;
         use crate::pkce_native_registry::GroupConflictChoice;
-        let (Some(consent),Some(token)) = (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"),
-            option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) else {
+        let (Some(consent),Some(token)) = configured_endpoints() else {
             return Ok(GroupConflictReply {protocol_version:1,status:"disabled",conflicts:None});
         };
         if crate::pkce_login::valid_consent_origin(consent).is_none()
@@ -203,8 +211,7 @@ pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHa
     if !request.valid() { return Err(NATIVE_UNAVAILABLE); }
     #[cfg(feature = "staging-connected-account")]
     {
-        let (Some(consent),Some(token)) = (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"),
-            option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) else {
+        let (Some(consent),Some(token)) = configured_endpoints() else {
             return Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None});
         };
         if crate::pkce_login::valid_consent_origin(consent).is_none()
@@ -307,8 +314,7 @@ pub async fn desktop_connected_account_v1(
     {
         use crate::pkce_native_registry::NativeRegistrySnapshot;
         use crate::pkce_native_session::NativeLoginPhase;
-        let (Some(consent), Some(token)) = (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"),
-            option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) else { return Ok(ConnectedAccountReply::disabled()); };
+        let (Some(consent), Some(token)) = configured_endpoints() else { return Ok(ConnectedAccountReply::disabled()); };
         if crate::pkce_login::valid_consent_origin(consent).is_none()
             || crate::pkce_token_exchange::valid_staging_token_endpoint(token).is_none() {
             return Ok(ConnectedAccountReply::disabled());

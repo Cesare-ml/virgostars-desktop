@@ -91,3 +91,13 @@ An indefinitely usable offline session and immediate remote revocation **cannot 
 - Concurrent web and desktop change with same base revision produces conflict instead of last-write-wins.
 - Server revocation blocks future online sync; UI clearly explains offline limitations.
 - Timezone conversion/DST, UTC birth timestamps and locality metadata preserved exactly; unknown birth times do not gain false accuracy.
+
+## Production endpoint build candidate
+
+An explicit `production-connected-account` build selects the fixed consent
+page `https://virgostars.it/collega-dispositivo` and API token endpoint
+`https://api.virgostars.it/chart-sync/v1/token`. Default builds still disable
+connected-account IPC, and the staging-only build rejects both production
+endpoints. This is a build-time candidate, not evidence of a deployed backend,
+published website, installed Desktop release, or successful live sync. The
+native host retains tokens and does not accept endpoint URLs from the WebView.

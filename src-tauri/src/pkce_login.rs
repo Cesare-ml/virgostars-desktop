@@ -77,9 +77,8 @@ pub(crate) fn valid_loopback_uri(candidate: &str) -> bool {
         uri.as_str() == candidate
 }
 
-/// Consent is staging-only while the backend PKCE authorization is disabled
-/// in production. The caller supplies the exact URL, but it must still be a
-/// VirgoStars-owned staging/preview host. No arbitrary HTTPS origin is valid.
+/// Production consent is accepted only by an explicitly opted-in build.
+/// Staging/preview remains available for isolated integration tests.
 pub(crate) fn valid_consent_origin(candidate: &str) -> Option<Url> {
     let uri = Url::parse(candidate).ok()?;
     let host = uri.host_str()?;
@@ -89,7 +88,7 @@ pub(crate) fn valid_consent_origin(candidate: &str) -> Option<Url> {
         labels[labels.len() - 1] == "it" &&
         labels[..labels.len() - 2].iter().any(|label| matches!(*label, "staging" | "preview"));
     if uri.scheme() != "https" ||
-        !staging_host ||
+        !(staging_host || (cfg!(feature = "production-connected-account") && host == "virgostars.it")) ||
         uri.port().is_some() || uri.path() != "/collega-dispositivo" ||
         uri.query().is_some() || uri.fragment().is_some() ||
         !uri.username().is_empty() || uri.password().is_some() ||
@@ -256,7 +255,7 @@ mod tests {
         assert_eq!(query.iter().find(|(key, _)| key == "redirect_uri").unwrap().1.as_ref(), a.redirect_uri.as_str());
         assert!(a.consent_url("https://preview.virgostars.it/collega-dispositivo").is_ok());
         assert!(a.consent_url("https://www.virgostars.it/collega-dispositivo").is_err());
-        assert!(a.consent_url("https://virgostars.it/collega-dispositivo").is_err());
+        assert_eq!(a.consent_url("https://virgostars.it/collega-dispositivo").is_ok(), cfg!(feature = "production-connected-account"));
         assert!(a.consent_url("http://www.virgostars.it/collega-dispositivo").is_err());
         assert!(a.consent_url("https://virgostars.it.evil.test/collega-dispositivo").is_err());
         assert!(a.consent_url("https://staging.virgostars.it.evil.test/collega-dispositivo").is_err());
