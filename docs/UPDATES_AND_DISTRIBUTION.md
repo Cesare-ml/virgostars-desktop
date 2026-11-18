@@ -59,6 +59,25 @@ npm run verify:version
 
 Eseguire quindi lo script `build-signed-installer.ps1` precedente con la stessa chiave di test e generare `latest.json` usando i percorsi dell'installer 0.0.3 e della sua firma. Non riutilizzare una chiave di produzione per una VM usa e getta.
 
+Per isolare il controllo dai canali Stable e Beta, entrambe le build della prova devono essere create con `-TestChannel` e con la stessa **chiave di test separata**. Il client di prova usa soltanto il tag `updates-testing` e mostra `(test)` accanto alla versione; non distribuire mai queste build come release normali. Il manifest si prepara con `--channel testing` e punta alla release `test-v0.0.3`. Solo dopo autorizzazione alla pubblicazione, rendere disponibili installer e firma in quella release di prova e il manifest nella release `updates-testing`: questi tag non modificano i manifest `updates-stable` o `updates-beta`. I file non vengono pubblicati automaticamente.
+
+Con chiave di test già generata e percorsi di build privati predisposti, per ciascuna versione usare il comando sotto; dopo il build di 0.0.3, il blocco individua un solo installer e prepara il manifest senza pubblicarlo:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\VirgoStarsSigning\updater-test.key"
+$updatePassword = Read-Host 'Password chiave di test' -AsSecureString
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = [System.Net.NetworkCredential]::new('', $updatePassword).Password
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\updates\build-signed-installer.ps1 -PublicKeyFile "$env:USERPROFILE\VirgoStarsSigning\updater-test.key.pub" -TestChannel
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PATH
+Remove-Variable updatePassword
+$testInstallers = @(Get-ChildItem .\src-tauri\target\release\bundle\nsis\ -Filter '*0.0.3*x64-setup.exe')
+if ($testInstallers.Count -ne 1) { throw 'Serve esattamente un installer di prova 0.0.3.' }
+if (Test-Path .\release-notes-test.txt) { throw 'Il file release-notes-test.txt esiste già.' }
+Set-Content -Encoding utf8 .\release-notes-test.txt 'Aggiornamento di prova 0.0.3'
+node .\scripts\updates\prepare-manifest.mjs --channel testing --installer $testInstallers[0].FullName --signature ($testInstallers[0].FullName + '.sig') --notes .\release-notes-test.txt --output .\latest-testing.json
+```
+
 Verificare: versione corrente senza aggiornamento; notifica e note di 0.0.3; percentuale durante il download; interruzione di rete; firma errata e versione firmata alterata, entrambe rifiutate; consenso e riavvio; contenuto dell'archivio e foto dopo il riavvio; impostazioni, catalogo città ed effemeridi; installazione di 0.0.1 → 0.0.2; passaggio beta/stable senza downgrade; installer interrotto e recupero manuale da una copia verificata. Non dichiarare superati questi casi senza osservarli.
 
 ## Limiti aperti prima della release
@@ -68,3 +87,4 @@ Verificare: versione corrente senza aggiornamento; notifica e note di 0.0.3; per
 - Il download è limitato a 512 MiB prima della verifica Tauri e resta in memoria; installer più grandi sono rifiutati. Dimensione e distribuzione separata di eventuali dataset molto grandi richiedono una prova reale.
 - Non esiste ancora ripristino automatico verificato di backup o migrazione di schema. Non spedire una migrazione finché non è stata progettata e collaudata.
 - Non è stata verificata la disponibilità pubblica degli endpoint GitHub di canale; l'aggiornamento richiede HTTPS accessibile senza segreti incorporati nel client.
+- Il canale `updates-testing` è predisposto ma non è stato pubblicato né collaudato end-to-end; richiede una VM, chiave e artefatti di test separati.

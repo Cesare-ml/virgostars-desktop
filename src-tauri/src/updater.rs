@@ -8,6 +8,8 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 const STABLE: &str = "https://github.com/Cesare-ml/virgostars-desktop/releases/download/updates-stable/latest.json";
 const BETA: &str = "https://github.com/Cesare-ml/virgostars-desktop/releases/download/updates-beta/latest.json";
+const TESTING: &str = "https://github.com/Cesare-ml/virgostars-desktop/releases/download/updates-testing/latest.json";
+const TEST_BUILD: &str = match option_env!("VIRGOSTARS_UPDATER_TEST_CHANNEL") { Some(value) => value, None => "" };
 const KEY: &str = match option_env!("VIRGOSTARS_UPDATER_PUBLIC_KEY") { Some(k) => k, None => "" };
 const MAX_PACKAGE_BYTES: usize = 512 * 1024 * 1024;
 
@@ -23,10 +25,11 @@ pub struct UpdateReply { status: &'static str, current_version: String, version:
 #[serde(rename_all = "camelCase")]
 pub struct DownloadProgress { downloaded: u64, total: Option<u64> }
 fn reply(app: &AppHandle, status: &'static str) -> UpdateReply {
-    UpdateReply { status, current_version: app.package_info().version.to_string(), version: None, notes: None }
+    let version = app.package_info().version.to_string();
+    UpdateReply { status, current_version: if TEST_BUILD == "1" { format!("{version} (test)") } else { version }, version: None, notes: None }
 }
-fn endpoint(channel: &str) -> Option<&'static str> {
-    match channel { "stable" => Some(STABLE), "beta" => Some(BETA), _ => None }
+fn channel_endpoint(channel: &str, test_build: bool) -> Option<&'static str> {
+    match channel { "stable" | "beta" if test_build => Some(TESTING), "stable" => Some(STABLE), "beta" => Some(BETA), _ => None }
 }
 fn fits_download(current: usize, next: usize) -> bool {
     current.checked_add(next).is_some_and(|size| size <= MAX_PACKAGE_BYTES)
@@ -54,7 +57,7 @@ async fn download_verified(update: &Update, progress: &Channel<DownloadProgress>
 #[tauri::command]
 pub async fn check_updates(app: AppHandle, channel: String) -> UpdateReply {
     let state = app.state::<UpdateState>();
-    let Some(url) = endpoint(&channel) else { return reply(&app, "invalid_channel") };
+    let Some(url) = channel_endpoint(&channel, TEST_BUILD == "1") else { return reply(&app, "invalid_channel") };
     if KEY.trim().is_empty() { return reply(&app, "not_configured") }
     {
         let Ok(mut inner) = state.0.lock() else { return reply(&app, "unavailable") };
@@ -91,10 +94,12 @@ mod tests {
     const SIGNATURE: &str = "untrusted comment: signature from tauri secret key\nRUTX5qZvdPSepPF2zsjvP/L/TQtBLRnWRvaq+4omK1UEugtQp/USrGiI1v762sDy3id3aor7bRC9ETyeot6lMHHrWoZ5hjUM1Qc=\ntrusted comment: timestamp:1791649051\tfile:payload\tversion:2.0.0\nDDq2CLOEl5cQmC2eJRHlnZPVViOZsu1CjpPKQoei4A/XBfkDqGO0B+QMrcrHgEQ5qV3mne75tdFWhJpqUXh9AA==";
     #[test]
     fn channels_are_fixed_and_invalid_input_is_rejected() {
-        assert_eq!(endpoint("stable"), Some(STABLE));
-        assert_eq!(endpoint("beta"), Some(BETA));
-        assert_eq!(endpoint("https://example.test"), None);
-        assert_eq!(endpoint("Stable"), None);
+        assert_eq!(channel_endpoint("stable",false), Some(STABLE));
+        assert_eq!(channel_endpoint("beta",false), Some(BETA));
+        assert_eq!(channel_endpoint("stable",true), Some(TESTING));
+        assert_eq!(channel_endpoint("beta",true), Some(TESTING));
+        assert_eq!(channel_endpoint("https://example.test",true), None);
+        assert_eq!(channel_endpoint("Stable",false), None);
         assert!(fits_download(MAX_PACKAGE_BYTES - 1, 1));
         assert!(!fits_download(MAX_PACKAGE_BYTES, 1));
         assert!(!fits_download(usize::MAX, 1));

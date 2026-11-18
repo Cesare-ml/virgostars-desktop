@@ -20,5 +20,9 @@ test('manual manifest uses the selected channel and refuses a mismatched signed 
     const manifest=JSON.parse(readFileSync(out,'utf8'));assert.equal(manifest.version,version);
     assert.match(manifest.platforms['windows-x86_64'].url,/\/releases\/download\/v/);
     assert.notEqual(run().status,0,'existing manifest must never be overwritten');
+    rmSync(out);
+    const testing=spawnSync(process.execPath,['scripts/updates/prepare-manifest.mjs','--channel','testing','--installer',installer,'--signature',sig,'--notes',notes,'--output',out],{encoding:'utf8'});
+    assert.equal(testing.status,0);
+    assert.match(JSON.parse(readFileSync(out,'utf8')).platforms['windows-x86_64'].url,/\/releases\/download\/test-v/);
   } finally {for (const name of ['fixture-setup.exe','fixture.sig','notes.txt','latest.json']) rmSync(join(dir,name),{force:true});rmdirSync(dir);}
 });

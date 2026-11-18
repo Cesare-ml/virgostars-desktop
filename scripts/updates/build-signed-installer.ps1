@@ -1,5 +1,6 @@
 param(
-  [Parameter(Mandatory=$true)][string]$PublicKeyFile
+  [Parameter(Mandatory=$true)][string]$PublicKeyFile,
+  [switch]$TestChannel
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $PublicKeyFile -PathType Leaf)) { throw 'File della chiave pubblica non trovato.' }
@@ -12,6 +13,7 @@ $publicKey = (Get-Content -LiteralPath $PublicKeyFile -Raw).Trim()
 if ($publicKey.Length -lt 40 -or $publicKey.Length -gt 2000) { throw 'Chiave pubblica non valida.' }
 $env:VIRGOSTARS_UPDATER_PUBLIC_KEY = $publicKey
 $env:TAURI_SIGNING_PRIVATE_KEY = $privatePath
+$env:VIRGOSTARS_UPDATER_TEST_CHANNEL = if ($TestChannel) { '1' } else { '0' }
 try {
   New-Item -ItemType Directory -Force .local/updater | Out-Null
   $overlay = @{ bundle = @{ createUpdaterArtifacts = $true } } | ConvertTo-Json -Depth 5
@@ -23,4 +25,5 @@ try {
 } finally {
   Remove-Item Env:VIRGOSTARS_UPDATER_PUBLIC_KEY -ErrorAction SilentlyContinue
   Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
+  Remove-Item Env:VIRGOSTARS_UPDATER_TEST_CHANNEL -ErrorAction SilentlyContinue
 }
