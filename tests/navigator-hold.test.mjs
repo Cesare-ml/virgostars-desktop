@@ -52,5 +52,5 @@ test('when a date cannot be calculated the clock goes back to the chart on scree
   assert.match(recompute, /this\.stopHold\(\);\s+if \(this\.navShown && this\.nav\) this\.nav = \{\.\.\.this\.nav, current:this\.navShown\};/);
   assert.match(recompute, /this\.navShown = point;/, 'a success becomes the new reference');
   assert.match(component, /out_of_range:'calc\.range'/);
-  assert.match(component, /this\.navShown = point;\n  \}/, 'starting navigation sets the reference');
+  assert.match(component, /this\.navShown = point;\r?\n  \}/, 'starting navigation sets the reference');
 });
