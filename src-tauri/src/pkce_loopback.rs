@@ -6,7 +6,7 @@
 //! grant has been enabled.
 #![allow(dead_code)]
 
-use crate::pkce_login::{CallbackDecision, LoginError, PendingPkceLogin};
+use crate::pkce_login::{CallbackDecision, PendingPkceLogin};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::{atomic::{AtomicU8, Ordering}, Arc};
@@ -47,6 +47,8 @@ const LOGIN_COMPLETED: u8 = 2;
 pub struct LoginCancelHandle { state: Arc<AtomicU8> }
 
 impl LoginCancelHandle {
+    #[cfg(test)]
+    pub(crate) fn synthetic_for_test() -> Self { Self {state:Arc::new(AtomicU8::new(LOGIN_ACTIVE))} }
     /// Cancellation wins only if no native success has been committed yet.
     pub fn cancel(&self) {
         let _ = self.state.compare_exchange(LOGIN_ACTIVE, LOGIN_CANCELLED, Ordering::SeqCst, Ordering::SeqCst);
@@ -234,12 +236,18 @@ fn read_callback_target(stream: &mut TcpStream, host: &str, timeout: Duration) -
 /// No user-controlled HTML, redirects or third-party resources. In particular,
 /// the authorization code is not reflected into the browser response.
 fn respond(stream: &mut TcpStream, accepted: bool) {
+    // The fixed script replaces the local callback URL in the current history
+    // entry as soon as the page runs. It receives no callback values. This is
+    // best effort: browser history may already have persisted the navigation.
+    const CLEAN_URL: &str = "history.replaceState(null,document.title,location.pathname)";
+    const CLEAN_URL_HASH: &str = "IgkiiN+by1M0XVt0qHxZPIsxnDoVpUuZRConiSPwZCo=";
     let (status, body) = if accepted {
-        ("200 OK", "<!doctype html><html lang=it><meta charset=utf-8><title>VirgoStars</title><p>Puoi tornare a VirgoStars Desktop.</p></html>")
+        ("200 OK", "Puoi tornare a VirgoStars Desktop.")
     } else {
-        ("400 Bad Request", "<!doctype html><html lang=it><meta charset=utf-8><title>VirgoStars</title><p>Richiesta non valida o scaduta.</p></html>")
+        ("400 Bad Request", "Richiesta non valida o scaduta.")
     };
-    let response = format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; base-uri 'none'; form-action 'none'\r\nConnection: close\r\n\r\n{body}", body.len());
+    let body = format!("<!doctype html><html lang=it><meta charset=utf-8><title>VirgoStars</title><script>{CLEAN_URL}</script><p>{body}</p></html>");
+    let response = format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; script-src 'sha256-{CLEAN_URL_HASH}'; base-uri 'none'; form-action 'none'\r\nConnection: close\r\n\r\n{body}", body.len());
     // An already validated callback must remain completed if the browser
     // closes early; never propagate user-visible network error details.
     let _ = stream.write_all(response.as_bytes());
@@ -264,7 +272,7 @@ mod tests {
 
     fn callback(browser: &FakeBrowser) -> String {
         let url = browser.opened.lock().unwrap().as_ref().unwrap().clone();
-        let query = url.query_pairs().collect::<Vec<_>>();
+        let query = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes()).collect::<Vec<_>>();
         let uri = query.iter().find(|(key, _)| key == "redirect_uri").unwrap().1.to_string();
         let state = query.iter().find(|(key, _)| key == "state").unwrap().1.to_string();
         format!("{}?code={}&state={}", uri, "A".repeat(43), state)
@@ -290,7 +298,8 @@ mod tests {
         let browser = FakeBrowser::default();
         let session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         let url = browser.opened.lock().unwrap().as_ref().unwrap().clone();
-        let redirect = url.query_pairs().find(|(key, _)| key == "redirect_uri").unwrap().1.to_string();
+        let redirect = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes())
+            .find(|(key, _)| key == "redirect_uri").unwrap().1.to_string();
         assert!(redirect.starts_with("http://127.0.0.1:"));
         assert!(session.bound_port().unwrap() >= 1024);
         assert!(!url.as_str().contains(session.attempt_id()));
@@ -317,6 +326,13 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 200 OK"));
         assert!(!response.contains(&"A".repeat(43)));
         assert!(response.contains("Referrer-Policy: no-referrer"));
+        assert!(response.contains("history.replaceState(null,document.title,location.pathname)"));
+        assert!(response.contains("script-src 'sha256-IgkiiN+by1M0XVt0qHxZPIsxnDoVpUuZRConiSPwZCo='"));
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use sha2::{Digest, Sha256};
+        let script = response.split_once("<script>").unwrap().1.split_once("</script>").unwrap().0;
+        let hash = STANDARD.encode(Sha256::digest(script.as_bytes()));
+        assert!(response.contains(&format!("script-src 'sha256-{hash}'")));
     }
 
     #[test]
@@ -402,9 +418,13 @@ mod tests {
 
     #[test]
     fn rejects_public_or_untrusted_consent_before_invoking_browser() {
+        if !cfg!(feature = "production-connected-account") {
+            let browser = FakeBrowser::default();
+            assert!(matches!(LoopbackLogin::start(&browser, "https://virgostars.it/collega-dispositivo"), Err(LoopbackError::Unavailable)));
+            assert!(browser.opened.lock().unwrap().is_none());
+        }
         for url in [
             "https://www.virgostars.it/collega-dispositivo",
-            "https://virgostars.it/collega-dispositivo",
             "https://staging.virgostars.it.evil.invalid/collega-dispositivo",
             "http://staging.virgostars.it/collega-dispositivo",
             "https://staging.virgostars.it/collega-dispositivo?next=evil",

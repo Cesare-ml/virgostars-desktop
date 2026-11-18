@@ -53,7 +53,7 @@ fn random_base64url_256() -> Result<Zeroizing<String>, LoginError> {
     Ok(Zeroizing::new(URL_SAFE_NO_PAD.encode(&bytes[..])))
 }
 
-fn random_uuid_v4() -> Result<String, LoginError> {
+pub(crate) fn random_uuid_v4() -> Result<String, LoginError> {
     let mut bytes = Zeroizing::new([0u8; 16]);
     getrandom::fill(&mut bytes[..]).map_err(|_| LoginError::Unavailable)?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -77,9 +77,8 @@ pub(crate) fn valid_loopback_uri(candidate: &str) -> bool {
         uri.as_str() == candidate
 }
 
-/// Consent is staging-only while the backend PKCE authorization is disabled
-/// in production. The caller supplies the exact URL, but it must still be a
-/// VirgoStars-owned staging/preview host. No arbitrary HTTPS origin is valid.
+/// Production consent is accepted only by an explicitly opted-in build.
+/// Staging/preview remains available for isolated integration tests.
 pub(crate) fn valid_consent_origin(candidate: &str) -> Option<Url> {
     let uri = Url::parse(candidate).ok()?;
     let host = uri.host_str()?;
@@ -89,7 +88,7 @@ pub(crate) fn valid_consent_origin(candidate: &str) -> Option<Url> {
         labels[labels.len() - 1] == "it" &&
         labels[..labels.len() - 2].iter().any(|label| matches!(*label, "staging" | "preview"));
     if uri.scheme() != "https" ||
-        !staging_host ||
+        !(staging_host || (cfg!(feature = "production-connected-account") && host == "virgostars.it")) ||
         uri.port().is_some() || uri.path() != "/collega-dispositivo" ||
         uri.query().is_some() || uri.fragment().is_some() ||
         !uri.username().is_empty() || uri.password().is_some() ||
@@ -131,12 +130,17 @@ impl PendingPkceLogin {
     pub fn consent_url(&self, page: &str) -> Result<Url, LoginError> {
         if self.finished { return Err(LoginError::AlreadyFinished); }
         let mut url = valid_consent_origin(page).ok_or(LoginError::InvalidConsentOrigin)?;
-        url.query_pairs_mut()
-            .append_pair("client_id", CLIENT_ID)
+        // Fragments are not sent in the initial HTTP request, so state and
+        // the loopback address do not enter the website's access logs.
+        let mut fields = url::form_urlencoded::Serializer::new(String::new());
+        fields.append_pair("client_id", CLIENT_ID)
             .append_pair("redirect_uri", &self.redirect_uri)
             .append_pair("code_challenge", &self.challenge)
             .append_pair("code_challenge_method", "S256")
-            .append_pair("state", &self.state);
+            .append_pair("state", &self.state)
+            .append_pair("request_groups_write", "true")
+            .append_pair("request_charts_write", "true");
+        url.set_fragment(Some(&fields.finish()));
         Ok(url)
     }
 
@@ -238,17 +242,20 @@ mod tests {
     }
 
     #[test]
-    fn consent_url_matches_the_disabled_web_candidate_query_contract() {
+    fn consent_url_puts_authorization_parameters_in_the_fragment() {
         let (a, _) = new();
         let url = a.consent_url("https://staging.virgostars.it/collega-dispositivo").unwrap();
-        let query: Vec<_> = url.query_pairs().collect();
-        assert_eq!(query.len(), 5);
+        assert!(url.query().is_none());
+        let query: Vec<_> = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes()).collect();
+        assert_eq!(query.len(), 7);
+        assert_eq!(query.iter().find(|(key, _)| key == "request_groups_write").unwrap().1, "true");
+        assert_eq!(query.iter().find(|(key, _)| key == "request_charts_write").unwrap().1, "true");
         assert_eq!(url.path(), "/collega-dispositivo");
         assert_eq!(query.iter().find(|(key, _)| key == "code_challenge_method").unwrap().1, "S256");
         assert_eq!(query.iter().find(|(key, _)| key == "redirect_uri").unwrap().1.as_ref(), a.redirect_uri.as_str());
         assert!(a.consent_url("https://preview.virgostars.it/collega-dispositivo").is_ok());
         assert!(a.consent_url("https://www.virgostars.it/collega-dispositivo").is_err());
-        assert!(a.consent_url("https://virgostars.it/collega-dispositivo").is_err());
+        assert_eq!(a.consent_url("https://virgostars.it/collega-dispositivo").is_ok(), cfg!(feature = "production-connected-account"));
         assert!(a.consent_url("http://www.virgostars.it/collega-dispositivo").is_err());
         assert!(a.consent_url("https://virgostars.it.evil.test/collega-dispositivo").is_err());
         assert!(a.consent_url("https://staging.virgostars.it.evil.test/collega-dispositivo").is_err());
@@ -308,9 +315,9 @@ mod tests {
     #[test]
     fn cancelled_and_expired_attempts_never_accept_a_late_callback() {
         let (mut cancelled, now) = new();
-        let callback = callback(&cancelled, &"A".repeat(43));
+        let cancelled_callback = callback(&cancelled, &"A".repeat(43));
         cancelled.cancel();
-        assert!(matches!(cancelled.accept_callback(&callback, now), Err(LoginError::AlreadyFinished)));
+        assert!(matches!(cancelled.accept_callback(&cancelled_callback, now), Err(LoginError::AlreadyFinished)));
         let (mut expired, now) = new();
         let callback = callback(&expired, &"A".repeat(43));
         assert!(matches!(expired.accept_callback(&callback, now + LOGIN_LIFETIME), Err(LoginError::Expired)));

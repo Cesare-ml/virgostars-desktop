@@ -1,12 +1,31 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import {decodeConnectedAccountResponse, requestConnectedAccount} from '../src/app/native/connected-account-contract.ts';
 
 const ATTEMPT = '123e4567-e89b-42d3-a456-426614174000';
-const DEVICE = '123e4567-e89b-42d3-b456-426614174001';
 const pending = {protocolVersion: 1, status: 'pending', attemptId: ATTEMPT, expiresInSeconds: 420};
-const connected = {protocolVersion: 1, status: 'connected', attemptId: ATTEMPT, deviceId: DEVICE, scope: 'charts:read', notesEnabled: false};
+const connected = {protocolVersion: 1, status: 'connected', attemptId: ATTEMPT, scope: 'chart_sync:read'};
 const native = response => ({isNative: () => true, invoke: async () => response});
+
+test('v1 connected schema and decoder agree on fields and backend scope', () => {
+  const schema = JSON.parse(readFileSync(new URL('../contracts/connected-account-status.v1.schema.json', import.meta.url), 'utf8'));
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(Object.keys(connected).sort(), [...schema.required].sort());
+  assert.deepEqual(Object.keys(schema.properties).sort(), [...schema.required].sort());
+  assert.ok(schema.properties.scope.enum.includes(connected.scope));
+  assert.match(connected.attemptId, new RegExp(schema.properties.attemptId.pattern));
+  assert.equal(schema.properties.protocolVersion.const, connected.protocolVersion);
+  assert.equal(schema.properties.status.const, connected.status);
+  assert.equal(decodeConnectedAccountResponse(connected, {operation: 'status', attemptId: ATTEMPT}).scope, connected.scope);
+  const write = {...connected, scope:'chart_sync:read chart_sync:groups:write'};
+  assert.ok(schema.properties.scope.enum.includes(write.scope));
+  assert.equal(decodeConnectedAccountResponse(write, {operation:'status',attemptId:ATTEMPT}).scope, write.scope);
+  for (const scope of ['chart_sync:read chart_sync:charts:write','chart_sync:read chart_sync:groups:write chart_sync:charts:write']) {
+    assert.ok(schema.properties.scope.enum.includes(scope));
+    assert.equal(decodeConnectedAccountResponse({...connected,scope},{operation:'status',attemptId:ATTEMPT}).scope,scope);
+  }
+});
 
 test('default disabled, no native probe or invocation', async () => {
   let called = 0;
@@ -65,12 +84,12 @@ test('start sends only a typed request, not credentials or redirect URL', async 
   assert.deepEqual(sent, {name: 'desktop_connected_account_v1', args: {request: {protocolVersion: 1, operation: 'start'}}});
 });
 
-test('only status can report native-confirmed connection and optional notes approval', async () => {
+test('only status can report a native-confirmed read-only connection', async () => {
   const actual = await requestConnectedAccount(native(connected), {operation: 'status', attemptId: ATTEMPT}, {enabled: true});
-  assert.deepEqual(actual, {kind: 'connected', attemptId: ATTEMPT, deviceId: DEVICE, scope: 'charts:read', notesEnabled: false});
+  assert.deepEqual(actual, {kind: 'connected', attemptId: ATTEMPT, scope: 'chart_sync:read'});
   assert.ok(Object.isFrozen(actual));
-  assert.deepEqual(await requestConnectedAccount(native({...connected, notesEnabled: true}),
-    {operation: 'status', attemptId: ATTEMPT}, {enabled: true}), {...actual, notesEnabled: true});
+  assert.throws(() => decodeConnectedAccountResponse({...connected, notesEnabled: true},
+    {operation: 'status', attemptId: ATTEMPT}));
   assert.throws(() => decodeConnectedAccountResponse(connected, {operation: 'start'}));
 });
 
@@ -90,8 +109,8 @@ test('a connection never accepts write scope or malformed identity', () => {
   for (const invalid of [
     {...connected, scope: 'charts:write'},
     {...connected, scope: 'admin'},
-    {...connected, deviceId: 'foo'},
-    {...connected, notesEnabled: 1},
+    {...connected, scope: 'chart_sync:read chart_sync:notes'},
+    {...connected, deviceId: '123e4567-e89b-42d3-b456-426614174001'},
     {...connected, attemptId: 'bad'},
   ]) assert.throws(() => decodeConnectedAccountResponse(invalid, {operation: 'status', attemptId: ATTEMPT}));
 });
@@ -117,15 +136,19 @@ test('rejects unknown protocol and status values', () => {
   }
 });
 
-test('cancellation and denial have operation-specific status', () => {
+test('cancellation, disconnect and denial have operation-specific status', () => {
   assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status: 'cancelled', attemptId: ATTEMPT},
     {operation: 'cancel', attemptId: ATTEMPT}), {kind: 'cancelled', attemptId: ATTEMPT});
   for (const status of ['denied', 'expired']) {
     assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status, attemptId: ATTEMPT},
       {operation: 'status', attemptId: ATTEMPT}), {kind: status, attemptId: ATTEMPT});
   }
-  assert.throws(() => decodeConnectedAccountResponse({protocolVersion: 1, status: 'cancelled', attemptId: ATTEMPT},
-    {operation: 'status', attemptId: ATTEMPT}));
+  assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status: 'cancelled', attemptId: ATTEMPT},
+    {operation: 'status', attemptId: ATTEMPT}), {kind:'cancelled', attemptId:ATTEMPT});
+  assert.deepEqual(decodeConnectedAccountResponse({protocolVersion: 1, status: 'disconnected', attemptId: ATTEMPT},
+    {operation: 'disconnect', attemptId: ATTEMPT}), {kind:'disconnected', attemptId:ATTEMPT});
+  assert.throws(() => decodeConnectedAccountResponse({protocolVersion: 1, status: 'connected', attemptId: ATTEMPT, scope:'chart_sync:read'},
+    {operation: 'disconnect', attemptId: ATTEMPT}));
 });
 
 test('invalid attempt ID is rejected before IPC', async () => {

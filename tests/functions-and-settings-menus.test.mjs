@@ -52,7 +52,7 @@ test('every setting has a spoiler of its own, titles aligned to the left', () =>
   const settings = html.match(/<section class="drawer" \*ngIf="view==='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
   const titles = [...settings.matchAll(/<summary>\{\{t\('([a-z.]+)'\)\}\}<\/summary>/g)].map(match => match[1]);
   // The house system is first and has no spoiler; language and theme live in the main menu only.
-  assert.deepEqual(titles, ['startup.title', 'functions.soon']);
+  assert.deepEqual(titles, ['account.title', 'startup.title', 'functions.soon']);
   assert.ok(settings.indexOf('class="settings-top"') < settings.indexOf('<details'), 'house system comes first');
   assert.doesNotMatch(settings, /settings\.appearance|toggleLanguage|toggleTheme/);
   assert.match(settings, /<vs-chart-settings /);

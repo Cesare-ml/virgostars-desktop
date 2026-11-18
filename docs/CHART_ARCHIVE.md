@@ -1,6 +1,8 @@
 # Local chart archive (SQLite)
 
-**Status: Prototype / locally tested (2026-11-15).** Not a released feature. It keeps saved charts on one device; it is not the encrypted, account-aware store described in [Security and privacy](SECURITY_AND_PRIVACY.md) and [Offline auth and sync](OFFLINE_AUTH_AND_SYNC.md).
+**Status: IMPLEMENTED_ISOLATED / locally tested.** Not a released feature. A
+default-disabled candidate adds an account-bound encrypted copy of website charts
+and group synchronization; see [Offline auth and sync](OFFLINE_AUTH_AND_SYNC.md).
 
 ## What it stores
 
@@ -12,11 +14,24 @@ File: `charts-v2.vsarchive` (encrypted; see [Encrypted archive](ENCRYPTED_ARCHIV
 
 Since 2026-11-17 the archive is a single file encrypted and authenticated as a whole, with a random key kept by the operating system's credential store ([Encrypted archive](ENCRYPTED_ARCHIVE.md)). The first prototype's plain file (`charts-v1.sqlite3`) is migrated once and then kept until the user deletes it from the archive panel. Encryption protects the file at rest only; there is no recovery key, so a lost credential means a lost archive. The design has not had a separate security review.
 
-There are no accounts, profiles, groups, notes, outbox or synchronisation yet. Deleting a chart removes the row; it does not securely erase disk blocks.
+The local archive can now assign ordered group names to saved charts and search
+them by group. Groups are stored inside the same sealed file; they are local
+local for ordinary charts. The guarded candidate additionally keeps imported
+civil records, account-bound links and pending group edits in the sealed file.
+Notes are not imported. Deleting a chart does not securely erase disk blocks.
 
 ## Command
 
-`chart_archive::chart_archive` takes one `request` object: `protocolVersion`, `operation` (`list`, `save`, `delete`), and either `chart` (save) or `id` (delete). Unknown fields are rejected. Every successful operation returns the whole archive, ordered by name.
+`chart_archive::chart_archive` takes one `request` object: `protocolVersion`,
+`operation` (`list`, `save`, `delete`, `set_groups`, `remove_legacy`), and
+the operation's fields. `set_groups` takes a chart id and the complete ordered
+group-name array. Unknown fields, duplicate/empty/unsafe names, more than 50
+names and names longer than 160 characters are rejected before disk access.
+Every successful operation returns the whole archive, ordered by name.
+The candidate website read model permits up to 500 groups on a chart, so an
+account containing more than 50 cannot yet be imported losslessly into this
+local representation. Synchronization must detect and report that condition;
+it must never truncate the remote groups.
 
 | Status | Meaning |
 | --- | --- |
@@ -30,7 +45,33 @@ There are no accounts, profiles, groups, notes, outbox or synchronisation yet. D
 
 Rules enforced on both sides: lowercase UUID id; name up to 80 characters and place up to 160, trimmed, without control or invisible direction characters; strict UTC instant (same parser as `calculate_chart`); IANA-shaped zone; coordinates in range. All values are bound as SQL parameters.
 
-Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 1); there is no automatic repair, deletion or downgrade.
+Saving the same id again updates the row in place, keeps its creation time and
+preserves groups. Group replacement is transactional; deleting a chart also
+removes its assignments. Schema changes are tracked with `PRAGMA user_version`
+(currently 6). Versions 1 through 5 encrypted databases are upgraded in memory, leaving
+the old ciphertext untouched until the next successful atomic write. Older
+application versions cannot open a version 6 archive. There is no automatic
+repair, deletion or downgrade.
+
+The encrypted database also has a candidate account-bound group sync record.
+It tracks a remote base and pending local group edits together with the edit;
+an older response cannot clear an edit made in the meantime. A native-only
+reconciliation candidate applies a server snapshot for an already linked
+chart, detects concurrent edits and preserves unresolved conflicts. It checks
+the captured base before writing the encrypted archive. The guarded account UI
+can display and resolve existing conflicts; both displayed versions are checked
+again atomically, and selecting the local version requires group-write consent.
+The guarded account interface imports website charts with independent local IDs,
+refreshes their civil data and reconciles their groups. It retains missing remote
+charts locally, queues offline group edits and provides explicit conflict choices.
+Existing local charts are never silently matched. A guarded explicit association
+compares both displayed versions, preserves the website civil record independently,
+and requires conflict resolution when groups differ. Deleting the local chart
+retains the imported record and its pending group state. Upload of local-only
+charts is available in the guarded candidate after separate consent. The
+creation request and its stable mutation ID remain encrypted until acknowledged;
+an uncertain response is retried before importing a snapshot. Imported records retain an unknown birth
+time as unknown; the older archive command cannot overwrite or delete those rows.
 
 ## Interface
 
@@ -40,6 +81,15 @@ Saving the same id again updates the row in place and keeps its creation time, s
 - The archive is encrypted; the panel says so. If the old plain file is still on disk, the panel warns and offers to delete it after a confirmation. A locked archive (key missing or different, file altered) is reported as such and never shown as empty.
 
 ## Verification on 2026-11-15 (Windows 11)
+
+Additional group verification on 2026-11-18: in an isolated Windows debug
+application profile, a fictional chart was saved, assigned a fictional group,
+and the group was still visible after closing and reopening the app. The
+fictional chart was then deleted and the test archive reported empty. Rust
+tests cover encrypted group persistence, migration from encrypted schema v1,
+invalid requests and removal with the chart. This does not verify network
+synchronization or an actual astronomical calculation: DE441 was unavailable
+in that isolated build.
 
 - Rust: 10 archive tests (create, persist across connections, update, delete, invalid input before any disk access, SQL-looking text stored literally, damaged file untouched, newer schema refused, full archive, wire format).
 - Node: 8 contract tests; IPC allowlist reports 4 commands and 4 adapters.

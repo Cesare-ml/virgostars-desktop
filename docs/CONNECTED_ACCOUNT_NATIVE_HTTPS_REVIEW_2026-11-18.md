@@ -5,8 +5,9 @@
 Questo incremento segue le PR Desktop #353–#360, in particolare il coordinator
 Rust-only della PR #360. Il sorgente `src-tauri/src/pkce_reqwest_https.rs`
 propone un adattatore `TokenHttpTransport` concreto che fa **un solo POST** al
-token endpoint staging; è deliberatamente **non attivato** e non referenziato da
-`lib.rs` finché non si può rigenerare e collaudare `Cargo.lock` con Cargo.
+token endpoint staging. Il modulo ora è compilato e il lockfile è stato
+rigenerato con Cargo, ma rimane **non attivato**: non è istanziato dal flusso
+di login né esposto via IPC.
 
 ## Controlli implementati nel candidato
 
@@ -33,13 +34,21 @@ chiama `LoginCancelHandle::cancel`; la race del token è già gestita dal
 coordinator della PR #360. In caso di errore di rete non ritentare lo stesso
 authorization code: serve un nuovo tentativo PKCE.
 
+Il coordinator ora richiede anche `GET /chart-sync/v1/session` con il bearer
+solo nel processo Rust prima di completare l'accesso. La risposta è limitata,
+vincolata allo schema `contracts/connected-session.v1.schema.json` e non
+contiene dati account o temi. Il backend candidato deve verificare firma,
+audience, grant corrente e opt-in prima di rispondere. Il trasporto resta
+non collegato all'IPC e i test con TLS e backend reali non sono stati eseguiti.
+Il gestore nativo distingue rifiuto e scadenza, espone il tempo residuo del
+tentativo e scarta un grant arrivato dopo la scadenza o l'annullamento.
+
 ## Gate di attivazione (eseguire nel checkout completo Windows)
 
-Il blocco attuale è infrastrutturale: **Rust toolchain unavailable** in questo
-ambiente di authoring; non è stato possibile generare un lock corretto né
-eseguire Rust unit tests o build Tauri. La dipendenza `reqwest 0.13.5` si trova
-già nel lock come transitoria, ma **senza TLS**. Non modificare manualmente il
-lock, e non aggiungere il modulo a `lib.rs` prima dei controlli seguenti.
+Nel checkpoint precedente il blocco era **Rust toolchain unavailable**. Nel
+worktree Windows successivo Cargo ha generato il lock TLS e `cargo check` è
+passato; il test di rete HTTPS e la revisione delle dipendenze restano aperti.
+La seguente sequenza conserva le istruzioni riproducibili.
 
 1. In un checkout completo che include le PR stacked e con Rust 1.90+
    disponibile, creare una feature branch di integrazione dal candidato.
@@ -65,8 +74,8 @@ lock, e non aggiungere il modulo a `lib.rs` prima dei controlli seguenti.
    node --test tests/pkce-https-adapter-source.test.mjs
    ```
 
-   Il source-contract test attuale verifica **appositamente** che il modulo
-   resti disattivato; aggiornare quell'asserzione solo nella PR di attivazione.
+   Il source-contract test verifica che il modulo compilato non sia collegato
+   all'IPC. Compilazione non significa attivazione o verifica TLS end-to-end.
 6. Aggiungere test di integrazione staging con TLS valido, certificato
    invalido, redirect 302/307, timeout, 8 KB superati (Content-Length corretto
    e falso), errore del server e cancellazione durante la richiesta; nessun
@@ -75,7 +84,7 @@ lock, e non aggiungere il modulo a `lib.rs` prima dei controlli seguenti.
 
 ## Non cambia
 
-- `Cargo.toml`, `Cargo.lock`, `lib.rs`, permessi Tauri e frontend **immutati**.
+- Nessun nuovo permesso Tauri o attivazione frontend.
 - Nessun deployment, AWS, migrazione, GitHub Actions, release o merge su `main`.
 - Il backend staging non è attivato, non esiste un refresh token; il token di
   accesso scade dopo al massimo 900 s, quindi **sessione persistente assente**.

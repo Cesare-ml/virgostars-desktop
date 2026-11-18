@@ -11,7 +11,7 @@ const record = (id = ID_A, name = 'Soggetto di prova') => ({
   id, name, utcIso: '2001-02-03T04:05:06.000Z', timeZone: 'Europe/Rome',
   latMicro: 44_697_805, lngMicro: 11_805_778, placeName: 'Luogo di prova',
 });
-const saved = (id, name) => ({...record(id, name), createdAtMs: 1000, updatedAtMs: 2000});
+const saved = (id, name) => ({...record(id, name), createdAtMs: 1000, updatedAtMs: 2000, groups: []});
 const okResponse = () => ({protocolVersion: 1, status: 'ok', charts: [saved(ID_A, 'Alfa'), saved(ID_B, 'Beta')], legacyPresent: false});
 const native = reply => {
   const calls = [];
@@ -58,6 +58,9 @@ test('malformed or hostile archive contents are rejected with one generic error'
     r => { r.charts[0].lngMicro = 11.5; },
     r => { r.charts[0].updatedAtMs = 999; },
     r => { r.charts[0].createdAtMs = -1; },
+    r => { r.charts[0].groups = ['duplicate', 'duplicate']; },
+    r => { r.charts[0].groups = ['\n']; },
+    r => { r.charts[0].groups = Array(51).fill('x'); },
     r => { delete r.charts[0].placeName; },
     r => { r.charts.length = 3; },
     r => { Object.defineProperty(r.charts[0], 'name', {get: () => 'Alfa', enumerable: true}); },
@@ -91,11 +94,13 @@ test('each operation makes one native call carrying only reviewed fields', async
   assert.equal(result.kind, 'ready');
   assert.equal(result.charts.length, 2);
   await requestArchive(transport, {operation: 'delete', id: ID_B});
+  await requestArchive(transport, {operation: 'set_groups', id: ID_A, groups: ['Famiglia fittizia']});
   await requestArchive(transport, {operation: 'remove_legacy', path: 'C:/never-forwarded'});
   assert.deepEqual(transport.calls, [
     ['chart_archive', {request: {protocolVersion: 1, operation: 'list'}}],
     ['chart_archive', {request: {protocolVersion: 1, operation: 'save', chart: record()}}],
     ['chart_archive', {request: {protocolVersion: 1, operation: 'delete', id: ID_B}}],
+    ['chart_archive', {request: {protocolVersion: 1, operation: 'set_groups', id: ID_A, groups: ['Famiglia fittizia']}}],
     ['chart_archive', {request: {protocolVersion: 1, operation: 'remove_legacy'}}],
   ]);
 });

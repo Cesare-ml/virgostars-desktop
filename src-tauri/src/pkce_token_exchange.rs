@@ -1,8 +1,7 @@
 //! Staging-only OAuth authorization-code token exchange boundary for Desktop.
 //!
-//! This module only constructs/verifies form and response contracts; a real
-//! HTTPS transport, credential store, Tauri IPC and UI are NOT connected.
-//! Access tokens are ephemeral and never serialized or logged to the WebView.
+//! The guarded login flow uses a native HTTPS transport and ephemeral grants.
+//! Access tokens are never serialized or logged to the WebView.
 #![allow(dead_code)]
 
 use crate::pkce_login::{valid_consent_origin, valid_loopback_uri, CallbackDecision};
@@ -39,6 +38,12 @@ pub trait TokenHttpTransport {
         timeout: Duration,
         max_response_bytes: usize,
     ) -> Result<TokenHttpResponse, ()>;
+
+    /// A syntactically valid token is not proof of an active backend session.
+    /// Implementations must fail closed until the backend confirms the grant.
+    fn verify_grant(&self, _endpoint: &Url, _grant: &NativeAccessGrant) -> Result<String, ()> {
+        Err(())
+    }
 }
 
 /// Raw bytes are zeroized by the exchanger immediately after transport. A
@@ -68,10 +73,22 @@ pub struct NativeAccessGrant {
     access_token: Zeroizing<String>,
     scope: TokenScope,
     expires_at: Instant,
+    profile_ref: Option<String>,
+    token_endpoint: Option<Url>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TokenScope { Read, ReadAndNotes }
+pub enum TokenScope { Read, ReadAndGroupWrite, ReadAndChartWrite, ReadAndBothWrites }
+
+impl TokenScope {
+    pub fn as_str(self) -> &'static str {
+        match self { Self::Read => "chart_sync:read", Self::ReadAndGroupWrite => "chart_sync:read chart_sync:groups:write",
+            Self::ReadAndChartWrite => "chart_sync:read chart_sync:charts:write",
+            Self::ReadAndBothWrites => "chart_sync:read chart_sync:groups:write chart_sync:charts:write" }
+    }
+    pub fn allows_group_write(self) -> bool { matches!(self,Self::ReadAndGroupWrite | Self::ReadAndBothWrites) }
+    pub fn allows_chart_write(self) -> bool { matches!(self,Self::ReadAndChartWrite | Self::ReadAndBothWrites) }
+}
 
 impl NativeAccessGrant {
     pub fn scope(&self) -> TokenScope { self.scope }
@@ -81,6 +98,28 @@ impl NativeAccessGrant {
     /// Only a future native HTTPS client may borrow this value to call the
     /// owner-authorized backend. Never return it from Tauri IPC or print it.
     pub(crate) fn bearer(&self) -> &str { &self.access_token }
+    pub(crate) fn bind_profile(&mut self, profile_ref: String) -> Result<(), ()> {
+        if !crate::chart_archive::valid_id(&profile_ref) || self.profile_ref.is_some() { return Err(()); }
+        self.profile_ref = Some(profile_ref);
+        Ok(())
+    }
+    pub(crate) fn profile_ref(&self) -> Option<&str> { self.profile_ref.as_deref() }
+    pub(crate) fn matches_token_endpoint(&self, endpoint: &Url) -> bool {
+        self.token_endpoint.as_ref() == Some(endpoint)
+    }
+    /// A bounded native worker can own a short-lived copy without holding the
+    /// session mutex over network I/O. Both copies are zeroized on drop.
+    pub(crate) fn copy_for_worker(&self, now: Instant) -> Option<Self> {
+        if self.remaining_seconds(now) == 0 || self.profile_ref.is_none() { return None; }
+        Some(Self {access_token:Zeroizing::new(self.access_token.to_string()), scope:self.scope,
+            expires_at:self.expires_at, profile_ref:self.profile_ref.clone(),token_endpoint:self.token_endpoint.clone()})
+    }
+    #[cfg(test)]
+    pub(crate) fn synthetic_for_test(scope: TokenScope, profile: &str) -> Self {
+        Self {access_token:Zeroizing::new("synthetic.test.token".into()),scope,
+            expires_at:Instant::now() + Duration::from_secs(60), profile_ref:Some(profile.into()),
+            token_endpoint:Url::parse("https://staging.virgostars.it/chart-sync/v1/token").ok()}
+    }
 }
 
 pub(crate) fn valid_staging_token_endpoint(value: &str) -> Option<Url> {
@@ -91,10 +130,15 @@ pub(crate) fn valid_staging_token_endpoint(value: &str) -> Option<Url> {
         !uri.username().is_empty() || uri.password().is_some() || uri.as_str() != value {
         return None;
     }
-    // Reuse the browser allowlist, including the refusal of production hosts.
+    // The production API has a different hostname from its consent page.
+    if cfg!(feature = "production-connected-account") && uri.host_str() == Some("api.virgostars.it") {
+        return Some(uri);
+    }
+    // Reuse the browser allowlist for staging.
     let mut browser_page = uri.clone();
     browser_page.set_path("/collega-dispositivo");
     valid_consent_origin(browser_page.as_str())?;
+    if uri.host_str() == Some("virgostars.it") { return None; }
     Some(uri)
 }
 
@@ -131,12 +175,14 @@ fn parse_response(response: TokenHttpResponse, now: Instant) -> Result<NativeAcc
     if expires == 0 || expires > MAX_ACCESS_SECONDS { return Err(TokenExchangeError::InvalidResponse); }
     let scope = match parsed.scope.as_str() {
         "chart_sync:read" => TokenScope::Read,
-        "chart_sync:read chart_sync:notes" => TokenScope::ReadAndNotes,
+        "chart_sync:read chart_sync:groups:write" => TokenScope::ReadAndGroupWrite,
+        "chart_sync:read chart_sync:charts:write" => TokenScope::ReadAndChartWrite,
+        "chart_sync:read chart_sync:groups:write chart_sync:charts:write" => TokenScope::ReadAndBothWrites,
         _ => return Err(TokenExchangeError::InvalidResponse),
     };
     let expires_at = now.checked_add(Duration::from_secs(expires))
         .ok_or(TokenExchangeError::InvalidResponse)?;
-    Ok(NativeAccessGrant { access_token: raw_token, scope, expires_at })
+    Ok(NativeAccessGrant { access_token: raw_token, scope, expires_at, profile_ref: None, token_endpoint:None })
 }
 
 /// Consumes the one-time callback. A denial never contacts the network. No
@@ -168,7 +214,9 @@ pub fn exchange_approved_code<T: TokenHttpTransport>(
     if body.len() > MAX_FORM_BYTES { return Err(TokenExchangeError::InvalidCode); }
     let response = transport.post_form(&endpoint, &body, HTTP_TIMEOUT, MAX_RESPONSE_BYTES)
         .map_err(|_| TokenExchangeError::TransportUnavailable)?;
-    parse_response(response, now)
+    let mut grant = parse_response(response, now)?;
+    grant.token_endpoint = Some(endpoint);
+    Ok(grant)
 }
 
 #[cfg(test)]
@@ -225,6 +273,14 @@ mod tests {
     }
 
     #[test]
+    fn production_endpoint_requires_opt_in_and_exact_api_host() {
+        assert_eq!(valid_staging_token_endpoint("https://api.virgostars.it/chart-sync/v1/token").is_some(), cfg!(feature = "production-connected-account"));
+        for endpoint in ["https://virgostars.it/chart-sync/v1/token", "https://api.virgostars.it.evil.test/chart-sync/v1/token", "https://api.virgostars.it/chart-sync/v1/token?next=evil", "http://api.virgostars.it/chart-sync/v1/token"] {
+            assert!(valid_staging_token_endpoint(endpoint).is_none());
+        }
+    }
+
+    #[test]
     fn denial_or_untrusted_endpoint_never_performs_network_post() {
         let http = fake();
         assert!(matches!(exchange_approved_code(&http,TOKEN,REDIRECT,CallbackDecision::Denied,Instant::now()),Err(TokenExchangeError::Denied)));
@@ -264,5 +320,29 @@ mod tests {
         assert!(matches!(exchange_approved_code(&http,TOKEN,REDIRECT,approved(),Instant::now()),Err(TokenExchangeError::InvalidResponse)));
         http.response = br#"{"token_type":"Bearer","token_type":"Bearer","access_token":"fake","expires_in":900,"scope":"chart_sync:read"}"#.to_vec();
         assert!(matches!(exchange_approved_code(&http,TOKEN,REDIRECT,approved(),Instant::now()),Err(TokenExchangeError::InvalidResponse)));
+    }
+
+    #[test]
+    fn connected_schema_and_exchange_allow_only_reviewed_scopes() {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../contracts/connected-account-status.v1.schema.json"
+        )).unwrap();
+        assert_eq!(schema["properties"]["scope"]["enum"], serde_json::json!(["chart_sync:read", "chart_sync:read chart_sync:groups:write", "chart_sync:read chart_sync:charts:write", "chart_sync:read chart_sync:groups:write chart_sync:charts:write"]));
+        let now = Instant::now();
+        let jwt = format!("{}.{}.{}", "A".repeat(43), "B".repeat(43), "C".repeat(100));
+        let response = |scope: &str| TokenHttpResponse {
+            status: 200,
+            content_type: "application/json".to_owned(),
+            body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"{scope}"}}"#).into_bytes(),
+        };
+        assert!(parse_response(response("chart_sync:read"), now).is_ok());
+        assert!(parse_response(response("chart_sync:read chart_sync:groups:write"), now).is_ok());
+        let chart=parse_response(response("chart_sync:read chart_sync:charts:write"),now).unwrap();
+        assert!(chart.scope().allows_chart_write());
+        assert!(!chart.scope().allows_group_write());
+        let both=parse_response(response("chart_sync:read chart_sync:groups:write chart_sync:charts:write"),now).unwrap();
+        assert!(both.scope().allows_group_write() && both.scope().allows_chart_write());
+        assert!(matches!(parse_response(response("chart_sync:read chart_sync:notes"), now), Err(TokenExchangeError::InvalidResponse)));
+        assert!(matches!(parse_response(response("charts:read"), now), Err(TokenExchangeError::InvalidResponse)));
     }
 }

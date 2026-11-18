@@ -17,7 +17,7 @@ test('native session is compiled as a Rust-only module with no UI/IPC grant', ()
 
 test('session delegates only to existing bounded staging coordinator and runs a Rust worker', () => {
   assert.match(session, /StagingLoginAttempt::begin\(browser, consent_url, token_endpoint\)/);
-  assert.match(session, /attempt\.wait_and_exchange\(&transport, max_wait\)/);
+  assert.match(session, /attempt\.wait_and_exchange\(&transport, deadline\.saturating_duration_since\(Instant::now\(\)\)\)/);
   assert.match(session, /thread::Builder::new\(\)/);
   assert.match(session, /\.spawn\(move \|\|/);
   assert.match(session, /max_wait\.is_zero\(\) \|\| max_wait > Duration::from_secs\(600\)/);

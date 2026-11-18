@@ -210,15 +210,82 @@
               [value]="archiveQuery" (input)="setArchiveQuery($event)">
             <p class="inspector-hint" *ngIf="!savedCharts.length">{{t('archive.empty')}}</p>
             <p class="inspector-hint" *ngIf="savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
-            <div class="session-chart" *ngFor="let saved of visibleSavedCharts; trackBy:trackSaved">
+            <div class="archive-entry" *ngFor="let saved of visibleSavedCharts; trackBy:trackSaved">
+              <div class="session-chart">
               <button type="button" class="session-open" [disabled]="calcBusy || busy" [attr.title]="t('archive.open')" (click)="openSavedChart(saved)">
                 <strong>{{saved.name || t('session.unnamed')}}</strong>
                 <span>{{chartWhen(saved)}}</span>
                 <span>{{savedPlace(saved)}}</span>
               </button>
               <button type="button" class="small-control wide" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
-              <button type="button" class="small-control" [disabled]="archiveBusy"
+              <button type="button" class="small-control" [disabled]="archiveBusy || pendingCreateIds.includes(saved.id) || rejectedCreateIds.includes(saved.id)"
                 [attr.aria-label]="t('archive.delete')" [attr.title]="t('archive.delete')" (click)="askDeleteSaved(saved.id)">×</button>
+              </div>
+              <div class="archive-groups" [attr.aria-label]="t('archive.groups')">
+                <span>{{t('archive.groups')}}:</span>
+                <span class="archive-group" *ngFor="let group of saved.groups">{{group}}
+                  <button type="button" [disabled]="archiveBusy" [attr.aria-label]="t('archive.groups.remove') + ': ' + group" (click)="removeSavedGroup(saved, group)">×</button>
+                </span>
+                <input type="text" maxlength="160" autocomplete="off" [attr.aria-label]="t('archive.groups.new')"
+                  [value]="groupDrafts[saved.id] || ''" (input)="setGroupDraft(saved.id, $event)">
+                <button type="button" class="small-control" [disabled]="archiveBusy || !groupDrafts[saved.id]?.trim()" (click)="addSavedGroup(saved)">{{t('archive.groups.add')}}</button>
+              </div>
+              <p class="inspector-hint" *ngIf="account.status==='connected' && isAssociated(saved.id)">{{t('sync.associate.linked')}}</p>
+              <p class="inspector-hint" *ngIf="pendingCreateIds.includes(saved.id)">{{t('sync.create.queued')}}</p>
+              <p class="inspector-hint" *ngIf="rejectedCreateIds.includes(saved.id)">{{t('sync.create.full')}}</p>
+              <button type="button" class="small-control wide" *ngIf="account.status==='connected' && rejectedCreateIds.includes(saved.id)" [disabled]="syncGroupBusy" (click)="cancelRejectedCreate(saved)">{{t('sync.create.cancel')}}</button>
+              <button type="button" class="small-control wide" *ngIf="account.status==='connected' && account.scope?.includes('chart_sync:charts:write') && !isAssociated(saved.id) && !pendingCreateIds.includes(saved.id) && !rejectedCreateIds.includes(saved.id)"
+                [disabled]="syncGroupBusy" (click)="prepareChartCreate(saved)">{{t('sync.create.start')}}</button>
+              <div *ngIf="createCandidate?.chart?.id===saved.id && createCandidate as creation" role="group">
+                <p>{{t('sync.create.review')}}</p>
+                <p>{{creation.chart.name}} · {{creation.localDate}} · {{creation.localTime}} · {{creation.chart.timeZone}} · {{creation.chart.placeName}}</p>
+                <p>{{t('archive.groups')}}: {{creation.chart.groups.join(', ')}}</p>
+                <p *ngIf="!account.scope?.includes('chart_sync:groups:write')">{{t('sync.create.groupsLater')}}</p>
+                <button type="button" class="small-control wide" [disabled]="syncGroupBusy" (click)="confirmChartCreate()">{{t('sync.create.confirm')}}</button>
+                <button type="button" class="small-control wide" (click)="createCandidate=null">{{t('sync.associate.cancel')}}</button>
+              </div>
+              <div *ngIf="account.status==='connected' && syncedCharts.length && syncedAttempt===account.connectedAttemptId && !isAssociated(saved.id) && !pendingCreateIds.includes(saved.id) && !rejectedCreateIds.includes(saved.id)">
+                <label>{{t('sync.associate.choose')}}
+                  <select (change)="chooseAssociation(saved,$event)" [disabled]="syncGroupBusy">
+                    <option value="">{{t('sync.associate.select')}}</option>
+                    <option *ngFor="let candidate of syncedCharts" [value]="candidate.id" [disabled]="candidate.syncStatus!=='clean' || isLocalChart(candidate.id)">
+                      {{candidate.name}} · {{candidate.civilDate}} · {{candidate.timeUnknown ? t('sync.unknownTime') : candidate.civilTime}}
+                    </option>
+                  </select>
+                </label>
+                <div *ngIf="associationCandidate?.local?.id===saved.id && associationCandidate as selection" role="group">
+                  <p>{{t('sync.associate.review')}}</p>
+                  <p>{{t('sync.associate.local')}}: {{selection.local.name}} · {{selection.local.utcIso}} · {{selection.local.timeZone}} · {{selection.local.placeName}} · {{selection.local.groups.join(', ')}}</p>
+                  <p>{{t('sync.associate.remote')}}: {{selection.remote.name}} · {{selection.remote.civilDate}} · {{selection.remote.timeUnknown ? t('sync.unknownTime') : selection.remote.civilTime}} · {{selection.remote.timeZone}} · {{selection.remote.placeName}} · {{selection.remote.groups.join(', ')}}</p>
+                  <button type="button" class="small-control wide" [disabled]="syncGroupBusy" (click)="confirmAssociation()">{{t('sync.associate.confirm')}}</button>
+                  <button type="button" class="small-control wide" (click)="associationCandidate=null">{{t('sync.associate.cancel')}}</button>
+                </div>
+              </div>
+            </div>
+            <div *ngIf="(account.status==='connected' && syncedAttempt===account.connectedAttemptId) || (syncOfflineMode && syncedCharts.length)">
+              <h3 class="panel-title">{{t('sync.charts')}} ({{syncedCharts.length}})</h3>
+              <button type="button" class="small-control wide" *ngIf="account.status==='connected'" [disabled]="syncBusy" (click)="syncNow()">{{t('sync.refresh')}}</button>
+              <p class="inspector-hint" *ngIf="syncOfflineMode">{{t('sync.offlineView')}}</p>
+              <p class="inspector-hint" role="status" *ngIf="syncMessage">{{t(syncMessage)}}</p>
+              <div class="archive-entry" *ngFor="let chart of syncedCharts; trackBy:trackSynced">
+                <div class="session-chart">
+                  <button type="button" class="session-open" [disabled]="calcBusy || busy || chart.timeUnknown || !chart.civilTime || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">
+                    <strong>{{chart.name}}</strong>
+                    <span>{{chart.civilDate}} · {{chart.timeUnknown ? t('sync.unknownTime') : chart.civilTime}}</span>
+                    <span>{{chart.placeName}} <ng-container *ngIf="chart.timeZone">· {{chart.timeZone}}</ng-container></span>
+                    <span>{{t(syncedStatusKey(chart))}}</span>
+                  </button>
+                </div>
+                <div class="archive-groups" [attr.aria-label]="t('archive.groups')">
+                  <span>{{t('archive.groups')}}:</span>
+                  <span class="archive-group" *ngFor="let group of chart.groups">{{group}}
+                    <button type="button" [disabled]="syncGroupBusy" [attr.aria-label]="t('archive.groups.remove') + ': ' + group" (click)="removeSyncedGroup(chart,group)">×</button>
+                  </span>
+                  <input type="text" maxlength="160" autocomplete="off" [attr.aria-label]="t('archive.groups.new')"
+                    [value]="syncGroupDrafts[chart.id] || ''" (input)="setSyncedGroupDraft(chart.id,$event)">
+                  <button type="button" class="small-control" [disabled]="syncGroupBusy || !syncGroupDrafts[chart.id]?.trim()" (click)="addSyncedGroup(chart)">{{t('archive.groups.add')}}</button>
+                </div>
+              </div>
             </div>
             <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.confirm')" *ngIf="pendingDeleteId">
               <p>{{t('archive.confirm')}}</p>
@@ -284,6 +351,32 @@
             </ng-container>
             <ng-template #noChartForHouses><p class="inspector-hint">{{t('houses.system')}}: {{t('inspector.nochart')}}</p></ng-template>
           </div>
+          <details class="settings-section" open>
+            <summary>{{t('account.title')}}</summary>
+            <p class="inspector-hint">{{t('account.local')}}</p>
+            <p class="inspector-hint" role="status" aria-live="polite">{{t(accountStatusKey)}}</p>
+            <button type="button" class="toolbar-button"
+              *ngIf="account.status==='idle' || account.status==='expired' || account.status==='denied' || account.status==='failed' || account.status==='unavailable'"
+              (click)="account.start()">{{t('account.login')}}</button>
+            <button type="button" class="toolbar-button" *ngIf="account.status==='starting' || account.status==='pending'"
+              (click)="account.cancel()">{{t('account.cancel')}}</button>
+            <button type="button" class="toolbar-button" *ngIf="account.status==='connected'"
+              (click)="account.cancel()">{{t('account.disconnect')}}</button>
+            <div *ngIf="account.status==='connected'">
+              <button type="button" class="toolbar-button" [disabled]="conflictsBusy"
+                (click)="loadGroupConflicts()">{{t('sync.conflicts.check')}}</button>
+              <p *ngIf="conflictsMessage && conflictsForAttempt===account.connectedAttemptId" class="inspector-hint" role="status">{{t(conflictsMessage)}}</p>
+              <div *ngIf="conflictsForAttempt===account.connectedAttemptId">
+                <div *ngFor="let conflict of conflicts" class="settings-section">
+                  <strong>{{conflict.chartName || t('sync.conflicts.unnamed')}}</strong>
+                  <p>{{t('sync.conflicts.local')}}: {{conflict.localGroups.join(', ') || t('sync.conflicts.none')}}</p>
+                  <p>{{t('sync.conflicts.server')}}: {{conflict.serverGroups.join(', ') || t('sync.conflicts.none')}}</p>
+                  <button type="button" class="toolbar-button" [disabled]="conflictsBusy" (click)="resolveGroupConflict(conflict,'local')">{{t('sync.conflicts.keepLocal')}}</button>
+                  <button type="button" class="toolbar-button" [disabled]="conflictsBusy" (click)="resolveGroupConflict(conflict,'server')">{{t('sync.conflicts.keepServer')}}</button>
+                </div>
+              </div>
+            </div>
+          </details>
           <details class="settings-section" open>
             <summary>{{t('startup.title')}}</summary>
             <div class="startup-options" role="radiogroup" [attr.aria-label]="t('startup.title')">

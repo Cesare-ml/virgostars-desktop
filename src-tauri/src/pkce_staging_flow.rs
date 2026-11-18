@@ -1,8 +1,7 @@
-//! Inert staging login coordinator: bound loopback -> browser -> callback -> token.
+//! Staging login coordinator: bound loopback -> browser -> callback -> verified grant.
 //!
 //! This composes previously isolated Rust primitives with an injected browser
-//! and HTTP transport. No Tauri IPC, UI, external network adapter or live
-//! authorization feature flag is enabled by registering this module.
+//! and HTTP transport. Registering this module alone enables no network flow.
 #![allow(dead_code)]
 
 use crate::pkce_loopback::{LoginCancelHandle, LoopbackError, LoopbackLogin, SystemBrowserOpener};
@@ -69,13 +68,20 @@ impl StagingLoginAttempt {
             }
         })?;
         if self.cancellation.is_cancelled() { return Err(StagingLoginError::Cancelled); }
-        let grant = exchange_approved_code(
+        let mut grant = exchange_approved_code(
             transport,
             self.token_endpoint.as_str(),
             &redirect,
             result,
             Instant::now(),
         ).map_err(StagingLoginError::TokenExchange)?;
+        if self.cancellation.is_cancelled() { return Err(StagingLoginError::Cancelled); }
+        let profile_ref = transport.verify_grant(&self.token_endpoint, &grant)
+            .map_err(|_| StagingLoginError::TokenExchange(TokenExchangeError::Rejected))?;
+        grant.bind_profile(profile_ref).map_err(|_| StagingLoginError::TokenExchange(TokenExchangeError::Rejected))?;
+        if grant.remaining_seconds(Instant::now()) == 0 {
+            return Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected));
+        }
         // Atomic finalization: if cancellation wins the race, the token is
         // dropped/zeroized. If completion wins, later cancellation is inert.
         if !self.cancellation.finish_success() { return Err(StagingLoginError::Cancelled); }
@@ -107,7 +113,7 @@ mod tests {
         fn open_in_system_browser(&self, url: &Url) -> Result<(), ()> {
             self.launches.set(self.launches.get() + 1);
             if !self.send_callback { return Ok(()); }
-            let fields: Vec<_> = url.query_pairs().collect();
+            let fields: Vec<_> = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes()).collect();
             let redirect = fields.iter().find(|(k,_)| k == "redirect_uri").unwrap().1.to_string();
             let state = fields.iter().find(|(k,_)| k == "state").unwrap().1.to_string();
             let worker = thread::spawn(move || {
@@ -145,6 +151,7 @@ mod tests {
                 body:format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes(),
             })
         }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<String, ()> { Ok("44444444-4444-4444-8444-444444444444".into()) }
     }
 
     #[test]
@@ -157,6 +164,42 @@ mod tests {
         let grant = attempt.wait_and_exchange(&http, Duration::from_secs(3)).unwrap();
         assert_eq!(http.calls.get(), 1);
         assert_eq!(grant.scope(), TokenScope::Read);
+        browser.callback_worker.lock().unwrap().take().unwrap().join().unwrap();
+    }
+
+    struct UnverifiedHttp(FakeHttp);
+    impl TokenHttpTransport for UnverifiedHttp {
+        fn post_form(&self, endpoint: &Url, body: &str, timeout: Duration, max: usize) -> Result<TokenHttpResponse, ()> {
+            self.0.post_form(endpoint, body, timeout, max)
+        }
+        // The default verification intentionally fails closed.
+    }
+
+    struct WrongProfileHttp(FakeHttp);
+    impl TokenHttpTransport for WrongProfileHttp {
+        fn post_form(&self, endpoint: &Url, body: &str, timeout: Duration, max: usize) -> Result<TokenHttpResponse, ()> {
+            self.0.post_form(endpoint, body, timeout, max)
+        }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<String, ()> { Ok("invalid-profile".into()) }
+    }
+
+    #[test]
+    fn malformed_server_profile_never_becomes_a_connected_session() {
+        let browser = SyntheticBrowser {send_callback:true, ..Default::default()};
+        let attempt = StagingLoginAttempt::begin(&browser, CONSENT, TOKEN).unwrap();
+        assert!(matches!(attempt.wait_and_exchange(&WrongProfileHttp(FakeHttp::default()), Duration::from_secs(3)),
+            Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected))));
+        browser.callback_worker.lock().unwrap().take().unwrap().join().unwrap();
+    }
+
+    #[test]
+    fn a_token_without_backend_session_confirmation_never_completes() {
+        let browser = SyntheticBrowser {send_callback:true, ..Default::default()};
+        let http = UnverifiedHttp(FakeHttp::default());
+        let attempt = StagingLoginAttempt::begin(&browser, CONSENT, TOKEN).unwrap();
+        assert!(matches!(attempt.wait_and_exchange(&http, Duration::from_secs(3)),
+            Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected))));
+        assert_eq!(http.0.calls.get(), 1);
         browser.callback_worker.lock().unwrap().take().unwrap().join().unwrap();
     }
 

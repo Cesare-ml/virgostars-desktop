@@ -1,6 +1,6 @@
 //! Strict native default-browser launch adapter for the staged Desktop PKCE flow.
 //!
-//! No WebView, Tauri IPC, token exchange or login UI is wired to this module.
+//! The staging-only native flow invokes this adapter; it is never exposed directly to the WebView.
 //! URLs and command arguments must never be logged: the consent URL contains
 //! the opaque one-time OAuth state and PKCE challenge.
 #![allow(dead_code)]
@@ -19,18 +19,19 @@ use std::thread;
 pub struct OsDefaultBrowser;
 
 /// Defend the launch boundary even if a future caller bypasses `consent_url`.
-/// Enforce the same origin policy, exact query shape and canonical encoding as
+/// Enforce the same origin policy, exact fragment shape and canonical encoding as
 /// the PKCE URL builder, rather than merely checking for an HTTPS scheme.
 fn approved_pkce_browser_url(candidate: &Url) -> bool {
-    if candidate.as_str().len() > 2048 || candidate.fragment().is_some() {
+    if candidate.as_str().len() > 2048 || candidate.query().is_some() {
         return false;
     }
+    let Some(fragment) = candidate.fragment() else { return false; };
     let mut base = candidate.clone();
-    base.set_query(None);
+    base.set_fragment(None);
     if valid_consent_origin(base.as_str()).is_none() { return false; }
 
-    let pairs: Vec<_> = candidate.query_pairs().collect();
-    let expected_keys = ["client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state"];
+    let pairs: Vec<_> = url::form_urlencoded::parse(fragment.as_bytes()).collect();
+    let expected_keys = ["client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "request_groups_write", "request_charts_write"];
     if pairs.len() != expected_keys.len() || pairs.iter().zip(expected_keys).any(|((key, _), expected)| key != expected) {
         return false;
     }
@@ -39,19 +40,22 @@ fn approved_pkce_browser_url(candidate: &Url) -> bool {
     let challenge = pairs[2].1.as_ref();
     let method = pairs[3].1.as_ref();
     let state = pairs[4].1.as_ref();
-    if client != "virgostars-desktop" || !valid_loopback_uri(redirect) || method != "S256" ||
+    if client != "virgostars-desktop" || !valid_loopback_uri(redirect) || method != "S256" || pairs[5].1 != "true" || pairs[6].1 != "true" ||
         !base64url_256(challenge) || !base64url_256(state) {
         return false;
     }
 
     // Enforce exactly the encoding and ordering emitted by the Rust builder.
-    // This rejects percent-encoded aliases and duplicate or extra query keys.
-    base.query_pairs_mut()
-        .append_pair("client_id", client)
+    // This rejects percent-encoded aliases and duplicate or extra keys.
+    let mut fields = url::form_urlencoded::Serializer::new(String::new());
+    fields.append_pair("client_id", client)
         .append_pair("redirect_uri", redirect)
         .append_pair("code_challenge", challenge)
         .append_pair("code_challenge_method", method)
-        .append_pair("state", state);
+        .append_pair("state", state)
+        .append_pair("request_groups_write", "true")
+        .append_pair("request_charts_write", "true");
+    base.set_fragment(Some(&fields.finish()));
     base.as_str() == candidate.as_str()
 }
 
@@ -155,11 +159,14 @@ mod tests {
     #[test]
     fn rejects_untrusted_origins_and_added_query_parameters() {
         let original = valid();
-        for host in ["www.virgostars.it", "virgostars.it", "staging.virgostars.it.evil.invalid"] {
+        for host in ["www.virgostars.it", "staging.virgostars.it.evil.invalid"] {
             let mut modified = original.clone();
             modified.set_host(Some(host)).unwrap();
             assert!(!approved_pkce_browser_url(&modified));
         }
+        let mut public = original.clone();
+        public.set_host(Some("virgostars.it")).unwrap();
+        assert_eq!(approved_pkce_browser_url(&public), cfg!(feature = "production-connected-account"));
         let mut modified = original.clone();
         modified.query_pairs_mut().append_pair("next", "https://evil.invalid");
         assert!(!approved_pkce_browser_url(&modified));
@@ -171,7 +178,7 @@ mod tests {
     #[test]
     fn rejects_duplicate_alias_missing_pkce_and_unbound_callback() {
         let original = valid();
-        let query = original.query().unwrap();
+        let query = original.fragment().unwrap();
         for bad in [
             format!("{query}&state={}", "A".repeat(43)),
             query.replace("client_id=", "client%5Fid="),
@@ -179,7 +186,7 @@ mod tests {
             query.replace("127.0.0.1", "localhost"),
             query.replace("code_challenge=", "extra=none&code_challenge="),
         ] {
-            let candidate = Url::parse(&format!("{}?{bad}", original.as_str().split('?').next().unwrap())).unwrap();
+            let candidate = Url::parse(&format!("{}#{bad}", original.as_str().split('#').next().unwrap())).unwrap();
             assert!(!approved_pkce_browser_url(&candidate), "accepted altered consent request");
         }
     }
