@@ -8,6 +8,13 @@ import {
 const original = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
 const copy = () => structuredClone(original);
 
+test('committed bundle retains exactly the reviewed platform icons', () => {
+  assert.deepEqual(original.bundle.icon, [
+    'icons/icon.png', 'icons/icon.ico', 'icons/icon.icns',
+  ]);
+  assert.equal(verifyTauriSecurityConfig(copy()).windows, 1);
+});
+
 test('committed production Tauri config meets the offline security gate', () => {
   assert.deepEqual(verifyTauriSecurityCheckout(), { windows: original.app.windows.length });
   assert.equal(verifyProductionCsp(original.app.security.csp).directives, 9);
@@ -93,6 +100,8 @@ test('unreviewed bundle resources, sidecars and icon mutations fail closed', () 
     config => { config.bundle.newFutureOption = false; },
     config => { config.bundle.icon = ['icons/icon.png']; },
     config => { config.bundle.icon[1] = 'icons/other.ico'; },
+    config => { config.bundle.icon[2] = 'icons/other.icns'; },
+    config => { config.bundle.icon.reverse(); },
     config => { config.bundle.icon.push('icons/extra.png'); },
     config => { delete config.bundle.icon; },
   ]) {
