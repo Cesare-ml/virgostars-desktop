@@ -19,6 +19,8 @@ mod pkce_token_exchange;
 mod pkce_staging_flow;
 // Rust-only ephemeral account session; no Tauri IPC or persistent credentials.
 mod pkce_native_session;
+// One native-only login owner with admission control; no IPC registration.
+mod pkce_native_registry;
 mod houses;
 mod return_search;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
