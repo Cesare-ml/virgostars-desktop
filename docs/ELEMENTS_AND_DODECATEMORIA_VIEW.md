@@ -1,15 +1,18 @@
 # Elementi e dodecatemori — vista alternativa al tema
 
-Status: **Locally tested prototype**. 900 Node tests and the synthetic Angular build/offline/CSP/privacy gates passed in a Linux development checkout on 2026-11-17; native Windows WebView2 visual acceptance remains pending before integration/release. A local Chromium screenshot attempt was blocked by the environment's socket permission policy, so no image is claimed as inspected.
+Status: **Locally tested prototype**. 902 Node tests, synthetic Angular build/offline/CSP/privacy gates, and private-artwork build with 1,013 manifest-verified assets passed in a Linux development checkout on 2026-11-18. The private-artwork dev server starts with `npm run start:private` without rebuilding the native installer. Native Windows WebView2 visual acceptance is still pending.
 
 ## Interaction
 
 - With a calculated chart active, the **Elementi** button in the upper right toggles the central workspace between the existing Three.js wheel and a lightweight, scrollable element distribution. The wheel remains mounted underneath; no alternative wheel renderer is introduced.
 - The **left** column places traditional planets into **houses**, categorized by the natural elements of houses I/V/IX (fire), II/VI/X (earth), III/VII/XI (air), IV/VIII/XII (water).
 - The **right** column places the same planets into **zodiac signs**, categorized by the conventional four triplicities. The four bands follow the supplied visual reference: fire (red), air (yellow), water (blue), earth (green). Labels and planet symbols accompany colors.
-- A simple ASC and DS pair at the top shows the zodiac sign and element of each angle. These are sign attributes, not the element of the houses. MC/IC ornamentation in the reference is deliberately omitted for clarity.
+- ASC and DS appear as opposing arrow-shaped markers **inside the matching elemental bands**: ASC on the left, DS on the right. Their element derives from the zodiac sign, independently of the houses. MC/IC ornamentation in the reference is deliberately omitted for clarity.
 - **Mostra dodecatemori / Show dodecatemoria** adds a second, dashed line beneath each original band, with the sign and house of each of the seven dodecatemoria. It does not replace planetary longitudes or mix the two datasets. Both IT and EN use the same arrangement and standard readable symbols.
 - The house grouping (including dodecatemoria) changes with the already selected house system. The sign grouping does not. Planet chips expose the full planet name, zodiac degrees and house via a tooltip/accessible label.
+- A modality summary groups the same seven longitudes by zodiac sign quality: cardinal, fixed and mutable. Its bars are proportional to the number of available traditional planets, never to an assumed seven when bodies are missing.
+- A conventional lower-triangle 7×7 aspect matrix shows conjunction, sextile, square, trine and opposition using existing active-chart aspect settings and orbs. The other aspect definitions continue to be available in the main aspect inspector.
+- For privately authorized builds, visual symbols are loaded from the vetted `astrological-assets` manifest. Missing PNGs and legacy opaque rectangular placeholders produce a monochrome glyph fallback, rather than blank boxes. The default synthetic developer mode intentionally keeps using synthetic test assets; the built-in wheel reads from the same `/assets/` root selected by the build.
 
 ## Data and boundaries
 
@@ -27,5 +30,6 @@ Status: **Locally tested prototype**. 900 Node tests and the synthetic Angular b
 3. Show/hide dodecatemoria without altering the original positions; switch back to the existing wheel; change the theme or language; navigate to a new time without keeping obsolete positions.
 4. Verify keyboard, scroll and readable planet chips at narrow window widths, Windows WebView2 high-contrast and light/dark themes. Confirm the chart-first controls remain operational and WebGL/CSS layout diagnosis does not report a false hidden canvas.
 5. Run the Desktop unit suite, translation/Angular production gates, and a real native Windows GUI smoke before marking this **Integrated**.
+6. Start `npm run start:private` from an authorized checkout with `../astrological-assets`; check the network panel for local `/assets/img/` image responses and validate that the wheel and Elementi use the approved paths. Run `npm run tauri:dev` in a separate terminal after the Angular server is ready.
 
 Out of scope: additional modern planets, transits/synastry overlay distribution, separate dodecatemoria house system, printing/PNG of this panel, changing the source calculation method, and modifying other repositories.

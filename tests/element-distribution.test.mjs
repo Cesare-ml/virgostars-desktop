@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {elementDistribution, ELEMENT_ORDER} from '../src/app/astro/element-distribution.ts';
+import {elementDistribution, ELEMENT_ORDER, MODALITY_ORDER} from '../src/app/astro/element-distribution.ts';
 import {buildTemaRenderData,houseDisplay} from '../src/app/astro/tema-render-data.ts';
 
 // Fictional and deliberately simple 30-degree house cusps; no user birth data.
@@ -71,4 +71,14 @@ test('missing bodies/dodecatemoria and unavailable houses never create fabricate
   assert.equal(noHouse.strips.flatMap(row=>row.signDodecatemoria).length,1);
   delete data.planets.Sun.dodecatemoria;
   assert.equal(summarize(data,'egizia').strips.flatMap(row=>row.signDodecatemoria).length,0);
+});
+
+test('modality groups use sign quality, preserving exactly seven planets and chart order',()=>{
+  const result=summarize(buildTemaRenderData(snapshot(),'2000-01-01T12:00:00Z'),'egizia');
+  assert.deepEqual(MODALITY_ORDER,['cardinal','fixed','mutable']);
+  assert.deepEqual(result.modalities.map(group=>group.id),['cardinal','fixed','mutable']);
+  assert.deepEqual(result.modalities.map(group=>names(group.planets)),[
+    ['Sun','Venus','Mars'],['Moon','Saturn'],['Mercury','Jupiter'],
+  ]);
+  assert.equal(result.modalities.reduce((total,group)=>total+group.planets.length,0),7);
 });

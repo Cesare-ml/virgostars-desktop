@@ -19,12 +19,20 @@ const SEVEN = [
   ['Mars', '♂'], ['Jupiter', '♃'], ['Saturn', '♄'],
 ] as const;
 
+export const MODALITY_ORDER = ['cardinal','fixed','mutable'] as const;
+export type ModalityId = typeof MODALITY_ORDER[number];
+
 export type ElementPlacement = Readonly<{
   name: string;
   glyph: string;
   longitude: number;
   sign: number;
   house: number | null;
+  retrograde: boolean;
+}>;
+export type ModalityGroup = Readonly<{
+  id: ModalityId;
+  planets: readonly ElementPlacement[];
 }>;
 export type ElementStrip = Readonly<{
   id: ElementId;
@@ -39,6 +47,7 @@ export type ElementDistribution = Readonly<{
   ascElement: ElementId;
   dsElement: ElementId;
   strips: readonly ElementStrip[];
+  modalities: readonly ModalityGroup[];
   countedPlanets: number;
 }>;
 
@@ -62,6 +71,7 @@ export function elementDistribution(
     id, housePlanets: [] as ElementPlacement[], signPlanets: [] as ElementPlacement[],
     houseDodecatemoria: [] as ElementPlacement[], signDodecatemoria: [] as ElementPlacement[],
   }));
+  const modalities = MODALITY_ORDER.map(id => ({id, planets: [] as ElementPlacement[]}));
   let countedPlanets = 0;
   for (const [name, glyph] of SEVEN) {
     const body = data.planets[name];
@@ -69,7 +79,8 @@ export function elementDistribution(
     countedPlanets++;
     const sign = zodiacSign(body.longitude);
     const house = findHouse(body.longitude, cusps);
-    const placement = Object.freeze({name, glyph, longitude:body.longitude, sign, house});
+    const placement = Object.freeze({name, glyph, longitude:body.longitude, sign, house, retrograde:body.longitudeSpeed<0});
+    modalities[sign % 3].planets.push(placement);
     strips.find(row => row.id === ZODIAC_ELEMENTS[sign])?.signPlanets.push(placement);
     const houseId = house === null ? null : elementOfHouse(house);
     if (houseId) strips.find(row => row.id === houseId)?.housePlanets.push(placement);
@@ -79,7 +90,7 @@ export function elementDistribution(
     const longitude = dodLongitude;
     const dodSign = zodiacSign(longitude);
     const dodHouse = findHouse(longitude, cusps);
-    const dod = Object.freeze({name, glyph, longitude, sign:dodSign, house:dodHouse});
+    const dod = Object.freeze({name, glyph, longitude, sign:dodSign, house:dodHouse, retrograde:body.longitudeSpeed<0});
     strips.find(row => row.id === ZODIAC_ELEMENTS[dodSign])?.signDodecatemoria.push(dod);
     const dodHouseId = dodHouse === null ? null : elementOfHouse(dodHouse);
     if (dodHouseId) strips.find(row => row.id === dodHouseId)?.houseDodecatemoria.push(dod);
@@ -88,6 +99,6 @@ export function elementDistribution(
   const dsSign = zodiacSign(data.ds);
   return {
     ascSign, dsSign, ascElement:ZODIAC_ELEMENTS[ascSign], dsElement:ZODIAC_ELEMENTS[dsSign],
-    strips, countedPlanets,
+    strips, modalities, countedPlanets,
   };
 }

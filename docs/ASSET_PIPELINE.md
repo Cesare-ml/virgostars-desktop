@@ -68,6 +68,17 @@ Synthetic provenance fields are build-time safeguards, not cryptographic proof o
 
 ## Immagini originali approvate per build private
 
+Per controllare la grafica in sviluppo senza creare un nuovo installer, nella
+cartella Desktop eseguire `npm run start:private` anziché `npm start`; in un
+secondo terminale lanciare `npm run tauri:dev`. Il server Angular in questa
+modalità seleziona esclusivamente il bundle di asset locali con manifest
+convalidato nel checkout fratello `../astrological-assets`. La modalità
+predefinita `npm start` rimane sintetica. La nuova vista Elementi visualizza
+i glifi dal pack quando sono effettivamente sagomati e leggibili; se il file
+approvato è una vecchia immagine piatta a tinta unita, ricade su simboli di
+testo per non mostrare quadrati pieni. Questo fallback è anche applicato
+quando il file non esiste.
+
 La modalità opzionale `private-artwork` utilizza il checkout locale di `astrological-assets`, senza richiedere il repository di produzione. Serve un checkout accessibile ai collaboratori autorizzati. `npm run build:ui:private` verifica il manifest approvato fissato tramite SHA-256 dei byte UTF-8 con fine riga normalizzato a LF, la corrispondenza con `catalog/approvals.json`, tutti gli hash e le dimensioni, e prepara una copia in `.local/frontend-private`. Il bundle è verificato separatamente con `npm run verify:bundle:private`; asset extra, manomissioni, link simbolici e manifest diversi causano un errore. Il renderer continua a caricare `/assets/` in locale.
 
 La modalità sintetica resta il default di `npm run build:ui` e la sua cartella `.local/frontend` non viene sovrascritta. Per generare una build privata con catalogo città, su Windows e dopo l’autenticazione GitHub CLI usare `npm run tauri:build:places:private:windows`. Per il solo prototipo senza il catalogo città usare `npm run tauri:build:private`. Il pacchetto privato contiene esclusivamente le immagini autorizzate; i font non sono inclusi. Il manifest fissato è quello del checkout `astrological-assets` corrente; aggiornamenti deliberati richiedono revisione e aggiornamento del relativo hash.

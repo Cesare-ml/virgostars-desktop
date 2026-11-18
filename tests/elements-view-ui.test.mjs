@@ -27,3 +27,22 @@ test('dodecatemoria second lines use the existing computed data and house select
   assert.match(html,/\[attr\.aria-pressed\]="showDodecatemoria"/);
   assert.match(source,/houseDisplay\(house\)\?\.element/);
 });
+
+test('elemental axis arrows live in their element rows; modalities and aspect matrix share chart data',()=>{
+  const html=read('src/app/elements-view.component.html');
+  const source=read('src/app/elements-view.component.ts');
+  const desktop=read('src/app/desktop-app.component.html');
+  assert.match(html,/model\.ascElement===row\.id/);
+  assert.match(html,/model\.dsElement===row\.id/);
+  assert.match(html,/class="axis-arrow asc-arrow"/);
+  assert.match(html,/class="axis-arrow ds-arrow"/);
+  assert.match(html,/model\.modalities/);
+  assert.match(html,/class="aspect-matrix"/);
+  assert.match(html,/matrixAspect\(planet,other\)/);
+  assert.match(desktop,/\[theme\]="theme" \[aspects\]="aspectRows"/);
+  assert.match(source,/MAJOR_ASPECTS/);
+  assert.match(source,/PRIVATE_ARTWORK/);
+  assert.match(source,/simboli\/elementi-celesti/);
+  assert.match(source,/simboli\/segni/);
+  assert.match(read('package.json'),/"start:private"/);
+});
