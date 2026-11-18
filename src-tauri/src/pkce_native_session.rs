@@ -272,7 +272,7 @@ mod tests {
     struct CallbackBrowser;
     impl SystemBrowserOpener for CallbackBrowser {
         fn open_in_system_browser(&self, consent: &Url) -> Result<(), ()> {
-            let fields: Vec<_> = consent.query_pairs().collect();
+            let fields: Vec<_> = url::form_urlencoded::parse(consent.fragment().unwrap().as_bytes()).collect();
             let redirect = fields.iter().find(|(k,_)| k == "redirect_uri").ok_or(())?.1.to_string();
             let state = fields.iter().find(|(k,_)| k == "state").ok_or(())?.1.to_string();
             thread::spawn(move || {

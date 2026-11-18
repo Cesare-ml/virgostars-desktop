@@ -112,7 +112,7 @@ mod tests {
         fn open_in_system_browser(&self, url: &Url) -> Result<(), ()> {
             self.launches.set(self.launches.get() + 1);
             if !self.send_callback { return Ok(()); }
-            let fields: Vec<_> = url.query_pairs().collect();
+            let fields: Vec<_> = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes()).collect();
             let redirect = fields.iter().find(|(k,_)| k == "redirect_uri").unwrap().1.to_string();
             let state = fields.iter().find(|(k,_)| k == "state").unwrap().1.to_string();
             let worker = thread::spawn(move || {

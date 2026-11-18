@@ -264,7 +264,7 @@ mod tests {
 
     fn callback(browser: &FakeBrowser) -> String {
         let url = browser.opened.lock().unwrap().as_ref().unwrap().clone();
-        let query = url.query_pairs().collect::<Vec<_>>();
+        let query = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes()).collect::<Vec<_>>();
         let uri = query.iter().find(|(key, _)| key == "redirect_uri").unwrap().1.to_string();
         let state = query.iter().find(|(key, _)| key == "state").unwrap().1.to_string();
         format!("{}?code={}&state={}", uri, "A".repeat(43), state)
@@ -290,7 +290,8 @@ mod tests {
         let browser = FakeBrowser::default();
         let session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         let url = browser.opened.lock().unwrap().as_ref().unwrap().clone();
-        let redirect = url.query_pairs().find(|(key, _)| key == "redirect_uri").unwrap().1.to_string();
+        let redirect = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes())
+            .find(|(key, _)| key == "redirect_uri").unwrap().1.to_string();
         assert!(redirect.starts_with("http://127.0.0.1:"));
         assert!(session.bound_port().unwrap() >= 1024);
         assert!(!url.as_str().contains(session.attempt_id()));

@@ -131,12 +131,15 @@ impl PendingPkceLogin {
     pub fn consent_url(&self, page: &str) -> Result<Url, LoginError> {
         if self.finished { return Err(LoginError::AlreadyFinished); }
         let mut url = valid_consent_origin(page).ok_or(LoginError::InvalidConsentOrigin)?;
-        url.query_pairs_mut()
-            .append_pair("client_id", CLIENT_ID)
+        // Fragments are not sent in the initial HTTP request, so state and
+        // the loopback address do not enter the website's access logs.
+        let mut fields = url::form_urlencoded::Serializer::new(String::new());
+        fields.append_pair("client_id", CLIENT_ID)
             .append_pair("redirect_uri", &self.redirect_uri)
             .append_pair("code_challenge", &self.challenge)
             .append_pair("code_challenge_method", "S256")
             .append_pair("state", &self.state);
+        url.set_fragment(Some(&fields.finish()));
         Ok(url)
     }
 
@@ -238,10 +241,11 @@ mod tests {
     }
 
     #[test]
-    fn consent_url_matches_the_disabled_web_candidate_query_contract() {
+    fn consent_url_puts_authorization_parameters_in_the_fragment() {
         let (a, _) = new();
         let url = a.consent_url("https://staging.virgostars.it/collega-dispositivo").unwrap();
-        let query: Vec<_> = url.query_pairs().collect();
+        assert!(url.query().is_none());
+        let query: Vec<_> = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes()).collect();
         assert_eq!(query.len(), 5);
         assert_eq!(url.path(), "/collega-dispositivo");
         assert_eq!(query.iter().find(|(key, _)| key == "code_challenge_method").unwrap().1, "S256");

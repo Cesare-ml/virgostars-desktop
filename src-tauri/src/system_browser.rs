@@ -19,17 +19,18 @@ use std::thread;
 pub struct OsDefaultBrowser;
 
 /// Defend the launch boundary even if a future caller bypasses `consent_url`.
-/// Enforce the same origin policy, exact query shape and canonical encoding as
+/// Enforce the same origin policy, exact fragment shape and canonical encoding as
 /// the PKCE URL builder, rather than merely checking for an HTTPS scheme.
 fn approved_pkce_browser_url(candidate: &Url) -> bool {
-    if candidate.as_str().len() > 2048 || candidate.fragment().is_some() {
+    if candidate.as_str().len() > 2048 || candidate.query().is_some() {
         return false;
     }
+    let Some(fragment) = candidate.fragment() else { return false; };
     let mut base = candidate.clone();
-    base.set_query(None);
+    base.set_fragment(None);
     if valid_consent_origin(base.as_str()).is_none() { return false; }
 
-    let pairs: Vec<_> = candidate.query_pairs().collect();
+    let pairs: Vec<_> = url::form_urlencoded::parse(fragment.as_bytes()).collect();
     let expected_keys = ["client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state"];
     if pairs.len() != expected_keys.len() || pairs.iter().zip(expected_keys).any(|((key, _), expected)| key != expected) {
         return false;
@@ -45,13 +46,14 @@ fn approved_pkce_browser_url(candidate: &Url) -> bool {
     }
 
     // Enforce exactly the encoding and ordering emitted by the Rust builder.
-    // This rejects percent-encoded aliases and duplicate or extra query keys.
-    base.query_pairs_mut()
-        .append_pair("client_id", client)
+    // This rejects percent-encoded aliases and duplicate or extra keys.
+    let mut fields = url::form_urlencoded::Serializer::new(String::new());
+    fields.append_pair("client_id", client)
         .append_pair("redirect_uri", redirect)
         .append_pair("code_challenge", challenge)
         .append_pair("code_challenge_method", method)
         .append_pair("state", state);
+    base.set_fragment(Some(&fields.finish()));
     base.as_str() == candidate.as_str()
 }
 
@@ -171,7 +173,7 @@ mod tests {
     #[test]
     fn rejects_duplicate_alias_missing_pkce_and_unbound_callback() {
         let original = valid();
-        let query = original.query().unwrap();
+        let query = original.fragment().unwrap();
         for bad in [
             format!("{query}&state={}", "A".repeat(43)),
             query.replace("client_id=", "client%5Fid="),
@@ -179,7 +181,7 @@ mod tests {
             query.replace("127.0.0.1", "localhost"),
             query.replace("code_challenge=", "extra=none&code_challenge="),
         ] {
-            let candidate = Url::parse(&format!("{}?{bad}", original.as_str().split('?').next().unwrap())).unwrap();
+            let candidate = Url::parse(&format!("{}#{bad}", original.as_str().split('#').next().unwrap())).unwrap();
             assert!(!approved_pkce_browser_url(&candidate), "accepted altered consent request");
         }
     }
