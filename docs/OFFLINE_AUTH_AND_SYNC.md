@@ -5,7 +5,7 @@ Status: **PROPOSED**. No production routes or synchronization engine exist here.
 Product requirement clarified on 2026-11-18: the same account's natal-chart
 groups should be available across Desktop and the website. This is not sharing
 with other accounts. The candidate server read model contains group names, but
-the current local encrypted archive does not store groups or synchronize them.
+the current local encrypted archive stores groups but does not synchronize them.
 An actual implementation also needs account-isolated storage, an explicit
 write authorization, durable offline edits and conflict handling. Do not
 present the connected login as completed group synchronization.

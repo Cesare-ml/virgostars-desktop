@@ -14,12 +14,13 @@ export type ChartRecordV1 = Readonly<{
   placeName: string;
 }>;
 
-export type SavedChartV1 = ChartRecordV1 & Readonly<{createdAtMs: number; updatedAtMs: number}>;
+export type SavedChartV1 = ChartRecordV1 & Readonly<{createdAtMs: number; updatedAtMs: number; groups: readonly string[]}>;
 
 export type ArchiveOperation =
   | Readonly<{operation: 'list'}>
   | Readonly<{operation: 'save'; chart: ChartRecordV1}>
   | Readonly<{operation: 'delete'; id: string}>
+  | Readonly<{operation: 'set_groups'; id: string; groups: readonly string[]}>
   /** Deletes the old plain-text file of the first prototype, once its charts are in the encrypted archive. */
   | Readonly<{operation: 'remove_legacy'}>;
 
@@ -31,7 +32,7 @@ export type ArchiveResult =
   | Readonly<{kind: 'ready'; charts: readonly SavedChartV1[]; legacyPresent: boolean}>
   | Readonly<{kind: ArchiveFailure}>;
 
-type WireRequest = {protocolVersion: 1; operation: string; chart?: ChartRecordV1; id?: string};
+type WireRequest = {protocolVersion: 1; operation: string; chart?: ChartRecordV1; id?: string; groups?: readonly string[]};
 
 export interface ChartArchiveTransport {
   isNative(): boolean;
@@ -66,6 +67,20 @@ function label(x: unknown, maxLength: number): x is string {
   return typeof x === 'string' && [...x].length <= maxLength && x.trim() === x && !UNSAFE_TEXT.test(x);
 }
 
+function copyGroups(value: unknown): readonly string[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
+      || value.length > 50 || Reflect.ownKeys(value).length !== value.length + 1) return null;
+    const result: string[] = [];
+    for (let index = 0; index < value.length; index++) {
+      const group = field(value, String(index));
+      if (!label(group, 160) || !group || result.includes(group)) return null;
+      result.push(group);
+    }
+    return Object.freeze(result);
+  } catch { return null; }
+}
+
 function microDegrees(x: unknown, limit: number): x is number {
   return typeof x === 'number' && Number.isSafeInteger(x) && Math.abs(x) <= limit;
 }
@@ -93,13 +108,15 @@ function decodeSavedChart(raw: unknown, seen: Set<string>): SavedChartV1 {
   };
   const createdAtMs = field(raw, 'createdAtMs');
   const updatedAtMs = field(raw, 'updatedAtMs');
+  const groups = copyGroups(field(raw, 'groups'));
   if (!validChartRecord(chart) || seen.has(chart.id) ||
+      !groups ||
       typeof createdAtMs !== 'number' || !Number.isSafeInteger(createdAtMs) || createdAtMs < 0 ||
       typeof updatedAtMs !== 'number' || !Number.isSafeInteger(updatedAtMs) || updatedAtMs < createdAtMs) {
     throw new Error(PROTOCOL_ERROR);
   }
   seen.add(chart.id);
-  return Object.freeze({...chart, createdAtMs, updatedAtMs});
+  return Object.freeze({...chart, createdAtMs, updatedAtMs, groups});
 }
 
 type DecodedArchive =
@@ -140,6 +157,10 @@ function wireRequest(operation: ArchiveOperation): WireRequest | null {
   }
   if (operation.operation === 'delete' && typeof operation.id === 'string' && ID_PATTERN.test(operation.id)) {
     return {protocolVersion: 1, operation: 'delete', id: operation.id};
+  }
+  if (operation.operation === 'set_groups' && typeof operation.id === 'string' && ID_PATTERN.test(operation.id)) {
+    const groups = copyGroups(operation.groups);
+    return groups ? {protocolVersion: 1, operation: 'set_groups', id: operation.id, groups} : null;
   }
   return null;
 }

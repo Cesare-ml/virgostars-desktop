@@ -172,6 +172,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   view: WorkspaceView = 'chart';
   autoSave = true;
   archiveQuery = '';
+  groupDrafts: Record<string, string> = {};
   /** What the window shows at start; read from this device's preferences. */
   startup: StartupPreference = loadStartupPreference(this.uiPreferencesStorage);
   // Calculated charts live in memory only: no disk, no account, no network.
@@ -914,7 +915,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get visibleSavedCharts(): readonly SavedChartV1[] {
     const query = this.archiveQuery.trim().toLocaleLowerCase();
     if (!query) return this.savedCharts;
-    return this.savedCharts.filter(chart => (chart.name + ' ' + chart.placeName).toLocaleLowerCase().includes(query));
+    return this.savedCharts.filter(chart => (chart.name + ' ' + chart.placeName + ' ' + chart.groups.join(' ')).toLocaleLowerCase().includes(query));
+  }
+  setGroupDraft(id: string, event: Event): void {
+    this.groupDrafts = {...this.groupDrafts, [id]: (event.target as HTMLInputElement).value.slice(0, 160)};
+  }
+  async addSavedGroup(chart: SavedChartV1): Promise<void> {
+    const name = (this.groupDrafts[chart.id] ?? '').trim();
+    if (!name || chart.groups.includes(name)) return;
+    const ok = await this.runArchive({operation:'set_groups', id:chart.id, groups:[...chart.groups, name]}, 'archive.groups.saved');
+    if (ok) this.groupDrafts = {...this.groupDrafts, [chart.id]: ''};
+    this.cd.markForCheck();
+  }
+  async removeSavedGroup(chart: SavedChartV1, name: string): Promise<void> {
+    await this.runArchive({operation:'set_groups', id:chart.id, groups:chart.groups.filter(group => group !== name)}, 'archive.groups.saved');
   }
   setArchiveQuery(event: Event): void {
     this.archiveQuery = (event.target as HTMLInputElement).value.slice(0, 80);

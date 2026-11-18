@@ -31,7 +31,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 const PROTOCOL_VERSION: u8 = 1;
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
+const LEGACY_SCHEMA_VERSION: i64 = 1;
 const LEGACY_FILE_NAME: &str = "charts-v1.sqlite3";
 const SEALED_FILE_NAME: &str = "charts-v2.vsarchive";
 const STAGING_FILE_NAME: &str = "charts-v2.vsarchive.tmp";
@@ -39,6 +40,8 @@ const MAX_CHARTS: i64 = 5000;
 const MAX_NAME_CHARS: usize = 80;
 const MAX_PLACE_CHARS: usize = 160;
 const MAX_ZONE_BYTES: usize = 120;
+const MAX_GROUPS: usize = 50;
+const MAX_GROUP_CHARS: usize = 160;
 
 /// One reader-writer at a time: every change is a read, a change and a rewrite of the sealed file.
 static ARCHIVE_LOCK: Mutex<()> = Mutex::new(());
@@ -51,6 +54,7 @@ pub struct ArchiveRequestV1 {
     pub operation: String,
     pub chart: Option<ChartRecordV1>,
     pub id: Option<String>,
+    pub groups: Option<Vec<String>>,
 }
 
 /// What the user entered. The id is generated once by the client and never
@@ -79,6 +83,7 @@ pub struct SavedChartV1 {
     pub place_name: String,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
+    pub groups: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -152,6 +157,11 @@ fn valid_record(chart: &ChartRecordV1) -> bool {
         && chart_calculation::validate(&instant_and_place).is_some()
 }
 
+fn valid_groups(groups: &[String]) -> bool {
+    groups.len() <= MAX_GROUPS && groups.iter().enumerate().all(|(index, name)|
+        !name.is_empty() && valid_text(name, MAX_GROUP_CHARS) && !groups[..index].contains(name))
+}
+
 fn classify(error: &rusqlite::Error) -> Failure {
     match error.sqlite_error_code() {
         Some(ErrorCode::NotADatabase | ErrorCode::DatabaseCorrupt) => "archive_corrupt",
@@ -170,11 +180,30 @@ const SCHEMA: &str = "CREATE TABLE saved_charts (
        created_at_ms INTEGER NOT NULL,
        updated_at_ms INTEGER NOT NULL
      ) STRICT;
-     PRAGMA user_version = 1;";
+     CREATE TABLE saved_chart_groups (
+       chart_id TEXT NOT NULL REFERENCES saved_charts(id) ON DELETE CASCADE,
+       position INTEGER NOT NULL CHECK (position >= 0),
+       name TEXT NOT NULL,
+       PRIMARY KEY (chart_id, position),
+       UNIQUE (chart_id, name)
+     ) STRICT;
+     PRAGMA user_version = 2;";
+
+const MIGRATE_GROUPS: &str = "BEGIN IMMEDIATE;
+    CREATE TABLE saved_chart_groups (
+      chart_id TEXT NOT NULL REFERENCES saved_charts(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL CHECK (position >= 0),
+      name TEXT NOT NULL,
+      PRIMARY KEY (chart_id, position),
+      UNIQUE (chart_id, name)
+    ) STRICT;
+    PRAGMA user_version = 2;
+    COMMIT;";
 
 /// An empty database at the current schema, in memory only.
 fn fresh_connection() -> Result<Connection, Failure> {
     let connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
+    connection.execute_batch("PRAGMA foreign_keys = ON;").map_err(|error| classify(&error))?;
     connection.execute_batch(SCHEMA).map_err(|error| classify(&error))?;
     Ok(connection)
 }
@@ -189,7 +218,7 @@ fn check_connection(connection: &Connection) -> Result<(), Failure> {
     let version: i64 =
         connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     match version {
-        SCHEMA_VERSION => Ok(()),
+        SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
         // Written by a newer application: reading it with old rules could lose data.
         newer if newer > SCHEMA_VERSION => Err("archive_newer"),
         _ => Err("archive_corrupt"),
@@ -211,6 +240,14 @@ fn connection_from_bytes(bytes: &[u8]) -> Result<Connection, Failure> {
     let mut connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
     connection.deserialize(DatabaseName::Main, data, false).map_err(|error| classify(&error))?;
     check_connection(&connection)?;
+    connection.execute_batch("PRAGMA foreign_keys = ON;").map_err(|error| classify(&error))?;
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|error| classify(&error))?;
+    if version == LEGACY_SCHEMA_VERSION {
+        // Upgrade in memory only. The encrypted original remains unchanged
+        // until a later successful atomic archive write.
+        connection.execute_batch(MIGRATE_GROUPS).map_err(|error| classify(&error))?;
+    }
     Ok(connection)
 }
 
@@ -219,7 +256,7 @@ fn bytes_from_connection(connection: &Connection) -> Result<zeroize::Zeroizing<V
     Ok(zeroize::Zeroizing::new(data.to_vec()))
 }
 
-fn list(connection: &Connection) -> Result<Vec<SavedChartV1>, Failure> {
+fn list(connection: &Connection, groups_supported: bool) -> Result<Vec<SavedChartV1>, Failure> {
     let mut statement = connection
         .prepare(
             "SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms
@@ -238,10 +275,39 @@ fn list(connection: &Connection) -> Result<Vec<SavedChartV1>, Failure> {
                 place_name: row.get(6)?,
                 created_at_ms: row.get(7)?,
                 updated_at_ms: row.get(8)?,
+                groups: Vec::new(),
             })
         })
         .map_err(|error| classify(&error))?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| classify(&error))
+    let mut charts = rows.collect::<Result<Vec<_>, _>>().map_err(|error| classify(&error))?;
+    if groups_supported {
+        let mut group_query = connection.prepare(
+            "SELECT name FROM saved_chart_groups WHERE chart_id = ?1 ORDER BY position"
+        ).map_err(|error| classify(&error))?;
+        for chart in &mut charts {
+            chart.groups = group_query.query_map([&chart.id], |row| row.get::<_, String>(0))
+                .map_err(|error| classify(&error))?.collect::<Result<Vec<_>, _>>()
+                .map_err(|error| classify(&error))?;
+            if !valid_groups(&chart.groups) { return Err("archive_corrupt"); }
+        }
+    }
+    Ok(charts)
+}
+
+fn set_groups(connection: &mut Connection, id: &str, groups: &[String]) -> Result<(), Failure> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| classify(&error))?;
+    let exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM saved_charts WHERE id=?1)", [id], |row| row.get(0)
+    ).map_err(|error| classify(&error))?;
+    if !exists { return Err("not_found"); }
+    transaction.execute("DELETE FROM saved_chart_groups WHERE chart_id=?1", [id])
+        .map_err(|error| classify(&error))?;
+    for (position, name) in groups.iter().enumerate() {
+        transaction.execute("INSERT INTO saved_chart_groups (chart_id, position, name) VALUES (?1, ?2, ?3)",
+            params![id, position as i64, name]).map_err(|error| classify(&error))?;
+    }
+    transaction.commit().map_err(|error| classify(&error))
 }
 
 fn save(connection: &mut Connection, chart: &ChartRecordV1, now_ms: i64, limit: i64) -> Result<(), Failure> {
@@ -377,11 +443,11 @@ fn read_legacy(path: &Path) -> Result<Vec<SavedChartV1>, Failure> {
     match version {
         // An empty file of the first prototype: nothing to bring over.
         0 => return Ok(Vec::new()),
-        SCHEMA_VERSION => {}
-        newer if newer > SCHEMA_VERSION => return Err("archive_newer"),
+        LEGACY_SCHEMA_VERSION => {}
+        newer if newer > LEGACY_SCHEMA_VERSION => return Err("archive_newer"),
         _ => return Err("archive_corrupt"),
     }
-    let rows = list(&connection)?;
+    let rows = list(&connection, false)?;
     let count: i64 =
         connection.query_row("SELECT COUNT(*) FROM saved_charts", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     if count as usize != rows.len() {
@@ -441,7 +507,7 @@ fn migrate(paths: &ArchivePaths, keys: &dyn KeyStore) -> Result<(), Failure> {
         let key_again = keys.load().map_err(key_failure)?.ok_or("archive_locked")?;
         let staged = fs::read(&paths.staging).map_err(|_| "archive_unavailable")?;
         let opened = archive_vault::open(&key_again, &staged).map_err(vault_failure)?;
-        let reread = list(&connection_from_bytes(&opened)?)?;
+        let reread = list(&connection_from_bytes(&opened)?, true)?;
         Ok(reread == rows)
     })();
     match verified {
@@ -483,7 +549,7 @@ fn open_session(paths: &ArchivePaths, keys: &dyn KeyStore) -> Result<Session, Fa
 }
 
 fn outcome(paths: &ArchivePaths, connection: &Connection) -> Result<Outcome, Failure> {
-    Ok(Outcome { charts: list(connection)?, legacy_present: paths.legacy.exists() })
+    Ok(Outcome { charts: list(connection, true)?, legacy_present: paths.legacy.exists() })
 }
 
 fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, now_ms: i64, limit: i64) -> Result<Outcome, Failure> {
@@ -492,24 +558,30 @@ fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, no
     }
     // Validate completely before touching the disk.
     let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    match (request.operation.as_str(), &request.chart, &request.id) {
-        ("list", None, None) => {
+    match (request.operation.as_str(), &request.chart, &request.id, &request.groups) {
+        ("list", None, None, None) => {
             let session = open_session(paths, keys)?;
             outcome(paths, &session.connection)
         }
-        ("save", Some(chart), None) if valid_record(chart) => {
+        ("save", Some(chart), None, None) if valid_record(chart) => {
             let mut session = open_session(paths, keys)?;
             save(&mut session.connection, chart, now_ms, limit)?;
             persist(paths, keys, &session.connection)?;
             outcome(paths, &session.connection)
         }
-        ("delete", None, Some(id)) if valid_id(id) => {
+        ("delete", None, Some(id), None) if valid_id(id) => {
             let session = open_session(paths, keys)?;
             delete(&session.connection, id)?;
             persist(paths, keys, &session.connection)?;
             outcome(paths, &session.connection)
         }
-        ("remove_legacy", None, None) => {
+        ("set_groups", None, Some(id), Some(groups)) if valid_id(id) && valid_groups(groups) => {
+            let mut session = open_session(paths, keys)?;
+            set_groups(&mut session.connection, id, groups)?;
+            persist(paths, keys, &session.connection)?;
+            outcome(paths, &session.connection)
+        }
+        ("remove_legacy", None, None, None) => {
             // Only once the sealed archive has been opened successfully (migration included).
             let session = open_session(paths, keys)?;
             if paths.legacy.exists() && paths.sealed.exists() {
@@ -593,7 +665,7 @@ mod tests {
         }
     }
     fn request(operation: &str) -> ArchiveRequestV1 {
-        ArchiveRequestV1 { protocol_version: 1, operation: operation.into(), chart: None, id: None }
+        ArchiveRequestV1 { protocol_version: 1, operation: operation.into(), chart: None, id: None, groups: None }
     }
     fn list_request() -> ArchiveRequestV1 { request("list") }
     fn save_request(chart: ChartRecordV1) -> ArchiveRequestV1 {
@@ -611,6 +683,7 @@ mod tests {
         fs::create_dir_all(&archive.folder).unwrap();
         let connection = Connection::open(&archive.paths.legacy).unwrap();
         connection.execute_batch(SCHEMA).unwrap();
+        connection.execute_batch("DROP TABLE saved_chart_groups; PRAGMA user_version = 1;").unwrap();
         for (id, name, created, updated) in rows {
             connection
                 .execute(
@@ -622,6 +695,59 @@ mod tests {
         if !extra.is_empty() {
             connection.execute_batch(extra).unwrap();
         }
+    }
+
+    #[test]
+    fn groups_persist_encrypted_are_preserved_on_chart_edit_and_removed_with_chart() {
+        let archive = TempArchive::new("groups");
+        let keys = FakeKeyStore::empty();
+        go(&archive, &keys, &save_request(record(ID_A, "Persona fittizia")), 1000);
+        let update = ArchiveRequestV1 { id: Some(ID_A.into()),
+            groups: Some(vec!["Gruppo fittizio".into(), "Secondo".into()]), ..request("set_groups") };
+        assert_eq!(go(&archive, &keys, &update, 2000).charts.unwrap()[0].groups,
+            ["Gruppo fittizio", "Secondo"]);
+        let bytes = fs::read(&archive.paths.sealed).unwrap();
+        assert!(!bytes.windows("Gruppo fittizio".len()).any(|window| window == b"Gruppo fittizio"));
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_A, "Modificato")), 3000)
+            .charts.unwrap()[0].groups, ["Gruppo fittizio", "Secondo"]);
+        assert!(go(&archive, &keys, &delete_request(ID_A), 4000).charts.unwrap().is_empty());
+        let connection = load_sealed(&archive.paths, &keys).unwrap();
+        let count: i64 = connection.query_row("SELECT count(*) FROM saved_chart_groups", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn invalid_groups_do_not_write_and_unknown_chart_is_not_created() {
+        let archive = TempArchive::new("invalid-groups");
+        let keys = FakeKeyStore::empty();
+        let invalid = ArchiveRequestV1 { id: Some(ID_A.into()),
+            groups: Some(vec!["uguale".into(), "uguale".into()]), ..request("set_groups") };
+        assert_eq!(go(&archive, &keys, &invalid, 1000).status, "invalid_request");
+        assert!(archive.files().is_empty());
+        let unknown = ArchiveRequestV1 { id: Some(ID_B.into()), groups: Some(vec!["valido".into()]), ..request("set_groups") };
+        assert_eq!(go(&archive, &keys, &unknown, 1000).status, "not_found");
+        assert!(archive.files().is_empty());
+    }
+
+    #[test]
+    fn sealed_v1_archive_upgrades_in_memory_and_persists_only_on_a_successful_write() {
+        let archive = TempArchive::new("groups-upgrade");
+        let keys = FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        let mut connection = fresh_connection().unwrap();
+        save(&mut connection, &record(ID_A, "Preesistente"), 1000, MAX_CHARTS).unwrap();
+        connection.execute_batch("DROP TABLE saved_chart_groups; PRAGMA user_version=1;").unwrap();
+        persist(&archive.paths, &keys, &connection).unwrap();
+        let original = fs::read(&archive.paths.sealed).unwrap();
+        let charts = go(&archive, &keys, &list_request(), 2000).charts.unwrap();
+        assert!(charts[0].groups.is_empty());
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), original);
+        let update = ArchiveRequestV1 { id: Some(ID_A.into()), groups: Some(vec!["Famiglia fittizia".into()]), ..request("set_groups") };
+        assert_eq!(go(&archive, &keys, &update, 3000).charts.unwrap()[0].groups, ["Famiglia fittizia"]);
+        assert_eq!(go(&archive, &keys, &list_request(), 4000).charts.unwrap()[0].groups, ["Famiglia fittizia"]);
+        let upgraded = load_sealed(&archive.paths, &keys).unwrap();
+        let version: i64 = upgraded.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 2);
     }
 
     #[test]

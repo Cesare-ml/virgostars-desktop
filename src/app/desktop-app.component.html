@@ -210,7 +210,8 @@
               [value]="archiveQuery" (input)="setArchiveQuery($event)">
             <p class="inspector-hint" *ngIf="!savedCharts.length">{{t('archive.empty')}}</p>
             <p class="inspector-hint" *ngIf="savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
-            <div class="session-chart" *ngFor="let saved of visibleSavedCharts; trackBy:trackSaved">
+            <div class="archive-entry" *ngFor="let saved of visibleSavedCharts; trackBy:trackSaved">
+              <div class="session-chart">
               <button type="button" class="session-open" [disabled]="calcBusy || busy" [attr.title]="t('archive.open')" (click)="openSavedChart(saved)">
                 <strong>{{saved.name || t('session.unnamed')}}</strong>
                 <span>{{chartWhen(saved)}}</span>
@@ -219,6 +220,16 @@
               <button type="button" class="small-control wide" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
               <button type="button" class="small-control" [disabled]="archiveBusy"
                 [attr.aria-label]="t('archive.delete')" [attr.title]="t('archive.delete')" (click)="askDeleteSaved(saved.id)">×</button>
+              </div>
+              <div class="archive-groups" [attr.aria-label]="t('archive.groups')">
+                <span>{{t('archive.groups')}}:</span>
+                <span class="archive-group" *ngFor="let group of saved.groups">{{group}}
+                  <button type="button" [disabled]="archiveBusy" [attr.aria-label]="t('archive.groups.remove') + ': ' + group" (click)="removeSavedGroup(saved, group)">×</button>
+                </span>
+                <input type="text" maxlength="160" autocomplete="off" [attr.aria-label]="t('archive.groups.new')"
+                  [value]="groupDrafts[saved.id] || ''" (input)="setGroupDraft(saved.id, $event)">
+                <button type="button" class="small-control" [disabled]="archiveBusy || !groupDrafts[saved.id]?.trim()" (click)="addSavedGroup(saved)">{{t('archive.groups.add')}}</button>
+              </div>
             </div>
             <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.confirm')" *ngIf="pendingDeleteId">
               <p>{{t('archive.confirm')}}</p>

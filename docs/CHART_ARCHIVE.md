@@ -12,11 +12,20 @@ File: `charts-v2.vsarchive` (encrypted; see [Encrypted archive](ENCRYPTED_ARCHIV
 
 Since 2026-11-17 the archive is a single file encrypted and authenticated as a whole, with a random key kept by the operating system's credential store ([Encrypted archive](ENCRYPTED_ARCHIVE.md)). The first prototype's plain file (`charts-v1.sqlite3`) is migrated once and then kept until the user deletes it from the archive panel. Encryption protects the file at rest only; there is no recovery key, so a lost credential means a lost archive. The design has not had a separate security review.
 
-There are no accounts, profiles, groups, notes, outbox or synchronisation yet. Deleting a chart removes the row; it does not securely erase disk blocks.
+The local archive can now assign ordered group names to saved charts and search
+them by group. Groups are stored inside the same sealed file; they are local
+only and are not yet synchronized. There are no account profiles, notes or
+outbox. Deleting a chart removes its group assignments; it does not securely
+erase disk blocks.
 
 ## Command
 
-`chart_archive::chart_archive` takes one `request` object: `protocolVersion`, `operation` (`list`, `save`, `delete`), and either `chart` (save) or `id` (delete). Unknown fields are rejected. Every successful operation returns the whole archive, ordered by name.
+`chart_archive::chart_archive` takes one `request` object: `protocolVersion`,
+`operation` (`list`, `save`, `delete`, `set_groups`, `remove_legacy`), and
+the operation's fields. `set_groups` takes a chart id and the complete ordered
+group-name array. Unknown fields, duplicate/empty/unsafe names, more than 50
+names and names longer than 160 characters are rejected before disk access.
+Every successful operation returns the whole archive, ordered by name.
 
 | Status | Meaning |
 | --- | --- |
@@ -30,7 +39,13 @@ There are no accounts, profiles, groups, notes, outbox or synchronisation yet. D
 
 Rules enforced on both sides: lowercase UUID id; name up to 80 characters and place up to 160, trimmed, without control or invisible direction characters; strict UTC instant (same parser as `calculate_chart`); IANA-shaped zone; coordinates in range. All values are bound as SQL parameters.
 
-Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 1); there is no automatic repair, deletion or downgrade.
+Saving the same id again updates the row in place, keeps its creation time and
+preserves groups. Group replacement is transactional; deleting a chart also
+removes its assignments. Schema changes are tracked with `PRAGMA user_version`
+(currently 2). Version 1 encrypted databases are upgraded in memory, leaving
+the old ciphertext untouched until the next successful atomic write. Older
+application versions cannot open a version 2 archive. There is no automatic
+repair, deletion or downgrade.
 
 ## Interface
 
