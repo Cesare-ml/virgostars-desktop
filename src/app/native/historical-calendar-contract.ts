@@ -52,6 +52,7 @@ export async function requestHistoricalCalendar(transport: HistoricalCalendarTra
         ? {uncertaintySource:'Morrison-Stephenson 2004 standard error'} : {uncertaintySeconds:deltaT.uncertaintySeconds}),
       deltaTSource: deltaT.kind === 'supplied' ? deltaT.source : deltaT.kind === 'usno' ? USNO_NON_PREDICTION : 'Espenak-Meeus 2006',
       ...(deltaT.kind === 'usno' && deltaT.allowPredictions ? {allowedDeltaTSources:[USNO_NON_PREDICTION, USNO_PREDICTION]} : {}),
+      expectUsnoSourceError: deltaT.kind === 'usno',
       includeScenarios: request.includeScenarios === true,
       ...(deltaT.kind === 'supplied' ? {deltaTSeconds: deltaT.seconds} : {})});
   } catch { return {kind: 'unavailable'}; }
