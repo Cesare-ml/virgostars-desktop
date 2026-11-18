@@ -1,5 +1,23 @@
 # Renderer lifecycle — latest request wins
 
+## Chart skins (local integration, 2026-11-18)
+
+The settings drawer selects one of the eight skins in the sibling Charts
+checkout. A fresh desktop profile selects `virgostars`; the selection is a
+separate device-only preference from the interface's light/dark theme. Changing
+the skin redraws the chart through the existing generation guard, and is blocked
+during PNG export. The latitude renderer still receives the interface light/dark
+asset variant via `temaGrafico`. The Charts package is built from the sibling
+checkout; this is not a published package or a released desktop build. Synthetic
+and owner-approved private artwork remain governed by the existing asset pipeline.
+
+The optional Monomeri control subscribes to natal-planet hover only while active.
+It temporarily hides the natal aspect lines, restores them on leave or deactivation,
+and reads the true input longitude, not the adjusted glyph position. The corpus is
+private-build-only; see [the asset pipeline](ASSET_PIPELINE.md). PNG export remains
+independent of hover state. Chromium picking was tested with synthetic chart data;
+the desktop WebView2 interaction still needs a native GUI check.
+
 **Status:** narrow Angular-side async state protection implemented and unit-tested with Node 22.16.0 and TypeScript 5.8.3. **No Angular production build or WebView2 rendering test has been executed here.**
 
 ## Problem discovered

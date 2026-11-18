@@ -32,7 +32,7 @@ test('the catalog is frozen and its summary matches the entries', () => {
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
     'archive', 'aspect-direction', 'aspect-orbs', 'aspects', 'celestial-elements', 'house-system', 'latitudes',
-    'lunar-return', 'natal', 'new-chart', 'planet-info', 'planet-orbs', 'real-time',
+    'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-orbs', 'real-time',
     'session-charts', 'solar-return', 'synastry', 'transits',
   ]);
 });
@@ -49,7 +49,7 @@ test('the component dispatches every catalog action and disables the rest', () =
     assert.match(component, new RegExp("case '" + action + "':"), action);
   }
   // Available entries are active buttons; everything else sits in a collapsed, disabled list.
-  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy"/);
+  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy \|\| \(entry.action==='monomeri' && !monomeriAvailable\)"/);
   assert.match(html, /\*ngFor="let entry of unavailableIn\(group\)" disabled/);
 });
 

@@ -44,6 +44,9 @@ const REVIEWED_CONFIG = {
               fileReplacements: [{
                 replace: 'src/app/asset-mode.ts',
                 with: 'src/app/asset-mode.private.ts',
+              }, {
+                replace: 'src/app/monomeri-data.ts',
+                with: '.local/monomeri-data.private.ts',
               }],
             },
           },

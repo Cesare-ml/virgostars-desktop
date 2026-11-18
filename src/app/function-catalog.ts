@@ -14,7 +14,7 @@ export type FunctionStatus = 'available' | 'planned' | 'excluded';
 export type FunctionAction =
   | 'new_chart' | 'session_charts' | 'now_chart' | 'mode_natal' | 'mode_transits'
   | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive'
-  | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings';
+  | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings' | 'monomeri';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -94,7 +94,7 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     planned('custom-parts', 'Parti Arabe (Crea)', 'Arabic parts (custom formula)'),
     planned('kleros', 'Kleros (4 Kleros, 5 Planetarie)', 'Kleros (4 Kleroi, 5 planetary)'),
     planned('lots-view', 'Estrapola e Visualizza Sorti', 'Extract and show lots'),
-    planned('monomoiria', 'Monomeri', 'Monomoiria'),
+    available('monomoiria', 'Monomeri', 'Monomoiria', 'monomeri'),
     planned('decades', 'Decadi', 'Decades'),
     planned('decans', 'Decani', 'Decans'),
     planned('terms', 'Termini', 'Terms'),

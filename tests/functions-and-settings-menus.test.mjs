@@ -14,9 +14,9 @@ test('the Functions drawer does not repeat what the left menu already offers', (
   const listed = [...menu.active, ...menu.pending].flatMap(group => group.entries);
   const repeated = ['new-chart', 'session-charts', 'archive', 'natal', 'latitudes', 'synastry', 'real-time', 'transits'];
   for (const id of repeated) assert.ok(!listed.some(entry => entry.id === id), id);
-  // What is left to run is the returns.
+  // The remaining tools include returns and the optional private Monomeri view.
   assert.deepEqual(listed.filter(entry => entry.status === 'available').map(entry => entry.id).sort(),
-    ['lunar-return', 'solar-return']);
+    ['lunar-return', 'monomoiria', 'solar-return']);
 });
 
 test('settings are not in the Functions drawer, and nothing out of scope is shown anywhere', () => {

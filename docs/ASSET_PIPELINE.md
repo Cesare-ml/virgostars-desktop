@@ -82,6 +82,25 @@ quando il file non esiste.
 
 La modalità opzionale `private-artwork` utilizza il checkout locale di `astrological-assets`, senza richiedere il repository di produzione. Serve un checkout accessibile ai collaboratori autorizzati. `npm run build:ui:private` verifica il manifest approvato fissato tramite SHA-256 dei byte UTF-8 con fine riga normalizzato a LF, la corrispondenza con `catalog/approvals.json`, tutti gli hash e le dimensioni, e prepara una copia in `.local/frontend-private`. Il bundle è verificato separatamente con `npm run verify:bundle:private`; asset extra, manomissioni, link simbolici e manifest diversi causano un errore. Il renderer continua a caricare `/assets/` in locale.
 
-La modalità sintetica resta il default di `npm run build:ui` e la sua cartella `.local/frontend` non viene sovrascritta. Per generare una build privata con catalogo città, su Windows e dopo l’autenticazione GitHub CLI usare `npm run tauri:build:places:private:windows`. Per il solo prototipo senza il catalogo città usare `npm run tauri:build:private`. Il pacchetto privato contiene esclusivamente le immagini autorizzate; i font non sono inclusi. Il manifest fissato è quello del checkout `astrological-assets` corrente; aggiornamenti deliberati richiedono revisione e aggiornamento del relativo hash.
+La modalità sintetica resta il default di `npm run build:ui` e la sua cartella `.local/frontend` non viene sovrascritta. Per generare una build privata con catalogo città, su Windows e dopo l’autenticazione GitHub CLI usare `npm run tauri:build:places:private:windows`. Per il solo prototipo senza il catalogo città usare `npm run tauri:build:private`. Le immagini del pacchetto privato sono esclusivamente quelle autorizzate; i font non sono inclusi. Il manifest fissato è quello del checkout `astrological-assets` corrente; aggiornamenti deliberati richiedono revisione e aggiornamento del relativo hash.
+
+### Monomeri privati
+
+La funzione Monomeri nella build privata usa 360 testi italiani provenienti da
+`@ui/src/app/pagine/strumenti/monomeri.ts` del repository privato Regolo Alpha
+Leonis, blob `2e53a914f97674eb222076a0e9f9880d780ef59f`. Un collaboratore
+autorizzato può importare il file da un checkout locale con:
+
+```powershell
+node scripts/import-private-monomeri.mjs <percorso-del-file-monomeri.ts>
+```
+
+L'importatore accetta solo il corpus verificato e crea `.local/monomeri.json`,
+ignorato da Git. `prepare:frontend:private` ne verifica l'hash e lo incorpora nel
+JavaScript della build privata, disponibile offline. In assenza del file la build
+resta utilizzabile, ma Monomeri è disabilitato. La build sintetica pubblica non
+contiene il corpus. Non distribuire il bundle privato come pubblico senza una
+revisione distinta dei diritti sui testi. L'indice segue Regolo: longitudine
+zodiacale troncata, da 0 a 359; i gradi mostrati nel segno vanno da 0 a 29.
 
 I file originali, il bundle compilato e i pacchetti restano locali e fuori da Git. L’autorizzazione esistente riguarda la collaborazione privata; non implica diritti di ridistribuzione pubblica. Le carte mostrate dalla demo usano ancora posizioni sintetiche e non costituiscono calcoli astronomici.

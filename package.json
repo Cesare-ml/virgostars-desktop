@@ -27,7 +27,7 @@
     "places:fetch:windows": "py -3 scripts/places/fetch_catalog.py",
     "tauri:build:places:windows": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run places:fetch:windows && py -3 scripts/places/prepare_tauri_bundle.py && npm run verify:ipc && npm run verify:places-override && npm run build:ui && npm run prepare:icon && tauri build --config .local/places/tauri-places.conf.json",
     "verify:css": "node scripts/verify-bundled-css.mjs",
-    "prepare:frontend:private": "npm run verify:translations && node scripts/prepare-private-assets.mjs",
+    "prepare:frontend:private": "npm run verify:translations && node scripts/prepare-private-assets.mjs && node scripts/prepare-private-monomeri.mjs",
     "build:ui:private": "node scripts/verify-angular-source-config.mjs && npm run prepare:frontend:private && ng build desktop --configuration private-artwork && npm run verify:bundle:private",
     "verify:bundle:private": "node scripts/verify-offline-bundle.mjs --private && npm run verify:privacy && node scripts/verify-tauri-security-config.mjs",
     "tauri:build:private": "npm run verify:version && npm run verify:ipc && npm run build:ui:private && npm run prepare:icon && tauri build",

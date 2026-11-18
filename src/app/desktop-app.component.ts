@@ -16,6 +16,8 @@ import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
+import {CHART_SKINS, isChartSkin, loadChartSkin, saveChartSkin, type ChartSkin} from './chart-skin';
+import {monomeriAvailable, monomeroFor, type MonomeroView} from './monomeri';
 import { DeviceClock, formatDeviceClock } from './device-clock';
 import { aspectSymbol } from './aspect-symbols';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
@@ -152,6 +154,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   readonly modes = CHART_MODES;
 
   theme: UiTheme = this.initialUiPreferences.theme;
+  readonly chartSkins = CHART_SKINS;
+  chartSkin: ChartSkin = loadChartSkin(this.uiPreferencesStorage);
+  readonly monomeriAvailable = monomeriAvailable;
+  monomeriEnabled = false;
+  monomero: MonomeroView | null = null;
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
@@ -231,6 +238,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   error = '';
 
   t(key:MessageKey): string { return translate(this.locale,key); }
+  chartSkinLabel(skin: ChartSkin): string {
+    const keys: Record<ChartSkin, MessageKey> = {
+      virgostars:'skin.virgostars', light:'skin.light', dark:'skin.dark',
+      'light-bn':'skin.lightbn', 'dark-bn':'skin.darkbn', sun:'skin.sun',
+      astrolabio:'skin.astrolabio', 'astrolabio-girasole':'skin.astrolabiogirasole',
+    };
+    return this.t(keys[skin]);
+  }
   get styleStatusKey(): MessageKey {
     return this.styleStatus === 'active' ? 'styles.active' :
       this.styleStatus === 'missing' ? 'styles.missing' :
@@ -1011,6 +1026,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       case 'solar_return': this.openReturns('solar'); break;
       case 'aspect_table': this.closeSheet(); this.openInspector('aspects'); break;
       case 'chart_settings': this.openSettings(); break;
+      case 'monomeri': {
+        this.closeSheet();
+        const redraw = this.mode !== 'natal';
+        this.mode = 'natal';
+        this.chartPresentation = 'wheel';
+        this.toggleMonomeri();
+        if (redraw && this.initialized) void this.draw();
+        break;
+      }
       case 'lunar_return': this.openReturns('lunar'); break;
       case 'new_chart': this.openNewChart(); break;
       case 'now_chart': void this.showSky(); break;
@@ -1158,6 +1182,33 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
   }
+  toggleMonomeri(): void {
+    if (!this.monomeriAvailable || !this.initialized || this.busy) return;
+    this.monomeriEnabled = !this.monomeriEnabled;
+    if (this.monomeriEnabled) {
+      this.renderer.setNatalPlanetHoverListener(value => {
+        const valid = this.monomeriEnabled && this.view === 'chart' && this.mode === 'natal' &&
+          this.chartPresentation === 'wheel' && value && this.activeChart?.data.planets[value.name];
+        this.monomero = valid && value ? monomeroFor(value.name, value.longitude) : null;
+        this.renderer.setNatalAspectsVisible(this.monomero === null);
+        this.cd.markForCheck();
+      });
+    } else {
+      this.renderer.setNatalPlanetHoverListener(null);
+      this.monomero = null;
+      this.renderer.setNatalAspectsVisible(true);
+    }
+    this.cd.markForCheck();
+  }
+  setChartSkin(event: Event): void {
+    if (this.exporting || this.destroyed) return;
+    const value = (event.target as HTMLSelectElement).value;
+    if (!isChartSkin(value) || value === this.chartSkin) return;
+    this.chartSkin = value;
+    saveChartSkin(this.uiPreferencesStorage, value);
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
   setMode(mode:ChartMode): void {
     if (this.view !== 'chart') { this.view = 'chart'; this.cd.markForCheck(); }
     if(this.busy) return;
@@ -1197,7 +1248,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private options() {
     const options = structuredClone(defaultOpzioniGrafico);
-    options.settaggi.skin_id = this.theme;
+    options.settaggi.skin_id = this.chartSkin;
     options.temaGrafico = this.theme;
     const active = this.activeChart;
     options.mostraTransiti = this.mode === 'transits' && (!active || this.transitChart !== null);
