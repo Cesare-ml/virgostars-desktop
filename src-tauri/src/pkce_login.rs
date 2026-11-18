@@ -118,6 +118,10 @@ impl PendingPkceLogin {
     /// Opaque ID only, safe for Angular to request status/cancellation.
     pub fn attempt_id(&self) -> &str { &self.attempt_id }
 
+    /// Host-only redirect URI from the already bound listener. Never place
+    /// this or the PKCE parameters in an Angular IPC response.
+    pub(crate) fn bound_redirect_uri(&self) -> &str { &self.redirect_uri }
+
     pub fn remaining_seconds(&self, now: Instant) -> u64 {
         self.expires_at.saturating_duration_since(now).as_secs()
     }
