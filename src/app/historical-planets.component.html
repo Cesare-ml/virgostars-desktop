@@ -1,0 +1,40 @@
+<section class="historical" [attr.aria-label]="t('historical.title')">
+  <p>{{t('historical.intro')}}</p>
+  <p>{{t('historical.ut1Note')}}</p>
+  <p>{{t('historical.yearNote')}}</p>
+  <form (submit)="$event.preventDefault(); calculate()">
+    <label class="field"><span>{{t('historical.body')}}</span>
+      <select [value]="body" (change)="setBody($event)"><option *ngFor="let item of bodies" [value]="item">{{bodyLabel(item)}}</option></select>
+    </label>
+    <div class="row">
+      <label class="field"><span>{{t('nav.year')}}</span><input type="number" [value]="year" (input)="set('year', $event)"></label>
+      <label class="field"><span>{{t('nav.month')}}</span><input type="number" [value]="month" (input)="set('month', $event)"></label>
+      <label class="field"><span>{{t('nav.day')}}</span><input type="number" [value]="day" (input)="set('day', $event)"></label>
+      <label class="field"><span>{{t('nav.hour')}}</span><input type="number" [value]="hour" (input)="set('hour', $event)"></label>
+      <label class="field"><span>{{t('nav.minute')}}</span><input type="number" [value]="minute" (input)="set('minute', $event)"></label>
+    </div>
+    <label class="field"><span>{{t('historical.source')}}</span>
+      <select [value]="choice" (change)="setChoice($event)">
+        <option value="espenakMeeus2006">{{t('historical.model')}}</option><option value="supplied">{{t('historical.manual')}}</option>
+      </select>
+    </label>
+    <p *ngIf="choice==='espenakMeeus2006'">{{t('historical.modelNote')}}</p>
+    <div class="row" *ngIf="choice==='supplied'">
+      <label class="field"><span>{{t('historical.delta')}}</span><input type="number" step="any" [value]="deltaSeconds" (input)="set('deltaSeconds', $event)"></label>
+      <label class="field"><span>{{t('historical.sourceLabel')}}</span><input type="text" maxlength="200" [value]="source" (input)="set('source', $event)"></label>
+    </div>
+    <label class="field"><span>{{t('historical.uncertainty')}}</span><input type="number" step="any" min="0" [value]="uncertainty" (input)="set('uncertainty', $event)"></label>
+    <p>{{t('historical.uncertaintyNote')}}</p>
+    <button type="submit" [disabled]="busy">{{t(busy ? 'historical.calculating' : 'historical.calculate')}}</button>
+  </form>
+  <p class="message" role="alert" *ngIf="message">{{t(message)}}</p>
+  <div class="result" role="status" *ngIf="result as planet">
+    <h3>{{bodyLabel(planet.body)}}</h3>
+    <p>{{t('historical.longitude')}}: {{planet.longitudeDeg | number:'1.6-6'}}°</p>
+    <p>{{t('historical.latitude')}}: {{planet.latitudeDeg | number:'1.6-6'}}°</p>
+    <p>{{t('historical.distance')}}: {{planet.distanceAu | number:'1.6-6'}} UA</p>
+    <p>{{t('historical.longitudeSpeed')}}: {{planet.longitudeSpeedDegPerTdbDay | number:'1.6-6'}}°/d</p>
+    <p>{{t('historical.deltaUsed')}}: {{planet.deltaTSeconds | number:'1.2-2'}} s ± {{planet.uncertaintySeconds | number:'1.2-2'}} s · {{planet.deltaTSource}}</p>
+    <p>{{t('historical.resultNote')}}</p>
+  </div>
+</section>

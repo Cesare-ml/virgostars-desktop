@@ -38,7 +38,7 @@ use virgostars_ephemeris_core::spk_type21::SmallBodySpk;
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-const ENGINE_VERSION: &str = "core-0.1.0-6835e00";
+const ENGINE_VERSION: &str = "core-0.1.0-31b84d4";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
@@ -179,6 +179,30 @@ fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
 /// Whether the DE441 file could be opened: without it there is no provider.
 pub fn data_available() -> bool {
     with_engine(|_| ()).is_some()
+}
+
+/// Isolated experimental path: the input epoch is explicitly UT1, never civil UTC.
+pub(crate) fn historical_planet(
+    request: &crate::historical_planets::HistoricalPlanetRequest,
+) -> Option<Result<crate::historical_planets::HistoricalPlanetResult, ()>> {
+    with_engine(|engine| {
+        let body = PLANETS.iter().find(|(name, _)| *name == request.body).map(|(_, body)| *body).ok_or(())?;
+        let output = virgostars_ephemeris_core::historical_rate_candidate::historical_three_rate_candidate(
+            &mut engine.ephemeris, body, request.jd_ut1, request.delta_t_seconds,
+            request.uncertainty_seconds, &request.delta_t_source,
+        ).map_err(|_| ())?;
+        let fields = output.rates.base;
+        Ok(crate::historical_planets::HistoricalPlanetResult {
+            body: request.body.clone(), jd_ut1: output.epoch.jd_ut1, jd_tt: output.epoch.jd_tt,
+            jd_tdb: output.epoch.jd_tdb.0, delta_t_seconds: output.epoch.delta_t_seconds,
+            uncertainty_seconds: output.epoch.uncertainty_seconds, delta_t_source: output.delta_t_source,
+            longitude_deg: fields.longitude_deg, latitude_deg: fields.latitude_deg, distance_au: fields.distance_au,
+            longitude_speed_deg_per_tdb_day: output.rates.longitude_deg_per_tdb_day,
+            latitude_speed_deg_per_tdb_day: output.rates.latitude_deg_per_tdb_day,
+            radial_speed_au_per_tdb_day: output.rates.radial_au_per_tdb_day,
+            radial_correction_applied: output.rates.radial_correction_applied,
+        })
+    })
 }
 
 /// Julian day (UT) of a validated proleptic-Gregorian instant (Meeus, chapter 7).
