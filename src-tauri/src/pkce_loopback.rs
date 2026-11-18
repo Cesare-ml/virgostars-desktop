@@ -18,7 +18,6 @@ const PER_CONNECTION_DEADLINE: Duration = Duration::from_millis(350);
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
 const MAX_WAIT: Duration = Duration::from_secs(600);
 const CALLBACK_PATH: &str = "/virgostars/oauth/callback";
-const CONSENT_PAGE: &str = "https://www.virgostars.it/collega-dispositivo";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopbackError {
@@ -43,14 +42,17 @@ pub struct LoopbackLogin {
 impl LoopbackLogin {
     /// Reserve the port *first*, then generate the exact matching PKCE request.
     /// This avoids an unbound-port/time-of-check-time-of-use race.
-    pub fn start<B: SystemBrowserOpener>(browser: &B) -> Result<Self, LoopbackError> {
+    pub fn start<B: SystemBrowserOpener>(browser: &B, staging_consent_page: &str) -> Result<Self, LoopbackError> {
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
             .map_err(|_| LoopbackError::Unavailable)?;
         let local_port = listener.local_addr().map_err(|_| LoopbackError::Unavailable)?.port();
         listener.set_nonblocking(true).map_err(|_| LoopbackError::Unavailable)?;
         let mut attempt = PendingPkceLogin::new(local_port, Instant::now())
             .map_err(|_| LoopbackError::Unavailable)?;
-        let url = attempt.consent_url(CONSENT_PAGE).map_err(|_| LoopbackError::Unavailable)?;
+        // No production-domain fallback: the native caller must explicitly
+        // supply the vetted staging consent URL, rejected by pkce_login if
+        // it is public, malformed, or outside VirgoStars-controlled staging.
+        let url = attempt.consent_url(staging_consent_page).map_err(|_| LoopbackError::Unavailable)?;
         if browser.open_in_system_browser(&url).is_err() {
             attempt.cancel();
             return Err(LoopbackError::BrowserUnavailable);
@@ -199,6 +201,7 @@ fn respond(stream: &mut TcpStream, accepted: bool) {
 mod tests {
     use super::*;
     use std::sync::Mutex;
+    const STAGING_CONSENT_PAGE: &str = "https://staging.virgostars.it/collega-dispositivo";
 
     #[derive(Default)]
     struct FakeBrowser { opened: Mutex<Option<Url>>, fail: bool }
@@ -236,20 +239,20 @@ mod tests {
     #[test]
     fn binds_before_browser_and_never_exposes_a_secret_in_the_status_id() {
         let browser = FakeBrowser::default();
-        let session = LoopbackLogin::start(&browser).unwrap();
+        let session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         let url = browser.opened.lock().unwrap().as_ref().unwrap().clone();
         let redirect = url.query_pairs().find(|(key, _)| key == "redirect_uri").unwrap().1.to_string();
         assert!(redirect.starts_with("http://127.0.0.1:"));
         assert!(session.bound_port().unwrap() >= 1024);
         assert!(!url.as_str().contains(session.attempt_id()));
         assert_eq!(session.attempt_id().len(), 36);
-        assert!(matches!(LoopbackLogin::start(&FakeBrowser{fail:true, ..Default::default()}), Err(LoopbackError::BrowserUnavailable)));
+        assert!(matches!(LoopbackLogin::start(&FakeBrowser{fail:true, ..Default::default()}, STAGING_CONSENT_PAGE), Err(LoopbackError::BrowserUnavailable)));
     }
 
     #[test]
     fn accepts_exact_browser_callback_and_returns_only_native_code_and_verifier() {
         let browser = FakeBrowser::default();
-        let mut session = LoopbackLogin::start(&browser).unwrap();
+        let mut session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         let port = session.bound_port().unwrap();
         let uri = callback(&browser);
         let request = get(&uri, &format!("127.0.0.1:{port}"));
@@ -270,7 +273,7 @@ mod tests {
     #[test]
     fn rejects_wrong_host_then_accepts_the_right_callback() {
         let browser = FakeBrowser::default();
-        let mut session = LoopbackLogin::start(&browser).unwrap();
+        let mut session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         let port = session.bound_port().unwrap();
         let uri = callback(&browser);
         let invalid = get(&uri, "attacker.invalid");
@@ -289,7 +292,7 @@ mod tests {
     #[test]
     fn refuses_post_and_message_framing_even_on_loopback() {
         let browser = FakeBrowser::default();
-        let mut session = LoopbackLogin::start(&browser).unwrap();
+        let mut session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         let port = session.bound_port().unwrap();
         let uri = callback(&browser);
         let valid = get(&uri, &format!("127.0.0.1:{port}"));
@@ -314,7 +317,22 @@ mod tests {
     #[test]
     fn never_waits_indefinitely_for_a_callback() {
         let browser = FakeBrowser::default();
-        let mut session = LoopbackLogin::start(&browser).unwrap();
+        let mut session = LoopbackLogin::start(&browser, STAGING_CONSENT_PAGE).unwrap();
         assert!(matches!(session.wait_for_callback(Duration::from_millis(50)), Err(LoopbackError::Expired)));
+    }
+
+    #[test]
+    fn rejects_public_or_untrusted_consent_before_invoking_browser() {
+        for url in [
+            "https://www.virgostars.it/collega-dispositivo",
+            "https://virgostars.it/collega-dispositivo",
+            "https://staging.virgostars.it.evil.invalid/collega-dispositivo",
+            "http://staging.virgostars.it/collega-dispositivo",
+            "https://staging.virgostars.it/collega-dispositivo?next=evil",
+        ] {
+            let browser = FakeBrowser::default();
+            assert!(matches!(LoopbackLogin::start(&browser, url), Err(LoopbackError::Unavailable)));
+            assert!(browser.opened.lock().unwrap().is_none());
+        }
     }
 }

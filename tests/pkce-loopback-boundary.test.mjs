@@ -27,3 +27,14 @@ test('browser callback never goes directly to Angular and host-only PKCE code is
   assert.match(source, /fn wait_for_callback\(&mut self, max_wait: Duration\) -> Result<CallbackDecision/);
   assert.doesNotMatch(source, /@tauri-apps|localStorage|console\.log|window\./);
 });
+
+test('staging consent URL is explicit, rejects public VirgoStars and never falls back', () => {
+  assert.doesNotMatch(source, /const CONSENT_PAGE: &str = "https:\/\/www\.virgostars\.it/);
+  assert.match(source, /pub fn start<B: SystemBrowserOpener>\(browser: &B, staging_consent_page: &str\)/);
+  assert.match(source, /attempt\.consent_url\(staging_consent_page\)/);
+  assert.match(core, /fn valid_consent_origin\(candidate: &str\)/);
+  assert.match(core, /"staging" \| "preview"/);
+  assert.match(core, /labels\[labels\.len\(\) - 2\] == "virgostars"/);
+  assert.match(core, /uri\.as_str\(\) != candidate/);
+  assert.match(source, /fn rejects_public_or_untrusted_consent_before_invoking_browser\(/);
+});
