@@ -84,10 +84,7 @@
         </div>
       </div>
       <div class="sidebar-bottom">
-        <div class="sidebar-prefs">
-          <button type="button" class="small-control" [attr.aria-label]="t('language')" [attr.title]="t('language')" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button>
-          <button type="button" class="small-control" [attr.aria-label]="themeToggleLabel" [attr.title]="themeToggleLabel" (click)="toggleTheme()">{{theme === 'light' ? '☾' : '☼'}}</button>
-        </div>
+        <button type="button" class="nav-item" [class.selected]="view==='account'" [attr.title]="t('account.title')" (click)="openAccount()"><span class="nav-mark" aria-hidden="true">◯</span><span class="nav-label">{{t('account.title')}}</span></button>
         <p class="copyright-attribution">© 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</p>
       </div>
     </nav>
@@ -111,6 +108,9 @@
           <h1>{{stageTitle}}</h1>
           <p class="stage-subject" *ngIf="!isSkyActive">{{subjectTitle}}</p>
           <p class="stage-caption">{{subjectCaption}}</p>
+          <div class="year-planet" *ngIf="planetOfYear as planet" [attr.title]="t('chartsettings.year') + ': ' + planetLabel(planet)">
+            <span>{{t('chartsettings.year.short')}}</span><img [src]="glyphUrl(planet)" [alt]="planetLabel(planet)" (error)="glyphMissing($event)"><span hidden>{{planetLabel(planet)}}</span>
+          </div>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
         </div>
@@ -303,6 +303,12 @@
         </section>
 
         <!-- Settings: a drawer that opens from the left menu. -->
+        <section class="drawer" *ngIf="view==='account'" [attr.aria-label]="t('account.title')">
+          <header><h2>{{t('account.title')}}</h2></header>
+          <p>{{t('noaccount')}}</p>
+          <p class="inspector-hint">{{t('account.unavailable')}}</p>
+          <p class="inspector-hint">{{t('account.sync')}}</p>
+        </section>
         <section class="drawer" *ngIf="view==='settings'" [attr.aria-label]="t('tab.settings')">
           <header class="sheet-head">
             <h2>{{t('tab.settings')}}</h2>
@@ -311,6 +317,8 @@
           <!-- The house system comes first, with no spoiler. -->
           <div class="settings-top">
             <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
+            <label class="setting-line select-line"><span>{{t('language')}}</span><select class="inline-select" [value]="languagePreference" (change)="setLanguage($event)"><option value="auto">{{t('language.auto')}}</option><option value="it">Italiano</option><option value="en">English</option></select></label>
+            <label class="setting-line select-line"><span>{{t('settings.theme')}}</span><select class="inline-select" [value]="theme" [disabled]="busy" (change)="setUiTheme($event)"><option value="light">{{t('theme.current.light')}}</option><option value="dark">{{t('theme.current.dark')}}</option></select></label>
             <label class="setting-line select-line">
               <span>{{t('settings.chartSkin')}}</span>
               <select class="inline-select" [disabled]="busy" (change)="setChartSkin($event)">

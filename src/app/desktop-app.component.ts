@@ -15,7 +15,7 @@ import { inspectDesktopRuntime } from './native/runtime';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
-import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
+import { browserUiPreferencesStorage, loadUiPreferences, resolveLocale, saveUiPreferences } from './ui-preferences';
 import {CHART_SKINS, isChartSkin, loadChartSkin, saveChartSkin, type ChartSkin} from './chart-skin';
 import {monomeriAvailable, monomeroOnHover, monomeroForChart, type MonomeroView} from './monomeri';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
@@ -48,6 +48,7 @@ import {synodEvents} from './native/synod-events';
 import type {SynodRecord} from './native/synod-events-contract';
 import {hasSynodGlyph, orderSynodRecords} from './synod-selection';
 import {TRADITIONAL_POINTS, zodiacProjectionPoints, type ZodiacProjectionMode, type ZodiacProjectionAxis} from './astro/zodiac-projections';
+import {australChartData, regoloPlanetOfYear, settingsWithConjunctOuter} from './astro/chart-display';
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
@@ -169,7 +170,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   guideVisible = shouldShowGettingStarted(this.uiPreferencesStorage);
   guideStep = 0;
   private guideReturnFocus: HTMLElement | null = null;
-  locale: Locale = this.initialUiPreferences.locale;
+  languagePreference: Locale | 'auto' = this.initialUiPreferences.locale;
+  locale: Locale = resolveLocale(this.languagePreference);
   mode: ChartMode = 'natal';
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
   chartPresentation: 'wheel' | 'elements' | 'aspects' = 'wheel';
@@ -201,6 +203,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** Settings of the old menu that are not built yet. */
   readonly pendingSettingEntries = pendingSettings();
   private transitChart: SessionChart | null = null;
+  private readonly australCache = new WeakMap<SessionChart, SessionChart>();
+  private natalAspectFocus: string | null = null;
   private transitFocus: {ring: 'natal' | 'transit'; name: string} | null = null;
   synodReference: 'radix' | 'transit' = 'transit';
   synodRecords: readonly SynodRecord[] = [];
@@ -310,7 +314,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!chart) return [];
     const cache = this.aspectCache;
     if (cache && cache.chartId === chart.id && cache.settings === this.chartSettings) return cache.rows;
-    const rows = computeAspects(aspectPoints(chart.data, this.chartSettings.points), this.chartSettings, ASPECT_DEFINITIONS);
+    const settings = settingsWithConjunctOuter(chart.data,this.chartSettings);
+    const rows = computeAspects(aspectPoints(chart.data, settings.points), settings, ASPECT_DEFINITIONS);
     this.aspectCache = {chartId:chart.id, settings:this.chartSettings, rows};
     return rows;
   }
@@ -335,14 +340,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const to = mode === 'transits' ? active : overlay;
     const cache = this.crossAspectCache;
     if (cache && cache.from === from && cache.to === to && cache.mode === mode && cache.settings === this.chartSettings) return cache.rows;
-    const rows = computeCrossAspects(aspectPoints(from.data, this.chartSettings.points),
-      aspectPoints(to.data, this.chartSettings.points), this.chartSettings, ASPECT_DEFINITIONS, mode);
+    const rows = computeCrossAspects(aspectPoints(from.data, settingsWithConjunctOuter(from.data,this.chartSettings).points),
+      aspectPoints(to.data, settingsWithConjunctOuter(to.data,this.chartSettings).points), this.chartSettings, ASPECT_DEFINITIONS, mode);
     this.crossAspectCache = {from, to, mode, settings: this.chartSettings, rows};
     return rows;
   }
   onChartSettingsChanged(next: ChartSettings): void {
     if (this.destroyed || this.exporting) return;
     this.chartSettings = sanitizeChartSettings(next);
+    this.rowsCache = null;
     if (this.zodiacPoint !== 'tutti' && !this.zodiacPointAvailable(this.zodiacPoint)) this.zodiacPoint = 'tutti';
     // Best effort: a failed write never blocks the chart.
     saveChartSettings(this.uiPreferencesStorage, this.chartSettings);
@@ -350,13 +356,29 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   get activeChart(): SessionChart | null {
-    return this.sessionCharts.find(chart => chart.id === this.activeChartId) ?? null;
+    return this.displayChart(this.sessionCharts.find(chart => chart.id === this.activeChartId) ?? null);
   }
   get partnerChart(): SessionChart | null {
-    return this.sessionCharts.find(chart => chart.id === this.partnerChartId) ?? null;
+    return this.displayChart(this.sessionCharts.find(chart => chart.id === this.partnerChartId) ?? null);
+  }
+  private displayChart(chart:SessionChart | null): SessionChart | null {
+    if (!chart || !this.chartSettings.australInversion || chart.latMicro >= 0) return chart;
+    const cached = this.australCache.get(chart);
+    if (cached) return cached;
+    const data = australChartData(chart.data,chart.latMicro,true);
+    const displayed = {...chart, data, render:data as unknown as TemaRender};
+    this.australCache.set(chart,displayed);
+    return displayed;
   }
   get transitChartAvailable(): boolean { return this.transitChart !== null; }
-  private get displayedTransit(): SessionChart | null { return this.synodView === 'synod' ? this.synodChart : this.transitChart; }
+  private get displayedTransit(): SessionChart | null { return this.displayChart(this.synodView === 'synod' ? this.synodChart : this.transitChart); }
+  get planetOfYear(): string | null {
+    const chart = this.activeChart;
+    if (!this.chartSettings.planetOfYear || !chart) return null;
+    const parts = localParts(Date.parse(chart.utcIso),chart.timeZone);
+    const sun = chart.data.planets['Sun'];
+    return parts && sun ? regoloPlanetOfYear(parts.year,parts.month,sun.longitude) : null;
+  }
   get isSkyActive(): boolean { return this.activeChart?.kind === 'sky'; }
   get stageTitle(): string {
     if (this.isSkyActive && this.mode === 'natal') return this.t(this.navDirty ? 'sky.navigated' : 'sky.title');
@@ -508,6 +530,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private showChart(chart: SessionChart | null): void {
     this.cancelTransitNavigation();
+    this.natalAspectFocus = null;
     this.zodiacPoint = 'tutti';
     this.activeChartId = chart ? chart.id : null;
     this.transitChart = null;
@@ -1228,6 +1251,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       case 'solar_return': this.openReturns('solar'); break;
       case 'aspect_table': this.closeSheet(); this.openInspector('aspects'); break;
       case 'chart_settings': this.openSettings(); break;
+      case 'applications': this.openSettings(); break;
+      case 'austral': this.toggleChartDisplay('australInversion'); break;
+      case 'outer_conjunct': this.toggleChartDisplay('outerWhenConjunct'); break;
+      case 'planet_year': this.toggleChartDisplay('planetOfYear'); break;
+      case 'aspect_focus': this.toggleChartDisplay('focusAspects'); break;
+      case 'decans': this.toggleChartDisplay('showDecans'); break;
+      case 'decades': this.toggleChartDisplay('showDecades'); break;
+      case 'terms': this.toggleChartDisplay('showTerms'); break;
       case 'dodecatemoria': this.openZodiacTool('dodecatemoria'); break;
       case 'antiscia': this.openZodiacTool('antiscia'); break;
       case 'contra_antiscia': this.openZodiacTool('contra-antiscia'); break;
@@ -1254,6 +1285,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   openFunctions(): void {
     this.view = this.view === 'functions' ? 'chart' : 'functions';
     this.cd.markForCheck();
+  }
+  toggleChartDisplay(key:'australInversion'|'outerWhenConjunct'|'planetOfYear'|'focusAspects'|'showDecans'|'showDecades'|'showTerms'): void {
+    if (!this.activeChart || this.busy || this.exporting) return;
+    this.closeSheet();
+    this.onChartSettingsChanged({...this.chartSettings,[key]:!this.chartSettings[key]});
   }
   openSettings(): void {
     this.view = this.view === 'settings' ? 'chart' : 'settings';
@@ -1291,7 +1327,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private persistUiPreferences(): void {
     // Best effort: storing theme/language never blocks offline interaction.
-    saveUiPreferences(this.uiPreferencesStorage, {theme:this.theme, locale:this.locale});
+    saveUiPreferences(this.uiPreferencesStorage, {theme:this.theme, locale:this.languagePreference});
   }
 
   ngAfterViewInit(): void {
@@ -1312,6 +1348,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       GestoreImmagini.configurePublicAssetsBase('/assets/');
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
+      this.renderer.setNatalPlanetHoverListener(value => {
+        if (!value || this.destroyed || this.view !== 'chart' || this.mode !== 'natal' ||
+          this.chartPresentation !== 'wheel' || !this.activeChart) return;
+        if (this.monomeriEnabled) {
+          if (this.busy) return;
+          const selected = monomeroOnHover(this.monomero,value);
+          if (selected && selected !== this.monomero) {
+            this.monomero = selected;
+            this.renderer.setNatalAspectsVisible(false);
+            this.cd.markForCheck();
+          }
+        } else if (this.chartSettings.focusAspects && !this.zodiacMode && this.natalAspectFocus !== value.name) {
+          this.natalAspectFocus = value.name;
+          if (this.initialized) void this.draw();
+        }
+      });
       this.initialized = true;
       this.resizeObserver = new ResizeObserver(() => this.fitStage());
       this.resizeObserver.observe(this.stage.nativeElement);
@@ -1337,8 +1389,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
           this.renderer.setTransitAspectLines([]);
           return;
         }
-        const moving = new Map(aspectPoints(transit.data, this.chartSettings.points).map(point => [point.name, point.longitude]));
-        const fixed = new Map(aspectPoints(natal.data, this.chartSettings.points).map(point => [point.name, point.longitude]));
+        const moving = new Map(aspectPoints(transit.data, settingsWithConjunctOuter(transit.data,this.chartSettings).points).map(point => [point.name, point.longitude]));
+        const fixed = new Map(aspectPoints(natal.data, settingsWithConjunctOuter(natal.data,this.chartSettings).points).map(point => [point.name, point.longitude]));
         const lines = this.crossAspectRows
           .filter(row => value.ring === 'transit' ? row.from === value.name : row.to === value.name)
           .flatMap(row => {
@@ -1402,10 +1454,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.inspectorCollapsed = !this.inspectorCollapsed;
     this.cd.markForCheck();
   }
-  toggleLanguage(): void {
-    this.locale = this.locale === 'it' ? 'en' : 'it';
+  setLanguage(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if (value !== 'auto' && value !== 'it' && value !== 'en') return;
+    this.languagePreference = value;
+    this.locale = resolveLocale(value);
     document.documentElement.lang = this.locale;
     this.persistUiPreferences();
+    this.cd.markForCheck();
+  }
+  setUiTheme(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if ((value === 'light' || value === 'dark') && value !== this.theme) this.toggleTheme();
+  }
+  openAccount(): void {
+    this.view = this.view === 'account' ? 'chart' : 'account';
     this.cd.markForCheck();
   }
   toggleTheme(): void {
@@ -1422,20 +1485,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (clearZodiac) this.zodiacMode = null;
     this.monomeriEnabled = !this.monomeriEnabled;
     if (this.monomeriEnabled) {
-      this.renderer.setNatalPlanetHoverListener(value => {
-        if (!value || this.busy || !this.monomeriEnabled || this.view !== 'chart' || this.mode !== 'natal' ||
-          this.chartPresentation !== 'wheel' || !this.activeChart) return;
-        const selected = monomeroOnHover(this.monomero, value);
-        if (!selected || selected === this.monomero) return;
-        this.monomero = selected;
-        this.renderer.setNatalAspectsVisible(false);
-        this.cd.markForCheck();
-      });
       this.renderer.setNatalAspectsVisible(false);
     } else {
-      this.renderer.setNatalPlanetHoverListener(null);
       this.monomero = null;
       this.renderer.setNatalAspectsVisible(true);
+      if (this.chartSettings.focusAspects && this.initialized) void this.draw();
     }
     if (clearZodiac && this.initialized) void this.draw();
     this.cd.markForCheck();
@@ -1559,6 +1613,18 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     options.mostraAssiTransiti = this.mode === 'transits';
     options.temaGrafico = this.theme;
     const active = this.activeChart;
+    options.settaggi.transaturnini_se_congiunti = this.chartSettings.outerWhenConjunct;
+    options.mostraDecani = this.chartSettings.showDecans;
+    options.mostraDecadi = this.chartSettings.showDecades;
+    options.mostraTermini = this.chartSettings.showTerms;
+    if (this.mode === 'natal' && this.chartSettings.focusAspects && this.natalAspectFocus && !this.monomeriEnabled && !this.zodiacMode) {
+      options.temaRadixFocusAspettiAttivo = true;
+      options.temaRadixElementoCelesteFocusAspetti = {id:this.natalAspectFocus,nome:this.natalAspectFocus};
+    }
+    if (this.mode === 'natal' && this.chartSettings.applicationMode !== 'off' && !this.monomeriEnabled && !this.zodiacMode) {
+      options.applicazioniAspetti = {modo:this.chartSettings.applicationMode,
+        stati:this.aspectRows.map(row => ({aspetto:row.aspect,da:row.from,a:row.to,applicante:row.applying}))};
+    }
     if (active && this.mode === 'natal' && this.zodiacMode === 'dodecatemoria') {
       options.dodecatemoriAttivi = true;
       options.dodecatemore = this.zodiacPoint;
@@ -1603,7 +1669,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const active = this.activeChart;
     if (!active) return null;
     const transit = this.displayedTransit?.render;
-    const synastry = this.mode === 'transits' && this.synodView === 'transit-synod' ? this.synodChart?.render : this.partnerChart?.render;
+    const synastry = this.mode === 'transits' && this.synodView === 'transit-synod' ? this.displayChart(this.synodChart)?.render : this.partnerChart?.render;
     return [active.render,
       this.mode==='transits' && transit ? transit : noOverlay,
       (this.mode==='synastry' || this.mode==='transits' && this.synodView==='transit-synod') && synastry ? synastry : noOverlay,

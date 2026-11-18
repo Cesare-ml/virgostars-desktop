@@ -31,9 +31,9 @@ test('the catalog is frozen and its summary matches the entries', () => {
 
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
-    'antiscia', 'archive', 'aspect-direction', 'aspect-orbs', 'aspects', 'celestial-elements', 'contra-antiscia', 'dodecatemoria', 'house-system', 'latitudes',
-    'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-orbs', 'real-time',
-    'session-charts', 'solar-return', 'synastry', 'transits',
+    'antiscia', 'applications', 'archive', 'aspect-direction', 'aspect-focus', 'aspect-orbs', 'aspects', 'austral-inversion', 'celestial-elements', 'contra-antiscia', 'decades', 'decans', 'dodecatemoria', 'house-system', 'latitudes',
+    'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-of-year', 'planet-orbs', 'real-time',
+    'session-charts', 'solar-return', 'synastry', 'terms', 'transits', 'transsaturnians',
   ]);
 });
 
@@ -66,7 +66,7 @@ test('a calculated chart is never paired with fixture overlays', () => {
   // No placeholder chart exists any more: overlays only ever come from calculated charts.
   assert.doesNotMatch(component, /makeFictionalTheme|fictionalPlanets|fictionalHouses/);
   assert.match(component, /const transit = this\.displayedTransit\?\.render;/);
-  assert.match(component, /this\.synodChart\?\.render : this\.partnerChart\?\.render;/);
+  assert.match(component, /this\.displayChart\(this\.synodChart\)\?\.render : this\.partnerChart\?\.render;/);
   assert.match(component, /const present = AXIS_IDS\.includes\(id\) \|\| id in planets;/);
   assert.match(component, /target\.att = present && setting\.shown;/);
 });

@@ -358,3 +358,7 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .zodiac-glyph img { width:24px; height:24px; object-fit:contain; }
 .zodiac-glyph span { font-size:.6rem; }
 .desktop-app[data-theme="light"] .zodiac-glyph:not(.selected) img { filter:brightness(0); }
+.year-planet { display:flex; gap:5px; align-items:center; margin-top:5px; font-size:11px; color:var(--vs-text-secondary); }
+.year-planet img { width:24px; height:20px; object-fit:contain; }
+.chart-stage:not(.chart-dark) .year-planet img { filter:brightness(0); }
+.chart-stage.chart-dark .year-planet { color:#ddd; }

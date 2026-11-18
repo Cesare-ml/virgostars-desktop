@@ -62,7 +62,7 @@ test('valid values are kept field by field and everything else falls back', () =
   assert.deepEqual(settings.points.Pluto, {shown: false, orb: 2.5, aspects: true});
   assert.deepEqual(settings.points.Sun, {shown: true, orb: 6, aspects: true});
   assert.equal(settings.points.Moon.orb, 6);
-  assert.deepEqual(Object.keys(settings).sort(), ['aspects', 'points', 'showAspects']);
+  assert.deepEqual(Object.keys(settings).sort(), ['applicationMode','aspects','australInversion','focusAspects','outerWhenConjunct','planetOfYear','points','showAspects','showDecades','showDecans','showTerms']);
   assert.equal(Object.keys(settings.aspects).length, 17);
   assert.equal(Object.keys(settings.points).length, POINT_IDS.length);
   assert.equal(settings.aspects.invented, undefined);

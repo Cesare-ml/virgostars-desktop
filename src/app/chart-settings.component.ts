@@ -42,6 +42,13 @@ export class ChartSettingsComponent {
   private checked(event: Event): boolean { return (event.target as HTMLInputElement).checked; }
 
   setShowAspects(event: Event): void { this.emit(next => { next.showAspects = this.checked(event); }); }
+  setDisplayOption(key:'australInversion'|'outerWhenConjunct'|'planetOfYear'|'focusAspects'|'showDecans'|'showDecades'|'showTerms', event:Event): void {
+    this.emit(next => { next[key] = this.checked(event); });
+  }
+  setApplicationMode(event:Event): void {
+    const mode = (event.target as HTMLSelectElement).value;
+    if (mode === 'off' || mode === 'applying' || mode === 'separating') this.emit(next => { next.applicationMode = mode; });
+  }
   setAspectActive(id: AspectId, event: Event): void { this.emit(next => { next.aspects[id].active = this.checked(event); }); }
   setPointShown(id: PointId, event: Event): void { this.emit(next => { next.points[id].shown = this.checked(event); }); }
   setPointAspects(id: PointId, event: Event): void { this.emit(next => { next.points[id].aspects = this.checked(event); }); }

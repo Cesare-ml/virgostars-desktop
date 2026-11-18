@@ -15,7 +15,8 @@ export type FunctionAction =
   | 'new_chart' | 'session_charts' | 'now_chart' | 'mode_natal' | 'mode_transits'
   | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive'
   | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings' | 'monomeri'
-  | 'dodecatemoria' | 'antiscia' | 'contra_antiscia';
+  | 'dodecatemoria' | 'antiscia' | 'contra_antiscia' | 'austral' | 'outer_conjunct' | 'planet_year'
+  | 'aspect_focus' | 'applications' | 'decans' | 'decades' | 'terms';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -81,11 +82,11 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     available('aspect-direction', 'Aspetti Verso', 'Aspect direction', 'chart_settings'),
     available('planet-orbs', 'Orbite Pianeti', 'Planet orbs', 'chart_settings'),
     available('aspect-orbs', 'Orbite Aspetti', 'Aspect orbs', 'chart_settings'),
-    planned('aspect-focus', 'Focus Aspetti', 'Aspect focus'),
-    planned('applications', 'Applicazioni (appl./disappl.)', 'Applying and separating'),
-    planned('transsaturnians', 'Transaturnini se in congiunzione', 'Trans-Saturnians when conjunct'),
-    planned('austral-inversion', 'Inversione Australe', 'Austral inversion'),
-    planned('planet-of-year', "Pianeta dell'anno", 'Planet of the year'),
+    available('aspect-focus', 'Focus Aspetti', 'Aspect focus', 'aspect_focus'),
+    available('applications', 'Applicazioni (appl./disappl.)', 'Applying and separating', 'applications'),
+    available('transsaturnians', 'Transaturnini se in congiunzione', 'Trans-Saturnians when conjunct', 'outer_conjunct'),
+    available('austral-inversion', 'Inversione Australe', 'Austral inversion', 'austral'),
+    available('planet-of-year', "Pianeta dell'anno", 'Planet of the year', 'planet_year'),
   ]),
   group('traditional', 'Astrologia tradizionale', 'Traditional astrology', [
     available('dodecatemoria', 'Dodecatemori', 'Dodecatemoria', 'dodecatemoria'),
@@ -97,9 +98,9 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     planned('kleros', 'Kleros (4 Kleros, 5 Planetarie)', 'Kleros (4 Kleroi, 5 planetary)'),
     planned('lots-view', 'Estrapola e Visualizza Sorti', 'Extract and show lots'),
     available('monomoiria', 'Monomeri', 'Monomoiria', 'monomeri'),
-    planned('decades', 'Decadi', 'Decades'),
-    planned('decans', 'Decani', 'Decans'),
-    planned('terms', 'Termini', 'Terms'),
+    available('decades', 'Decadi', 'Decades', 'decades'),
+    available('decans', 'Decani', 'Decans', 'decans'),
+    available('terms', 'Termini', 'Terms', 'terms'),
     planned('planetary-ascensions', 'Ascendenze', 'Planetary ascensions'),
     planned('radix-synods', 'Sinodi Radix', 'Radix synods'),
     planned('fixed-stars', 'Stelle Fisse', 'Fixed stars'),
