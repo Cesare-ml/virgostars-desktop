@@ -78,12 +78,16 @@ pub struct NativeAccessGrant {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TokenScope { Read, ReadAndGroupWrite }
+pub enum TokenScope { Read, ReadAndGroupWrite, ReadAndChartWrite, ReadAndBothWrites }
 
 impl TokenScope {
     pub fn as_str(self) -> &'static str {
-        match self { Self::Read => "chart_sync:read", Self::ReadAndGroupWrite => "chart_sync:read chart_sync:groups:write" }
+        match self { Self::Read => "chart_sync:read", Self::ReadAndGroupWrite => "chart_sync:read chart_sync:groups:write",
+            Self::ReadAndChartWrite => "chart_sync:read chart_sync:charts:write",
+            Self::ReadAndBothWrites => "chart_sync:read chart_sync:groups:write chart_sync:charts:write" }
     }
+    pub fn allows_group_write(self) -> bool { matches!(self,Self::ReadAndGroupWrite | Self::ReadAndBothWrites) }
+    pub fn allows_chart_write(self) -> bool { matches!(self,Self::ReadAndChartWrite | Self::ReadAndBothWrites) }
 }
 
 impl NativeAccessGrant {
@@ -167,6 +171,8 @@ fn parse_response(response: TokenHttpResponse, now: Instant) -> Result<NativeAcc
     let scope = match parsed.scope.as_str() {
         "chart_sync:read" => TokenScope::Read,
         "chart_sync:read chart_sync:groups:write" => TokenScope::ReadAndGroupWrite,
+        "chart_sync:read chart_sync:charts:write" => TokenScope::ReadAndChartWrite,
+        "chart_sync:read chart_sync:groups:write chart_sync:charts:write" => TokenScope::ReadAndBothWrites,
         _ => return Err(TokenExchangeError::InvalidResponse),
     };
     let expires_at = now.checked_add(Duration::from_secs(expires))
@@ -308,7 +314,7 @@ mod tests {
         let schema: serde_json::Value = serde_json::from_str(include_str!(
             "../../contracts/connected-account-status.v1.schema.json"
         )).unwrap();
-        assert_eq!(schema["properties"]["scope"]["enum"], serde_json::json!(["chart_sync:read", "chart_sync:read chart_sync:groups:write"]));
+        assert_eq!(schema["properties"]["scope"]["enum"], serde_json::json!(["chart_sync:read", "chart_sync:read chart_sync:groups:write", "chart_sync:read chart_sync:charts:write", "chart_sync:read chart_sync:groups:write chart_sync:charts:write"]));
         let now = Instant::now();
         let jwt = format!("{}.{}.{}", "A".repeat(43), "B".repeat(43), "C".repeat(100));
         let response = |scope: &str| TokenHttpResponse {
@@ -318,6 +324,11 @@ mod tests {
         };
         assert!(parse_response(response("chart_sync:read"), now).is_ok());
         assert!(parse_response(response("chart_sync:read chart_sync:groups:write"), now).is_ok());
+        let chart=parse_response(response("chart_sync:read chart_sync:charts:write"),now).unwrap();
+        assert!(chart.scope().allows_chart_write());
+        assert!(!chart.scope().allows_group_write());
+        let both=parse_response(response("chart_sync:read chart_sync:groups:write chart_sync:charts:write"),now).unwrap();
+        assert!(both.scope().allows_group_write() && both.scope().allows_chart_write());
         assert!(matches!(parse_response(response("chart_sync:read chart_sync:notes"), now), Err(TokenExchangeError::InvalidResponse)));
         assert!(matches!(parse_response(response("charts:read"), now), Err(TokenExchangeError::InvalidResponse)));
     }

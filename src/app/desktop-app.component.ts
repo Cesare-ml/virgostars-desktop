@@ -254,7 +254,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.syncGroupBusy=false;
     if (result.kind==='saved') {
       this.syncGroupDrafts={...this.syncGroupDrafts,[chart.id]:''};
-      this.syncMessage=offline ? 'sync.pendingOffline' : this.account.scope==='chart_sync:read' ? 'sync.writeRequired' : 'sync.pending';
+      this.syncMessage=offline ? 'sync.pendingOffline' : !this.account.scope?.split(' ').includes('chart_sync:groups:write') ? 'sync.writeRequired' : 'sync.pending';
       if (!offline) { if (this.syncBusy) this.syncRequested=true; else this.scheduleSync(0); }
     } else this.syncMessage=result.kind==='stale' ? 'sync.changed' : 'sync.unavailable';
     await this.loadSyncedCharts();

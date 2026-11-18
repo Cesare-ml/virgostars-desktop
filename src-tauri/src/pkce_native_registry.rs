@@ -189,7 +189,7 @@ impl NativeLoginRegistry {
             if session.snapshot().attempt_id != expected_attempt_id { return Err(NativeRegistryError::Unavailable); }
             session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?
         };
-        if grant.scope() != crate::pkce_token_exchange::TokenScope::ReadAndGroupWrite || !grant.matches_token_endpoint(&endpoint) {
+        if !grant.scope().allows_group_write() || !grant.matches_token_endpoint(&endpoint) {
             return Err(NativeRegistryError::Unavailable);
         }
         let profile = grant.profile_ref().ok_or(NativeRegistryError::Unavailable)?;
@@ -326,7 +326,7 @@ impl NativeLoginRegistry {
             session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?.scope()
         };
         let imported = self.import_civil_snapshot(attempt_id,endpoint,paths,keys,transport)?;
-        let uploaded = if scope == crate::pkce_token_exchange::TokenScope::ReadAndGroupWrite {
+        let uploaded = if scope.allows_group_write() {
             self.sync_pending_groups(attempt_id,endpoint,paths,keys,transport)?
         } else { GroupSyncProgress {processed:0,conflicts:0} };
         self.refresh_linked_groups(attempt_id,endpoint,paths,keys,transport)?;
@@ -425,7 +425,7 @@ impl NativeLoginRegistry {
         let Slot::Active(session) = &state.slot else { return Err("unavailable"); };
         if session.snapshot().attempt_id != attempt_id { return Err("unavailable"); }
         let grant = session.copy_active_grant().ok_or("unavailable")?;
-        if choice.chosen != choice.server && grant.scope() != crate::pkce_token_exchange::TokenScope::ReadAndGroupWrite {
+        if choice.chosen != choice.server && !grant.scope().allows_group_write() {
             return Err("write_not_authorized");
         }
         let profile = grant.profile_ref().ok_or("unavailable")?;

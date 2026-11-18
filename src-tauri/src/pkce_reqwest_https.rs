@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 
 use crate::pkce_token_exchange::{
-    valid_staging_token_endpoint, NativeAccessGrant, TokenHttpResponse, TokenHttpTransport, TokenScope,
+    valid_staging_token_endpoint, NativeAccessGrant, TokenHttpResponse, TokenHttpTransport,
 };
 use reqwest::blocking::{Body, Client};
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
@@ -235,7 +235,7 @@ impl GroupWriteTransport for StagingReqwestHttps {
     /// helper is deliberately not exposed to the WebView or invoked yet.
     fn replace_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant,
         sync_id: &str, base_groups: &[String], groups: &[String]) -> Result<GroupWriteResult, ()> {
-        if grant.scope() != TokenScope::ReadAndGroupWrite || grant.profile_ref().is_none()
+        if !grant.scope().allows_group_write() || grant.profile_ref().is_none()
             || !grant.matches_token_endpoint(token_endpoint)
             || grant.remaining_seconds(std::time::Instant::now()) == 0
             || !crate::chart_archive::valid_id(sync_id)

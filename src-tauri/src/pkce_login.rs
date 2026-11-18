@@ -139,7 +139,8 @@ impl PendingPkceLogin {
             .append_pair("code_challenge", &self.challenge)
             .append_pair("code_challenge_method", "S256")
             .append_pair("state", &self.state)
-            .append_pair("request_groups_write", "true");
+            .append_pair("request_groups_write", "true")
+            .append_pair("request_charts_write", "true");
         url.set_fragment(Some(&fields.finish()));
         Ok(url)
     }
@@ -247,8 +248,9 @@ mod tests {
         let url = a.consent_url("https://staging.virgostars.it/collega-dispositivo").unwrap();
         assert!(url.query().is_none());
         let query: Vec<_> = url::form_urlencoded::parse(url.fragment().unwrap().as_bytes()).collect();
-        assert_eq!(query.len(), 6);
+        assert_eq!(query.len(), 7);
         assert_eq!(query.iter().find(|(key, _)| key == "request_groups_write").unwrap().1, "true");
+        assert_eq!(query.iter().find(|(key, _)| key == "request_charts_write").unwrap().1, "true");
         assert_eq!(url.path(), "/collega-dispositivo");
         assert_eq!(query.iter().find(|(key, _)| key == "code_challenge_method").unwrap().1, "S256");
         assert_eq!(query.iter().find(|(key, _)| key == "redirect_uri").unwrap().1.as_ref(), a.redirect_uri.as_str());

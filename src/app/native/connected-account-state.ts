@@ -7,7 +7,7 @@ type Request = (operation: ConnectedAccountOperation) => Promise<ConnectedAccoun
 export class ConnectedAccountState {
   status: AccountViewStatus = 'idle';
   remainingSeconds = 0;
-  scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | null = null;
+  scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | 'chart_sync:read chart_sync:charts:write' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:write' | null = null;
   private attemptId: string | null = null;
   private generation = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
