@@ -13,6 +13,124 @@ pub struct HistoricalPlanetRequest {
     pub(crate) delta_t_source: String,
 }
 
+/// A proleptic Gregorian date already expressed in UT1, not civil time or UTC.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HistoricalCalendarRequest {
+    protocol_version: u8,
+    body: String,
+    year: i32,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: f64,
+    delta_t: HistoricalDeltaT,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+enum HistoricalDeltaT {
+    Supplied {
+        seconds: f64,
+        uncertainty_seconds: f64,
+        source: String,
+    },
+    EspenakMeeus2006 {
+        uncertainty_seconds: f64,
+    },
+}
+
+#[cfg(feature = "virgostars-ephemeris")]
+fn resolve_calendar(request: HistoricalCalendarRequest) -> Result<HistoricalPlanetRequest, ()> {
+    use virgostars_ephemeris_core::calendar::{Calendar, TimeScale};
+    use virgostars_ephemeris_core::calendar_decimal_hours::{julday_f64, DecimalHourDateTime};
+    if request.protocol_version != 1
+        || !(-12999..=3999).contains(&request.year)
+        || request.hour > 23
+        || request.minute > 59
+        || !request.second.is_finite()
+        || !(0.0..60.0).contains(&request.second)
+    {
+        return Err(());
+    }
+    let date = |year, month, day, decimal_hour| {
+        julday_f64(
+            DecimalHourDateTime {
+                year,
+                month,
+                day,
+                decimal_hour,
+                scale: TimeScale::Ut1,
+            },
+            Calendar::ProlepticGregorian,
+        )
+        .map_err(|_| ())
+    };
+    let hour = f64::from(request.hour) + f64::from(request.minute) / 60.0 + request.second / 3600.0;
+    let jd_ut1 = date(request.year, request.month, request.day, hour)?;
+    let (delta_t_seconds, uncertainty_seconds, delta_t_source) = match request.delta_t {
+        HistoricalDeltaT::Supplied {
+            seconds,
+            uncertainty_seconds,
+            source,
+        } => (seconds, uncertainty_seconds, source),
+        HistoricalDeltaT::EspenakMeeus2006 {
+            uncertainty_seconds,
+        } => {
+            if !(0..=3000).contains(&request.year) {
+                return Err(());
+            }
+            let start = date(request.year, 1, 1, 0.0)?;
+            let end = date(request.year + 1, 1, 1, 0.0)?;
+            let decimal_year = f64::from(request.year) + (jd_ut1 - start) / (end - start);
+            let seconds =
+                virgostars_ephemeris_core::delta_t_long_range::espenak_meeus_2006_long_range(
+                    decimal_year,
+                )
+                .map_err(|_| ())?;
+            (
+                seconds,
+                uncertainty_seconds,
+                "Espenak-Meeus 2006".to_string(),
+            )
+        }
+    };
+    let resolved = HistoricalPlanetRequest {
+        protocol_version: 1,
+        body: request.body,
+        jd_ut1,
+        delta_t_seconds,
+        uncertainty_seconds,
+        delta_t_source,
+    };
+    resolved.valid().then_some(resolved).ok_or(())
+}
+
+/// Calendar conversion is strictly UT1; the model is opt-in and only for years 0–3000.
+#[tauri::command]
+pub fn calculate_historical_planet_calendar(
+    request: HistoricalCalendarRequest,
+) -> HistoricalPlanetResponse {
+    #[cfg(feature = "virgostars-ephemeris")]
+    {
+        match resolve_calendar(request) {
+            Ok(resolved) => calculate_historical_planet(resolved),
+            Err(()) => response("invalid_request", None),
+        }
+    }
+    #[cfg(not(feature = "virgostars-ephemeris"))]
+    {
+        let _ = request;
+        response("provider_unavailable", None)
+    }
+}
+
 impl HistoricalPlanetRequest {
     fn valid(&self) -> bool {
         self.protocol_version == 1
@@ -141,6 +259,40 @@ mod tests {
         assert_eq!(calculate_historical_planet(r).status, "invalid_request");
     }
 
+    #[cfg(not(feature = "virgostars-ephemeris"))]
+    #[test]
+    fn calendar_without_provider_never_fabricates_a_result() {
+        let input = r#"{"protocolVersion":1,"body":"Moon","year":2000,"month":1,"day":1,"hour":12,"minute":0,"second":0,"deltaT":{"kind":"espenakMeeus2006","uncertaintySeconds":2}}"#;
+        let result = calculate_historical_planet_calendar(serde_json::from_str(input).unwrap());
+        assert_eq!(result.status, "provider_unavailable");
+        assert!(result.result.is_none());
+    }
+
+    #[cfg(feature = "virgostars-ephemeris")]
+    #[test]
+    fn calendar_uses_ut1_and_opt_in_bounded_delta_t_model() {
+        let parse = |text: &str| serde_json::from_str::<HistoricalCalendarRequest>(text).unwrap();
+        let model = r#"{"protocolVersion":1,"body":"Moon","year":2000,"month":1,"day":1,"hour":12,"minute":0,"second":0,"deltaT":{"kind":"espenakMeeus2006","uncertaintySeconds":2}}"#;
+        let r = resolve_calendar(parse(model)).unwrap();
+        assert_eq!(r.jd_ut1, 2451545.0);
+        assert!((r.delta_t_seconds - 63.86).abs() < 0.01);
+        assert_eq!(r.delta_t_source, "Espenak-Meeus 2006");
+        assert_eq!(r.uncertainty_seconds, 2.0);
+        assert!(resolve_calendar(parse(&model.replace("2000", "-1"))).is_err());
+        assert!(resolve_calendar(parse(&model.replace("2000", "3001"))).is_err());
+        assert!(resolve_calendar(parse(&model.replace("\"month\":1", "\"month\":13"))).is_err());
+        assert!(resolve_calendar(parse(
+            &model.replace("\"uncertaintySeconds\":2", "\"uncertaintySeconds\":-1")
+        ))
+        .is_err());
+        let supplied = r#"{"protocolVersion":1,"body":"Sun","year":-12999,"month":1,"day":1,"hour":0,"minute":0,"second":0,"deltaT":{"kind":"supplied","seconds":200,"uncertaintySeconds":50,"source":"synthetic"}}"#;
+        let r = resolve_calendar(parse(supplied)).unwrap();
+        assert_eq!(r.delta_t_seconds, 200.0);
+        assert_eq!(r.delta_t_source, "synthetic");
+        assert!(resolve_calendar(parse(&supplied.replace("-12999", "-13000"))).is_err());
+        assert!(resolve_calendar(parse(&supplied.replace("-12999", "4000"))).is_err());
+    }
+
     #[cfg(feature = "virgostars-ephemeris")]
     #[test]
     #[ignore = "requires VIRGOSTARS_DE441_PATH pointing to a local full DE441 file"]
@@ -224,5 +376,12 @@ mod tests {
             ..request()
         };
         assert_eq!(calculate_historical_planet(r).status, "calculation_failed");
+        let input = r#"{"protocolVersion":1,"body":"Moon","year":2000,"month":1,"day":1,"hour":12,"minute":0,"second":0,"deltaT":{"kind":"espenakMeeus2006","uncertaintySeconds":2}}"#;
+        let output = calculate_historical_planet_calendar(serde_json::from_str(input).unwrap());
+        assert_eq!(output.status, "ok");
+        let result = output.result.unwrap();
+        assert_eq!(result.jd_ut1, 2451545.0);
+        assert_eq!(result.delta_t_source, "Espenak-Meeus 2006");
+        assert!((result.delta_t_seconds - 63.86).abs() < 0.01);
     }
 }

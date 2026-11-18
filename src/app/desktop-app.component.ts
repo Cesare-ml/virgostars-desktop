@@ -44,6 +44,7 @@ import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
+import { HistoricalPlanetsComponent } from './historical-planets.component';
 import {
   ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
   type ChartSettings
@@ -134,7 +135,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, HistoricalPlanetsComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -1162,6 +1163,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openSettings(): void {
     this.view = this.view === 'settings' ? 'chart' : 'settings';
+    this.cd.markForCheck();
+  }
+
+  openHistoricalPlanets(): void {
+    this.view = this.view === 'historical' ? 'chart' : 'historical';
     this.cd.markForCheck();
   }
   openInspector(tab: InspectorTab): void {
