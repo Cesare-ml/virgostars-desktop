@@ -22,6 +22,8 @@ import { DeviceClock, formatDeviceClock } from './device-clock';
 import { aspectSymbol } from './aspect-symbols';
 import { monomerPointLabel, resolveMonomers, type MonomericDegreeMode } from './astro/monomeric-catalog';
 import { resolveManualPlanetaryHour, type ManualSolarClockInputs, type ManualPlanetaryHourResult } from './astro/manual-planetary-hour';
+import { calculateAutomaticHour } from './native/solar-events';
+import type { AutomaticHourResult } from './native/solar-events-contract';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import {
@@ -165,6 +167,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     SUN:'☉', MOON:'☽', MERCURY:'☿', VENUS:'♀', MARS:'♂', JUPITER:'♃', SATURN:'♄',
   };
   manualHourRuler: TraditionalPlanet | '' = '';
+  automaticHour: AutomaticHourResult | null = null;
+  automaticHourPending = false;
+  private automaticHourGeneration = 0;
   solarClockInputs: ManualSolarClockInputs = {sunriseLocal:'',sunsetLocal:'',nextSunriseLocal:''};
   monomericDegreeMode: MonomericDegreeMode = 'shown-degree';
   /** Hour calculation is available only when the user explicitly supplies all
@@ -174,6 +179,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return chart ? resolveManualPlanetaryHour(chart.utcIso, chart.timeZone, this.solarClockInputs) : {status:'INCOMPLETE',ruler:null};
   }
   get selectedCrossHourRuler(): TraditionalPlanet | '' {
+    if (this.automaticHour?.kind === 'ready') return this.automaticHour.ruler;
     const hour = this.manuallyResolvedSolarHour;
     return this.manualHourRuler || (hour.status === 'READY' ? hour.ruler : '');
   }
@@ -183,6 +189,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const planet = this.hourRulerLabel(hour.ruler);
     const phase = hour.segment === 'DAY' ? (this.locale === 'it' ? 'diurna' : 'day') : (this.locale === 'it' ? 'notturna' : 'night');
     return `${this.locale === 'it' ? 'Ora planetaria' : 'Planetary hour'} ${hour.number} · ${planet} · ${phase}`;
+  }
+  get automaticHourSummary(): string {
+    const result=this.automaticHour;
+    if (result?.kind!=='ready') return '';
+    const hour=this.locale==='it' ? 'ora' : 'hour';
+    return `${this.hourRulerLabel(result.ruler)} · ${hour} ${result.number}`;
   }
   get monomericCross(): MonomericCrossView | null {
     const chart = this.activeChart;
@@ -538,6 +550,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   private showChart(chart: SessionChart | null): void {
+    ++this.automaticHourGeneration;
+    this.automaticHour = null;
+    this.automaticHourPending = false;
     this.activeChartId = chart ? chart.id : null;
     this.manualHourRuler = '';
     this.solarClockInputs = {sunriseLocal:'',sunsetLocal:'',nextSunriseLocal:''};
@@ -550,6 +565,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.initialized) void this.draw();
     // The navigator follows the chart on screen.
     if (this.inspectorTab === 'navigate' && !this.inspectorCollapsed) this.initNav();
+    if (chart && this.chartPresentation === 'monomeric-cross') void this.refreshAutomaticHour();
   }
   activateChart(id:number): void {
     const chart = this.sessionCharts.find(item => item.id === id);
@@ -765,6 +781,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.matrixAspectCache = null;
       this.crossAspectCache = null;
       this.useAvailableHouseSystem(next);
+      if (this.chartPresentation === 'monomeric-cross') void this.refreshAutomaticHour();
       if (this.initialized) void this.draw();
     }
     this.cd.markForCheck();
@@ -906,6 +923,29 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   toggleMonomericCross(): void {
     if (!this.activeChart || this.destroyed) return;
     this.chartPresentation = this.chartPresentation === 'monomeric-cross' ? 'wheel' : 'monomeric-cross';
+    if (this.chartPresentation === 'monomeric-cross') void this.refreshAutomaticHour();
+    else {
+      ++this.automaticHourGeneration;
+      this.automaticHourPending = false;
+    }
+    this.cd.markForCheck();
+  }
+  /** Automatic-only primary route; a late response must not describe a different natal chart. */
+  private async refreshAutomaticHour(): Promise<void> {
+    const chart=this.activeChart;
+    if (!chart || this.destroyed || this.chartPresentation !== 'monomeric-cross') return;
+    const generation=++this.automaticHourGeneration;
+    const natal={utcIso:chart.utcIso,timeZone:chart.timeZone,latMicro:chart.latMicro,lngMicro:chart.lngMicro};
+    this.automaticHour=null;
+    this.automaticHourPending=true;
+    this.cd.markForCheck();
+    const result=await calculateAutomaticHour(natal);
+    const current=this.activeChart;
+    if (this.destroyed || generation!==this.automaticHourGeneration || this.chartPresentation!=='monomeric-cross' ||
+        !current || current.id!==chart.id || current.utcIso!==natal.utcIso || current.timeZone!==natal.timeZone ||
+        current.latMicro!==natal.latMicro || current.lngMicro!==natal.lngMicro) return;
+    this.automaticHour=result;
+    this.automaticHourPending=false;
     this.cd.markForCheck();
   }
   hourRulerLabel(value: TraditionalPlanet): string {
@@ -1210,6 +1250,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    ++this.automaticHourGeneration;
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.stopHold();

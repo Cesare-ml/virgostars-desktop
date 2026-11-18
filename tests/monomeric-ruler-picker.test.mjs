@@ -38,7 +38,7 @@ test('automatic planetary-hour calculation is the primary Desktop flow; manual c
   const prototype=html.indexOf('<details class="monomeric-prototype-tools">');
   const chooser=html.indexOf('class="monomeric-planet-grid"');
   assert.ok(status > 0 && prototype > status && chooser > prototype);
-  assert.match(html,/Il collegamento alle effemeridi Rust non è ancora attivo/);
+  assert.match(html,/Gli eventi solari astronomici non sono disponibili/);
   assert.match(html,/Strumenti di prova temporanei/);
   assert.match(html,/<details class="monomeric-prototype-tools">/);
   assert.doesNotMatch(html,/<details class="monomeric-prototype-tools" open/);

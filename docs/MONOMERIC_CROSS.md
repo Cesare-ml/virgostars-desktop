@@ -5,7 +5,10 @@ La schermata del tema ora espone il pulsante **Croce** accanto alle viste
 `astrological-charts` e la geometria di
 `astrological-functions/monomeric-cross`. Legge le sette longitudini
 tradizionali e le cuspidi della domificazione attiva dal tema già calcolato;
-non fa nuove chiamate al server o al runtime nativo e non salva dati.
+non fa chiamate al server e non salva dati.
+La geometria resta locale; soltanto quando si apre la Croce viene effettuato
+un nuovo comando **read-only** al runtime Tauri per richiedere gli eventi solari.
+Il comando attuale è uno stub esplicitamente indisponibile, non un calcolo.
 
 La schermata collega anche **360 descrizioni source-label** conservate nel vecchio
 `frontend/vecchi_codici/dashboard/strumenti/monomeri.ts` del repository
@@ -23,8 +26,12 @@ ora anche `signRulerDomicile` (`PRIMARY`/`SECONDARY`), derivato dai codici
 dignità (`esa`, `cad`, `esp`, `ess`, `pa`, `pm`, `pb`) non attribuiscono il
 governatore del segno.
 
-Il produttore automatico in Rust è **ancora bloccato** dalle PR Ephemeris non
-integrate. La schermata dichiara apertamente questa indisponibilità. I sette
+Il produttore astronomico in Rust è **ancora bloccato** dalle PR Ephemeris non
+integrate. Un comando Tauri `calculate_solar_events` è ora registrato come
+confine di integrazione con protocollo v1, ma per i dati validi risponde
+`provider_unavailable` e `snapshot:null`, senza inventare eventi; gli input
+invalidi rispondono `invalid_request`. La schermata dichiara apertamente
+questa indisponibilità. I sette
 pulsanti manuali e l'inserimento manuale dei tre eventi sono conservati solo
 in un `<details>` **chiuso per impostazione predefinita e marcato "strumenti
 di prova temporanei"**, per permettere QA grafico senza fingere un risultato
@@ -95,7 +102,22 @@ Il risultato preserva l'identificatore del kernel, algoritmo, orizzonte e
 rifrazione e mantiene il flag `CALLER_ASSERTED_NOT_SCIENTIFICALLY_VERIFIED`.
 Non è una verifica di precisione indipendente.
 
-Il produttore nativo **non è ancora collegato**. Nel repository
+Il produttore di eventi nativo **non è ancora collegato al core astronomico**.
+Il nuovo modulo `src/app/native/solar-events-contract.ts` valida e copia i
+campi della risposta Tauri e passa gli snapshot al resolver esistente, solo
+quando una futura versione del comando restituirà effettivamente `ok`.
+Verifica luogo del tema, fuso e giorno locale dell'alba, intervallo di nascita,
+provenienza dichiarata e struttura dell'envelope. L'interfaccia usa il risultato
+automatico **prima** di qualsiasi parametro manuale; una risposta arrivata
+dopo un cambio tema, navigazione, chiusura della vista o distruzione del
+componente viene ignorata. Nel browser non parte alcuna chiamata Tauri.
+Il comando ha una scadenza locale di **5 secondi**: se il runtime resta in
+attesa, la UI mostra indisponibilità e ignora la risposta tardiva; non annulla
+né ripete l'operazione nativa, che è strettamente read-only.
+Un `ok` in un test con eventi sintetici dimostra il percorso software, **non**
+la validità di un evento astronomico o l'esistenza di un provider Rust attivo.
+
+Nel repository
 `Cesare-ml/VirgoStars-Ephemeris` il lavoro pertinente esiste già nelle PR
 [#304](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/304) (eventi
 geometrici), [#309](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/309)
@@ -110,8 +132,15 @@ Prima della release: integrare alba/tramonto sorgente-verificati con il
 `PlanetaryHoursSchedule` esistente nel pacchetto di calcolo; approvare il
 catalogo e i diritti sui testi; test di render desktop Windows, macOS,
 mobilità dello zoom e stampa.
+Il nuovo protocollo Tauri richiede ancora una **compilazione Cargo su Windows**,
+test di IPC WebView2 e revisione degli eventi solari. La verifica Node
+`npm run verify:ipc` controlla ora **sei** comandi e sei adattatori; l'audit
+non prova la compilazione Rust. Una futura risposta `ok` dovrà includere UTC,
+convenzioni di orizzonte, rifrazione, modello del tempo e dataset effettivi.
 Un vecchio PDF personale non va copiato nei test di repository.
 
-Rollback: rimuovere il pulsante e la presentazione `monomeric-cross`, senza
+Rollback: rimuovere il pulsante e la presentazione `monomeric-cross`,
+il comando `calculate_solar_events` e il relativo adattatore, senza
 modificare il WebGL lifecycle della ruota. Nessun cambiamento ad auth, sync,
-privacy, update, IPC o asset originali.
+privacy, update o asset originali, salvo l'aggiunta read-only e locale alla
+superficie IPC qui documentata.

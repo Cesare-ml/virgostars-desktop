@@ -97,7 +97,9 @@
             <span class="monomeric-auto-symbol" aria-hidden="true">☼</span>
             <div>
               <strong>{{locale==='it' ? "Maestro dell'Ora · calcolo automatico" : 'Hour ruler · automatic calculation'}}</strong>
-              <p>{{locale==='it' ? 'Il Maestro dell’Ora dipende dall’ora di nascita e dalle albe e tramonti astronomici del luogo. Il collegamento alle effemeridi Rust non è ancora attivo in questa build: nessun pianeta viene indovinato.' : 'The planetary-hour ruler depends on the birth instant and astronomical sunrise and sunset at the location. The Rust ephemeris connection is not active in this build: no planet is guessed.'}}</p>
+              <p *ngIf="automaticHourPending">{{locale==='it' ? 'Consultazione del provider solare locale…' : 'Checking the local solar-event provider…'}}</p>
+              <p *ngIf="!automaticHourPending && automaticHour?.kind==='ready'">✓ {{locale==='it' ? 'Calcolato dalle ore temporali · ' : 'Computed from planetary hours · '}}{{automaticHourSummary}}. {{locale==='it' ? 'Metadati di origine disponibili; precisione astronomica non ancora verificata indipendentemente.' : 'Source metadata present; astronomical accuracy has not yet been independently verified.'}}</p>
+              <p *ngIf="!automaticHourPending && automaticHour?.kind!=='ready'">{{locale==='it' ? 'Gli eventi solari astronomici non sono disponibili in questa build. Il Maestro dell’Ora non viene indovinato; per ora la Croce si può esaminare soltanto negli strumenti di prova.' : 'Astronomical solar events are unavailable in this build. No planetary ruler is guessed; the preview controls below can be used to inspect the Cross.'}}</p>
             </div>
           </div>
           <details class="monomeric-prototype-tools">

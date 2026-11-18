@@ -9,6 +9,7 @@ mod archive_vault;
 mod chart_archive;
 mod houses;
 mod return_search;
+mod solar_events;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
 #[cfg(feature = "virgostars-ephemeris")]
 mod virgostars_provider;
@@ -27,7 +28,7 @@ pub fn run() {
             Ok(())
         })
         .manage(offline_places::PlaceSearchGate::default())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns])
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, solar_events::calculate_solar_events])
         .run(tauri::generate_context!())
         .expect("failed to launch the synthetic VirgoStars Desktop renderer spike");
 }
