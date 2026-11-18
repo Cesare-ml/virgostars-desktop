@@ -71,6 +71,11 @@ test('malformed, out-of-range or contradictory responses are rejected with one g
     r => { r.chart.bodies[3].id = 'Vulcan'; },
     r => { r.chart.bodies[3].id = 'Sun'; },
     r => { r.chart.bodies.shift(); },
+    r => { r.chart.bodies.splice(4, 1); }, // Missing Mars without unavailable marker.
+    r => { r.chart.houses.splice(2, 1); }, // Missing Koch without unavailable marker.
+    r => { r.chart.unavailableBodies = []; }, // Chiron silently omitted.
+    r => { r.chart.unavailableHouseSystems = ['koch']; }, // Contradicts computed Koch.
+
     r => { r.chart.unavailableBodies.push('Mars'); },
     r => { r.chart.unavailableBodies = ['Chiron', 'Chiron']; },
     r => { r.chart.houses[0].cuspsDeg.pop(); },
