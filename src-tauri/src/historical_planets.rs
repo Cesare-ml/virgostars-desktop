@@ -13,6 +13,8 @@ pub struct HistoricalPlanetRequest {
     pub(crate) delta_t_source: String,
     #[serde(skip)]
     pub(crate) uncertainty_source: Option<String>,
+    #[serde(skip)]
+    pub(crate) usno_source_error: Option<UsnoSourceError>,
     #[serde(default)]
     pub(crate) include_scenarios: bool,
 }
@@ -84,7 +86,7 @@ fn resolve_calendar(
 #[cfg(feature = "virgostars-ephemeris")]
 fn resolve_calendar_with(
     request: HistoricalCalendarRequest,
-    lookup: impl FnOnce(f64, bool) -> Result<(f64, &'static str), &'static str>,
+    lookup: impl FnOnce(f64, bool) -> Result<(f64, &'static str, Option<f64>), &'static str>,
 ) -> Result<HistoricalPlanetRequest, &'static str> {
     use virgostars_ephemeris_core::calendar::{Calendar, TimeScale};
     use virgostars_ephemeris_core::calendar_decimal_hours::{julday_f64, DecimalHourDateTime};
@@ -113,14 +115,14 @@ fn resolve_calendar_with(
     };
     let hour = f64::from(request.hour) + f64::from(request.minute) / 60.0 + request.second / 3600.0;
     let jd_ut1 = date(request.year, request.month, request.day, hour)?;
-    let (delta_t_seconds, uncertainty_seconds, delta_t_source, uncertainty_source) = match request
+    let (delta_t_seconds, uncertainty_seconds, delta_t_source, uncertainty_source, usno_source_error) = match request
         .delta_t
     {
         HistoricalDeltaT::Supplied {
             seconds,
             uncertainty_seconds,
             source,
-        } => (seconds, uncertainty_seconds, source, None),
+        } => (seconds, uncertainty_seconds, source, None, None),
         HistoricalDeltaT::Usno {
             uncertainty_seconds,
             allow_predictions,
@@ -128,8 +130,8 @@ fn resolve_calendar_with(
             if !uncertainty_seconds.is_finite() || uncertainty_seconds < 0.0 {
                 return Err("invalid_request");
             }
-            let (seconds, source) = lookup(jd_ut1, allow_predictions)?;
-            (seconds, uncertainty_seconds, source.to_string(), None)
+            let (seconds, source, error_seconds) = lookup(jd_ut1, allow_predictions)?;
+            (seconds, uncertainty_seconds, source.to_string(), None, Some(UsnoSourceError { seconds: error_seconds }))
         }
         choice => {
             if !(-1999..=3000).contains(&request.year) {
@@ -157,6 +159,7 @@ fn resolve_calendar_with(
                 uncertainty_seconds,
                 "Espenak-Meeus 2006".to_string(),
                 uncertainty_source,
+                None,
             )
         }
     };
@@ -168,6 +171,7 @@ fn resolve_calendar_with(
         uncertainty_seconds,
         delta_t_source,
         uncertainty_source,
+        usno_source_error,
         include_scenarios: request.include_scenarios,
     };
     resolved
@@ -208,6 +212,12 @@ impl HistoricalPlanetRequest {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsnoSourceError {
+    pub seconds: Option<f64>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoricalPlanetResult {
@@ -220,6 +230,8 @@ pub struct HistoricalPlanetResult {
     pub delta_t_source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uncertainty_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usno_source_error: Option<UsnoSourceError>,
     pub longitude_deg: f64,
     pub latitude_deg: f64,
     pub distance_au: f64,
@@ -296,6 +308,7 @@ mod tests {
             uncertainty_seconds: 1.0,
             delta_t_source: "test source".into(),
             uncertainty_source: None,
+            usno_source_error: None,
             include_scenarios: false,
         }
     }
@@ -341,12 +354,13 @@ mod tests {
         let resolved = resolve_calendar_with(request, |jd, predictions| {
             assert_eq!(jd, 2451545.0);
             assert!(predictions);
-            Ok((64.0, "Local USNO-format prediction (source unverified)"))
+            Ok((64.0, "Local USNO-format prediction (source unverified)", Some(0.3)))
         })
         .unwrap();
         assert_eq!(resolved.delta_t_seconds, 64.0);
         assert_eq!(resolved.uncertainty_seconds, 3.0);
         assert!(resolved.uncertainty_source.is_none());
+        assert_eq!(resolved.usno_source_error.unwrap().seconds, Some(0.3));
         assert_eq!(
             resolved.delta_t_source,
             "Local USNO-format prediction (source unverified)"
@@ -387,6 +401,7 @@ mod tests {
         let planet = result.result.unwrap();
         assert_eq!(planet.delta_t_seconds, expected.delta_t_seconds);
         assert_eq!(planet.uncertainty_seconds, 3.0);
+        assert_eq!(planet.usno_source_error.as_ref().unwrap().seconds, expected.uncertainty_seconds);
         assert_eq!(
             planet.delta_t_source,
             "Local USNO-format non-prediction (source unverified)"

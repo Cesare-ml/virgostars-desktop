@@ -9,6 +9,7 @@ export type HistoricalPlanet = HistoricalRequest & Readonly<{
   radialCorrectionApplied: boolean;
   sensitivity?: HistoricalSensitivity;
   uncertaintySource?: string;
+  usnoSourceError?: Readonly<{seconds: number | null}>;
 }>;
 export type HistoricalResult = Readonly<{kind: 'ready'; planet: HistoricalPlanet}> |
   Readonly<{kind: 'not_native' | 'invalid_request' | 'provider_unavailable' | 'time_source_unavailable' | 'time_source_out_of_range' | 'calculation_failed' | 'unavailable'}>;
@@ -32,7 +33,7 @@ export function validHistoricalRequest(value: HistoricalRequest): boolean {
     typeof value.deltaTSource === 'string' && value.deltaTSource.trim().length > 0 && new TextEncoder().encode(value.deltaTSource).length <= 200;
 }
 export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: HistoricalBody; uncertaintySeconds?: number;
-  deltaTSource: string; allowedDeltaTSources?: readonly string[]; jdUt1?: number; deltaTSeconds?: number; includeScenarios?: boolean; uncertaintySource?: string}>): HistoricalResult {
+  deltaTSource: string; allowedDeltaTSources?: readonly string[]; jdUt1?: number; deltaTSeconds?: number; includeScenarios?: boolean; uncertaintySource?: string; expectUsnoSourceError?: boolean}>): HistoricalResult {
     if (!record(raw) || field(raw, 'protocolVersion') !== 1) throw new Error();
     const status = field(raw, 'status');
     if (status === 'invalid_request' || status === 'provider_unavailable' || status === 'time_source_unavailable' || status === 'time_source_out_of_range' || status === 'calculation_failed') return {kind: status};
@@ -71,8 +72,17 @@ export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: H
         upper: decodeSample('upper', values['uncertaintySeconds'] as number)});
     }
     if (expected.uncertaintySource !== undefined && field(result, 'uncertaintySource') !== expected.uncertaintySource) throw new Error();
+    let usnoSourceError: Readonly<{seconds: number | null}> | undefined;
+    if (expected.expectUsnoSourceError) {
+      const metadata = field(result, 'usnoSourceError');
+      if (!record(metadata)) throw new Error();
+      const seconds = field(metadata, 'seconds');
+      if (seconds !== null && (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0)) throw new Error();
+      usnoSourceError = Object.freeze({seconds});
+    }
     const planet = Object.freeze({...values, body: expected.body, deltaTSource: source,
       radialCorrectionApplied: field(result, 'radialCorrectionApplied'), ...(sensitivity ? {sensitivity} : {}),
+      ...(usnoSourceError ? {usnoSourceError} : {}),
       ...(expected.uncertaintySource ? {uncertaintySource: expected.uncertaintySource} : {})}) as HistoricalPlanet;
     return {kind: 'ready', planet};
 }

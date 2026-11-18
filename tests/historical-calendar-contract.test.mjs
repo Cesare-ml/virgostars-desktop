@@ -84,9 +84,17 @@ test('USNO source requires explicit uncertainty and prediction permission', asyn
   const usnoRequest = {...request, deltaT};
   const raw = ok();
   raw.result.deltaTSource = 'Local USNO-format non-prediction (source unverified)';
+  raw.result.usnoSourceError = {seconds:null};
   const calls = [];
   const transport = {isNative:()=>true, invoke:async (...args)=>{ calls.push(args); return raw; }};
-  assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).kind, 'ready');
+  const result = await requestHistoricalCalendar(transport, usnoRequest);
+  assert.equal(result.kind, 'ready');
+  assert.equal(result.planet.usnoSourceError.seconds, null);
+  raw.result.usnoSourceError = {seconds:0};
+  assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).planet.usnoSourceError.seconds, 0);
+  raw.result.usnoSourceError = {seconds:-1};
+  assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).kind, 'unavailable');
+  raw.result.usnoSourceError = {seconds:0.3};
   assert.deepEqual(calls[0][1].request.deltaT, deltaT);
   raw.result.deltaTSource = 'Local USNO-format prediction (source unverified)';
   assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).kind, 'unavailable');
