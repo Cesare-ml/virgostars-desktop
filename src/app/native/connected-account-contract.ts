@@ -15,7 +15,7 @@ export type ConnectedAccountOperation =
 export type ConnectedAccountResult =
   | Readonly<{ kind: 'disabled' | 'not_native' | 'native_unavailable' }>
   | Readonly<{ kind: 'pending'; attemptId: string; expiresInSeconds: number }>
-  | Readonly<{ kind: 'connected'; attemptId: string; deviceId: string; scope: 'charts:read'; notesEnabled: boolean }>
+  | Readonly<{ kind: 'connected'; attemptId: string; scope: 'chart_sync:read' }>
   | Readonly<{ kind: 'denied' | 'expired' | 'cancelled'; attemptId: string }>;
 
 export interface ConnectedAccountTransport {
@@ -74,13 +74,10 @@ export function decodeConnectedAccountResponse(
     }
   }
   if (status === 'connected' && operation.operation === 'status' &&
-      exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'deviceId', 'scope', 'notesEnabled'])) {
-    const deviceId = ownData(raw, 'deviceId');
+      exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'scope'])) {
     const scope = ownData(raw, 'scope');
-    const notesEnabled = ownData(raw, 'notesEnabled');
-    if (typeof deviceId === 'string' && ID.test(deviceId) && scope === 'charts:read' &&
-        typeof notesEnabled === 'boolean') {
-      return Object.freeze({kind: 'connected', attemptId, deviceId, scope, notesEnabled});
+    if (scope === 'chart_sync:read') {
+      return Object.freeze({kind: 'connected', attemptId, scope});
     }
   }
   if (status === 'denied' || status === 'expired' || status === 'cancelled') {

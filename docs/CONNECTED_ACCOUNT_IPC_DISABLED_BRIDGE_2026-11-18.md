@@ -12,7 +12,7 @@ This stacked, draft-only slice registers `desktop_connected_account_v1` as a Tau
 
 ## Gates before live login
 
-1. Align the protocol semantics and tests: the existing Angular candidate expects `scope: 'charts:read'` and a `deviceId` in a connected status; the separate backend staging exchange returns `chart_sync:read` and no `deviceId`. No real connected state may be reported until that divergence is resolved and reviewed.
+1. The old Angular candidate expected `charts:read` and a `deviceId`; the backend candidate returns `chart_sync:read` and no device ID. The v1 connected-status schema and decoders now agree on read-only scope without inventing an ID. This does not prove live interoperability: no real connected state may be reported until server verification is implemented and reviewed.
 2. Review allowed staging origins, PKCE/browser/loopback lifecycle, and grant scope. Add a correctly configured staging backend and explicit consent flow; **do not activate** on production by changing a UI flag.
 3. Define secure native session ownership, persistence/revocation/refresh policy and a no-secret response before connecting this IPC to the `NativeLoginRegistry` methods.
 4. Run `cargo test --manifest-path src-tauri/Cargo.toml --locked`, `cargo check`, Tauri build, and functional Windows 11 native smoke (offline, launch, cancel, expiry, shutdown, no login on normal app start). The current execution environment lacks a Rust/Cargo toolchain, so Rust tests in this slice have not been compiled.

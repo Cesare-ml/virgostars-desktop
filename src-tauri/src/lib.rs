@@ -15,6 +15,8 @@ mod pkce_loopback;
 mod system_browser;
 // Native-only, transport-injected staging token exchange; not an IPC command.
 mod pkce_token_exchange;
+// Compiled for native tests; not connected to an IPC command or login flow.
+mod pkce_reqwest_https;
 // Native-only staging login flow coordinator; intentionally not Tauri IPC.
 mod pkce_staging_flow;
 // Rust-only ephemeral account session; no Tauri IPC or persistent credentials.

@@ -308,9 +308,9 @@ mod tests {
     #[test]
     fn cancelled_and_expired_attempts_never_accept_a_late_callback() {
         let (mut cancelled, now) = new();
-        let callback = callback(&cancelled, &"A".repeat(43));
+        let cancelled_callback = callback(&cancelled, &"A".repeat(43));
         cancelled.cancel();
-        assert!(matches!(cancelled.accept_callback(&callback, now), Err(LoginError::AlreadyFinished)));
+        assert!(matches!(cancelled.accept_callback(&cancelled_callback, now), Err(LoginError::AlreadyFinished)));
         let (mut expired, now) = new();
         let callback = callback(&expired, &"A".repeat(43));
         assert!(matches!(expired.accept_callback(&callback, now + LOGIN_LIFETIME), Err(LoginError::Expired)));

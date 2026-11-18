@@ -29,6 +29,7 @@ base64 = "0.23"
 sha2 = "0.10"
 url = "2.5"
 httparse = "1.10"
+reqwest = { version = "=0.13.5", default-features = false, features = ["blocking", "rustls"] }
 keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
 # Required by both the native account-token response parser and the ephemeris adapter.
 serde_json = "1"

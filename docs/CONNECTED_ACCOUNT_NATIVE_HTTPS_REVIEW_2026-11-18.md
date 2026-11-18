@@ -5,8 +5,9 @@
 Questo incremento segue le PR Desktop #353–#360, in particolare il coordinator
 Rust-only della PR #360. Il sorgente `src-tauri/src/pkce_reqwest_https.rs`
 propone un adattatore `TokenHttpTransport` concreto che fa **un solo POST** al
-token endpoint staging; è deliberatamente **non attivato** e non referenziato da
-`lib.rs` finché non si può rigenerare e collaudare `Cargo.lock` con Cargo.
+token endpoint staging. Il modulo ora è compilato e il lockfile è stato
+rigenerato con Cargo, ma rimane **non attivato**: non è istanziato dal flusso
+di login né esposto via IPC.
 
 ## Controlli implementati nel candidato
 
@@ -35,11 +36,10 @@ authorization code: serve un nuovo tentativo PKCE.
 
 ## Gate di attivazione (eseguire nel checkout completo Windows)
 
-Il blocco attuale è infrastrutturale: **Rust toolchain unavailable** in questo
-ambiente di authoring; non è stato possibile generare un lock corretto né
-eseguire Rust unit tests o build Tauri. La dipendenza `reqwest 0.13.5` si trova
-già nel lock come transitoria, ma **senza TLS**. Non modificare manualmente il
-lock, e non aggiungere il modulo a `lib.rs` prima dei controlli seguenti.
+Nel checkpoint precedente il blocco era **Rust toolchain unavailable**. Nel
+worktree Windows successivo Cargo ha generato il lock TLS e `cargo check` è
+passato; il test di rete HTTPS e la revisione delle dipendenze restano aperti.
+La seguente sequenza conserva le istruzioni riproducibili.
 
 1. In un checkout completo che include le PR stacked e con Rust 1.90+
    disponibile, creare una feature branch di integrazione dal candidato.
@@ -65,8 +65,8 @@ lock, e non aggiungere il modulo a `lib.rs` prima dei controlli seguenti.
    node --test tests/pkce-https-adapter-source.test.mjs
    ```
 
-   Il source-contract test attuale verifica **appositamente** che il modulo
-   resti disattivato; aggiornare quell'asserzione solo nella PR di attivazione.
+   Il source-contract test verifica che il modulo compilato non sia collegato
+   all'IPC. Compilazione non significa attivazione o verifica TLS end-to-end.
 6. Aggiungere test di integrazione staging con TLS valido, certificato
    invalido, redirect 302/307, timeout, 8 KB superati (Content-Length corretto
    e falso), errore del server e cancellazione durante la richiesta; nessun
@@ -75,7 +75,7 @@ lock, e non aggiungere il modulo a `lib.rs` prima dei controlli seguenti.
 
 ## Non cambia
 
-- `Cargo.toml`, `Cargo.lock`, `lib.rs`, permessi Tauri e frontend **immutati**.
+- Nessun nuovo permesso Tauri o attivazione frontend.
 - Nessun deployment, AWS, migrazione, GitHub Actions, release o merge su `main`.
 - Il backend staging non è attivato, non esiste un refresh token; il token di
   accesso scade dopo al massimo 900 s, quindi **sessione persistente assente**.

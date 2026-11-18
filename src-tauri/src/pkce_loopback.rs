@@ -6,7 +6,7 @@
 //! grant has been enabled.
 #![allow(dead_code)]
 
-use crate::pkce_login::{CallbackDecision, LoginError, PendingPkceLogin};
+use crate::pkce_login::{CallbackDecision, PendingPkceLogin};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::{atomic::{AtomicU8, Ordering}, Arc};
