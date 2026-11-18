@@ -35,10 +35,14 @@ use virgostars_ephemeris_core::delta_t_table::DeltaTTable;
 use virgostars_ephemeris_core::house_angles::house_angles;
 use virgostars_ephemeris_core::lunar_points::{lunar_point, LunarPoint};
 use virgostars_ephemeris_core::spk_type21::SmallBodySpk;
+use virgostars_ephemeris_core::historical_civil_time::{HistoricalCivilEpoch, HistoricalCivilInput};
+use virgostars_ephemeris_core::explicit_delta_t::ExplicitDeltaTEpoch;
+use virgostars_ephemeris_core::mvp_snapshot::{experimental_snapshot_from_civil, SolarSearch};
+use virgostars_ephemeris_core::rise_transit::Site;
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-const ENGINE_VERSION: &str = "core-0.1.0-ff0ad09";
+const ENGINE_VERSION: &str = "core-0.1.0-0535e9d";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
@@ -148,6 +152,20 @@ impl Engine {
         .map(|(tdb, _source)| tdb)
         .map_err(|_| ProviderError)
     }
+}
+
+/// Provider entry point awaiting the historical chart IPC and UI contract.
+#[allow(dead_code)]
+pub(crate) fn historical_chart(
+    civil: HistoricalCivilInput<'_>,
+    delta_t_seconds: f64,
+    delta_t_uncertainty_seconds: f64,
+    delta_t_source: &str,
+    site: &Site,
+    solar: Option<SolarSearch>,
+) -> Option<Result<HistoricalChart, ProviderError>> {
+    with_engine(|engine| engine.historical_chart(civil, delta_t_seconds,
+        delta_t_uncertainty_seconds, delta_t_source, site, solar))
 }
 
 static CONFIG_FOLDER: OnceLock<PathBuf> = OnceLock::new();
@@ -275,6 +293,98 @@ fn position(id: &'static str, ecliptic: [f64; 6], equatorial: [f64; 2]) -> BodyP
         right_ascension_deg: equatorial[0],
         declination_deg: equatorial[1],
         ephemeris_source: "jpl",
+    }
+}
+
+/// Intermediate provider result for the future historical chart IPC. The
+/// local-clock and ΔT uncertainties are kept distinct; no UTC is invented.
+#[allow(dead_code)]
+pub(crate) struct HistoricalChart {
+    pub chart: ChartSnapshotV1,
+    pub civil: HistoricalCivilEpoch,
+    pub epoch: ExplicitDeltaTEpoch,
+    pub delta_t_source: String,
+    pub sunrise: HistoricalSolarEvent,
+    pub sunset: HistoricalSolarEvent,
+}
+
+#[allow(dead_code)]
+pub(crate) enum HistoricalSolarEvent {
+    NotRequested,
+    /// `None` means no crossing in the search window (e.g. polar day).
+    Computed(Option<f64>),
+    Unavailable,
+}
+
+fn historical_solar_event(event: Option<Result<virgostars_ephemeris_core::mvp_site::SolarEvent,
+    virgostars_ephemeris_core::mvp_site::SiteError>>) -> HistoricalSolarEvent {
+    match event {
+        None => HistoricalSolarEvent::NotRequested,
+        Some(Ok(event)) => HistoricalSolarEvent::Computed(event.jd_ut1),
+        Some(Err(_)) => HistoricalSolarEvent::Unavailable,
+    }
+}
+
+impl Engine {
+    /// Reuses the merged astronomical snapshot and Desktop's existing house
+    /// geometries. This provider adapter is not yet a registered Tauri command.
+    #[allow(dead_code)]
+    fn historical_chart(
+        &mut self,
+        civil: HistoricalCivilInput<'_>,
+        delta_t_seconds: f64,
+        delta_t_uncertainty_seconds: f64,
+        delta_t_source: &str,
+        site: &Site,
+        solar: Option<SolarSearch>,
+    ) -> Result<HistoricalChart, ProviderError> {
+        let result = experimental_snapshot_from_civil(&mut self.ephemeris, civil,
+            delta_t_seconds, delta_t_uncertainty_seconds, delta_t_source, site, solar)
+            .map_err(|_| ProviderError)?;
+        let snapshot = result.snapshot;
+        let mut bodies = Vec::with_capacity(PLANETS.len() + LUNAR_POINTS.len());
+        for planet in &snapshot.planets.positions {
+            let id = PLANETS.iter().find(|(_, body)| *body == planet.body).map(|(id, _)| *id).ok_or(ProviderError)?;
+            let f = &planet.rates.base;
+            bodies.push(position(id, [f.longitude_deg, f.latitude_deg, f.distance_au,
+                planet.rates.longitude_deg_per_tdb_day, planet.rates.latitude_deg_per_tdb_day,
+                planet.rates.radial_au_per_tdb_day],
+                [planet.equatorial.right_ascension_deg, planet.equatorial.declination_deg]));
+        }
+        for lunar in &snapshot.lunar.positions {
+            let id = LUNAR_POINTS.iter().find(|(_, point)| *point == lunar.point).map(|(id, _)| *id).ok_or(ProviderError)?;
+            let e = &lunar.ecliptic;
+            let mut body = position(id, [e.longitude_deg, e.latitude_deg, e.distance_au,
+                e.longitude_rate_deg_per_day, e.latitude_rate_deg_per_day, e.distance_rate_au_per_day],
+                [lunar.equatorial.longitude_deg, lunar.equatorial.latitude_deg]);
+            // These are modelled points, including an empirical compatibility fit;
+            // do not label them as direct JPL planetary positions.
+            body.ephemeris_source = "lunar_model";
+            bodies.push(body);
+        }
+        let mut systems = Vec::new();
+        let mut unavailable_house_systems = Vec::new();
+        if let Ok(angles) = snapshot.house_angles {
+            let angles = angles.angles;
+            let basis = HouseAngles {armc_deg: angles.armc_deg, true_obliquity_deg: angles.true_obliquity_deg,
+                latitude_deg: site.latitude_deg, ascendant_deg: angles.ascendant_deg, midheaven_deg: angles.midheaven_deg};
+            for id in HOUSE_SYSTEMS {
+                match houses::cusps(id, &basis) {
+                    Some(cusps_deg) => systems.push(HouseSystemV1 {id, cusps_deg, ascendant_deg: angles.ascendant_deg,
+                        mc_deg: angles.midheaven_deg, armc_deg: angles.armc_deg, vertex_deg: angles.extra.vertex_deg}),
+                    None => unavailable_house_systems.push(id),
+                }
+            }
+        } else {
+            unavailable_house_systems.extend(HOUSE_SYSTEMS);
+        }
+        let epoch = snapshot.planets.epoch;
+        Ok(HistoricalChart {
+            chart: ChartSnapshotV1 {julian_day_ut: epoch.jd_ut1, bodies, houses: systems,
+                unavailable_bodies: vec!["Chiron"], unavailable_house_systems},
+            civil: result.civil, epoch, delta_t_source: snapshot.planets.delta_t_source,
+            sunrise: historical_solar_event(snapshot.sunrise), sunset: historical_solar_event(snapshot.sunset),
+        })
     }
 }
 
@@ -576,5 +686,52 @@ mod tests {
         // A path that does not exist never opens, and a failed open is not remembered.
         let missing = DataPaths { de441: PathBuf::from("Z:/does/not/exist/de441.eph"), usno_directory: None, chiron_spk: None };
         assert!(Engine::open(&missing).is_none());
+    }
+
+    #[test]
+    fn test_historical_chart_uses_one_civil_epoch_for_planets_nodes_houses_and_sun() {
+        use virgostars_ephemeris_core::calendar::{Calendar, CalendarDateTime, TimeScale};
+        use virgostars_ephemeris_core::historical_civil_time::HistoricalOffset;
+        use virgostars_ephemeris_core::rise_transit::Atmosphere;
+        let Some(path) = std::env::var_os("VIRGOSTARS_DE441_PATH") else {
+            eprintln!("skipped: VIRGOSTARS_DE441_PATH is not set");
+            return;
+        };
+        let mut engine = Engine::open(&DataPaths {de441: path.into(), usno_directory: None, chiron_spk: None})
+            .expect("a readable DE441 file");
+        let site = Site {latitude_deg: 41.9, longitude_deg_east: 12.5, height_m: 0.0};
+        for year in [-12999, 0, 2000, 3999] {
+            let civil = HistoricalCivilInput {
+                local: CalendarDateTime {year, month: 3, day: 20, hour: 1, minute: 0, second: 0.0, scale: TimeScale::Ut1},
+                calendar: Calendar::ProlepticGregorian,
+                offset: HistoricalOffset::LocalMeanSolar {longitude_deg_east: 15.0},
+                uncertainty_seconds: 60.0,
+            };
+            let solar = SolarSearch {atmosphere: Atmosphere {pressure_hpa: 1013.25, temperature_c: 15.0}, search_days: 1.0};
+            let result = engine.historical_chart(civil, 69.0, 2.0, "synthetic", &site, Some(solar)).unwrap();
+            assert_eq!(result.chart.bodies.len(), 14);
+            assert_eq!(result.chart.houses.len(), 5);
+            assert_eq!(result.chart.unavailable_bodies, vec!["Chiron"]);
+            assert_eq!(result.chart.julian_day_ut, result.civil.jd_ut1);
+            assert_eq!(result.chart.julian_day_ut, result.epoch.jd_ut1);
+            assert_eq!(result.civil.uncertainty_seconds, 60.0);
+            assert_eq!(result.epoch.uncertainty_seconds, 2.0);
+            assert_eq!(result.delta_t_source, "synthetic");
+            assert_eq!(result.chart.bodies.iter().filter(|b| b.ephemeris_source == "lunar_model").count(), 4);
+            assert!(result.chart.bodies.iter().all(|b| b.longitude_deg.is_finite() && b.right_ascension_deg.is_finite()));
+            assert!(matches!(result.sunrise, HistoricalSolarEvent::Computed(Some(_))));
+            assert!(matches!(result.sunset, HistoricalSolarEvent::Computed(Some(_))));
+        }
+        let polar = Site {latitude_deg: 80.0, ..site};
+        let civil = HistoricalCivilInput {
+            local: CalendarDateTime {year: 2000, month: 3, day: 20, hour: 0, minute: 0, second: 0.0, scale: TimeScale::Ut1},
+            calendar: Calendar::ProlepticGregorian,
+            offset: HistoricalOffset::Supplied {seconds_east: 0.0, source: "test"},
+            uncertainty_seconds: 0.0,
+        };
+        let result = engine.historical_chart(civil, 69.0, 2.0, "synthetic", &polar, None).unwrap();
+        assert!(result.chart.unavailable_house_systems.contains(&"placido"));
+        assert!(matches!(result.sunrise, HistoricalSolarEvent::NotRequested));
+        assert!(engine.historical_chart(civil, 69.0, -1.0, "synthetic", &site, None).is_err());
     }
 }
