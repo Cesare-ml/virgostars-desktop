@@ -11,6 +11,8 @@ mod chart_archive;
 mod pkce_login;
 // Bounded loopback listener candidate, intentionally not a registered command.
 mod pkce_loopback;
+// Strict OS browser adapter exists, but is not yet called or exposed through IPC.
+mod system_browser;
 mod houses;
 mod return_search;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
