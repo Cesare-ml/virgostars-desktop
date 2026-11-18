@@ -35,6 +35,7 @@ import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-p
 import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
+import { calculateHistoricalChart } from './native/historical-chart';
 import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
   availableHouseSystems, buildTemaRenderData, formatLatitudeDms, formatLongitudeDms,
@@ -109,6 +110,7 @@ type SessionChart = Readonly<{
   name: string;
   utcIso: string;
   timeZone: string;
+  historical?: NewChartInput['historical'];
   /** Identity in the on-device archive; null while the chart exists only in memory. */
   archiveId: string | null;
   placeName: string;
@@ -421,7 +423,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   chartName(chart: SessionChart): string {
     return chart.kind === 'sky' ? this.t('sky.title') : chart.name || this.t('session.unnamed');
   }
-  chartWhen(chart: {utcIso: string; timeZone: string}): string {
+  chartWhen(chart: {utcIso: string; timeZone: string; historical?: NewChartInput['historical']}): string {
+    if (chart.historical) {
+      const c=chart.historical.civil, pad=(n:number)=>String(n).padStart(2,'0');
+      const year=c.year <= 0 ? `${1-c.year} ${this.locale === 'it' ? 'a.C.' : 'BCE'}` : String(c.year);
+      const secondText=String(c.second).includes('e') ? c.second.toFixed(9) : String(c.second);
+      const fraction=secondText.split('.')[1];
+      const seconds=pad(Math.floor(c.second))+(fraction ? `.${fraction}` : '');
+      return `${pad(c.day)}/${pad(c.month)}/${year} ${pad(c.hour)}:${pad(c.minute)}:${seconds} · ${this.t(c.calendar === 'julian' ? 'form.julian' : 'form.gregorian')}`;
+    }
     try {
       return new Intl.DateTimeFormat(this.locale === 'it' ? 'it-IT' : 'en-GB', {
         dateStyle:'medium', timeStyle:'medium', timeZone:chart.timeZone,
@@ -487,15 +497,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   trackChart(_index:number, chart:SessionChart): number { return chart.id; }
 
   private async computeChart(input: NewChartInput, archiveId: string | null = null, kind: 'chart' | 'sky' = 'chart'): Promise<SessionChart | MessageKey> {
-    const result = await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
-    if (result.kind !== 'ready') return CALCULATION_FAILURES[result.kind];
-    const data = buildTemaRenderData(result.chart, input.utcIso);
+    const result = input.historical ? await calculateHistoricalChart(input.historical) :
+      await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
+    if (result.kind !== 'ready') return result.kind === 'time_source_out_of_range' ? 'calc.historicalRange' : CALCULATION_FAILURES[result.kind];
+    const displayTime = input.historical ? this.chartWhen(input) : input.utcIso;
+    const data = buildTemaRenderData(result.chart, displayTime);
     if (!data) return 'calc.nohouses';
     const sources = new Set(result.chart.bodies.map(body => body.ephemerisSource));
     const onlySource = sources.size === 1 ? [...sources][0] : null;
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
     return {
-      id:this.nextChartId++, kind, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
+      id:this.nextChartId++, kind, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone, historical:input.historical,
       archiveId, placeName:input.placeName,
       placeLabel:input.placeName ? input.placeName + ' (' + coordinates + ')' : coordinates,
       latMicro:input.latMicro, lngMicro:input.lngMicro,
@@ -528,6 +540,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       const saved = await this.runArchive({operation:'save', chart:{
         id:newId, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
         latMicro:input.latMicro, lngMicro:input.lngMicro, placeName:input.placeName,
+        historical:input.historical,
       }}, 'archive.saved');
       if (saved) archiveId = newId;
       if (this.destroyed || ticket !== this.calcTicket) return;
@@ -867,7 +880,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (saved) {
       await this.onChartRequested({
         name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
-        offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName,
+        offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName, historical:saved.historical,
       }, saved.id);
       if (this.destroyed) return;
       if (this.activeChart) { await this.showTransits(); return; }
@@ -932,7 +945,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.calcMessage = 'calc.running';
     this.cd.markForCheck();
     const chart = await this.computeChart({
-      name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:natal.timeZone,
+      name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:natal.historical ? 'UTC' : natal.timeZone,
       offsetSeconds:0, latMicro:natal.latMicro, lngMicro:natal.lngMicro, placeName:'',
     });
     if (this.destroyed || ticket !== this.calcTicket || this.activeChartId !== natal.id) return;
@@ -1086,7 +1099,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.synodChartError = null;
     this.cd.markForCheck();
     const chart = await this.computeChart({name:'', utcIso:isoFromMs(instant), localDate:'', localTime:'',
-      timeZone:natal.timeZone, offsetSeconds:0, latMicro:natal.latMicro, lngMicro:natal.lngMicro, placeName:natal.placeName});
+      timeZone:natal.historical ? 'UTC' : natal.timeZone, offsetSeconds:0, latMicro:natal.latMicro, lngMicro:natal.lngMicro, placeName:natal.placeName});
     if (this.destroyed || ticket !== this.synodChartTicket || this.mode !== 'transits' || this.synodSelected !== record.body) return;
     this.synodChartLoading = false;
     if (typeof chart === 'string') { this.synodChartError = chart; this.synodChart = null; this.synodView = 'transit'; }
@@ -1157,6 +1170,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const saved = await this.runArchive({operation:'save', chart:{
       id:archiveId, name:chart.name, utcIso:chart.utcIso, timeZone:chart.timeZone,
       latMicro:chart.latMicro, lngMicro:chart.lngMicro, placeName:chart.placeName,
+      historical:chart.historical,
     }}, 'archive.saved');
     if (saved) {
       this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...item, archiveId} : item);
@@ -1265,6 +1279,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const ok = await this.runArchive({operation:'save', chart:{
       id:original.id, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
       latMicro:input.latMicro, lngMicro:input.lngMicro, placeName:input.placeName,
+      historical:input.historical,
     }}, 'archive.edited');
     if (ok) this.editingChart = null;
     this.cd.markForCheck();
@@ -1277,12 +1292,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.calcBusy || this.exporting) return;
     const open = this.sessionCharts.find(chart => chart.archiveId === saved.id &&
       chart.name === saved.name && chart.utcIso === saved.utcIso && chart.timeZone === saved.timeZone &&
+      JSON.stringify(chart.historical ?? null) === JSON.stringify(saved.historical ?? null) &&
       chart.latMicro === saved.latMicro && chart.lngMicro === saved.lngMicro && chart.placeName === saved.placeName);
     if (open) { this.activateChart(open.id); this.closeSheet(); return; }
     const previousIds = this.sessionCharts.filter(chart => chart.archiveId === saved.id).map(chart => chart.id);
     void this.onChartRequested({
       name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
-      offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName,
+      offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName, historical:saved.historical,
     }, saved.id).then(() => {
       if (!this.destroyed && this.calcMessage === 'calc.ready') {
         this.sessionCharts = this.sessionCharts.filter(chart => !previousIds.includes(chart.id));
@@ -1340,7 +1356,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     this.returnRadix = {
       chartId:chart.id, name:chart.name, sunLongitude:sun.longitude, moonLongitude:moon.longitude,
-      latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone, placeName:chart.placeName,
+      latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.historical ? 'UTC' : chart.timeZone, placeName:chart.placeName,
     };
     this.returnTool = kind;
     this.view = 'functions';

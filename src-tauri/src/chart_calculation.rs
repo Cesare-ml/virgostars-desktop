@@ -141,8 +141,8 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 /// Strict parser: no offsets, no leap seconds, no lenient separators.
 pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
     if request.protocol_version != PROTOCOL_VERSION
-        || request.lat_micro.abs() > MAX_LAT_MICRO
-        || request.lng_micro.abs() > MAX_LNG_MICRO
+        || request.lat_micro.unsigned_abs() > MAX_LAT_MICRO as u32
+        || request.lng_micro.unsigned_abs() > MAX_LNG_MICRO as u32
     {
         return None;
     }
@@ -354,6 +354,12 @@ mod tests {
         let mut west = request("2001-02-03T04:05:06Z");
         west.lng_micro = -180_000_001;
         assert!(validate(&west).is_none());
+        let mut minimum = request("2001-02-03T04:05:06Z");
+        minimum.lat_micro = i32::MIN;
+        assert!(validate(&minimum).is_none());
+        minimum.lat_micro = 0;
+        minimum.lng_micro = i32::MIN;
+        assert!(validate(&minimum).is_none());
         let mut pole = request("2001-02-03T04:05:06Z");
         pole.lat_micro = -90_000_000;
         pole.lng_micro = 180_000_000;

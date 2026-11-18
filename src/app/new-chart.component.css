@@ -2,11 +2,14 @@
 .new-chart { display:flex; flex-direction:column; gap:12px; }
 .form-note { margin:0; font-size:12px; line-height:1.5; color:var(--vs-text-secondary); }
 .field { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; font-size:12px; color:var(--vs-text-secondary); }
-.field input {
+.field input, .field select {
   min-width:0; height:36px; padding:0 8px; font-size:13px; color:var(--vs-text);
   background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:8px;
 }
-.field input:focus-visible { outline:2px solid var(--vs-focus); outline-offset:1px; }
+.field input:focus-visible, .field select:focus-visible, .historical-toggle input:focus-visible { outline:2px solid var(--vs-focus); outline-offset:1px; }
+.historical-toggle { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--vs-text); }
+.historical-toggle input { width:16px; height:16px; accent-color:var(--vs-accent); }
+.historical-settings { display:flex; flex-direction:column; gap:10px; }
 .field-row { display:flex; gap:8px; }
 .form-problem { margin:0; padding:8px 10px; font-size:12px; color:var(--vs-text);
   background:var(--vs-surface-muted); border:1px solid var(--vs-border); border-radius:8px; }

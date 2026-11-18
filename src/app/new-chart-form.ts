@@ -5,6 +5,8 @@
  */
 import type {CivilTimeChoice, CivilTimeInput, CivilTimeResult} from './native/civil-time';
 import type {SavedChartV1} from './native/chart-archive-contract';
+import type {HistoricalChartRequest} from './native/historical-chart-contract';
+import {validHistoricalChartRequest} from './native/historical-chart-validation.mjs';
 
 export type NewChartFields = Readonly<{
   name: string;
@@ -26,11 +28,12 @@ export type NewChartInput = Readonly<{
   latMicro: number;
   lngMicro: number;
   placeName: string;
+  historical?: HistoricalChartRequest & Readonly<{protocolVersion:1}>;
 }>;
 
 export type NewChartProblem =
   | 'date_invalid' | 'time_invalid' | 'zone_invalid' | 'zone_unavailable'
-  | 'latitude_invalid' | 'longitude_invalid' | 'time_nonexistent';
+  | 'latitude_invalid' | 'longitude_invalid' | 'time_nonexistent' | 'historical_invalid';
 
 export type NewChartResolution =
   | Readonly<{status: 'ready'; input: NewChartInput}>
@@ -41,6 +44,15 @@ export const MAX_CHART_NAME_LENGTH = 80;
 
 /** Recover editable local birth fields from the persisted UTC instant and IANA zone. */
 export function savedChartFields(chart: SavedChartV1): NewChartFields {
+  if (chart.historical) {
+    const c=chart.historical.civil, pad=(n:number)=>String(n).padStart(2,'0');
+    const secondText=String(c.second).includes('e') ? c.second.toFixed(9) : String(c.second);
+    const fraction=secondText.split('.')[1];
+    const seconds=pad(Math.floor(c.second))+(fraction ? `.${fraction}` : '');
+    return {name:chart.name, date:`${c.year}-${pad(c.month)}-${pad(c.day)}`,
+      time:`${pad(c.hour)}:${pad(c.minute)}:${seconds}`, timeZone:'',
+      latitude:(chart.latMicro / 1e6).toFixed(6), longitude:(chart.lngMicro / 1e6).toFixed(6), placeName:chart.placeName};
+  }
   // Older archives may contain a syntactically acceptable but unsupported IANA zone.
   // Keep the editor usable so that the user can correct that value rather than crashing.
   const formatting = {year:'numeric', month:'2-digit', day:'2-digit',
@@ -63,6 +75,33 @@ export function savedChartFields(chart: SavedChartV1): NewChartFields {
     longitude:(chart.lngMicro / 1e6).toFixed(6),
     placeName:chart.placeName,
   };
+}
+
+export type HistoricalFormOptions = Readonly<{calendar:'gregorian'|'julian'; offset:'localMeanSolar'|'supplied';
+  offsetSeconds:string; deltaT:'espenakMeeus2006'|'supplied'; deltaTSeconds:string;
+  civilUncertaintySeconds:string; deltaTUncertaintySeconds:string; offsetSource?:string; deltaTSource?:string}>;
+
+/** Explicit historical local-clock choice; no UTC or timezone is fabricated. */
+export function resolveHistoricalNewChart(fields:NewChartFields, options:HistoricalFormOptions):NewChartResolution {
+  const latMicro=parseDegreesMicro(fields.latitude,90), lngMicro=parseDegreesMicro(fields.longitude,180);
+  if (latMicro === null) return {status:'problem',problem:'latitude_invalid'};
+  if (lngMicro === null) return {status:'problem',problem:'longitude_invalid'};
+  const date=/^(-?\d{1,5})-(\d{2})-(\d{2})$/.exec(fields.date.trim());
+  if (!date) return {status:'problem',problem:'date_invalid'};
+  const time=/^(\d{2}):(\d{2})(?::(\d{2}(?:\.\d{1,9})?))?$/.exec(fields.time.trim());
+  if (!time) return {status:'problem',problem:'time_invalid'};
+  const number=(text:string)=>text.trim() === '' ? NaN : Number(text.replace(',','.'));
+  const request:HistoricalChartRequest={civil:{year:Number(date[1]),month:Number(date[2]),day:Number(date[3]),
+    hour:Number(time[1]),minute:Number(time[2]),second:Number(time[3] ?? 0), calendar:options.calendar,
+    offset:options.offset === 'localMeanSolar' ? {kind:'localMeanSolar'} :
+      {kind:'supplied', secondsEast:number(options.offsetSeconds), source:options.offsetSource ?? 'User supplied local minus UT1'},
+    uncertaintySeconds:number(options.civilUncertaintySeconds)},
+    deltaT:options.deltaT === 'espenakMeeus2006' ? {kind:'espenakMeeus2006',uncertaintySeconds:number(options.deltaTUncertaintySeconds)} :
+      {kind:'supplied',seconds:number(options.deltaTSeconds),uncertaintySeconds:number(options.deltaTUncertaintySeconds),source:options.deltaTSource ?? 'User supplied'},
+    latMicro,lngMicro};
+  if (!validHistoricalChartRequest(request)) return {status:'problem',problem:'historical_invalid'};
+  return {status:'ready',input:{name:cleanChartName(fields.name), utcIso:'', localDate:fields.date, localTime:fields.time,
+    timeZone:'', offsetSeconds:0, latMicro,lngMicro,placeName:cleanPlaceName(fields.placeName),historical:{protocolVersion:1,...request}}};
 }
 
 /** Strip control characters and trim; the name is display-only text. */

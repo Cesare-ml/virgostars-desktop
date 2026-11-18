@@ -4,7 +4,7 @@ import {OfflineCityPickerComponent} from './offline-city-picker.component';
 import {resolveCivilTime, type CivilTimeChoice} from './native/civil-time';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {
-  MAX_CHART_NAME_LENGTH, cleanChartName, cleanPlaceName, formatUtcOffset, parseDegreesMicro, resolveNewChart, savedChartFields,
+  MAX_CHART_NAME_LENGTH, cleanChartName, cleanPlaceName, formatUtcOffset, parseDegreesMicro, resolveNewChart, resolveHistoricalNewChart, savedChartFields,
   type NewChartInput, type NewChartProblem,
 } from './new-chart-form';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -14,6 +14,7 @@ const PROBLEM_KEYS: Record<NewChartProblem, MessageKey> = {
   date_invalid: 'problem.date', time_invalid: 'problem.time', zone_invalid: 'problem.zone',
   zone_unavailable: 'problem.zoneUnavailable', latitude_invalid: 'problem.latitude',
   longitude_invalid: 'problem.longitude', time_nonexistent: 'problem.nonexistent',
+  historical_invalid: 'problem.historical',
 };
 
 function hostTimeZone(): string {
@@ -50,11 +51,34 @@ export class NewChartComponent implements OnChanges {
   city: OfflinePlaceV1 | null = null;
   problem: NewChartProblem | null = null;
   choices: readonly CivilTimeChoice[] = [];
+  historicalMode = false;
+  historicalCalendar: 'gregorian'|'julian' = 'julian';
+  historicalOffset: 'localMeanSolar'|'supplied' = 'localMeanSolar';
+  historicalDeltaT: 'espenakMeeus2006'|'supplied' = 'espenakMeeus2006';
+  historicalOffsetSeconds = '0';
+  historicalDeltaTSeconds = '';
+  historicalCivilUncertainty = '60';
+  historicalDeltaTUncertainty = '3600';
+  private historicalOffsetSource = 'User supplied local minus UT1';
+  private historicalDeltaTSource = 'User supplied';
 
   ngOnChanges(changes: SimpleChanges): void {
     if (!changes['editChart'] || !this.editChart) return;
     const fields = savedChartFields(this.editChart);
     Object.assign(this, fields);
+    const historical = this.editChart.historical;
+    this.historicalMode = !!historical;
+    if (historical) {
+      this.historicalCalendar = historical.civil.calendar;
+      this.historicalOffset = historical.civil.offset.kind;
+      this.historicalOffsetSeconds = historical.civil.offset.kind === 'supplied' ? String(historical.civil.offset.secondsEast) : '0';
+      this.historicalOffsetSource = historical.civil.offset.kind === 'supplied' ? historical.civil.offset.source : 'User supplied local minus UT1';
+      this.historicalDeltaT = historical.deltaT.kind;
+      this.historicalDeltaTSeconds = historical.deltaT.kind === 'supplied' ? String(historical.deltaT.seconds) : '';
+      this.historicalDeltaTSource = historical.deltaT.kind === 'supplied' ? historical.deltaT.source : 'User supplied';
+      this.historicalCivilUncertainty = String(historical.civil.uncertaintySeconds);
+      this.historicalDeltaTUncertainty = String(historical.deltaT.uncertaintySeconds);
+    }
     this.city = null;
     this.problem = null;
     this.choices = [];
@@ -64,6 +88,17 @@ export class NewChartComponent implements OnChanges {
   t(key: MessageKey): string { return translate(this.locale, key); }
   get problemText(): string { return this.problem ? this.t(PROBLEM_KEYS[this.problem]) : ''; }
   offsetLabel(choice: CivilTimeChoice): string { return 'UTC' + formatUtcOffset(choice.offsetSeconds); }
+  setHistoricalMode(event:Event):void { this.historicalMode = (event.target as HTMLInputElement).checked; this.problem=null; this.choices=[]; }
+  setHistorical(field:'historicalCalendar'|'historicalOffset'|'historicalDeltaT'|'historicalOffsetSeconds'|'historicalDeltaTSeconds'|'historicalCivilUncertainty'|'historicalDeltaTUncertainty', event:Event):void {
+    const value=(event.target as HTMLInputElement).value;
+    if (field === 'historicalOffsetSeconds') this.historicalOffsetSource='User supplied local minus UT1';
+    if (field === 'historicalDeltaTSeconds') this.historicalDeltaTSource='User supplied';
+    if (field === 'historicalCalendar' && (value === 'gregorian' || value === 'julian')) this.historicalCalendar=value;
+    else if (field === 'historicalOffset' && (value === 'localMeanSolar' || value === 'supplied')) this.historicalOffset=value;
+    else if (field === 'historicalDeltaT' && (value === 'espenakMeeus2006' || value === 'supplied')) this.historicalDeltaT=value;
+    else if (field === 'historicalOffsetSeconds' || field === 'historicalDeltaTSeconds' || field === 'historicalCivilUncertainty' || field === 'historicalDeltaTUncertainty') this[field]=value;
+    this.problem=null;
+  }
 
   set(field: 'name' | 'date' | 'time' | 'timeZone' | 'latitude' | 'longitude' | 'placeName', event: Event): void {
     this[field] = (event.target as HTMLInputElement).value;
@@ -94,10 +129,15 @@ export class NewChartComponent implements OnChanges {
 
   submit(selectedUtc: string | null = null): void {
     if (this.busy) return;
-    const result = resolveNewChart({
+    const fields = {
       name: this.name, date: this.date, time: this.time, timeZone: this.timeZone,
       latitude: this.latitude, longitude: this.longitude, placeName: this.placeName,
-    }, resolveCivilTime, selectedUtc ?? this.editChart?.utcIso ?? null);
+    };
+    const result = this.historicalMode ? resolveHistoricalNewChart(fields, {calendar:this.historicalCalendar,
+      offset:this.historicalOffset, offsetSeconds:this.historicalOffsetSeconds, deltaT:this.historicalDeltaT,
+      deltaTSeconds:this.historicalDeltaTSeconds, civilUncertaintySeconds:this.historicalCivilUncertainty,
+      deltaTUncertaintySeconds:this.historicalDeltaTUncertainty, offsetSource:this.historicalOffsetSource, deltaTSource:this.historicalDeltaTSource}) :
+      resolveNewChart(fields, resolveCivilTime, selectedUtc ?? this.editChart?.utcIso ?? null);
     this.problem = result.status === 'problem' ? result.problem : null;
     this.choices = result.status === 'choice_required' ? result.choices : [];
     if (result.status === 'ready') this.chartRequested.emit(result.input);
