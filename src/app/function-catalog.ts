@@ -14,7 +14,8 @@ export type FunctionStatus = 'available' | 'planned' | 'excluded';
 export type FunctionAction =
   | 'new_chart' | 'session_charts' | 'now_chart' | 'mode_natal' | 'mode_transits'
   | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive'
-  | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings' | 'monomeri';
+  | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings' | 'monomeri'
+  | 'dodecatemoria' | 'antiscia' | 'contra_antiscia';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -87,8 +88,9 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     planned('planet-of-year', "Pianeta dell'anno", 'Planet of the year'),
   ]),
   group('traditional', 'Astrologia tradizionale', 'Traditional astrology', [
-    planned('dodecatemoria', 'Dodecatemori', 'Dodecatemoria'),
-    planned('antiscia', 'Antisci', 'Antiscia'),
+    available('dodecatemoria', 'Dodecatemori', 'Dodecatemoria', 'dodecatemoria'),
+    available('antiscia', 'Antisci', 'Antiscia', 'antiscia'),
+    available('contra-antiscia', 'Contrantisci', 'Contra-antiscia', 'contra_antiscia'),
     planned('arabic-parts', 'Parti Arabe (Essenziali)', 'Arabic parts (essential)'),
     planned('abu-mashar', "Parti Arabe (Abu Ma'shar)", "Arabic parts (Abu Ma'shar)"),
     planned('custom-parts', 'Parti Arabe (Crea)', 'Arabic parts (custom formula)'),

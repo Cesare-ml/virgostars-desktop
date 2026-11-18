@@ -31,7 +31,7 @@ test('the catalog is frozen and its summary matches the entries', () => {
 
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
-    'archive', 'aspect-direction', 'aspect-orbs', 'aspects', 'celestial-elements', 'house-system', 'latitudes',
+    'antiscia', 'archive', 'aspect-direction', 'aspect-orbs', 'aspects', 'celestial-elements', 'contra-antiscia', 'dodecatemoria', 'house-system', 'latitudes',
     'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-orbs', 'real-time',
     'session-charts', 'solar-return', 'synastry', 'transits',
   ]);
@@ -65,8 +65,8 @@ test('a calculated chart is never paired with fixture overlays', () => {
   const component = read('src/app/desktop-app.component.ts');
   // No placeholder chart exists any more: overlays only ever come from calculated charts.
   assert.doesNotMatch(component, /makeFictionalTheme|fictionalPlanets|fictionalHouses/);
-  assert.match(component, /const transit = this\.transitChart\?\.render;/);
-  assert.match(component, /const synastry = this\.partnerChart\?\.render;/);
+  assert.match(component, /const transit = this\.displayedTransit\?\.render;/);
+  assert.match(component, /this\.synodChart\?\.render : this\.partnerChart\?\.render;/);
   assert.match(component, /const present = AXIS_IDS\.includes\(id\) \|\| id in planets;/);
   assert.match(component, /target\.att = present && setting\.shown;/);
 });

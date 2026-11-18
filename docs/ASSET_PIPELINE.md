@@ -74,11 +74,11 @@ cartella Desktop eseguire `npm start` (oppure `npm run start:private`); in un
 secondo terminale lanciare `npm run tauri:dev`. Il server Angular in questa
 modalità seleziona esclusivamente il bundle di asset locali con manifest
 convalidato nel checkout fratello `../astrological-assets`. La modalità
-dedicata `npm run start:synthetic` rimane sintetica. La nuova vista Elementi visualizza
-i glifi dal pack quando sono effettivamente sagomati e leggibili; se il file
-approvato è una vecchia immagine piatta a tinta unita, ricade su simboli di
-testo per non mostrare quadrati pieni. Questo fallback è anche applicato
-quando il file non esiste.
+dedicata `npm run start:synthetic` rimane sintetica. Tutti i glifi di pianeti,
+punti celesti e segni zodiacali provengono dal pack `astrological-assets`,
+anche nelle viste Elementi, Aspetti e Monomeri. La modalità sintetica usa
+segnaposto grafici e non riproduce l'aspetto degli asset approvati; in assenza
+di un'immagine si usa una descrizione testuale accessibile, mai un glifo Unicode.
 
 La modalità opzionale `private-artwork` utilizza il checkout locale di `astrological-assets`, senza richiedere il repository di produzione. Serve un checkout accessibile ai collaboratori autorizzati. `npm run build:ui:private` verifica il manifest approvato fissato tramite SHA-256 dei byte UTF-8 con fine riga normalizzato a LF, la corrispondenza con `catalog/approvals.json`, tutti gli hash e le dimensioni, e prepara una copia in `.local/frontend-private`. Il bundle è verificato separatamente con `npm run verify:bundle:private`; asset extra, manomissioni, link simbolici e manifest diversi causano un errore. Il renderer continua a caricare `/assets/` in locale.
 

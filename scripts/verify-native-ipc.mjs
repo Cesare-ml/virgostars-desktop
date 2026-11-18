@@ -5,9 +5,9 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns']);
-const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns']);
-const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts']);
+const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns', 'synod_events']);
+const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns', 'synod_events::synod_events']);
+const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts', 'src/app/native/synod-events.ts']);
 const FRONTEND_EXTENSIONS = /\.(?:ts|tsx|js|mjs)$/;
 
 function assert(ok, message) { if (!ok) throw new Error(message); }
@@ -49,7 +49,7 @@ export function auditNativeIpc(sources) {
   }
   // The presence of one approved call must not mask a second, unreviewed IPC.
   // Bracket notation is also a native invoke call and requires review.
-  for(const contract of [sources.runtimeContract,sources.placesContract,sources.chartContract,sources.archiveContract,sources.returnContract]) {
+  for(const contract of [sources.runtimeContract,sources.placesContract,sources.chartContract,sources.archiveContract,sources.returnContract,sources.synodContract]) {
     assert(typeof contract==='string', 'Missing reviewed native protocol');
     const calls=[...contract.matchAll(/(?:\.\s*invoke|\[\s*['"]invoke['"]\s*\])\s*(?:\?\.)?\s*\(/g)];
     assert(calls.length===1, 'Unexpected protocol native invocation count');
@@ -59,6 +59,7 @@ export function auditNativeIpc(sources) {
   assert(/invoke\(['"]calculate_chart['"]\s*,/.test(sources.chartContract), 'Chart contract command mismatch');
   assert(/invoke\(['"]chart_archive['"]\s*,/.test(sources.archiveContract), 'Archive contract command mismatch');
   assert(/invoke\(['"]find_returns['"]\s*,/.test(sources.returnContract), 'Return search contract command mismatch');
+  assert(/invoke\(['"]synod_events['"]\s*,/.test(sources.synodContract), 'Synod contract command mismatch');
   // Inspect every frontend source, including src/main.ts, not just src/app.
   // Conservative inventory: any additional Tauri package/API usage needs review.
   for(const [path,content] of Object.entries(sources.tsFiles)) {
@@ -115,7 +116,7 @@ export function auditCheckout(root=ROOT) {
     assert(!Object.hasOwn(rustModules,moduleName), 'Ambiguous Rust module filename');
     rustModules[moduleName]=read(path);
   }
-  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','chart_archive','return_search']) {
+  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','chart_archive','return_search','synod_events']) {
     assert(Object.hasOwn(rustModules,moduleName), 'Missing reviewed Rust command module');
   }
   return auditNativeIpc({
@@ -126,6 +127,7 @@ export function auditCheckout(root=ROOT) {
     chartContract:read('src/app/native/chart-calculation-contract.ts'),
     archiveContract:read('src/app/native/chart-archive-contract.ts'),
     returnContract:read('src/app/native/return-search-contract.ts'),
+    synodContract:read('src/app/native/synod-events-contract.ts'),
     tsFiles,
     tauriConfig:JSON.parse(read('src-tauri/tauri.conf.json')),
   });

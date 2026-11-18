@@ -4,7 +4,7 @@ import {
   ViewChild, inject
 } from '@angular/core';
 import {
-  defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, TemaRender
+  defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, SkinManager, TemaRender
 } from 'grafici-astrologici';
 import {
   chartSide, CHART_MARGIN_PX, CHART_MODES, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
@@ -17,9 +17,11 @@ import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import {CHART_SKINS, isChartSkin, loadChartSkin, saveChartSkin, type ChartSkin} from './chart-skin';
-import {monomeriAvailable, monomeroFor, type MonomeroView} from './monomeri';
+import {monomeriAvailable, monomeroOnHover, monomeroForChart, type MonomeroView} from './monomeri';
+import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
+import {GETTING_STARTED_STEPS, dismissGettingStarted, shouldShowGettingStarted} from './getting-started';
 import { DeviceClock, formatDeviceClock } from './device-clock';
-import { aspectSymbol } from './aspect-symbols';
+import { aspectPlanet, aspectSymbol } from './aspect-symbols';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import {
@@ -35,13 +37,17 @@ import type { NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
 import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
-  availableHouseSystems, buildTemaRenderData, formatDegreeInSign, formatLatitudeDms, formatLongitudeDms,
+  availableHouseSystems, buildTemaRenderData, formatLatitudeDms, formatLongitudeDms,
   formatSpeed, houseDisplay, planetRows, type HouseDisplay, type PlanetRow, type TemaRenderData
 } from './astro/tema-render-data';
 import { functionMenu, pendingSettings, type FunctionEntry, type FunctionGroup, type FunctionStatus } from './function-catalog';
 import { chartArchive } from './native/chart-archive';
 import { newChartId, validChartRecord, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
 import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
+import {synodEvents} from './native/synod-events';
+import type {SynodRecord} from './native/synod-events-contract';
+import {hasSynodGlyph, orderSynodRecords} from './synod-selection';
+import {TRADITIONAL_POINTS, zodiacProjectionPoints, type ZodiacProjectionMode, type ZodiacProjectionAxis} from './astro/zodiac-projections';
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
@@ -67,7 +73,6 @@ const SIGN_KEYS: readonly MessageKey[] = [
   'sign.aries','sign.taurus','sign.gemini','sign.cancer','sign.leo','sign.virgo',
   'sign.libra','sign.scorpio','sign.sagittarius','sign.capricorn','sign.aquarius','sign.pisces',
 ];
-const SIGN_GLYPHS = '♈♉♊♋♌♍♎♏♐♑♒♓';
 const HOUSE_SYSTEM_KEYS: Record<HouseSystemId,MessageKey> = {
   egizia:'house.egizia', placido:'house.placido', koch:'house.koch',
   'regio-montano':'house.regiomontano', porfirio:'house.porfirio',
@@ -139,6 +144,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   @ViewChild('workspace', {static:true}) readonly workspace!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
+  @ViewChild('guidePanel') private guidePanel?: ElementRef<HTMLElement>;
 
   private readonly cd = inject(ChangeDetectorRef);
   private readonly renderer = new GraficoRenderService();
@@ -159,11 +165,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   readonly monomeriAvailable = monomeriAvailable;
   monomeriEnabled = false;
   monomero: MonomeroView | null = null;
+  readonly guideSteps = GETTING_STARTED_STEPS;
+  guideVisible = shouldShowGettingStarted(this.uiPreferencesStorage);
+  guideStep = 0;
+  private guideReturnFocus: HTMLElement | null = null;
   locale: Locale = this.initialUiPreferences.locale;
   mode: ChartMode = 'natal';
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
   chartPresentation: 'wheel' | 'elements' | 'aspects' = 'wheel';
   showDodecatemoria = false;
+  zodiacMode: ZodiacProjectionMode | null = null;
+  zodiacAxis: ZodiacProjectionAxis = 'Cardinale';
+  zodiacPoint: string = 'tutti';
+  readonly zodiacPoints = TRADITIONAL_POINTS;
+  readonly zodiacAxes: readonly ZodiacProjectionAxis[] = ['Cardinale','Fissa','Mutevole'];
   showTransaturnians = false;
   inspectorTab: InspectorTab = 'planets';
   /** Centre panel over the chart: the new-chart form and the archive each have their own. */
@@ -186,6 +201,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** Settings of the old menu that are not built yet. */
   readonly pendingSettingEntries = pendingSettings();
   private transitChart: SessionChart | null = null;
+  private transitFocus: {ring: 'natal' | 'transit'; name: string} | null = null;
+  synodReference: 'radix' | 'transit' = 'transit';
+  synodRecords: readonly SynodRecord[] = [];
+  synodSelected: string | null = null;
+  synodView: 'transit' | 'synod' | 'transit-synod' = 'transit';
+  synodChartLoading = false;
+  synodChartError: MessageKey | null = null;
+  private synodChart: SessionChart | null = null;
+  private synodChartTicket = 0;
+  synodStatus: 'loading' | 'ready' | 'missing' | 'invalid' | 'unavailable' = 'loading';
+  private synodTicket = 0;
+  transitNav: NavState | null = null;
+  transitStatus: MessageKey | null = null;
+  transitHelpVisible = false;
+  private transitTimer: ReturnType<typeof setTimeout> | null = null;
+  private transitTicket = 0;
   private calcTicket = 0;
   private nextChartId = 1;
   private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
@@ -246,6 +277,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     };
     return this.t(keys[skin]);
   }
+  get chartBackground(): string { return SkinManager.skins[this.chartSkin].bgColor; }
   get styleStatusKey(): MessageKey {
     return this.styleStatus === 'active' ? 'styles.active' :
       this.styleStatus === 'missing' ? 'styles.missing' :
@@ -297,7 +329,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const active = this.activeChart;
     const mode = this.mode;
     if (!active || (mode !== 'transits' && mode !== 'synastry')) return [];
-    const overlay = mode === 'transits' ? this.transitChart : this.partnerChart;
+    const overlay = mode === 'transits' ? this.displayedTransit : this.partnerChart;
     if (!overlay) return [];
     const from = mode === 'transits' ? overlay : active;
     const to = mode === 'transits' ? active : overlay;
@@ -311,6 +343,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   onChartSettingsChanged(next: ChartSettings): void {
     if (this.destroyed || this.exporting) return;
     this.chartSettings = sanitizeChartSettings(next);
+    if (this.zodiacPoint !== 'tutti' && !this.zodiacPointAvailable(this.zodiacPoint)) this.zodiacPoint = 'tutti';
     // Best effort: a failed write never blocks the chart.
     saveChartSettings(this.uiPreferencesStorage, this.chartSettings);
     if (this.initialized) void this.draw();
@@ -323,13 +356,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return this.sessionCharts.find(chart => chart.id === this.partnerChartId) ?? null;
   }
   get transitChartAvailable(): boolean { return this.transitChart !== null; }
+  private get displayedTransit(): SessionChart | null { return this.synodView === 'synod' ? this.synodChart : this.transitChart; }
   get isSkyActive(): boolean { return this.activeChart?.kind === 'sky'; }
   get stageTitle(): string {
     if (this.isSkyActive && this.mode === 'natal') return this.t(this.navDirty ? 'sky.navigated' : 'sky.title');
     return this.modeLabel(this.mode);
   }
   get inspectorTitleKey(): MessageKey {
-    return this.inspectorTab === 'planets' ? 'nav.planets' : this.inspectorTab === 'aspects' ? 'tab.aspects' : 'nav.title';
+    return this.inspectorTab === 'planets' ? 'nav.planets' : this.inspectorTab === 'aspects' ? 'tab.aspects' : this.inspectorTab === 'transits' ? 'transits.navigation' : this.inspectorTab === 'zodiac' ? 'zodiac.title' : 'nav.title';
   }
   get subjectTitle(): string {
     const chart = this.activeChart;
@@ -340,6 +374,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return chart ? this.chartWhen(chart) + ' · ' + chart.placeLabel : '';
   }
   aspectSymbolOf(aspect:string): string { return aspectSymbol(aspect); }
+  aspectPlanetOf(aspect:string): string | null { return aspectPlanet(aspect); }
   availableIn(group: FunctionGroup): FunctionEntry[] { return group.entries.filter(entry => entry.status === 'available'); }
   unavailableIn(group: FunctionGroup): FunctionEntry[] { return group.entries.filter(entry => entry.status !== 'available'); }
   chartName(chart: SessionChart): string {
@@ -380,8 +415,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   /** The glyph the wheel itself uses; the artwork pack has a retrograde variant ("-r") for each moving body. */
   glyphUrl(name:string, retrograde = false): string {
-    return '/assets/img/simboli/elementi-celesti/' + this.theme + '/875x605/' + encodeURIComponent(name + (retrograde ? '-r' : '')) + '.png';
+    return celestialGlyphUrl(name, retrograde);
   }
+  monomeroGlyphUrl(name:string): string {
+    return this.glyphUrl(name, (this.activeChart?.data.planets[name]?.longitudeSpeed ?? 0) < 0);
+  }
+  signGlyphUrl(sign: number): string { return zodiacGlyphUrl(sign); }
   /** A glyph that is missing from the installed artwork falls back to its text label. */
   glyphMissing(event: Event): void {
     const image = event.target as HTMLImageElement;
@@ -397,12 +436,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   houseSystemLabel(system:HouseSystemId): string { return this.t(HOUSE_SYSTEM_KEYS[system]); }
   statusLabel(status:FunctionStatus): string { return this.t(STATUS_KEYS[status]); }
   entryLabel(entry:{it:string; en:string}): string { return this.locale === 'it' ? entry.it : entry.en; }
-  /** Zodiac position such as "♉ 15°30'", with the sign name for assistive text. */
-  formatZodiac(longitude:number): string {
-    const sign = Math.min(11, Math.max(0, Math.floor(longitude / 30)));
-    // U+FE0E asks for the text glyph instead of a colour emoji tile.
-    return SIGN_GLYPHS.charAt(sign) + '︎ ' + formatDegreeInSign(longitude - sign * 30);
-  }
   signName(longitude:number): string {
     return this.t(SIGN_KEYS[Math.min(11, Math.max(0, Math.floor(longitude / 30)))]);
   }
@@ -474,6 +507,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   private showChart(chart: SessionChart | null): void {
+    this.cancelTransitNavigation();
+    this.zodiacPoint = 'tutti';
     this.activeChartId = chart ? chart.id : null;
     this.transitChart = null;
     this.rowsCache = null;
@@ -603,7 +638,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const repeat = (delay: number): void => {
       this.holdTimer = setTimeout(() => {
         this.holdTimer = null;
-        if (this.destroyed || this.inspectorTab !== 'navigate' || !move()) return;
+        if (this.destroyed || this.inspectorCollapsed || !['navigate','transits'].includes(this.inspectorTab) || !move()) return;
         repeat(HOLD_REPEAT_MS);
       }, delay);
     };
@@ -849,6 +884,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async showTransits(): Promise<void> {
     const natal = this.activeChart;
     if (!natal || this.calcBusy || this.exporting || this.destroyed) return;
+    this.cancelTransitNavigation();
     const ticket = ++this.calcTicket;
     this.calcBusy = true;
     this.calcMessage = 'calc.running';
@@ -864,10 +900,176 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     } else {
       this.transitChart = chart;
       this.mode = 'transits';
+      if (this.initialized) this.attachTransitHover();
+      const point: NavPoint = {utcMs:Date.parse(chart.utcIso), latMicro:chart.latMicro, lngMicro:chart.lngMicro,
+        timeZone:chart.timeZone, placeName:natal.placeName};
+      this.transitNav = {chartId:natal.id, base:point, current:point};
+      this.transitStatus = null;
+      try { this.transitHelpVisible = this.uiPreferencesStorage?.getItem('virgostars.desktop.transit-help.v1') !== 'done'; }
+      catch { this.transitHelpVisible = true; }
+      this.openInspector('transits');
+      void this.refreshSynods();
       this.calcMessage = null;
       if (this.initialized) void this.draw();
     }
     this.cd.markForCheck();
+  }
+  dismissTransitHelp(): void {
+    this.transitHelpVisible = false;
+    try { this.uiPreferencesStorage?.setItem('virgostars.desktop.transit-help.v1', 'done'); } catch { /* best effort */ }
+    this.cd.markForCheck();
+  }
+  get transitFields(): ReadonlyArray<{key: NavField; text: string; sep: string; label: string}> {
+    const point = this.transitNav?.current;
+    const texts = point && fieldTexts(point.utcMs, point.timeZone);
+    if (!texts) return [];
+    const seps: Record<NavField,string> = {day:'', month:'/', year:'/', hour:'', minute:':'};
+    return (['day','month','year','hour','minute'] as const).map(key =>
+      ({key, text:texts[key], sep:seps[key], label:this.t(NAV_FIELD_LABELS[key])}));
+  }
+  private cancelTransitNavigation(): void {
+    ++this.transitTicket;
+    ++this.synodTicket;
+    ++this.synodChartTicket;
+    this.synodRecords = [];
+    this.synodSelected = null;
+    this.synodChart = null;
+    this.synodView = 'transit';
+    this.synodChartLoading = false;
+    if (this.initialized) this.renderer.setTransitPointHoverListener(null);
+    this.transitFocus = null;
+    if (this.transitTimer !== null) clearTimeout(this.transitTimer);
+    this.transitTimer = null;
+    this.stopHold();
+    this.transitNav = null;
+  }
+  private moveTransit(next: number | null): boolean {
+    const nav = this.transitNav;
+    if (!nav || this.mode !== 'transits') return false;
+    if (next === null) { this.transitStatus = 'nav.limit'; this.cd.markForCheck(); return false; }
+    this.transitStatus = null;
+    this.transitNav = {...nav, current:{...nav.current, utcMs:next}};
+    const ticket = ++this.transitTicket;
+    if (this.transitTimer !== null) clearTimeout(this.transitTimer);
+    this.transitTimer = setTimeout(() => { this.transitTimer = null; void this.recomputeTransit(ticket); }, NAV_RECOMPUTE_MS);
+    this.cd.markForCheck();
+    return true;
+  }
+  private async recomputeTransit(ticket: number): Promise<void> {
+    const nav = this.transitNav, natal = this.activeChart;
+    if (!nav || !natal || natal.id !== nav.chartId || this.mode !== 'transits') return;
+    const point = nav.current;
+    const chart = await this.computeChart({name:'', utcIso:isoFromMs(point.utcMs), localDate:'', localTime:'',
+      timeZone:point.timeZone, offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName});
+    if (this.destroyed || ticket !== this.transitTicket || this.activeChartId !== natal.id || this.mode !== 'transits') return;
+    if (typeof chart === 'string') {
+      this.transitStatus = chart;
+      this.stopHold();
+      if (this.transitNav && this.transitChart) this.transitNav = {...this.transitNav,
+        current:{...this.transitNav.current, utcMs:Date.parse(this.transitChart.utcIso)}};
+    } else {
+      this.transitChart = chart;
+      this.crossAspectCache = null;
+      if (this.synodReference === 'transit') void this.refreshSynods();
+      if (this.initialized) void this.draw();
+    }
+    this.cd.markForCheck();
+  }
+  adjustTransit(field: NavField, delta: number): boolean {
+    const point = this.transitNav?.current;
+    return point ? this.moveTransit(shiftInstant(point.utcMs, point.timeZone, field, delta)) : false;
+  }
+  stepTransit(direction: 1 | -1): boolean {
+    const point = this.transitNav?.current;
+    return point ? this.moveTransit(stepInstant(point.utcMs, point.timeZone, this.navStepUnit, this.navStepValue, direction)) : false;
+  }
+  holdTransitField(event: PointerEvent, field: NavField, delta: number): void { this.beginHold(event, () => this.adjustTransit(field, delta)); }
+  holdTransitStep(event: PointerEvent, direction: 1 | -1): void { this.beginHold(event, () => this.stepTransit(direction)); }
+  clickTransitField(event: MouseEvent, field: NavField, delta: number): void { if (event.detail === 0) this.adjustTransit(field, delta); }
+  clickTransitStep(event: MouseEvent, direction: 1 | -1): void { if (event.detail === 0) this.stepTransit(direction); }
+  transitNow(): void { this.moveTransit(Math.floor(Date.now() / 1000) * 1000); }
+  setSynodReference(reference:'radix'|'transit'): void {
+    if (this.synodReference === reference) return;
+    this.synodReference = reference;
+    this.synodSelected = null;
+    ++this.synodChartTicket;
+    this.synodChart = null;
+    this.synodView = 'transit';
+    if (this.initialized) void this.draw();
+    void this.refreshSynods();
+  }
+  private async refreshSynods(): Promise<void> {
+    const chart = this.synodReference === 'radix' ? this.activeChart : this.transitChart;
+    if (!chart || this.mode !== 'transits') return;
+    const ticket = ++this.synodTicket;
+    this.synodStatus = 'loading';
+    this.cd.markForCheck();
+    const result = await synodEvents(Date.parse(chart.utcIso));
+    if (this.destroyed || ticket !== this.synodTicket || this.mode !== 'transits') return;
+    if (result.kind === 'ready') {
+      this.synodRecords = result.records;
+      this.synodStatus = 'ready';
+      if (!this.synodRecords.some(record => record.body === this.synodSelected)) this.synodSelected = null;
+      const selected = this.selectedSynod;
+      if (selected?.startMillis !== null && selected?.startMillis !== undefined &&
+        Date.parse(this.synodChart?.utcIso ?? '') !== selected.startMillis) void this.loadSynodChart(selected);
+    } else {
+      this.synodRecords = [];
+      this.synodStatus = result.kind === 'archive_missing' ? 'missing' : result.kind === 'archive_invalid' ? 'invalid' : 'unavailable';
+    }
+    this.cd.markForCheck();
+  }
+  get selectedSynod(): SynodRecord | null { return this.synodRecords.find(record => record.body === this.synodSelected) ?? null; }
+  get orderedSynodRecords(): readonly SynodRecord[] {
+    return orderSynodRecords(this.synodRecords);
+  }
+  synodHasGlyph(name:string): boolean { return hasSynodGlyph(name); }
+  selectSynod(body:string): void {
+    this.synodSelected = body || null;
+    const selected = this.selectedSynod;
+    if (selected?.startMillis !== null && selected?.startMillis !== undefined) void this.loadSynodChart(selected);
+    else {
+      ++this.synodChartTicket;
+      this.synodChart = null;
+      this.synodView = 'transit';
+      if (this.initialized) void this.draw();
+    }
+    this.cd.markForCheck();
+  }
+  private async loadSynodChart(record:SynodRecord): Promise<void> {
+    const natal = this.activeChart, instant = record.startMillis;
+    if (!natal || instant === null) return;
+    const ticket = ++this.synodChartTicket;
+    this.synodChartLoading = true;
+    this.synodChartError = null;
+    this.cd.markForCheck();
+    const chart = await this.computeChart({name:'', utcIso:isoFromMs(instant), localDate:'', localTime:'',
+      timeZone:natal.timeZone, offsetSeconds:0, latMicro:natal.latMicro, lngMicro:natal.lngMicro, placeName:natal.placeName});
+    if (this.destroyed || ticket !== this.synodChartTicket || this.mode !== 'transits' || this.synodSelected !== record.body) return;
+    this.synodChartLoading = false;
+    if (typeof chart === 'string') { this.synodChartError = chart; this.synodChart = null; this.synodView = 'transit'; }
+    else { this.synodChart = chart; if (this.synodView === 'transit') this.synodView = 'synod'; }
+    this.crossAspectCache = null;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  setSynodView(view:'transit'|'synod'|'transit-synod'): void {
+    if (view !== 'transit' && !this.synodChart) return;
+    if (view === 'transit-synod' && this.synodReference !== 'transit') return;
+    this.synodView = view;
+    this.crossAspectCache = null;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  synodWhen(record:SynodRecord): string {
+    const chart = this.activeChart;
+    return record.startMillis === null || !chart ? this.t('transits.synods.none') :
+      this.chartWhen({utcIso:new Date(record.startMillis).toISOString(), timeZone:chart.timeZone});
+  }
+  navigateToSynod(): void {
+    const instant = this.selectedSynod?.startMillis;
+    const zone = this.transitNav?.current.timeZone;
+    if (instant !== null && instant !== undefined && zone) this.moveTransit(shiftInstant(instant, zone, 'minute', 0));
   }
   trackSaved(_index:number, chart:SavedChartV1): string { return chart.id; }
   savedPlace(chart: SavedChartV1): string {
@@ -1026,6 +1228,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       case 'solar_return': this.openReturns('solar'); break;
       case 'aspect_table': this.closeSheet(); this.openInspector('aspects'); break;
       case 'chart_settings': this.openSettings(); break;
+      case 'dodecatemoria': this.openZodiacTool('dodecatemoria'); break;
+      case 'antiscia': this.openZodiacTool('antiscia'); break;
+      case 'contra_antiscia': this.openZodiacTool('contra-antiscia'); break;
       case 'monomeri': {
         this.closeSheet();
         const redraw = this.mode !== 'natal';
@@ -1093,6 +1298,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     document.documentElement.lang = this.locale;
     // Inspect applied WebView CSS after Angular's initial view check.
     queueMicrotask(() => this.checkStyles());
+    if (this.guideVisible) this.focusGuide();
     // Local clock is independent of renderer success, astronomy and account auth.
     this.deviceClock.start(() => {
       if (this.destroyed) return;
@@ -1116,6 +1322,33 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  private attachTransitHover(): void {
+    this.renderer.setTransitPointHoverListener(value => {
+      if (!value) return;
+      this.transitFocus = {ring:value.ring, name:value.name};
+      this.drawTransitFocus();
+    });
+  }
+  private drawTransitFocus(): void {
+        const value = this.transitFocus;
+        const natal = this.activeChart, transit = this.displayedTransit;
+        if (!value || !natal || !transit || this.mode !== 'transits' || this.view !== 'chart' ||
+          this.chartPresentation !== 'wheel' || !this.chartSettings.showAspects) {
+          this.renderer.setTransitAspectLines([]);
+          return;
+        }
+        const moving = new Map(aspectPoints(transit.data, this.chartSettings.points).map(point => [point.name, point.longitude]));
+        const fixed = new Map(aspectPoints(natal.data, this.chartSettings.points).map(point => [point.name, point.longitude]));
+        const lines = this.crossAspectRows
+          .filter(row => value.ring === 'transit' ? row.from === value.name : row.to === value.name)
+          .flatMap(row => {
+            const transitLongitude = moving.get(row.from), natalLongitude = fixed.get(row.to);
+            return transitLongitude === undefined || natalLongitude === undefined ? [] : [{aspect:row.aspect,
+              transitName:row.from, transitLongitude, natalName:row.to, natalLongitude}];
+          });
+        this.renderer.setTransitAspectLines(lines);
+  }
+
   private async checkRuntime(): Promise<void> {
     const result = await inspectDesktopRuntime();
     if (this.destroyed) return;
@@ -1127,6 +1360,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.cancelTransitNavigation();
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.stopHold();
@@ -1184,21 +1418,88 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   toggleMonomeri(): void {
     if (!this.monomeriAvailable || !this.initialized || this.busy) return;
+    const clearZodiac = !this.monomeriEnabled && this.zodiacMode !== null;
+    if (clearZodiac) this.zodiacMode = null;
     this.monomeriEnabled = !this.monomeriEnabled;
     if (this.monomeriEnabled) {
       this.renderer.setNatalPlanetHoverListener(value => {
-        const valid = this.monomeriEnabled && this.view === 'chart' && this.mode === 'natal' &&
-          this.chartPresentation === 'wheel' && value && this.activeChart?.data.planets[value.name];
-        this.monomero = valid && value ? monomeroFor(value.name, value.longitude) : null;
-        this.renderer.setNatalAspectsVisible(this.monomero === null);
+        if (!value || this.busy || !this.monomeriEnabled || this.view !== 'chart' || this.mode !== 'natal' ||
+          this.chartPresentation !== 'wheel' || !this.activeChart) return;
+        const selected = monomeroOnHover(this.monomero, value);
+        if (!selected || selected === this.monomero) return;
+        this.monomero = selected;
+        this.renderer.setNatalAspectsVisible(false);
         this.cd.markForCheck();
       });
+      this.renderer.setNatalAspectsVisible(false);
     } else {
       this.renderer.setNatalPlanetHoverListener(null);
       this.monomero = null;
       this.renderer.setNatalAspectsVisible(true);
     }
+    if (clearZodiac && this.initialized) void this.draw();
     this.cd.markForCheck();
+  }
+  openZodiacTool(mode: ZodiacProjectionMode): void {
+    if (!this.activeChart || this.busy || this.exporting) return;
+    this.view = 'chart';
+    this.chartPresentation = 'wheel';
+    if (this.mode === 'transits') this.cancelTransitNavigation();
+    this.mode = 'natal';
+    if (this.monomeriEnabled) this.toggleMonomeri();
+    this.zodiacMode = mode;
+    this.zodiacPoint = 'tutti';
+    this.openInspector('zodiac');
+    if (this.initialized) void this.draw();
+  }
+  toggleZodiacTool(mode: ZodiacProjectionMode): void {
+    if (this.busy || !this.activeChart) return;
+    if (this.zodiacMode !== mode) { this.openZodiacTool(mode); return; }
+    this.zodiacMode = null;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  setZodiacAxis(axis:ZodiacProjectionAxis): void {
+    if (!this.zodiacAxes.includes(axis) || this.zodiacAxis === axis || this.busy) return;
+    this.zodiacAxis = axis;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  zodiacAxisLabel(axis:ZodiacProjectionAxis): string {
+    return this.t(axis === 'Cardinale' ? 'zodiac.cardinal' : axis === 'Fissa' ? 'zodiac.fixed' : 'zodiac.mutable');
+  }
+  zodiacPointAvailable(name:string): boolean {
+    const body = this.activeChart?.data.planets[name];
+    return !!body && !!this.chartSettings.points[name as keyof ChartSettings['points']]?.shown &&
+      (this.zodiacMode !== 'dodecatemoria' || !!body.dodecatemoria);
+  }
+  setZodiacPoint(name:string): void {
+    if (this.busy || !this.zodiacMode || (name !== 'tutti' && !this.zodiacPointAvailable(name))) return;
+    this.zodiacPoint = name;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  private focusGuide(): void {
+    queueMicrotask(() => { if (!this.destroyed && this.guideVisible) this.guidePanel?.nativeElement.focus(); });
+  }
+  openGuide(): void {
+    this.guideReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.guideStep = 0;
+    this.guideVisible = true;
+    this.cd.detectChanges();
+    this.focusGuide();
+  }
+  closeGuide(): void {
+    this.guideVisible = false;
+    dismissGettingStarted(this.uiPreferencesStorage);
+    if (this.guideReturnFocus?.isConnected) this.guideReturnFocus.focus();
+    this.guideReturnFocus = null;
+    this.cd.markForCheck();
+  }
+  previousGuideStep(): void { if (this.guideStep > 0) this.guideStep--; }
+  nextGuideStep(): void {
+    if (this.guideStep + 1 < this.guideSteps.length) this.guideStep++;
+    else this.closeGuide();
   }
   setChartSkin(event: Event): void {
     if (this.exporting || this.destroyed) return;
@@ -1221,6 +1522,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.calcMessage = 'synastry.needsecond';
       if (this.sessionCharts.length > 1) this.openArchive(); else this.openNewChart();
       return;
+    }
+    if (this.mode === 'transits') {
+      this.cancelTransitNavigation();
+      this.transitHelpVisible = false;
+      if (this.inspectorTab === 'transits') this.inspectorCollapsed = true;
     }
     this.mode = mode;
     if(this.initialized) void this.draw();
@@ -1249,10 +1555,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private options() {
     const options = structuredClone(defaultOpzioniGrafico);
     options.settaggi.skin_id = this.chartSkin;
+    options.nascondiAssiDuplicati = true;
+    options.mostraAssiTransiti = this.mode === 'transits';
     options.temaGrafico = this.theme;
     const active = this.activeChart;
+    if (active && this.mode === 'natal' && this.zodiacMode === 'dodecatemoria') {
+      options.dodecatemoriAttivi = true;
+      options.dodecatemore = this.zodiacPoint;
+    } else if (active && this.mode === 'natal' && (this.zodiacMode === 'antiscia' || this.zodiacMode === 'contra-antiscia')) {
+      options.proiezioneZodiacale = {tipo:this.zodiacMode === 'antiscia' ? 'antisci' : 'contrantisci',
+        asse:this.zodiacAxis, pianeta:this.zodiacPoint, punti:zodiacProjectionPoints(active.data,this.zodiacAxis,this.chartSettings.points)};
+    }
     options.mostraTransiti = this.mode === 'transits' && (!active || this.transitChart !== null);
-    options.mostraSinastria = this.mode === 'synastry' && (!active || this.partnerChart !== null);
+    options.mostraSinastria = (this.mode === 'synastry' && (!active || this.partnerChart !== null)) ||
+      (this.mode === 'transits' && this.synodView === 'transit-synod' && this.synodChart !== null);
     if (active) options.settaggi.domificazione_selezionata = this.houseSystem;
     const settings = this.chartSettings;
     options.mostraAspetti = settings.showAspects;
@@ -1286,11 +1602,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const noOverlay = null as unknown as TemaRender;
     const active = this.activeChart;
     if (!active) return null;
-    const transit = this.transitChart?.render;
-    const synastry = this.partnerChart?.render;
+    const transit = this.displayedTransit?.render;
+    const synastry = this.mode === 'transits' && this.synodView === 'transit-synod' ? this.synodChart?.render : this.partnerChart?.render;
     return [active.render,
       this.mode==='transits' && transit ? transit : noOverlay,
-      this.mode==='synastry' && synastry ? synastry : noOverlay,
+      (this.mode==='synastry' || this.mode==='transits' && this.synodView==='transit-synod') && synastry ? synastry : noOverlay,
       this.mode==='latitude' ? 'latitudini' : 'carta-astrale'];
   }
   async draw(): Promise<void> {
@@ -1299,6 +1615,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const args = this.chartArguments();
     if (!args) {
       this.busy=false; this.ready=false; this.error='';
+      this.monomero = null;
       this.cd.markForCheck();
       return;
     }
@@ -1312,6 +1629,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       // The upstream service may skip superseded scene-generation requests.
       // Do not show an obsolete request as ready (or clear the current spinner).
       if(this.drawGeneration.isCurrent(ticket)) {
+        if (this.monomero && this.activeChart) {
+          this.monomero = monomeroForChart(this.monomero.name, this.activeChart.data, this.houseSystem);
+        }
+        if (this.monomeriEnabled && this.mode === 'natal') this.renderer.setNatalAspectsVisible(false);
+        if (this.mode === 'transits') {
+          this.renderer.setNatalAspectsDimmed(true);
+          this.drawTransitFocus();
+        }
         this.ready=true;
         this.status='chart.ready';
         if (this.activeChart) this.status='chart.ready.real';

@@ -14,7 +14,7 @@ test('"Naviga cielo" is a left-menu button that opens a panel on the right', () 
   assert.match(nav, /toggleInspectorTab\('navigate'\)/);
   assert.match(nav, /\[disabled\]="!activeChart"/);
   assert.match(html, /\{\{t\(inspectorTitleKey\)\}\}/);
-  assert.match(component, /this\.inspectorTab === 'planets' \? 'nav\.planets' : this\.inspectorTab === 'aspects' \? 'tab\.aspects' : 'nav\.title'/);
+  assert.match(component, /this\.inspectorTab === 'planets' \? 'nav\.planets' : this\.inspectorTab === 'aspects' \? 'tab\.aspects' : this\.inspectorTab === 'transits' \? 'transits\.navigation' : this\.inspectorTab === 'zodiac' \? 'zodiac\.title' : 'nav\.title'/);
   assert.ok(panel.length > 800);
 });
 
@@ -106,7 +106,7 @@ test('Naviga cielo sits first in its group of the left menu, above Aspetti, and 
 });
 
 test('the panel is narrow and has its own look: no wide stacked buttons, no green or red', () => {
-  assert.match(html, /\[class\.inspector-narrow\]="inspectorTab==='navigate'"/);
+  assert.match(html, /\[class\.inspector-narrow\]="inspectorTab==='navigate' \|\| inspectorTab==='transits'"/);
   const width = Number(css.match(/\.workspace\.inspector-narrow \{ --inspector-width:(\d+)px; \}/)?.[1]);
   assert.ok(width <= 300 && width >= 240, 'narrower than the 400 px tables');
   // The five actions are small icon tiles in one row, not a column of wide buttons.
