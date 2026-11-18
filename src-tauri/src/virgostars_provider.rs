@@ -176,6 +176,51 @@ fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
     guard.as_mut().map(action)
 }
 
+/// Preparatory internal contract; it is not registered as a Tauri command.
+/// UT1 and the separately sourced TT−UT1 uncertainty are caller assertions.
+#[allow(dead_code)]
+pub(crate) struct ExplicitTimeChartRequest<'a> {
+    pub jd_ut1: f64,
+    pub delta_t_seconds: f64,
+    pub uncertainty_seconds: f64,
+    pub delta_t_source: &'a str,
+    pub latitude_deg: f64,
+    pub longitude_deg: f64,
+}
+
+#[allow(dead_code)]
+pub(crate) struct ExplicitTimeChart {
+    pub chart: ChartSnapshotV1,
+    pub epoch: virgostars_ephemeris_core::explicit_delta_t::ExplicitDeltaTEpoch,
+    pub delta_t_source: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ExplicitTimeChartError {
+    InvalidRequest,
+    ProviderUnavailable,
+    CalculationFailed,
+}
+
+/// Reuse the full modern chart machinery with explicit time scales. No change
+/// to the active chart path; old epochs remain rejected by existing frame and
+/// house guards until a long-term model is separately implemented and checked.
+#[allow(dead_code)]
+pub(crate) fn chart_with_explicit_time(request: &ExplicitTimeChartRequest<'_>) -> Result<ExplicitTimeChart, ExplicitTimeChartError> {
+    use virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t;
+    if !request.latitude_deg.is_finite() || request.latitude_deg.abs() > 90.0
+        || !request.longitude_deg.is_finite() || request.longitude_deg.abs() > 180.0
+        || request.delta_t_source.trim().is_empty() || request.delta_t_source.len() > 200 {
+        return Err(ExplicitTimeChartError::InvalidRequest);
+    }
+    let epoch = ut1_to_tdb_with_explicit_delta_t(request.jd_ut1, request.delta_t_seconds, request.uncertainty_seconds)
+        .map_err(|_| ExplicitTimeChartError::InvalidRequest)?;
+    let chart = with_engine(|engine| engine.chart_at_epoch(epoch.jd_ut1, epoch.jd_tt, epoch.jd_tdb, request.latitude_deg, request.longitude_deg))
+        .ok_or(ExplicitTimeChartError::ProviderUnavailable)?
+        .map_err(|_| ExplicitTimeChartError::CalculationFailed)?;
+    Ok(ExplicitTimeChart { chart, epoch, delta_t_source: request.delta_t_source.trim().to_string() })
+}
+
 /// Whether the DE441 file could be opened: without it there is no provider.
 pub fn data_available() -> bool {
     with_engine(|_| ()).is_some()
@@ -297,6 +342,12 @@ impl Engine {
         let jd_ut = julian_day_ut(request);
         let tdb = self.to_tdb(jd_ut)?;
         let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
+        self.chart_at_epoch(jd_ut, tt, tdb, request.latitude_deg, request.longitude_deg)
+    }
+
+    /// Shared full-chart calculation after the caller has resolved the time scales.
+    /// The current frame, lunar points and house orientation retain their modern guards.
+    fn chart_at_epoch(&mut self, jd_ut: f64, tt: f64, tdb: JulianDateTdb, latitude_deg: f64, longitude_deg: f64) -> Result<ChartSnapshotV1, ProviderError> {
         let ecliptic_options = ApparentOptions::default();
         let equatorial_options = ApparentOptions { frame: ApparentFrame::TrueEquatorOfDate, ..ApparentOptions::default() };
         let targets: Vec<Body> = PLANETS.iter().map(|(_, body)| *body).collect();
@@ -342,11 +393,11 @@ impl Engine {
         if !bodies.iter().any(|body| body.id == "Sun") || !bodies.iter().any(|body| body.id == "Moon") {
             return Err(ProviderError);
         }
-        let angles = house_angles(jd_ut, tt, request.latitude_deg, request.longitude_deg).map_err(|_| ProviderError)?;
+        let angles = house_angles(jd_ut, tt, latitude_deg, longitude_deg).map_err(|_| ProviderError)?;
         let basis = HouseAngles {
             armc_deg: angles.armc_deg,
             true_obliquity_deg: angles.true_obliquity_deg,
-            latitude_deg: request.latitude_deg,
+            latitude_deg,
             ascendant_deg: angles.ascendant_deg,
             midheaven_deg: angles.midheaven_deg,
         };
@@ -406,6 +457,61 @@ impl EphemerisProvider for VirgoStarsEphemeris {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn explicit_chart_request() -> ExplicitTimeChartRequest<'static> {
+        ExplicitTimeChartRequest { jd_ut1: 2_451_545.0, delta_t_seconds: 64.0,
+            uncertainty_seconds: 2.0, delta_t_source: "synthetic",
+            latitude_deg: 41.8928, longitude_deg: 12.4837 }
+    }
+
+    #[test]
+    fn explicit_chart_rejects_invalid_time_source_and_site_before_loading_data() {
+        let mut input = explicit_chart_request();
+        input.uncertainty_seconds = -1.0;
+        assert!(matches!(chart_with_explicit_time(&input), Err(ExplicitTimeChartError::InvalidRequest)));
+        input = explicit_chart_request(); input.delta_t_source = "  ";
+        assert!(matches!(chart_with_explicit_time(&input), Err(ExplicitTimeChartError::InvalidRequest)));
+        input = explicit_chart_request(); input.latitude_deg = f64::NAN;
+        assert!(matches!(chart_with_explicit_time(&input), Err(ExplicitTimeChartError::InvalidRequest)));
+        input = explicit_chart_request(); input.longitude_deg = 181.0;
+        assert!(matches!(chart_with_explicit_time(&input), Err(ExplicitTimeChartError::InvalidRequest)));
+    }
+
+    #[test]
+    #[ignore = "requires VIRGOSTARS_DE441_PATH pointing to a local DE441 file"]
+    fn explicit_chart_reuses_planets_lunar_points_and_houses_without_extending_their_guards() {
+        assert!(real_data(), "local DE441 required");
+        let mut input = explicit_chart_request();
+        let tdb = with_engine(|engine| engine.to_tdb(input.jd_ut1)).unwrap().unwrap();
+        let tt = tdb_to_tt_jd(tdb.0).unwrap();
+        input.delta_t_seconds = (tt - input.jd_ut1) * 86_400.0;
+        let expected = VirgoStarsEphemeris.chart(&request(2000, 1, 1, 12.0)).unwrap();
+        let actual = chart_with_explicit_time(&input).unwrap();
+        assert_eq!(actual.epoch.jd_ut1, input.jd_ut1);
+        assert_eq!(actual.epoch.uncertainty_seconds, 2.0);
+        assert_eq!(actual.delta_t_source, "synthetic");
+        assert_eq!(actual.chart.houses.len(), 5);
+        for id in ["Sun", "Moon", "mean Node", "true Node", "mean Apogee", "osc. Apogee"] {
+            let a = actual.chart.bodies.iter().find(|p| p.id == id).unwrap();
+            let b = expected.bodies.iter().find(|p| p.id == id).unwrap();
+            assert!((a.longitude_deg - b.longitude_deg).abs() < 1.0e-6, "{id}");
+        }
+        for (a, b) in actual.chart.houses.iter().zip(&expected.houses) {
+            assert_eq!(a.id, b.id);
+            for (x, y) in a.cusps_deg.iter().zip(b.cusps_deg) { assert!((x - y).abs() < 1.0e-6); }
+        }
+        let moon = |chart: &ChartSnapshotV1| chart.bodies.iter().find(|p| p.id == "Moon").unwrap().longitude_deg;
+        input.delta_t_seconds += 3_600.0;
+        let later_tt = chart_with_explicit_time(&input).unwrap();
+        assert_eq!(later_tt.epoch.jd_ut1, actual.epoch.jd_ut1);
+        assert!((moon(&later_tt.chart) - moon(&actual.chart)).abs() > 0.001);
+        input.delta_t_seconds -= 3_600.0;
+        input.jd_ut1 += 1.0 / 24.0;
+        let later_ut1 = chart_with_explicit_time(&input).unwrap();
+        assert!((later_ut1.chart.houses[0].ascendant_deg - actual.chart.houses[0].ascendant_deg).abs() > 1.0);
+        input.jd_ut1 = 1_355_817.5; // Far outside the existing modern orientation guard.
+        assert!(matches!(chart_with_explicit_time(&input), Err(ExplicitTimeChartError::CalculationFailed)));
+    }
 
     #[test]
     fn historical_usno_requires_table_and_explicit_prediction_choice() {
