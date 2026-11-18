@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  cleanChartName, formatUtcOffset, parseDegreesMicro, resolveNewChart,
+  cleanChartName, cleanPlaceName, formatUtcOffset, parseDegreesMicro, resolveNewChart, savedChartFields,
 } from '../src/app/new-chart-form.ts';
 import {resolveCivilTime} from '../src/app/native/civil-time.ts';
 
@@ -9,6 +9,26 @@ import {resolveCivilTime} from '../src/app/native/civil-time.ts';
 const FIELDS = Object.freeze({
   name: '  Soggetto di prova  ', date: '2001-02-03', time: '04:05:06', timeZone: 'Europe/Rome',
   latitude: '44.697805', longitude: '11,805778', placeName: 'Luogo di prova',
+});
+
+test('a saved chart prefills its original local birth date, time and coordinates', () => {
+  const chart = {
+    id:'11111111-1111-4111-8111-111111111111', name:'Persona immaginaria',
+    utcIso:'2001-02-03T03:05:06.000Z', timeZone:'Europe/Rome',
+    latMicro:44_697_805, lngMicro:11_805_778, placeName:'Luogo di prova',
+    createdAtMs:1000, updatedAtMs:2000,
+  };
+  assert.deepEqual(savedChartFields(chart), {
+    name:'Persona immaginaria', date:'2001-02-03', time:'04:05:06',
+    timeZone:'Europe/Rome', latitude:'44.697805', longitude:'11.805778', placeName:'Luogo di prova',
+  });
+  const ambiguous = savedChartFields({...chart, utcIso:'2025-10-26T01:30:00.000Z'});
+  assert.equal(ambiguous.time, '02:30:00', 'fall-back ambiguity preserves local time');
+  const resolved = resolveNewChart(ambiguous, resolveCivilTime, '2025-10-26T01:30:00.000Z');
+  assert.equal(resolved.status, 'ready');
+  assert.equal(resolved.input.utcIso, '2025-10-26T01:30:00.000Z');
+  assert.equal(savedChartFields({...chart, timeZone:'Invalid/Zone'}).timeZone, 'Invalid/Zone',
+    'an unsupported saved zone is still editable');
 });
 
 test('a complete form resolves to one UTC instant and micro-degree coordinates', () => {
@@ -70,6 +90,11 @@ test('names are trimmed, bounded and stripped of control characters', () => {
   assert.equal(cleanChartName('  Ada\u0000 \u0007Prova\n '), 'Ada Prova');
   assert.equal(cleanChartName('x'.repeat(200)).length, 80);
   assert.equal(cleanChartName(undefined), '');
+});
+
+test('manual place labels preserve the full native archive allowance of 160 characters', () => {
+  assert.equal(cleanPlaceName('x'.repeat(190)).length, 160);
+  assert.equal(resolveNewChart({...FIELDS,placeName:'x'.repeat(130)}, resolveCivilTime).input.placeName.length, 130);
 });
 
 test('UTC offsets are labelled with sign, hours, minutes and historical seconds', () => {

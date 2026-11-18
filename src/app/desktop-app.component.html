@@ -158,15 +158,22 @@
         </section>
 
         <!-- Archive: saved charts and charts open in this session. -->
-        <section class="sheet" *ngIf="view==='archive'" [attr.aria-label]="t('archive.title')">
-          <div class="sheet-inner">
+        <section class="sheet archive-sheet" *ngIf="view==='archive'" [attr.aria-label]="t('archive.title')">
+          <div class="sheet-inner archive-inner">
             <header class="sheet-head">
               <h2>{{t('archive.title')}}</h2>
               <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
             </header>
-            <p class="inspector-hint">{{t('archive.note')}}</p>
+            <div class="archive-intro">
+              <span class="archive-count">{{savedCharts.length}}</span>
+              <div>
+                <strong>{{t('archive.intro.title')}}</strong>
+                <p>{{t('archive.intro.subtitle')}}</p>
+              </div>
+            </div>
             <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
             <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
+            <p class="calc-status" role="status" *ngIf="photoStatus">{{t(photoStatus)}}</p>
             <!-- The first prototype kept a plain file; the encrypted archive replaced it but never deletes it on its own. -->
             <div class="legacy-warning" *ngIf="legacyPresent" role="alert">
               <p>{{t('archive.legacy')}}</p>
@@ -179,7 +186,14 @@
               </div>
             </div>
 
-            <ng-container *ngIf="sessionCharts.length">
+            <div class="archive-edit-panel" *ngIf="editingChart as edit">
+              <button type="button" class="archive-back" (click)="cancelEditSaved()">← {{t('archive.edit.back')}}</button>
+              <h3>{{t('archive.edit')}} · {{edit.name || t('session.unnamed')}}</h3>
+              <vs-new-chart [locale]="locale" [busy]="archiveBusy" [editChart]="edit"
+                (chartRequested)="saveEditedChart($event)"></vs-new-chart>
+            </div>
+
+            <ng-container *ngIf="!editingChart && sessionCharts.length">
               <h3 class="panel-title">{{t('archive.session')}}</h3>
               <div class="session-chart" *ngFor="let chart of sessionCharts; trackBy:trackChart" [class.active]="chart.id===activeChartId">
                 <button type="button" class="session-open" [disabled]="calcBusy || busy"
@@ -204,23 +218,55 @@
               </label>
             </ng-container>
 
-            <h3 class="panel-title">{{t('archive.saved.title')}} ({{savedCharts.length}})</h3>
-            <input type="search" class="archive-search" autocomplete="off" spellcheck="false" maxlength="80"
-              *ngIf="savedCharts.length" [attr.placeholder]="t('archive.search')" [attr.aria-label]="t('archive.search')"
-              [value]="archiveQuery" (input)="setArchiveQuery($event)">
-            <p class="inspector-hint" *ngIf="!savedCharts.length">{{t('archive.empty')}}</p>
-            <p class="inspector-hint" *ngIf="savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
-            <div class="session-chart" *ngFor="let saved of visibleSavedCharts; trackBy:trackSaved">
-              <button type="button" class="session-open" [disabled]="calcBusy || busy" [attr.title]="t('archive.open')" (click)="openSavedChart(saved)">
-                <strong>{{saved.name || t('session.unnamed')}}</strong>
-                <span>{{chartWhen(saved)}}</span>
-                <span>{{savedPlace(saved)}}</span>
-              </button>
-              <button type="button" class="small-control wide" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
-              <button type="button" class="small-control" [disabled]="archiveBusy"
-                [attr.aria-label]="t('archive.delete')" [attr.title]="t('archive.delete')" (click)="askDeleteSaved(saved.id)">×</button>
+            <div class="archive-list-head" *ngIf="!editingChart">
+              <h3 class="panel-title">{{t('archive.saved.title')}} <span class="archive-heading-count">{{savedCharts.length}}</span></h3>
+              <button type="button" class="archive-photo-toggle" [attr.aria-pressed]="showArchivePhotos"
+                (click)="toggleArchivePhotos()">{{t(showArchivePhotos ? 'archive.photos.hide' : 'archive.photos.show')}}</button>
             </div>
-            <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.confirm')" *ngIf="pendingDeleteId">
+            <input type="search" class="archive-search" autocomplete="off" spellcheck="false" maxlength="80"
+              *ngIf="!editingChart && savedCharts.length" [attr.placeholder]="t('archive.search')" [attr.aria-label]="t('archive.search')"
+              [value]="archiveQuery" (input)="setArchiveQuery($event)">
+            <p class="archive-privacy" *ngIf="!editingChart">{{t('archive.photos.private')}}</p>
+            <p class="inspector-hint" *ngIf="!editingChart && !savedCharts.length">{{t('archive.empty')}}</p>
+            <p class="inspector-hint" *ngIf="!editingChart && savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
+            <div class="archive-grid" *ngIf="!editingChart">
+              <article class="archive-card" *ngFor="let saved of shownSavedCharts; trackBy:trackSaved">
+                <div class="archive-card-main">
+                  <div class="archive-portrait" [class.has-photo]="showArchivePhotos && photoUrls[saved.id]">
+                    <img *ngIf="showArchivePhotos && photoUrls[saved.id]" [src]="photoUrls[saved.id]" [alt]="t('archive.photo.alt')">
+                    <span *ngIf="!showArchivePhotos || !photoUrls[saved.id]" aria-hidden="true">✧</span>
+                  </div>
+                  <button type="button" class="archive-card-open" [disabled]="calcBusy || busy"
+                    (click)="openSavedChart(saved)" [attr.title]="t('archive.open')">
+                    <strong>{{saved.name || t('session.unnamed')}}</strong>
+                    <span>{{chartWhen(saved)}}</span>
+                    <small>{{saved.placeName || savedPlace(saved)}}</small>
+                  </button>
+                </div>
+                <div class="archive-card-actions">
+                  <button type="button" class="archive-action primary" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
+                  <button type="button" class="archive-action" [disabled]="archiveBusy || calcBusy" (click)="editSavedChart(saved)">{{t('archive.edit')}}</button>
+                  <label class="archive-action archive-file-action" [class.is-disabled]="archiveBusy || !!photoBusyId">
+                    {{t(hasPrivatePhoto(saved.id) ? 'archive.photo.change' : 'archive.photo.add')}}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" [disabled]="archiveBusy || !!photoBusyId"
+                      [attr.aria-label]="t(hasPrivatePhoto(saved.id) ? 'archive.photo.change' : 'archive.photo.add')"
+                      (change)="uploadPrivatePhoto(saved, $event)">
+                  </label>
+                  <button type="button" class="archive-action" *ngIf="hasPrivatePhoto(saved.id)"
+                    [disabled]="archiveBusy || !!photoBusyId" (click)="askRemovePrivatePhoto(saved.id)">{{t('archive.photo.remove')}}</button>
+                  <button type="button" class="archive-action archive-danger" [disabled]="archiveBusy || !!photoBusyId"
+                    [attr.aria-label]="t('archive.delete')" [attr.title]="t('archive.delete')" (click)="askDeleteSaved(saved.id)">×</button>
+                </div>
+                <div class="archive-photo-confirm" role="alertdialog" [attr.aria-label]="t('archive.photo.confirm')" *ngIf="pendingPhotoDeleteId===saved.id">
+                  <p>{{t('archive.photo.confirm')}}</p>
+                  <button type="button" class="danger-control" [disabled]="archiveBusy || !!photoBusyId" (click)="removePrivatePhoto(saved)">{{t('archive.confirm.yes')}}</button>
+                  <button type="button" class="archive-action" (click)="cancelRemovePrivatePhoto()">{{t('archive.confirm.no')}}</button>
+                </div>
+              </article>
+            </div>
+            <button type="button" class="archive-show-more" *ngIf="!editingChart && visibleSavedCharts.length > archiveVisibleLimit"
+              (click)="showMoreSavedCharts()">{{t('archive.more')}}</button>
+            <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.confirm')" *ngIf="!editingChart && pendingDeleteId">
               <p>{{t('archive.confirm')}}</p>
               <button type="button" class="danger-control" [disabled]="archiveBusy" (click)="confirmDeleteSaved()">{{t('archive.confirm.yes')}}</button>
               <button type="button" class="small-control wide" (click)="cancelDeleteSaved()">{{t('archive.confirm.no')}}</button>

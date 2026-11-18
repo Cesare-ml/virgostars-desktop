@@ -7,6 +7,7 @@ mod chart_calculation;
 mod archive_keys;
 mod archive_vault;
 mod chart_archive;
+mod chart_photos;
 mod houses;
 mod return_search;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.

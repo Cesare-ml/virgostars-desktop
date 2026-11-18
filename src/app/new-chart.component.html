@@ -1,5 +1,5 @@
-<form class="new-chart" [attr.aria-label]="t('form.title')" (submit)="$event.preventDefault(); submit()">
-  <p class="form-note">{{t('form.intro')}}</p>
+<form class="new-chart" [attr.aria-label]="t(editChart ? 'archive.edit' : 'form.title')" (submit)="$event.preventDefault(); submit()">
+  <p class="form-note" *ngIf="!editChart">{{t('form.intro')}}</p>
 
   <label class="field">
     <span>{{t('form.name')}}</span>
@@ -20,6 +20,11 @@
 
   <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false"
     (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
+
+  <label class="field">
+    <span>{{t('form.place')}}</span>
+    <input type="text" autocomplete="off" spellcheck="false" maxlength="160" [value]="placeName" (input)="set('placeName', $event)">
+  </label>
 
   <div class="field-row">
     <label class="field">
@@ -49,7 +54,7 @@
   </div>
 
   <div class="form-actions">
-    <button type="submit" class="form-primary" [disabled]="busy">{{t('form.submit')}}</button>
-    <button type="button" class="form-secondary" [disabled]="busy" (click)="submitNow()">{{t('form.now')}}</button>
+    <button type="submit" class="form-primary" [disabled]="busy">{{t(editChart ? 'archive.edit.save' : 'form.submit')}}</button>
+    <button type="button" class="form-secondary" *ngIf="!editChart" [disabled]="busy" (click)="submitNow()">{{t('form.now')}}</button>
   </div>
 </form>
