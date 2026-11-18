@@ -4021,7 +4021,7 @@ dependencies = [
 [[package]]
 name = "virgostars-ephemeris-core"
 version = "0.1.0"
-source = "git+https://github.com/Cesare-ml/VirgoStars-Ephemeris?rev=31b84d45b7301adf440737158825804fb1bbbbff#31b84d45b7301adf440737158825804fb1bbbbff"
+source = "git+https://github.com/Cesare-ml/VirgoStars-Ephemeris?rev=5491f828af1caf24db356ffbbfa5b9c878ee0660#5491f828af1caf24db356ffbbfa5b9c878ee0660"
 
 [[package]]
 name = "vswhom"

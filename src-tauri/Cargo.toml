@@ -27,7 +27,7 @@ zeroize = "1"
 getrandom = "0.3"
 keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
 # Pinned to one reviewed commit of the Ephemeris repository; never a floating branch.
-virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "31b84d45b7301adf440737158825804fb1bbbbff", optional = true }
+virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "5491f828af1caf24db356ffbbfa5b9c878ee0660", optional = true }
 serde_json = { version = "1", optional = true }
 [dev-dependencies]
 serde_json = "1"

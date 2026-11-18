@@ -30,6 +30,7 @@ export class HistoricalPlanetsComponent implements OnDestroy {
   year = '2000'; month = '1'; day = '1'; hour = '12'; minute = '0';
   uncertainty = ''; deltaSeconds = ''; source = '';
   choice: 'supplied' | 'espenakMeeus2006' = 'espenakMeeus2006';
+  estimateUncertainty = false;
   includeScenarios = false;
   busy = false;
   result: HistoricalPlanet | null = null;
@@ -48,6 +49,11 @@ export class HistoricalPlanetsComponent implements OnDestroy {
   setChoice(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
     if (value === 'supplied' || value === 'espenakMeeus2006') this.choice = value;
+    if (this.choice === 'supplied') this.estimateUncertainty = false;
+    this.clear();
+  }
+  setEstimateUncertainty(event: Event): void {
+    this.estimateUncertainty = (event.target as HTMLInputElement).checked;
     this.clear();
   }
   setScenarios(event: Event): void {
@@ -61,7 +67,7 @@ export class HistoricalPlanetsComponent implements OnDestroy {
       day: numberOrNaN(this.day), hour: numberOrNaN(this.hour), minute: numberOrNaN(this.minute), second: 0,
       includeScenarios: this.includeScenarios,
       deltaT: this.choice === 'supplied' ? {kind: 'supplied', seconds: numberOrNaN(this.deltaSeconds), uncertaintySeconds, source: this.source}
-        : {kind: 'espenakMeeus2006', uncertaintySeconds}};
+        : this.estimateUncertainty ? {kind: 'espenakMeeus2006EstimatedUncertainty'} : {kind: 'espenakMeeus2006', uncertaintySeconds}};
     const ticket = ++this.ticket;
     this.busy = true; this.message = null; this.result = null;
     const outcome = await calculateHistoricalCalendar(request);

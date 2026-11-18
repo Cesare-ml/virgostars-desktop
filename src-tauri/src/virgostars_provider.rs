@@ -38,7 +38,7 @@ use virgostars_ephemeris_core::spk_type21::SmallBodySpk;
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-const ENGINE_VERSION: &str = "core-0.1.0-31b84d4";
+const ENGINE_VERSION: &str = "core-0.1.0-5491f82";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
@@ -209,6 +209,7 @@ pub(crate) fn historical_planet(
             body: request.body.clone(), jd_ut1: output.epoch.jd_ut1, jd_tt: output.epoch.jd_tt,
             jd_tdb: output.epoch.jd_tdb.0, delta_t_seconds: output.epoch.delta_t_seconds,
             uncertainty_seconds: output.epoch.uncertainty_seconds, delta_t_source: output.delta_t_source,
+            uncertainty_source: request.uncertainty_source.clone(),
             longitude_deg: fields.longitude_deg, latitude_deg: fields.latitude_deg, distance_au: fields.distance_au,
             longitude_speed_deg_per_tdb_day: output.rates.longitude_deg_per_tdb_day,
             latitude_speed_deg_per_tdb_day: output.rates.latitude_deg_per_tdb_day,
