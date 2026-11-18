@@ -4,9 +4,8 @@ import type { HouseSystemId } from './native/chart-calculation-contract';
 import { formatDegreeInSign, houseDisplay, type TemaRenderData } from './astro/tema-render-data';
 import { formatOrb, type AspectRow } from './astro/aspects';
 import { aspectSymbol } from './aspect-symbols';
-import { PRIVATE_ARTWORK } from './asset-mode';
 import {
-  elementDistribution, type ElementDistribution, type ElementId, type ElementPlacement, type ModalityId,
+  elementDistribution, zodiacElementOfSign, type ElementDistribution, type ElementId, type ElementPlacement, type ModalityId,
 } from './astro/element-distribution';
 import { translate, type Locale, type MessageKey } from './translations';
 
@@ -46,7 +45,6 @@ export class ElementsViewComponent implements OnChanges {
   @Input() showDodecatemoria = false;
   @Output() readonly toggleDodecatemoria = new EventEmitter<void>();
 
-  readonly privateArtwork = PRIVATE_ARTWORK;
   readonly planets = PLANETS;
   readonly aspectLegend = ['congiunzione','sestile','quadrato','trigono','opposizione'] as const;
   distribution: ElementDistribution | null = null;
@@ -79,12 +77,18 @@ export class ElementsViewComponent implements OnChanges {
     };
     return this.copy(...labels[id]);
   }
-  imageUrl(item:ElementPlacement): string {
-    return '/assets/img/simboli/elementi-celesti/' + this.theme + '/875x605/' +
-      encodeURIComponent(item.name + (item.retrograde ? '-r' : '')) + '.png';
+  planetSymbol(name:string): string {
+    return ({Sun:'☉',Moon:'☽',Mercury:'☿',Venus:'♀',Mars:'♂',Jupiter:'♃',Saturn:'♄'} as Record<string,string>)[name] ?? '•';
   }
-  signImageUrl(sign:number): string {
-    return '/assets/img/simboli/segni/' + this.theme + '/785x610/' + String(sign+1).padStart(2,'0') + '.png';
+  planetRetrograde(name:string): boolean { return (this.data?.planets[name]?.longitudeSpeed ?? 0)<0; }
+  signElement(sign:number): ElementId | null { return zodiacElementOfSign(sign); }
+  planetImageUrl(name:string,retrograde=false,white=false): string {
+    return '/assets/img/simboli/elementi-celesti/' + this.theme + '/875x605/' +
+      (white?'bianco/':'')+encodeURIComponent(name+(retrograde?'-r':''))+'.png';
+  }
+  signImageUrl(sign:number,white=false): string {
+    return '/assets/img/simboli/segni/' + this.theme + '/785x610/' +
+      (white?'bianco/':'')+String(sign+1).padStart(2,'0')+'.png';
   }
   /**
    * Older asset packs include flat color rectangles instead of shaped glyphs.

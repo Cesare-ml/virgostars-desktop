@@ -36,10 +36,10 @@
   border:1px solid color-mix(in srgb,var(--element-color) 19%,var(--vs-border));
   background:var(--vs-surface);border-radius:12px;
 }
-.element-row[data-element='fire'] {--element-color:#d94a4f;--element-wash:rgba(217,74,79,.092);}
-.element-row[data-element='air'] {--element-color:#b38b18;--element-wash:rgba(208,161,21,.115);}
-.element-row[data-element='water'] {--element-color:#3b92d5;--element-wash:rgba(60,145,210,.105);}
-.element-row[data-element='earth'] {--element-color:#30996b;--element-wash:rgba(48,153,107,.1);}
+[data-element='fire'] {--element-color:#d94a4f;--element-wash:rgba(217,74,79,.092);}
+[data-element='air'] {--element-color:#b38b18;--element-wash:rgba(208,161,21,.115);}
+[data-element='water'] {--element-color:#3b92d5;--element-wash:rgba(60,145,210,.105);}
+[data-element='earth'] {--element-color:#30996b;--element-wash:rgba(48,153,107,.1);}
 .element-cell {min-width:0;padding:11px 12px;display:flex;flex-direction:column;justify-content:center;gap:7px;}
 .house-cell {
   text-align:right;background:linear-gradient(270deg,var(--element-wash),transparent 72%);
@@ -58,18 +58,18 @@
 .planet-chip,.modality-planets li {
   display:inline-flex;align-items:center;justify-content:center;gap:3px;
   min-height:30px;padding:3px 6px;border-radius:7px;
-  border:1px solid color-mix(in srgb,var(--element-color) 21%,var(--vs-border));
-  background:var(--vs-surface);color:var(--vs-text);font-variant-numeric:tabular-nums;
-  white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.025);
+  border:1px solid color-mix(in srgb,var(--element-color) 60%,#14151d);
+  background:color-mix(in srgb,var(--element-color) 76%,#171820);color:#fff;font-variant-numeric:tabular-nums;
+  white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.08);
 }
-.placement-datum {font-size:12px;color:var(--element-color);font-weight:750;}
+.placement-datum {font-size:12px;color:#fff;font-weight:750;}
 .astro-glyph {
   position:relative;width:21px;height:24px;display:inline-grid;place-items:center;flex:0 0 auto;
   font-family:'Segoe UI Symbol','Noto Sans Symbols 2','DejaVu Sans',sans-serif;
   font-variant-emoji:text;line-height:1;
 }
 .glyph-fallback {font-size:21px;}
-.sign-glyph {width:20px;color:var(--element-color);}
+.sign-glyph {width:20px;color:inherit;}
 .sign-glyph .glyph-fallback {font-size:20px;}
 .asset-glyph {display:none;}
 .asset-glyph.asset-verified {
@@ -78,7 +78,7 @@
 .asset-glyph.asset-verified + .glyph-fallback {visibility:hidden;}
 .axis-arrow {
   display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 auto;
-  min-width:70px;min-height:31px;padding:4px 9px;background:var(--element-color);
+  min-width:70px;min-height:31px;padding:4px 9px;background:color-mix(in srgb,var(--element-color) 76%,#171820);
   color:#fff;font-size:10px;letter-spacing:.025em;box-shadow:0 2px 5px rgba(0,0,0,.12);
 }
 .axis-arrow b {font-weight:800;}
@@ -92,7 +92,6 @@
   background:color-mix(in srgb,var(--element-color) 10%,var(--vs-surface));
 }
 .element-center strong {font-size:12px;font-weight:800;}
-.element-count {font-size:10px;font-variant-numeric:tabular-nums;opacity:.77;font-weight:700;}
 .element-emblem {width:25px;height:23px;display:grid;place-items:center;position:relative;}
 .element-emblem::before {content:'';display:block;width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:21px solid var(--element-color);}
 .element-emblem[data-shape='water']::before,.element-emblem[data-shape='earth']::before {
@@ -105,7 +104,7 @@
 .cell-small-heading {display:none;}
 .dodeca-line {border-top:1px dashed color-mix(in srgb,var(--element-color) 22%,var(--vs-border));padding-top:7px;}
 .dodeca-caption {display:block;margin:0 0 5px;color:var(--vs-text-secondary);font-size:9px;letter-spacing:.09em;text-transform:uppercase;font-weight:750;}
-.secondary {border-style:dashed;background:transparent;min-height:25px;opacity:.9;}
+.secondary {border-style:dashed;min-height:25px;opacity:.78;}
 .secondary .astro-glyph {height:19px;width:18px;}
 .secondary .glyph-fallback {font-size:17px;}
 .secondary .placement-datum {font-size:11px;}
@@ -125,10 +124,10 @@
 [data-modality='fixed'] {--modality-color:#8772c6;}
 [data-modality='mutable'] {--modality-color:#37a69a;}
 .modality-planets {display:flex;flex-wrap:wrap;gap:5px;list-style:none;margin:0;padding:0;}
-.modality-planets li {min-height:29px;padding:3px 6px;border-color:var(--vs-border);gap:4px;}
+.modality-planets li {min-height:29px;padding:3px 6px;gap:4px;}
 .modality-planets .astro-glyph {width:18px;height:20px;}
 .modality-planets .glyph-fallback {font-size:18px;}
-.modality-planets .sign-glyph {color:var(--modality-color);}
+.modality-planets .sign-glyph {color:inherit;}
 .modality-planets .modality-empty {border:0;color:var(--vs-text-secondary);font-size:11px;background:transparent;}
 .matrix-scroll {max-width:100%;overflow-x:auto;}
 .aspect-matrix {border-collapse:separate;border-spacing:3px;width:100%;min-width:395px;table-layout:fixed;}
@@ -136,6 +135,12 @@
 .aspect-matrix thead th {height:27px;}
 .aspect-matrix thead .matrix-corner {width:66px;}
 .aspect-matrix tbody th {width:66px;text-align:right;white-space:nowrap;padding-right:5px;font-size:11px;}
+.aspect-matrix th .astro-glyph {width:22px;height:26px;color:var(--vs-text);}
+.aspect-matrix th .glyph-fallback {font-size:22px;}
+.sr-only {
+  position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0;
+}
 .aspect-matrix td {
   padding:0;height:35px;border-radius:5px;text-align:center;vertical-align:middle;
   border:1px solid var(--vs-border);background:var(--vs-surface-muted);
@@ -145,8 +150,6 @@
 .matrix-aspect b {font-family:'Segoe UI Symbol','Noto Sans Symbols 2',sans-serif;font-size:17px;font-weight:700;color:var(--aspect-color);}
 .matrix-aspect small {font-size:9px;color:var(--vs-text-secondary);font-variant-numeric:tabular-nums;}
 .matrix-empty {opacity:.25;}
-.matrix-planet {display:inline;}
-.matrix-planet-full {display:none;}
 [data-aspect='congiunzione'] {--aspect-color:#a16aa3;color:var(--aspect-color);}
 [data-aspect='sestile'] {--aspect-color:#229e81;color:var(--aspect-color);}
 [data-aspect='quadrato'] {--aspect-color:#d5665c;color:var(--aspect-color);}

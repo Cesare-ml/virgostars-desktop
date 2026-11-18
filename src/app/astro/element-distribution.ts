@@ -14,6 +14,9 @@ const ZODIAC_ELEMENTS: readonly ElementId[] = [
   'fire', 'earth', 'air', 'water', 'fire', 'earth',
   'air', 'water', 'fire', 'earth', 'air', 'water',
 ];
+export function zodiacElementOfSign(sign:number): ElementId | null {
+  return ZODIAC_ELEMENTS[sign] ?? null;
+}
 const SEVEN = [
   ['Sun', '☉'], ['Moon', '☽'], ['Mercury', '☿'], ['Venus', '♀'],
   ['Mars', '♂'], ['Jupiter', '♃'], ['Saturn', '♄'],

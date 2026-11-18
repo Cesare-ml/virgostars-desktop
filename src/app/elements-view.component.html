@@ -32,7 +32,7 @@
             <ul class="element-placements">
               <li *ngFor="let item of row.housePlanets; trackBy:trackPlanet" class="planet-chip"
                 [attr.title]="positionTitle(item,'house')" [attr.aria-label]="positionTitle(item,'house')">
-                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item}"></ng-container>
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
                 <span class="placement-datum">{{houseLabel(item.house)}}</span>
               </li>
               <li class="element-empty" *ngIf="!row.housePlanets.length && model.ascElement!==row.id">—</li>
@@ -43,7 +43,7 @@
             <ul class="element-placements">
               <li *ngFor="let item of row.houseDodecatemoria; trackBy:trackPlanet" class="planet-chip secondary"
                 [attr.title]="positionTitle(item,'house',true)" [attr.aria-label]="positionTitle(item,'house',true)">
-                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item}"></ng-container>
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
                 <span class="placement-datum">{{houseLabel(item.house)}}</span>
               </li>
               <li class="element-empty" *ngIf="!row.houseDodecatemoria.length">—</li>
@@ -53,7 +53,6 @@
         <div class="element-center">
           <span class="element-emblem" [attr.data-shape]="row.id" aria-hidden="true"><span></span></span>
           <strong>{{elementLabel(row.id)}}</strong>
-          <span class="element-count">{{row.signPlanets.length}} / {{model.countedPlanets}}</span>
         </div>
         <div class="element-cell sign-cell">
           <span class="cell-small-heading">{{t('elements.inSigns')}}</span>
@@ -61,8 +60,8 @@
             <ul class="element-placements">
               <li *ngFor="let item of row.signPlanets; trackBy:trackPlanet" class="planet-chip"
                 [attr.title]="positionTitle(item,'sign')" [attr.aria-label]="positionTitle(item,'sign')">
-                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item}"></ng-container>
-                <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign}"></ng-container>
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+                <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign,white:true}"></ng-container>
               </li>
               <li class="element-empty" *ngIf="!row.signPlanets.length && model.dsElement!==row.id">—</li>
             </ul>
@@ -77,8 +76,8 @@
             <ul class="element-placements">
               <li *ngFor="let item of row.signDodecatemoria; trackBy:trackPlanet" class="planet-chip secondary"
                 [attr.title]="positionTitle(item,'sign',true)" [attr.aria-label]="positionTitle(item,'sign',true)">
-                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item}"></ng-container>
-                <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign}"></ng-container>
+                <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+                <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign,white:true}"></ng-container>
               </li>
               <li class="element-empty" *ngIf="!row.signDodecatemoria.length">—</li>
             </ul>
@@ -107,10 +106,10 @@
           <span [style.width.%]="modalityPercent(group.planets.length)"></span>
         </div>
         <ul class="modality-planets">
-          <li *ngFor="let item of group.planets; trackBy:trackPlanet"
+          <li *ngFor="let item of group.planets; trackBy:trackPlanet" [attr.data-element]="signElement(item.sign)"
             [attr.title]="positionTitle(item,'sign')" [attr.aria-label]="positionTitle(item,'sign')">
-            <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item}"></ng-container>
-            <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign}"></ng-container>
+            <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:item.name,retrograde:item.retrograde,white:true}"></ng-container>
+            <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:item.sign,white:true}"></ng-container>
           </li>
           <li class="modality-empty" *ngIf="!group.planets.length">{{t('elements.none')}}</li>
         </ul>
@@ -127,11 +126,15 @@
         <table class="aspect-matrix" [attr.aria-label]="copy('Aspetti tra i sette pianeti','Aspects between seven planets')">
           <thead><tr><th scope="col" class="matrix-corner"></th>
             <th scope="col" *ngFor="let planet of planets; trackBy:trackName" [attr.title]="planetLabel(planet)">
-              <span class="matrix-planet">{{planetLabel(planet).slice(0,2)}}</span><span class="matrix-planet-full">{{planetLabel(planet)}}</span>
+              <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:planet,retrograde:planetRetrograde(planet),white:false}"></ng-container>
+              <span class="sr-only">{{planetLabel(planet)}}</span>
             </th>
           </tr></thead>
           <tbody><tr *ngFor="let planet of planets; let i=index; trackBy:trackName">
-            <th scope="row" [attr.title]="planetLabel(planet)">{{planetLabel(planet)}}</th>
+            <th scope="row" [attr.title]="planetLabel(planet)">
+              <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:planet,retrograde:planetRetrograde(planet),white:false}"></ng-container>
+              <span class="sr-only">{{planetLabel(planet)}}</span>
+            </th>
             <td *ngFor="let other of planets; let j=index; trackBy:trackName" [class.matrix-upper]="j>=i">
               <ng-container *ngIf="j<i">
                 <ng-container *ngIf="matrixAspect(planet,other) as aspect; else noAspect">
@@ -156,16 +159,16 @@
   </div>
 </section>
 
-<ng-template #planetMark let-item>
+<ng-template #planetMark let-name let-retrograde="retrograde" let-white="white">
   <span class="astro-glyph" aria-hidden="true">
-    <img *ngIf="privateArtwork" class="asset-glyph" alt="" [src]="imageUrl(item)"
+    <img class="asset-glyph" alt="" [src]="planetImageUrl(name,retrograde,white)"
       (load)="imageLoaded($event)" (error)="imageMissing($event)">
-    <span class="glyph-fallback">{{item.glyph}}</span>
+    <span class="glyph-fallback">{{planetSymbol(name)}}</span>
   </span>
 </ng-template>
-<ng-template #signMark let-sign>
+<ng-template #signMark let-sign let-white="white">
   <span class="astro-glyph sign-glyph" aria-hidden="true">
-    <img *ngIf="privateArtwork" class="asset-glyph" alt="" [src]="signImageUrl(sign)"
+    <img class="asset-glyph" alt="" [src]="signImageUrl(sign,white)"
       (load)="imageLoaded($event)" (error)="imageMissing($event)">
     <span class="glyph-fallback">{{signSymbol(sign)}}</span>
   </span>
