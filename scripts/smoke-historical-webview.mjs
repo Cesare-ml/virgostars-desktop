@@ -69,5 +69,9 @@ try {
     if(!/Local USNO-format non-prediction \(source unverified\)/.test(result)) throw Error('USNO_RESULT_NOT_SHOWN');
     if(!/Errore riportato dalla tabella|Error reported by the table/.test(result) || !/non indicato|not provided/.test(result)) throw Error('USNO_UNKNOWN_ERROR_NOT_SHOWN');
   }
-  process.stdout.write('WebView2 historical panel: fractional seconds, model, BCE estimate, uncertainty and explicit source passed' + (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR ? '; USNO passed.\n' : '. USNO not requested.\n'));
+  await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); p.querySelector('#historical-all-bodies').click(); p.querySelector('form').requestSubmit();})()`);
+  let headings=[];
+  for(let i=0;i<100 && headings.length!==10;i++){await pause(300); headings=await evaluate(`[...document.querySelectorAll('vs-historical-planets .result h3')].map(x=>x.textContent.trim())`);}
+  if(headings.length!==10 || new Set(headings).size!==10) throw Error('PLANET_SET_NOT_SHOWN');
+  process.stdout.write('WebView2 historical panel: ten-body set, fractional seconds, model, BCE estimate, uncertainty and explicit source passed' + (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR ? '; USNO passed.\n' : '. USNO not requested.\n'));
 } finally { socket?.close(); child.kill(); }

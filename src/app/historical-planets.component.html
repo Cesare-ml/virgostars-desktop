@@ -4,8 +4,9 @@
   <p>{{t('historical.yearNote')}}</p>
   <form (submit)="$event.preventDefault(); calculate()">
     <label class="field"><span>{{t('historical.body')}}</span>
-      <select [value]="body" (change)="setBody($event)"><option *ngFor="let item of bodies" [value]="item">{{bodyLabel(item)}}</option></select>
+      <select [value]="body" [disabled]="allBodies" (change)="setBody($event)"><option *ngFor="let item of bodies" [value]="item">{{bodyLabel(item)}}</option></select>
     </label>
+    <label class="check"><input id="historical-all-bodies" type="checkbox" [checked]="allBodies" (change)="setAllBodies($event)"><span>{{t('historical.allBodies')}}</span></label>
     <div class="row">
       <label class="field"><span>{{t('nav.year')}}</span><input id="historical-year" type="number" [value]="year" (input)="set('year', $event)"></label>
       <label class="field"><span>{{t('nav.month')}}</span><input type="number" [value]="month" (input)="set('month', $event)"></label>
@@ -33,8 +34,8 @@
     <label class="check"><input id="historical-scenarios" type="checkbox" [checked]="includeScenarios" (change)="setScenarios($event)"><span>{{t('historical.scenarios')}}</span></label>
     <button type="submit" [disabled]="busy">{{t(busy ? 'historical.calculating' : 'historical.calculate')}}</button>
   </form>
-  <p class="message" role="alert" *ngIf="message">{{t(message)}}</p>
-  <div class="result" role="status" *ngIf="result as planet">
+  <p class="message" role="alert" *ngIf="message"><ng-container *ngIf="failedBody as failed">{{bodyLabel(failed)}}: </ng-container>{{t(message)}}</p>
+  <div class="result" role="status" *ngFor="let planet of results">
     <h3>{{bodyLabel(planet.body)}}</h3>
     <p>{{t('historical.longitude')}}: {{planet.longitudeDeg | number:'1.6-6'}}°</p>
     <p>{{t('historical.latitude')}}: {{planet.latitudeDeg | number:'1.6-6'}}°</p>

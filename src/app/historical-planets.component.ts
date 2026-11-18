@@ -1,6 +1,7 @@
 import {CommonModule} from '@angular/common';
 import {ChangeDetectorRef, Component, Input, OnDestroy, inject} from '@angular/core';
 import {calculateHistoricalCalendar} from './native/historical-calendar';
+import {calculatePlanetSet} from './historical-planet-set';
 import type {HistoricalCalendarRequest} from './native/historical-calendar-contract';
 import {HISTORICAL_BODIES, type HistoricalBody, type HistoricalPlanet, type HistoricalResult} from './native/historical-planets-contract';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -28,6 +29,7 @@ export class HistoricalPlanetsComponent implements OnDestroy {
   private destroyed = false;
   readonly bodies = HISTORICAL_BODIES;
   body: HistoricalBody = 'Sun';
+  allBodies = false;
   year = '2000'; month = '1'; day = '1'; hour = '12'; minute = '0'; second = '0';
   uncertainty = ''; deltaSeconds = ''; source = '';
   choice: 'supplied' | 'espenakMeeus2006' | 'usno' = 'espenakMeeus2006';
@@ -35,17 +37,22 @@ export class HistoricalPlanetsComponent implements OnDestroy {
   allowPredictions = false;
   includeScenarios = false;
   busy = false;
-  result: HistoricalPlanet | null = null;
+  results: readonly HistoricalPlanet[] = [];
   message: MessageKey | null = null;
+  failedBody: HistoricalBody | null = null;
 
   ngOnDestroy(): void { this.destroyed = true; this.ticket++; }
   t(key: MessageKey): string { return translate(this.locale, key); }
   bodyLabel(body: HistoricalBody): string { return this.t(BODY_LABELS[body]); }
-  private clear(): void { this.ticket++; this.busy = false; this.result = null; this.message = null; }
+  private clear(): void { this.ticket++; this.busy = false; this.results = []; this.message = null; this.failedBody = null; }
   set(field: TextField, event: Event): void { this[field] = (event.target as HTMLInputElement).value; this.clear(); }
   setBody(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
     if (this.bodies.includes(value as HistoricalBody)) this.body = value as HistoricalBody;
+    this.clear();
+  }
+  setAllBodies(event: Event): void {
+    this.allBodies = (event.target as HTMLInputElement).checked;
     this.clear();
   }
   setChoice(event: Event): void {
@@ -77,12 +84,13 @@ export class HistoricalPlanetsComponent implements OnDestroy {
         : this.choice === 'usno' ? {kind: 'usno', uncertaintySeconds, allowPredictions: this.allowPredictions}
         : this.estimateUncertainty ? {kind: 'espenakMeeus2006EstimatedUncertainty'} : {kind: 'espenakMeeus2006', uncertaintySeconds}};
     const ticket = ++this.ticket;
-    this.busy = true; this.message = null; this.result = null;
-    const outcome = await calculateHistoricalCalendar(request);
+    this.busy = true; this.message = null; this.failedBody = null; this.results = [];
+    const outcome = await calculatePlanetSet(request, this.allBodies ? this.bodies : [this.body],
+      calculateHistoricalCalendar, () => this.destroyed || ticket !== this.ticket);
     if (this.destroyed || ticket !== this.ticket) return;
     this.busy = false;
-    if (outcome.kind === 'ready') this.result = outcome.planet;
-    else this.message = FAILURES[outcome.kind];
+    if (outcome.kind === 'ready') this.results = outcome.planets;
+    else if (outcome.kind === 'failed') { this.failedBody = outcome.body; this.message = FAILURES[outcome.reason]; }
     this.cd.markForCheck();
   }
 }
