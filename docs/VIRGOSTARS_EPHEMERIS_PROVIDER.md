@@ -4,7 +4,23 @@
 
 ## What it does
 
-- `src-tauri/src/virgostars_provider.rs` implements the `EphemerisProvider` port with `virgostars-ephemeris-core` (CPAL-1.0), pinned to commit `ff0ad099c3ec601e0e5520c231a75b4bed8d5b57` of `Cesare-ml/VirgoStars-Ephemeris`, including [Ephemeris PR #644](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/644). The git dependency needs network access the first time it is fetched.
+- `src-tauri/src/virgostars_provider.rs` implements the `EphemerisProvider` port with `virgostars-ephemeris-core` (CPAL-1.0), pinned to commit `0535e9d09e22674b853dcfaed7976e20ba9f82b7` of `Cesare-ml/VirgoStars-Ephemeris`, including [Ephemeris PR #648](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/648). The git dependency needs network access the first time it is fetched.
+
+The provider also contains an **isolated** historical chart adapter: it feeds
+an explicitly interpreted local clock and caller-supplied ΔT into the merged
+snapshot, maps ten planets and four lunar points, and reuses the existing five
+house methods. Optional sunrise and sunset distinguish no event from an error.
+The local-clock and ΔT uncertainties remain separate; lunar model points are
+labelled `lunar_model`, and Chiron is explicitly unavailable in this path.
+**It is not yet registered in Tauri or connected to the form, archive or
+renderer.** The current chart contract and UI retain their 1900–2033 limits;
+this change does not add a historical-planets panel or broaden those limits.
+Historical calendar selection, offset source and ΔT must be explicit when the
+future consumer is connected.
+In particular, the existing frontend decoder accepts only modern JD values and
+the `jpl` source label; the historical contract must accept the wider interval
+and the distinct `lunar_model` label before it can render this result. Existing
+UTC-only archive/navigation fields must not be reused to mislabel a UT1 epoch.
 - `calculate_chart` v1 is unchanged (same IPC contract, no path, name or account data crosses it). It now answers with provider id `virgostars_ephemeris`, source `jpl` and the engine version string.
 - Bodies: Sun, Moon, Mercury, Venus, Mars–Pluto, mean and true lunar Node, mean and osculating Apogee, and Chiron (JPL SPK, NAIF 20002060). Apparent geocentric ecliptic-of-date positions, speeds, right ascension and declination.
 - Mars to Pluto are the **system barycentres** (the usual convention for the outer planets, DE441 carries no separate body for them).
