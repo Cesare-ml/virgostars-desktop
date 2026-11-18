@@ -37,15 +37,20 @@ try {
   const opened=await evaluate(`(() => {const b=[...document.querySelectorAll('.nav-item')].find(x=>/Pianeti storici|Historical planets/.test(x.textContent)); if(!b)return false; b.click(); return true;})()`);
   if(!opened) throw Error('PANEL_NOT_FOUND');
   await pause(250);
-  const filled=await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const inputs=p?.querySelectorAll('input[type=number]'); if(!inputs || inputs.length!==6)return false; inputs[5].value='3600'; inputs[5].dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('#historical-scenarios').click(); p.querySelector('form').requestSubmit(); return true;})()`);
+  const filled=await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const body=p?.querySelector('select'); const uncertainty=p?.querySelector('#historical-uncertainty'); if(!body || !uncertainty)return false; body.value='Moon'; body.dispatchEvent(new Event('change',{bubbles:true})); uncertainty.value='3600'; uncertainty.dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('#historical-scenarios').click(); p.querySelector('form').requestSubmit(); return true;})()`);
   if(!filled) throw Error('FORM_NOT_FOUND');
   let result='';
   for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
   if(!/Espenak-Meeus 2006/.test(result) || !/63[.,]8/.test(result) || !/meno incertezza|minus uncertainty/.test(result) || !/più incertezza|plus uncertainty/.test(result)) throw Error('MODEL_OR_SCENARIOS_NOT_SHOWN');
+  const longitudeAtZero = await evaluate(`document.querySelector('vs-historical-planets .result p')?.textContent ?? ''`);
+  await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const seconds=p.querySelector('#historical-second'); seconds.value='30.5'; seconds.dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('form').requestSubmit();})()`);
+  result='';
+  for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result p')?.textContent ?? ''`);}
+  if(!result || result===longitudeAtZero) throw Error('FRACTIONAL_SECONDS_NOT_APPLIED');
   const manual=await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const sel=p.querySelectorAll('select')[1]; sel.value='supplied'; sel.dispatchEvent(new Event('change',{bubbles:true})); return true;})()`);
   if(!manual) throw Error('MANUAL_SOURCE_UNAVAILABLE');
   await pause(150);
-  await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const a=p.querySelectorAll('input[type=number]'); for(const [i,v] of [[0,'-12999'],[5,'100'],[6,'3600']]){a[i].value=v; a[i].dispatchEvent(new Event('input',{bubbles:true}));} const s=p.querySelector('input[type=text]'); s.value='synthetic'; s.dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('form').requestSubmit();})()`);
+  await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); for(const [id,v] of [['historical-year','-12999'],['historical-delta','100'],['historical-uncertainty','3600']]){const el=p.querySelector('#'+id); el.value=v; el.dispatchEvent(new Event('input',{bubbles:true}));} const s=p.querySelector('input[type=text]'); s.value='synthetic'; s.dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('form').requestSubmit();})()`);
   result='';
   for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
   if(!/synthetic/.test(result) || !/meno incertezza|minus uncertainty/.test(result)) throw Error('ANCIENT_SCENARIOS_NOT_SHOWN');
@@ -58,11 +63,11 @@ try {
   if (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR) {
     await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const sel=p.querySelectorAll('select')[1]; sel.value='usno'; sel.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await pause(150);
-    await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const a=p.querySelectorAll('input[type=number]'); for(const [i,v] of [[0,'2000'],[5,'5']]){a[i].value=v; a[i].dispatchEvent(new Event('input',{bubbles:true}));} p.querySelector('form').requestSubmit();})()`);
+    await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); for(const [id,v] of [['historical-year','2000'],['historical-uncertainty','5']]){const el=p.querySelector('#'+id); el.value=v; el.dispatchEvent(new Event('input',{bubbles:true}));} p.querySelector('form').requestSubmit();})()`);
     result='';
     for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
     if(!/Local USNO-format non-prediction \(source unverified\)/.test(result)) throw Error('USNO_RESULT_NOT_SHOWN');
     if(!/Errore riportato dalla tabella|Error reported by the table/.test(result) || !/non indicato|not provided/.test(result)) throw Error('USNO_UNKNOWN_ERROR_NOT_SHOWN');
   }
-  process.stdout.write('WebView2 historical panel: model, BCE estimate, uncertainty and explicit source passed' + (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR ? '; USNO passed.\n' : '. USNO not requested.\n'));
+  process.stdout.write('WebView2 historical panel: fractional seconds, model, BCE estimate, uncertainty and explicit source passed' + (process.env.VIRGOSTARS_HISTORICAL_SMOKE_USNO_DIR ? '; USNO passed.\n' : '. USNO not requested.\n'));
 } finally { socket?.close(); child.kill(); }

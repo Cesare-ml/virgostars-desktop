@@ -79,6 +79,17 @@ test('dispatches the selected model and checks source and uncertainty in the rep
   assert.equal((await requestHistoricalCalendar({...transport, isNative:()=>false}, request)).kind, 'not_native');
 });
 
+test('passes fractional UT1 seconds without rounding and rejects invalid seconds', async () => {
+  let sent;
+  const transport = {isNative:()=>true, invoke:async (...args)=>{sent=args; return ok();}};
+  const fractional = {...request, second:30.5};
+  assert.equal((await requestHistoricalCalendar(transport, fractional)).kind, 'ready');
+  assert.equal(sent[1].request.second, 30.5);
+  for (const second of [-1, 60, NaN, Infinity]) {
+    assert.equal(validHistoricalCalendar({...request, second}), false);
+  }
+});
+
 test('USNO source requires explicit uncertainty and prediction permission', async () => {
   const deltaT = {kind:'usno', uncertaintySeconds:2, allowPredictions:false};
   const usnoRequest = {...request, deltaT};

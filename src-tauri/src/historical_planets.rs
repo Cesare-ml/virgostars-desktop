@@ -425,6 +425,9 @@ mod tests {
         let model = r#"{"protocolVersion":1,"body":"Moon","year":2000,"month":1,"day":1,"hour":12,"minute":0,"second":0,"deltaT":{"kind":"espenakMeeus2006","uncertaintySeconds":2}}"#;
         let r = resolve_calendar(parse(model)).unwrap();
         assert_eq!(r.jd_ut1, 2451545.0);
+        let fractional = resolve_calendar(parse(&model.replace("\"second\":0", "\"second\":30.5"))).unwrap();
+        assert!(((fractional.jd_ut1 - r.jd_ut1) * 86_400.0 - 30.5).abs() < 0.0001);
+        assert!(resolve_calendar(parse(&model.replace("\"second\":0", "\"second\":60"))).is_err());
         assert!((r.delta_t_seconds - 63.86).abs() < 0.01);
         assert_eq!(r.delta_t_source, "Espenak-Meeus 2006");
         assert_eq!(r.uncertainty_seconds, 2.0);

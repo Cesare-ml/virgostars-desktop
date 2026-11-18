@@ -14,7 +14,7 @@ const FAILURES: Record<Exclude<HistoricalResult['kind'], 'ready'>, MessageKey> =
   time_source_unavailable:'historical.usnoUnavailable', time_source_out_of_range:'historical.usnoOutOfRange',
   calculation_failed:'historical.failed', unavailable:'historical.failed',
 };
-type TextField = 'year' | 'month' | 'day' | 'hour' | 'minute' | 'uncertainty' | 'deltaSeconds' | 'source';
+type TextField = 'year' | 'month' | 'day' | 'hour' | 'minute' | 'second' | 'uncertainty' | 'deltaSeconds' | 'source';
 function numberOrNaN(text: string): number { return text.trim() === '' ? NaN : Number(text); }
 
 @Component({
@@ -28,7 +28,7 @@ export class HistoricalPlanetsComponent implements OnDestroy {
   private destroyed = false;
   readonly bodies = HISTORICAL_BODIES;
   body: HistoricalBody = 'Sun';
-  year = '2000'; month = '1'; day = '1'; hour = '12'; minute = '0';
+  year = '2000'; month = '1'; day = '1'; hour = '12'; minute = '0'; second = '0';
   uncertainty = ''; deltaSeconds = ''; source = '';
   choice: 'supplied' | 'espenakMeeus2006' | 'usno' = 'espenakMeeus2006';
   estimateUncertainty = false;
@@ -71,7 +71,7 @@ export class HistoricalPlanetsComponent implements OnDestroy {
     if (this.busy) return;
     const uncertaintySeconds = numberOrNaN(this.uncertainty);
     const request: HistoricalCalendarRequest = {body: this.body, year: numberOrNaN(this.year), month: numberOrNaN(this.month),
-      day: numberOrNaN(this.day), hour: numberOrNaN(this.hour), minute: numberOrNaN(this.minute), second: 0,
+      day: numberOrNaN(this.day), hour: numberOrNaN(this.hour), minute: numberOrNaN(this.minute), second: numberOrNaN(this.second),
       includeScenarios: this.includeScenarios,
       deltaT: this.choice === 'supplied' ? {kind: 'supplied', seconds: numberOrNaN(this.deltaSeconds), uncertaintySeconds, source: this.source}
         : this.choice === 'usno' ? {kind: 'usno', uncertaintySeconds, allowPredictions: this.allowPredictions}

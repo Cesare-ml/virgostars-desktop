@@ -7,11 +7,12 @@
       <select [value]="body" (change)="setBody($event)"><option *ngFor="let item of bodies" [value]="item">{{bodyLabel(item)}}</option></select>
     </label>
     <div class="row">
-      <label class="field"><span>{{t('nav.year')}}</span><input type="number" [value]="year" (input)="set('year', $event)"></label>
+      <label class="field"><span>{{t('nav.year')}}</span><input id="historical-year" type="number" [value]="year" (input)="set('year', $event)"></label>
       <label class="field"><span>{{t('nav.month')}}</span><input type="number" [value]="month" (input)="set('month', $event)"></label>
       <label class="field"><span>{{t('nav.day')}}</span><input type="number" [value]="day" (input)="set('day', $event)"></label>
       <label class="field"><span>{{t('nav.hour')}}</span><input type="number" [value]="hour" (input)="set('hour', $event)"></label>
       <label class="field"><span>{{t('nav.minute')}}</span><input type="number" [value]="minute" (input)="set('minute', $event)"></label>
+      <label class="field"><span>{{t('historical.second')}}</span><input id="historical-second" type="number" min="0" step="any" [value]="second" (input)="set('second', $event)"></label>
     </div>
     <label class="field"><span>{{t('historical.source')}}</span>
       <select [value]="choice" (change)="setChoice($event)">
@@ -22,12 +23,12 @@
     <p *ngIf="choice==='usno'">{{t('historical.usnoNote')}}</p>
     <label class="check" *ngIf="choice==='usno'"><input id="historical-usno-predictions" type="checkbox" [checked]="allowPredictions" (change)="setAllowPredictions($event)"><span>{{t('historical.usnoPredictions')}}</span></label>
     <div class="row" *ngIf="choice==='supplied'">
-      <label class="field"><span>{{t('historical.delta')}}</span><input type="number" step="any" [value]="deltaSeconds" (input)="set('deltaSeconds', $event)"></label>
+      <label class="field"><span>{{t('historical.delta')}}</span><input id="historical-delta" type="number" step="any" [value]="deltaSeconds" (input)="set('deltaSeconds', $event)"></label>
       <label class="field"><span>{{t('historical.sourceLabel')}}</span><input type="text" maxlength="200" [value]="source" (input)="set('source', $event)"></label>
     </div>
     <label class="check" *ngIf="choice==='espenakMeeus2006'"><input id="historical-estimate-uncertainty" type="checkbox" [checked]="estimateUncertainty" (change)="setEstimateUncertainty($event)"><span>{{t('historical.estimateUncertainty')}}</span></label>
     <p *ngIf="estimateUncertainty">{{t('historical.estimateUncertaintyNote')}}</p>
-    <label class="field" *ngIf="!estimateUncertainty"><span>{{t('historical.uncertainty')}}</span><input type="number" step="any" min="0" [value]="uncertainty" (input)="set('uncertainty', $event)"></label>
+    <label class="field" *ngIf="!estimateUncertainty"><span>{{t('historical.uncertainty')}}</span><input id="historical-uncertainty" type="number" step="any" min="0" [value]="uncertainty" (input)="set('uncertainty', $event)"></label>
     <p *ngIf="!estimateUncertainty">{{t('historical.uncertaintyNote')}}</p>
     <label class="check"><input id="historical-scenarios" type="checkbox" [checked]="includeScenarios" (change)="setScenarios($event)"><span>{{t('historical.scenarios')}}</span></label>
     <button type="submit" [disabled]="busy">{{t(busy ? 'historical.calculating' : 'historical.calculate')}}</button>
