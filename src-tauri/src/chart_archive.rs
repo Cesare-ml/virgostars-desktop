@@ -20,6 +20,7 @@
 use crate::archive_keys::{new_key, Key, KeyError, KeyStore, OsKeyStore};
 use crate::archive_vault::{self, VaultError};
 use crate::chart_calculation::{self, ChartRequestV1};
+use crate::historical_chart::HistoricalChartRequest;
 use crate::chart_photos::{self, PhotoError};
 use rusqlite::serialize::OwnedData;
 use rusqlite::{params, Connection, DatabaseName, ErrorCode, OpenFlags, TransactionBehavior};
@@ -32,7 +33,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 const PROTOCOL_VERSION: u8 = 1;
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 const LEGACY_FILE_NAME: &str = "charts-v1.sqlite3";
 const SEALED_FILE_NAME: &str = "charts-v2.vsarchive";
 const STAGING_FILE_NAME: &str = "charts-v2.vsarchive.tmp";
@@ -73,6 +74,8 @@ pub struct ChartRecordV1 {
     pub lat_micro: i32,
     pub lng_micro: i32,
     pub place_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub historical: Option<HistoricalChartRequest>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -85,6 +88,8 @@ pub struct SavedChartV1 {
     pub lat_micro: i32,
     pub lng_micro: i32,
     pub place_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub historical: Option<HistoricalChartRequest>,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
 }
@@ -170,8 +175,11 @@ fn valid_record(chart: &ChartRecordV1) -> bool {
     valid_id(&chart.id)
         && valid_text(&chart.name, MAX_NAME_CHARS)
         && valid_text(&chart.place_name, MAX_PLACE_CHARS)
-        && valid_zone(&chart.time_zone)
-        && chart_calculation::validate(&instant_and_place).is_some()
+        && match &chart.historical {
+            None => valid_zone(&chart.time_zone) && chart_calculation::validate(&instant_and_place).is_some(),
+            Some(historical) => chart.utc_iso.is_empty() && chart.time_zone.is_empty()
+                && historical.valid() && historical.lat_micro == chart.lat_micro && historical.lng_micro == chart.lng_micro,
+        }
 }
 
 fn classify(error: &rusqlite::Error) -> Failure {
@@ -198,6 +206,7 @@ const SCHEMA: &str = "CREATE TABLE saved_charts (
 fn fresh_connection() -> Result<Connection, Failure> {
     let connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
     connection.execute_batch(SCHEMA).map_err(|error| classify(&error))?;
+    check_connection(&connection)?;
     Ok(connection)
 }
 
@@ -212,6 +221,8 @@ fn check_connection(connection: &Connection) -> Result<(), Failure> {
         connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     match version {
         SCHEMA_VERSION => Ok(()),
+        1 => connection.execute_batch("BEGIN IMMEDIATE; ALTER TABLE saved_charts ADD COLUMN historical_json TEXT; PRAGMA user_version=2; COMMIT;")
+            .map_err(|error| classify(&error)),
         // Written by a newer application: reading it with old rules could lose data.
         newer if newer > SCHEMA_VERSION => Err("archive_newer"),
         _ => Err("archive_corrupt"),
@@ -241,16 +252,20 @@ fn bytes_from_connection(connection: &Connection) -> Result<zeroize::Zeroizing<V
     Ok(zeroize::Zeroizing::new(data.to_vec()))
 }
 
-fn list(connection: &Connection) -> Result<Vec<SavedChartV1>, Failure> {
+fn list(connection: &Connection) -> Result<Vec<SavedChartV1>, Failure> { list_with_history(connection, true) }
+
+fn list_with_history(connection: &Connection, has_history: bool) -> Result<Vec<SavedChartV1>, Failure> {
+    let sql = if has_history {
+        "SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms,historical_json FROM saved_charts ORDER BY name COLLATE NOCASE, created_at_ms, id LIMIT ?1"
+    } else {
+        "SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms,NULL FROM saved_charts ORDER BY name COLLATE NOCASE, created_at_ms, id LIMIT ?1"
+    };
     let mut statement = connection
-        .prepare(
-            "SELECT id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms
-             FROM saved_charts ORDER BY name COLLATE NOCASE, created_at_ms, id LIMIT ?1",
-        )
+        .prepare(sql)
         .map_err(|error| classify(&error))?;
     let rows = statement
         .query_map([MAX_CHARTS], |row| {
-            Ok(SavedChartV1 {
+            Ok((SavedChartV1 {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 utc_iso: row.get(2)?,
@@ -258,15 +273,29 @@ fn list(connection: &Connection) -> Result<Vec<SavedChartV1>, Failure> {
                 lat_micro: row.get(4)?,
                 lng_micro: row.get(5)?,
                 place_name: row.get(6)?,
+                historical: None,
                 created_at_ms: row.get(7)?,
                 updated_at_ms: row.get(8)?,
-            })
+            }, row.get::<_, Option<String>>(9)?))
         })
         .map_err(|error| classify(&error))?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| classify(&error))
+    let mut charts = Vec::new();
+    for row in rows {
+        let (mut chart, history) = row.map_err(|error| classify(&error))?;
+        if let Some(history) = history {
+            chart.historical = Some(serde_json::from_str(&history).map_err(|_| "archive_corrupt")?);
+            let record = ChartRecordV1 {id:chart.id.clone(), name:chart.name.clone(), utc_iso:chart.utc_iso.clone(),
+                time_zone:chart.time_zone.clone(), lat_micro:chart.lat_micro, lng_micro:chart.lng_micro,
+                place_name:chart.place_name.clone(), historical:chart.historical.clone()};
+            if !valid_record(&record) { return Err("archive_corrupt"); }
+        }
+        charts.push(chart);
+    }
+    Ok(charts)
 }
 
 fn save(connection: &mut Connection, chart: &ChartRecordV1, now_ms: i64, limit: i64) -> Result<(), Failure> {
+    let history = chart.historical.as_ref().map(serde_json::to_string).transpose().map_err(|_| "invalid_request")?;
     let transaction =
         connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|error| classify(&error))?;
     let exists: bool = transaction
@@ -283,13 +312,13 @@ fn save(connection: &mut Connection, chart: &ChartRecordV1, now_ms: i64, limit: 
     transaction
         .execute(
             "INSERT INTO saved_charts
-               (id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?8)
+               (id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms,historical_json)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?8,?9)
              ON CONFLICT(id) DO UPDATE SET
                name=excluded.name, utc_iso=excluded.utc_iso, time_zone=excluded.time_zone,
                lat_micro=excluded.lat_micro, lng_micro=excluded.lng_micro,
-               place_name=excluded.place_name, updated_at_ms=excluded.updated_at_ms",
-            params![chart.id, chart.name, chart.utc_iso, chart.time_zone, chart.lat_micro, chart.lng_micro, chart.place_name, now_ms],
+               place_name=excluded.place_name, updated_at_ms=excluded.updated_at_ms, historical_json=excluded.historical_json",
+            params![chart.id, chart.name, chart.utc_iso, chart.time_zone, chart.lat_micro, chart.lng_micro, chart.place_name, now_ms, history],
         )
         .map_err(|error| classify(&error))?;
     transaction.commit().map_err(|error| classify(&error))
@@ -399,11 +428,11 @@ fn read_legacy(path: &Path) -> Result<Vec<SavedChartV1>, Failure> {
     match version {
         // An empty file of the first prototype: nothing to bring over.
         0 => return Ok(Vec::new()),
-        SCHEMA_VERSION => {}
-        newer if newer > SCHEMA_VERSION => return Err("archive_newer"),
+        1 => {}
+        newer if newer > 1 => return Err("archive_newer"),
         _ => return Err("archive_corrupt"),
     }
-    let rows = list(&connection)?;
+    let rows = list_with_history(&connection, false)?;
     let count: i64 =
         connection.query_row("SELECT COUNT(*) FROM saved_charts", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     if count as usize != rows.len() {
@@ -418,6 +447,7 @@ fn read_legacy(path: &Path) -> Result<Vec<SavedChartV1>, Failure> {
             lat_micro: row.lat_micro,
             lng_micro: row.lng_micro,
             place_name: row.place_name.clone(),
+            historical: row.historical.clone(),
         };
         if !valid_record(&record) {
             return Err("archive_corrupt");
@@ -653,6 +683,7 @@ mod tests {
             lat_micro: 44_697_805,
             lng_micro: 11_805_778,
             place_name: "Luogo di prova".to_string(),
+            historical: None,
         }
     }
     fn request(operation: &str) -> ArchiveRequestV1 {
@@ -744,6 +775,60 @@ mod tests {
         assert_eq!(listed[0].utc_iso, "2001-02-03T04:05:06.000Z");
         assert_eq!((listed[0].lat_micro, listed[0].lng_micro), (44_697_805, 11_805_778));
         assert_eq!((listed[0].created_at_ms, listed[0].updated_at_ms), (2000, 2000));
+    }
+
+    #[test]
+    fn encrypted_v1_archive_migrates_in_memory_and_preserves_historical_inputs() {
+        let archive = TempArchive::new("historical-upgrade");
+        let keys = FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        let old = Connection::open_in_memory().unwrap();
+        old.execute_batch(SCHEMA).unwrap();
+        old.execute("INSERT INTO saved_charts VALUES (?1,'Old','2001-02-03T04:05:06.000Z','Europe/Rome',44697805,11805778,'Test',1000,1000)", [ID_A]).unwrap();
+        persist(&archive.paths, &keys, &old).unwrap();
+        let before = fs::read(&archive.paths.sealed).unwrap();
+        let first_read = go(&archive, &keys, &list_request(), 2000);
+        assert_eq!(first_read.status, "ok");
+        assert_eq!(first_read.charts.unwrap()[0].utc_iso, "2001-02-03T04:05:06.000Z");
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), before, "reading does not rewrite the archive");
+
+        let mut historical = record(ID_B, "Historical test");
+        historical.utc_iso.clear(); historical.time_zone.clear();
+        historical.historical = Some(serde_json::from_value(serde_json::json!({
+            "protocolVersion":1, "latMicro":44697805, "lngMicro":11805778,
+            "civil":{"year":0,"month":2,"day":29,"hour":12,"minute":0,"second":0,
+                "calendar":"julian","offset":{"kind":"localMeanSolar"},"uncertaintySeconds":60},
+            "deltaT":{"kind":"supplied","seconds":100,"uncertaintySeconds":5,"source":"test"}
+        })).unwrap());
+        assert_eq!(go(&archive, &keys, &save_request(historical.clone()), 3000).status, "ok");
+        let rows = go(&archive, &keys, &list_request(), 4000).charts.unwrap();
+        assert_eq!(rows.len(), 2);
+        let saved = rows.iter().find(|row| row.id == ID_B).unwrap();
+        assert_eq!(saved.historical, historical.historical);
+        assert!(saved.utc_iso.is_empty() && saved.time_zone.is_empty());
+        assert_eq!(rows.iter().find(|row| row.id == ID_A).unwrap().utc_iso, "2001-02-03T04:05:06.000Z");
+        let bytes = fs::read(&archive.paths.sealed).unwrap();
+        assert!(!bytes.windows(b"localMeanSolar".len()).any(|w| w == b"localMeanSolar"));
+        let connection = load_sealed(&archive.paths, &keys).unwrap();
+        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
+        assert_eq!(version, 2);
+        let mut conflicting = historical.clone(); conflicting.utc_iso = "2000-01-01T00:00:00Z".into();
+        assert_eq!(go(&archive, &keys, &save_request(conflicting), 5000).status, "invalid_request");
+    }
+
+    #[test]
+    fn newer_encrypted_schema_is_never_modified() {
+        let archive = TempArchive::new("schema-newer");
+        let keys = FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(SCHEMA).unwrap();
+        connection.execute_batch("PRAGMA user_version=3;").unwrap();
+        persist(&archive.paths, &keys, &connection).unwrap();
+        let before = fs::read(&archive.paths.sealed).unwrap();
+        assert_eq!(go(&archive, &keys, &list_request(), 1000).status, "archive_newer");
+        assert_eq!(go(&archive, &keys, &save_request(record(ID_A, "Test")), 1000).status, "archive_newer");
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(), before);
     }
 
     #[test]

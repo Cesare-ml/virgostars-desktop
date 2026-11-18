@@ -4,7 +4,7 @@
 
 ## What it stores
 
-One row per saved chart, holding only what the user entered: a client-generated UUID, name, UTC instant, IANA time zone, latitude and longitude in micro-degrees, place label, and creation/update times. Calculated positions are never stored; a chart is recalculated when opened, so the archive does not depend on the ephemeris provider in use.
+One row per saved chart, holding only what the user entered: a client-generated UUID, name, UTC instant and IANA time zone for a modern chart or explicit historical clock settings, latitude and longitude in micro-degrees, place label, and creation/update times. Calculated positions are never stored; a chart is recalculated when opened, so the archive does not depend on the ephemeris provider in use.
 
 File: `charts-v2.vsarchive` (encrypted; see [Encrypted archive](ENCRYPTED_ARCHIVE.md)) in the application's local data folder (on Windows, under `%LOCALAPPDATA%\it.virgostars.desktop.rendererlab\`). The WebView cannot choose or learn the path.
 
@@ -31,7 +31,23 @@ There are no accounts, profiles, groups, notes, outbox or synchronisation yet. D
 | `archive_unavailable` | Folder or file cannot be opened (permissions, lock, disk). |
 | `photo_corrupt` | Individual private photo failed authenticated decryption or JPEG validation; chart data stays available. |
 
-Rules enforced on both sides: lowercase UUID id; name up to 80 characters and place up to 160, trimmed, without control or invisible direction characters; strict UTC instant (same parser as `calculate_chart`); IANA-shaped zone; coordinates in range. All values are bound as SQL parameters.
+Rules enforced on both sides: lowercase UUID id; name up to 80 characters and place up to 160, trimmed, without control or invisible direction characters; coordinates in range. Modern records require a strict UTC instant (same parser as `calculate_chart`) and an IANA-shaped zone. Historical records use the separate validated input described below. All values are bound as SQL parameters.
+
+## Historical chart input (prototype)
+
+Historical records retain the explicit calendar, local clock, offset choice,
+ΔT choice, uncertainties and observer coordinates. Their UTC and timezone
+fields are empty rather than invented; they are recalculated on opening using
+the historical command. The application keeps modern records unchanged.
+
+The encrypted SQLite payload uses schema version 2 with an optional historical
+input column. Version-1 payloads are upgraded **in memory** after authentication;
+reading alone does not rewrite the encrypted file. The first successful write
+seals the upgraded data using the existing staged, atomic archive path. Older
+Desktop versions reject the newer schema rather than overwrite it, so retain a
+backup before downgrading. The legacy plain-v1 import remains read-only and its
+source file is not removed by migration. No historical data or archive key is
+sent to the server.
 
 Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 1); there is no automatic repair, deletion or downgrade.
 

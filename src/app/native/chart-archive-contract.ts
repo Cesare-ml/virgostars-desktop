@@ -4,6 +4,8 @@
  * never calculated positions. It is encrypted on disk by the Rust host, which alone holds the
  * key; the WebView cannot choose where the file lives and never sees a path or a key.
  */
+import type {HistoricalChartRequest} from './historical-chart-contract';
+import {copyHistoricalChartRequest} from './historical-chart-validation.mjs';
 export type ChartRecordV1 = Readonly<{
   id: string;
   name: string;
@@ -12,6 +14,8 @@ export type ChartRecordV1 = Readonly<{
   latMicro: number;
   lngMicro: number;
   placeName: string;
+  /** Explicit local-clock input; when present, UTC and zone are empty. */
+  historical?: HistoricalChartRequest & Readonly<{protocolVersion: 1}>;
 }>;
 
 export type SavedChartV1 = ChartRecordV1 & Readonly<{createdAtMs: number; updatedAtMs: number}>;
@@ -83,18 +87,36 @@ function microDegrees(x: unknown, limit: number): x is number {
   return typeof x === 'number' && Number.isSafeInteger(x) && Math.abs(x) <= limit;
 }
 
+function validHistory(value:unknown, latMicro:number, lngMicro:number):boolean {
+  if (!plainObject(value)) return false;
+  const version=Object.getOwnPropertyDescriptor(value,'protocolVersion');
+  const copy=copyHistoricalChartRequest(value);
+  return !!version && version.enumerable === true && Object.hasOwn(version,'value') && version.value === 1 &&
+    !!copy && copy.latMicro === latMicro && copy.lngMicro === lngMicro;
+}
+
 /** The same rules the Rust side enforces, checked before anything is sent. */
 export function validChartRecord(chart: ChartRecordV1): boolean {
   return plainObject(chart) &&
     typeof chart.id === 'string' && ID_PATTERN.test(chart.id) &&
     label(chart.name, 80) && label(chart.placeName, 160) &&
-    typeof chart.utcIso === 'string' && UTC_PATTERN.test(chart.utcIso) &&
-    typeof chart.timeZone === 'string' && chart.timeZone.length <= 120 && ZONE_PATTERN.test(chart.timeZone) &&
+    (chart.historical === undefined
+      ? typeof chart.utcIso === 'string' && UTC_PATTERN.test(chart.utcIso) &&
+        typeof chart.timeZone === 'string' && chart.timeZone.length <= 120 && ZONE_PATTERN.test(chart.timeZone)
+      : chart.utcIso === '' && chart.timeZone === '' && validHistory(chart.historical, chart.latMicro, chart.lngMicro)) &&
     microDegrees(chart.latMicro, 90_000_000) && microDegrees(chart.lngMicro, 180_000_000);
 }
 
 function decodeSavedChart(raw: unknown, seen: Set<string>): SavedChartV1 {
   if (!plainObject(raw)) throw new Error(PROTOCOL_ERROR);
+  const rawHistory = Object.hasOwn(raw, 'historical') ? field(raw, 'historical') : undefined;
+  let historical:ChartRecordV1['historical'];
+  if (rawHistory !== undefined) {
+    if (!plainObject(rawHistory) || field(rawHistory,'protocolVersion') !== 1) throw new Error(PROTOCOL_ERROR);
+    const copy=copyHistoricalChartRequest(rawHistory);
+    if (!copy) throw new Error(PROTOCOL_ERROR);
+    historical=Object.freeze({protocolVersion:1,...copy});
+  }
   const chart: ChartRecordV1 = {
     id: field(raw, 'id') as string,
     name: field(raw, 'name') as string,
@@ -103,6 +125,7 @@ function decodeSavedChart(raw: unknown, seen: Set<string>): SavedChartV1 {
     latMicro: field(raw, 'latMicro') as number,
     lngMicro: field(raw, 'lngMicro') as number,
     placeName: field(raw, 'placeName') as string,
+    ...(historical === undefined ? {} : {historical}),
   };
   const createdAtMs = field(raw, 'createdAtMs');
   const updatedAtMs = field(raw, 'updatedAtMs');
@@ -157,8 +180,11 @@ function wireRequest(operation: ArchiveOperation): WireRequest | null {
   if (operation.operation === 'list') return {protocolVersion: 1, operation: 'list'};
   if (operation.operation === 'remove_legacy') return {protocolVersion: 1, operation: 'remove_legacy'};
   if (operation.operation === 'save' && validChartRecord(operation.chart)) {
-    const {id, name, utcIso, timeZone, latMicro, lngMicro, placeName} = operation.chart;
-    return {protocolVersion: 1, operation: 'save', chart: {id, name, utcIso, timeZone, latMicro, lngMicro, placeName}};
+    const {id, name, utcIso, timeZone, latMicro, lngMicro, placeName, historical} = operation.chart;
+    const copy = historical ? copyHistoricalChartRequest(historical) : null;
+    if (historical && !copy) return null;
+    return {protocolVersion: 1, operation: 'save', chart: {id, name, utcIso, timeZone, latMicro, lngMicro, placeName,
+      ...(copy === null ? {} : {historical:{protocolVersion:1,...copy}})}};
   }
   if (operation.operation === 'delete' && typeof operation.id === 'string' && ID_PATTERN.test(operation.id)) {
     return {protocolVersion: 1, operation: 'delete', id: operation.id};

@@ -7,14 +7,19 @@
       [value]="name" (input)="set('name', $event)">
   </label>
 
+  <label class="historical-toggle"><input type="checkbox" [checked]="historicalMode" (change)="setHistoricalMode($event)"> {{t('form.historical')}}</label>
+  <p class="form-note" *ngIf="historicalMode">{{t('form.historicalNote')}}</p>
+
   <div class="field-row">
     <label class="field">
       <span>{{t('form.date')}}</span>
-      <input type="date" min="1900-01-01" max="2033-12-31" required [value]="date" (input)="set('date', $event)">
+      <input *ngIf="!historicalMode" type="date" min="1900-01-01" max="2033-12-31" required [value]="date" (input)="set('date', $event)">
+      <input *ngIf="historicalMode" type="text" placeholder="-1000-03-20" required [value]="date" (input)="set('date', $event)">
     </label>
     <label class="field">
       <span>{{t('form.time')}}</span>
-      <input type="time" step="1" required [value]="time" (input)="set('time', $event)">
+      <input *ngIf="!historicalMode" type="time" step="1" required [value]="time" (input)="set('time', $event)">
+      <input *ngIf="historicalMode" type="text" placeholder="12:00:00" required [value]="time" (input)="set('time', $event)">
     </label>
   </div>
 
@@ -39,11 +44,21 @@
     </label>
   </div>
 
-  <label class="field">
+  <label class="field" *ngIf="!historicalMode">
     <span>{{t('form.zone')}}</span>
     <input type="text" autocomplete="off" spellcheck="false" maxlength="120" required
       [value]="timeZone" (input)="set('timeZone', $event)">
   </label>
+
+  <div class="historical-settings" *ngIf="historicalMode">
+    <label class="field"><span>{{t('form.calendar')}}</span><select [value]="historicalCalendar" (change)="setHistorical('historicalCalendar',$event)"><option value="julian">{{t('form.julian')}}</option><option value="gregorian">{{t('form.gregorian')}}</option></select></label>
+    <label class="field"><span>{{t('form.clock')}}</span><select [value]="historicalOffset" (change)="setHistorical('historicalOffset',$event)"><option value="localMeanSolar">{{t('form.localMeanSolar')}}</option><option value="supplied">{{t('form.offsetManual')}}</option></select></label>
+    <label class="field" *ngIf="historicalOffset === 'supplied'"><span>{{t('form.offsetSeconds')}}</span><input type="number" step="any" [value]="historicalOffsetSeconds" (input)="setHistorical('historicalOffsetSeconds',$event)"></label>
+    <label class="field"><span>{{t('form.civilUncertainty')}}</span><input type="number" min="0" step="any" [value]="historicalCivilUncertainty" (input)="setHistorical('historicalCivilUncertainty',$event)"></label>
+    <label class="field"><span>{{t('form.deltaT')}}</span><select [value]="historicalDeltaT" (change)="setHistorical('historicalDeltaT',$event)"><option value="espenakMeeus2006">{{t('form.deltaTModel')}}</option><option value="supplied">{{t('form.deltaTManual')}}</option></select></label>
+    <label class="field" *ngIf="historicalDeltaT === 'supplied'"><span>{{t('form.deltaTSeconds')}}</span><input type="number" step="any" [value]="historicalDeltaTSeconds" (input)="setHistorical('historicalDeltaTSeconds',$event)"></label>
+    <label class="field"><span>{{t('form.deltaTUncertainty')}}</span><input type="number" min="0" step="any" [value]="historicalDeltaTUncertainty" (input)="setHistorical('historicalDeltaTUncertainty',$event)"></label>
+  </div>
 
   <p class="form-problem" role="alert" *ngIf="problem">{{problemText}}</p>
 
@@ -55,6 +70,6 @@
 
   <div class="form-actions">
     <button type="submit" class="form-primary" [disabled]="busy">{{t(editChart ? 'archive.edit.save' : 'form.submit')}}</button>
-    <button type="button" class="form-secondary" *ngIf="!editChart" [disabled]="busy" (click)="submitNow()">{{t('form.now')}}</button>
+    <button type="button" class="form-secondary" *ngIf="!editChart && !historicalMode" [disabled]="busy" (click)="submitNow()">{{t('form.now')}}</button>
   </div>
 </form>

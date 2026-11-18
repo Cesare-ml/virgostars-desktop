@@ -12,7 +12,7 @@ export type ChartBodyId = typeof CHART_BODY_IDS[number];
 export const HOUSE_SYSTEM_IDS = Object.freeze(['egizia', 'placido', 'koch', 'regio-montano', 'porfirio'] as const);
 export type HouseSystemId = typeof HOUSE_SYSTEM_IDS[number];
 
-export type EphemerisSource = 'jpl';
+export type EphemerisSource = 'jpl' | 'lunar_model';
 
 export type ChartBodyV1 = Readonly<{
   id: ChartBodyId;
@@ -107,10 +107,10 @@ function member<T extends string>(x: unknown, allowed: readonly T[], seen: Set<s
   return x as T;
 }
 
-function decodeBody(raw: unknown, seen: Set<string>): ChartBodyV1 {
+function decodeBody(raw: unknown, seen: Set<string>, historical: boolean): ChartBodyV1 {
   if (!plainObject(raw)) throw new Error(PROTOCOL_ERROR);
   const source = field(raw, 'ephemerisSource');
-  if (typeof source !== 'string' || !SOURCES.includes(source)) throw new Error(PROTOCOL_ERROR);
+  if (typeof source !== 'string' || !(SOURCES.includes(source) || (historical && source === 'lunar_model'))) throw new Error(PROTOCOL_ERROR);
   return Object.freeze({
     id: member(field(raw, 'id'), CHART_BODY_IDS, seen),
     longitudeDeg: circle(field(raw, 'longitudeDeg')),
@@ -144,7 +144,7 @@ type DecodedResponse =
   | Readonly<{status: 'provider_unavailable' | 'invalid_request' | 'out_of_range' | 'calculation_failed'}>;
 
 /** Detached, frozen values from one native response; throws a generic error otherwise. */
-export function decodeChartResponse(raw: unknown): DecodedResponse {
+export function decodeChartResponse(raw: unknown, historical = false): DecodedResponse {
   try {
     if (!plainObject(raw) || field(raw, 'protocolVersion') !== 1) throw new Error(PROTOCOL_ERROR);
     const status = field(raw, 'status');
@@ -165,7 +165,7 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
     const chart = field(raw, 'chart');
     if (!plainObject(chart)) throw new Error(PROTOCOL_ERROR);
     const bodyIds = new Set<string>();
-    const bodies = denseArray(field(chart, 'bodies'), CHART_BODY_IDS.length).map(body => decodeBody(body, bodyIds));
+    const bodies = denseArray(field(chart, 'bodies'), CHART_BODY_IDS.length).map(body => decodeBody(body, bodyIds, historical));
     const houseIds = new Set<string>();
     const houses = denseArray(field(chart, 'houses'), HOUSE_SYSTEM_IDS.length)
       .map(system => decodeHouseSystem(system, houseIds));
@@ -183,7 +183,7 @@ export function decodeChartResponse(raw: unknown): DecodedResponse {
       provider: Object.freeze({id: providerId, engineVersion}),
       chart: Object.freeze({
         // Calendar years 1900 to 2033 (JD about 2 415 020 to 2 463 965), with some margin.
-        julianDayUt: finite(field(chart, 'julianDayUt'), JD_MIN, JD_MAX),
+        julianDayUt: finite(field(chart, 'julianDayUt'), historical ? -4_000_000 : JD_MIN, historical ? 4_000_000 : JD_MAX),
         bodies: Object.freeze(bodies),
         houses: Object.freeze(houses),
         unavailableBodies: Object.freeze(unavailableBodies),
