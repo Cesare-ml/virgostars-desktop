@@ -12,6 +12,7 @@ import {
 type DemoPlanet = 'Sun' | 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn' | 'Uranus' | 'Neptune' | 'Pluto';
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
+import { openDesktopSupportCenter } from './native/support-center';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
@@ -223,6 +224,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   runtimeStatus: MessageKey = 'runtime.checking';
   styleStatus: DesktopLayoutStatus = 'unavailable';
   error = '';
+  supportFailed = false;
+
+  async openSupport(): Promise<void> {
+    this.supportFailed = false;
+    const opened = await openDesktopSupportCenter();
+    if (this.destroyed) return;
+    this.supportFailed = !opened;
+    this.cd.markForCheck();
+  }
 
   t(key:MessageKey): string { return translate(this.locale,key); }
   get styleStatusKey(): MessageKey {
