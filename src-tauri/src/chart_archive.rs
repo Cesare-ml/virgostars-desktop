@@ -384,6 +384,47 @@ fn chart_groups(connection: &Connection, chart_id: &str) -> Result<Vec<String>, 
     Ok(groups)
 }
 
+/// Apply a remote snapshot only to the previously linked account and chart.
+/// `expected_base` was captured before the network request; it prevents a late
+/// read from undoing an acknowledgement or another, newer reconciliation.
+#[allow(dead_code)]
+fn reconcile_group_snapshot(connection: &mut Connection, chart_id: &str, profile_ref: &str,
+    remote_sync_id: &str, expected_base: &[String], server_groups: &[String]) -> Result<(), Failure> {
+    if !valid_id(chart_id) || !valid_id(profile_ref) || !valid_id(remote_sync_id)
+        || !valid_groups(expected_base) || !valid_groups(server_groups) { return Err("invalid_request"); }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| classify(&error))?;
+    let old: Option<(String,i64)> = transaction.query_row(
+        "SELECT base_groups_json,pending FROM chart_group_sync_links WHERE chart_id=?1 AND profile_ref=?2 AND remote_sync_id=?3",
+        params![chart_id,profile_ref,remote_sync_id], |r| Ok((r.get(0)?,r.get(1)?)),
+    ).optional().map_err(|error| classify(&error))?;
+    let (json,pending) = old.ok_or("profile_conflict")?;
+    let base: Vec<String> = serde_json::from_str(&json).map_err(|_| "archive_corrupt")?;
+    if !valid_groups(&base) { return Err("archive_corrupt"); }
+    if base != expected_base { return Err("stale_sync"); }
+    if pending == 2 { return Err("conflict_pending"); }
+    let local = chart_groups(&transaction,chart_id)?;
+    if pending == 0 && local != base { return Err("archive_corrupt"); }
+    if pending == 0 || local == server_groups {
+        if pending == 0 && local != server_groups {
+            transaction.execute("DELETE FROM saved_chart_groups WHERE chart_id=?1", [chart_id])
+                .map_err(|error| classify(&error))?;
+            for (position,name) in server_groups.iter().enumerate() {
+                transaction.execute("INSERT INTO saved_chart_groups (chart_id,position,name) VALUES (?1,?2,?3)",
+                    params![chart_id,position as i64,name]).map_err(|error| classify(&error))?;
+            }
+        }
+        let new_base = serde_json::to_string(server_groups).map_err(|_| "archive_unavailable")?;
+        transaction.execute("UPDATE chart_group_sync_links SET base_groups_json=?2,conflict_groups_json=NULL,pending=0 WHERE chart_id=?1",
+            params![chart_id,new_base]).map_err(|error| classify(&error))?;
+    } else if server_groups != base {
+        let conflict = serde_json::to_string(server_groups).map_err(|_| "archive_unavailable")?;
+        transaction.execute("UPDATE chart_group_sync_links SET conflict_groups_json=?2,pending=2 WHERE chart_id=?1",
+            params![chart_id,conflict]).map_err(|error| classify(&error))?;
+    }
+    transaction.commit().map_err(|error| classify(&error))
+}
+
 /// Acknowledge only the base and contents actually sent. A later local edit
 /// remains pending; a stale response cannot overwrite a newer server base.
 #[allow(dead_code)]
@@ -473,6 +514,48 @@ pub(crate) struct PendingGroupUpdate {
     pub remote_sync_id: String,
     pub base_groups: Vec<String>,
     pub groups: Vec<String>,
+}
+
+/// A snapshot request captures these bases before network I/O. Private group
+/// names stay in the native process and are never used as log fields.
+#[allow(dead_code)]
+pub(crate) struct LinkedGroupBaseline {
+    pub chart_id: String,
+    pub remote_sync_id: String,
+    pub base_groups: Vec<String>,
+}
+
+#[allow(dead_code)]
+pub(crate) fn group_baselines_for_profile(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str) -> Result<Vec<LinkedGroupBaseline>, Failure> {
+    if !valid_id(profile_ref) { return Err("invalid_request"); }
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let session = open_session(paths,keys)?;
+    let mut query = session.connection.prepare(
+        "SELECT chart_id,remote_sync_id,base_groups_json FROM chart_group_sync_links WHERE profile_ref=?1 ORDER BY chart_id LIMIT ?2"
+    ).map_err(|error| classify(&error))?;
+    let rows = query.query_map(params![profile_ref,MAX_CHARTS], |r|
+        Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))
+        .map_err(|error| classify(&error))?.collect::<Result<Vec<_>,_>>().map_err(|error| classify(&error))?;
+    let mut result = Vec::with_capacity(rows.len());
+    for (chart_id,remote_sync_id,json) in rows {
+        let base_groups: Vec<String> = serde_json::from_str(&json).map_err(|_| "archive_corrupt")?;
+        if !valid_id(&chart_id) || !valid_id(&remote_sync_id) || !valid_groups(&base_groups) { return Err("archive_corrupt"); }
+        result.push(LinkedGroupBaseline {chart_id,remote_sync_id,base_groups});
+    }
+    Ok(result)
+}
+
+/// Persist an already authenticated snapshot result, after the caller has
+/// revalidated that its native account session is still current.
+#[allow(dead_code)]
+pub(crate) fn apply_remote_group_snapshot(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str, baseline: &LinkedGroupBaseline, server_groups: &[String]) -> Result<(), Failure> {
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut session = open_session(paths,keys)?;
+    reconcile_group_snapshot(&mut session.connection,&baseline.chart_id,profile_ref,
+        &baseline.remote_sync_id,&baseline.base_groups,server_groups)?;
+    persist(paths,keys,&session.connection)
 }
 
 /// Future sync worker entry point. The reference must come from its verified
@@ -1033,6 +1116,66 @@ mod tests {
         let pending: i64 = connection.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
         assert_eq!(pending,2);
         assert_eq!(acknowledge_group_sync(&mut connection,ID_A,ID_B,ID_A,&remote,&[]),Err("stale_sync"));
+    }
+
+    #[test]
+    fn remote_snapshot_reconciles_clean_changes_and_preserves_concurrent_edits() {
+        let archive = TempArchive::new("group-snapshot-reconciliation");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        let mut connection = load_sealed(&archive.paths,&keys).unwrap();
+        let empty: Vec<String> = vec![];
+        let web = vec!["Web fittizio".to_string()];
+        let local = vec!["Locale fittizio".to_string()];
+        let other = vec!["Altro fittizio".to_string()];
+        link_group_sync(&mut connection,ID_A,ID_B,ID_A,&empty).unwrap();
+        assert_eq!(reconcile_group_snapshot(&mut connection,ID_A,ID_A,ID_A,&empty,&web),Err("profile_conflict"));
+        reconcile_group_snapshot(&mut connection,ID_A,ID_B,ID_A,&empty,&web).unwrap();
+        assert_eq!(chart_groups(&connection,ID_A).unwrap(),web);
+        assert_eq!(reconcile_group_snapshot(&mut connection,ID_A,ID_B,ID_A,&empty,&other),Err("stale_sync"));
+        set_groups(&mut connection,ID_A,&local).unwrap();
+        reconcile_group_snapshot(&mut connection,ID_A,ID_B,ID_A,&web,&web).unwrap();
+        let pending: i64 = connection.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
+        assert_eq!(pending,1);
+        reconcile_group_snapshot(&mut connection,ID_A,ID_B,ID_A,&web,&other).unwrap();
+        assert_eq!(chart_groups(&connection,ID_A).unwrap(),local);
+        let (pending,conflict): (i64,String) = connection.query_row("SELECT pending,conflict_groups_json FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(pending,2);
+        assert_eq!(serde_json::from_str::<Vec<String>>(&conflict).unwrap(),other);
+        assert_eq!(reconcile_group_snapshot(&mut connection,ID_A,ID_B,ID_A,&web,&web),Err("conflict_pending"));
+    }
+
+    #[test]
+    fn snapshot_equal_to_pending_local_edit_acknowledges_retry() {
+        let archive = TempArchive::new("group-snapshot-replay");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        let mut connection = load_sealed(&archive.paths,&keys).unwrap();
+        let empty: Vec<String> = vec![];
+        let local = vec!["Locale fittizio".to_string()];
+        link_group_sync(&mut connection,ID_A,ID_B,ID_A,&empty).unwrap();
+        set_groups(&mut connection,ID_A,&local).unwrap();
+        reconcile_group_snapshot(&mut connection,ID_A,ID_B,ID_A,&empty,&local).unwrap();
+        let (pending,base): (i64,String) = connection.query_row("SELECT pending,base_groups_json FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(pending,0);
+        assert_eq!(serde_json::from_str::<Vec<String>>(&base).unwrap(),local);
+    }
+
+    #[test]
+    fn profile_bound_snapshot_persists_and_rejects_stale_response() {
+        let archive = TempArchive::new("group-snapshot-persist");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        link_groups_to_verified_profile(&archive.paths,&keys,ID_A,ID_B,ID_A,&[]).unwrap();
+        assert!(group_baselines_for_profile(&archive.paths,&keys,ID_A).unwrap().is_empty());
+        let baseline = group_baselines_for_profile(&archive.paths,&keys,ID_B).unwrap();
+        assert_eq!(baseline.len(),1);
+        let remote = vec!["Web fittizio".to_string()];
+        assert_eq!(apply_remote_group_snapshot(&archive.paths,&keys,ID_A,&baseline[0],&remote),Err("profile_conflict"));
+        apply_remote_group_snapshot(&archive.paths,&keys,ID_B,&baseline[0],&remote).unwrap();
+        assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].groups,remote);
+        assert_eq!(apply_remote_group_snapshot(&archive.paths,&keys,ID_B,&baseline[0],&[]),Err("stale_sync"));
+        assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].groups,remote);
     }
 
     #[test]

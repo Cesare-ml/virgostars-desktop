@@ -214,6 +214,58 @@ impl NativeLoginRegistry {
         Ok(progress)
     }
 
+    /// Read-only reconciliation for already linked charts. Missing remote
+    /// records are not treated as deletions; initial linking is separate.
+    #[allow(dead_code)]
+    pub(crate) fn refresh_linked_groups<T: crate::pkce_reqwest_https::GroupSnapshotTransport>(
+        &self, expected_attempt_id: &str, token_endpoint: &str,
+        paths: &crate::chart_archive::ArchivePaths, keys: &dyn crate::archive_keys::KeyStore,
+        transport: &T,
+    ) -> Result<usize, NativeRegistryError> {
+        if self.sync_busy.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err() {
+            return Err(NativeRegistryError::Busy);
+        }
+        let _reservation = SyncReservation(&self.sync_busy);
+        let endpoint = crate::pkce_token_exchange::valid_staging_token_endpoint(token_endpoint)
+            .ok_or(NativeRegistryError::Unavailable)?;
+        let grant = {
+            let state = self.inner.lock().map_err(|_| NativeRegistryError::Unavailable)?;
+            if state.closed { return Err(NativeRegistryError::Closed); }
+            let Slot::Active(session) = &state.slot else { return Err(NativeRegistryError::Unavailable); };
+            if session.snapshot().attempt_id != expected_attempt_id { return Err(NativeRegistryError::Unavailable); }
+            session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?
+        };
+        if !grant.matches_token_endpoint(&endpoint) { return Err(NativeRegistryError::Unavailable); }
+        let profile = grant.profile_ref().ok_or(NativeRegistryError::Unavailable)?;
+        let baselines = crate::chart_archive::group_baselines_for_profile(paths,keys,profile)
+            .map_err(|_| NativeRegistryError::Unavailable)?;
+        let remote = transport.fetch_groups(&endpoint,&grant).map_err(|_| NativeRegistryError::Unavailable)?;
+        {
+            let state = self.inner.lock().map_err(|_| NativeRegistryError::Unavailable)?;
+            let Slot::Active(session) = &state.slot else { return Err(NativeRegistryError::Closed); };
+            if state.closed || session.snapshot().attempt_id != expected_attempt_id
+                || session.copy_active_grant().and_then(|current| current.profile_ref().map(str::to_owned)).as_deref() != Some(profile) {
+                return Err(NativeRegistryError::Closed);
+            }
+        }
+        let mut applied = 0;
+        for baseline in &baselines {
+            let Some(groups) = remote.get(&baseline.remote_sync_id) else { continue; };
+            let state = self.inner.lock().map_err(|_| NativeRegistryError::Unavailable)?;
+            let Slot::Active(session) = &state.slot else { return Err(NativeRegistryError::Closed); };
+            if state.closed || session.snapshot().attempt_id != expected_attempt_id
+                || session.copy_active_grant().and_then(|current| current.profile_ref().map(str::to_owned)).as_deref() != Some(profile) {
+                return Err(NativeRegistryError::Closed);
+            }
+            match crate::chart_archive::apply_remote_group_snapshot(paths,keys,profile,baseline,groups) {
+                Ok(()) => applied += 1,
+                Err("conflict_pending" | "stale_sync") => {},
+                Err(_) => return Err(NativeRegistryError::Unavailable),
+            }
+        }
+        Ok(applied)
+    }
+
     /// Permanently closes this registry. If a browser opener is blocked in
     /// `start`, its reservation is invalidated so it cannot install a session
     /// after shutdown. This does not forcibly kill an OS browser process.
@@ -292,6 +344,46 @@ mod tests {
         assert_eq!(pending.len(),1);
         assert_eq!(pending[0].base_groups,["Primo"]);
         assert_eq!(pending[0].groups,["Secondo"]);
+    }
+
+    #[test]
+    fn group_refresh_applies_linked_data_and_drops_a_late_logout_response() {
+        use crate::archive_keys::fake::FakeKeyStore;
+        use crate::chart_archive::{self, ArchivePaths, ArchiveRequestV1, ChartRecordV1};
+        use crate::pkce_reqwest_https::GroupSnapshotTransport;
+        use crate::pkce_token_exchange::{NativeAccessGrant, TokenScope};
+        use std::{collections::HashMap,fs};
+        const PROFILE: &str = "44444444-4444-4444-8444-444444444444";
+        const CHART: &str = "11111111-1111-4111-8111-111111111111";
+        const ATTEMPT: &str = "123e4567-e89b-42d3-a456-426614174000";
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
+        let fixture = Fixture(std::env::temp_dir().join(format!("virgo-refresh-test-{}-{:?}",std::process::id(),std::thread::current().id())).with_extension("tmp"));
+        fs::create_dir_all(&fixture.0).unwrap();
+        let paths = ArchivePaths::in_folder(&fixture.0);
+        let keys = FakeKeyStore::empty();
+        let chart = ChartRecordV1 {id:CHART.into(),name:"Fittizio".into(),utc_iso:"2001-02-03T04:05:06.000Z".into(),
+            time_zone:"Europe/Rome".into(),lat_micro:44_000_000,lng_micro:11_000_000,place_name:"Fittizio".into()};
+        let save = ArchiveRequestV1 {protocol_version:1,operation:"save".into(),chart:Some(chart),id:None,groups:None};
+        let list = ArchiveRequestV1 {protocol_version:1,operation:"list".into(),chart:None,id:None,groups:None};
+        assert_eq!(chart_archive::handle(&paths,&keys,&save,1000).status,"ok");
+        chart_archive::link_groups_to_verified_profile(&paths,&keys,CHART,PROFILE,CHART,&[]).unwrap();
+        let registry = Arc::new(NativeLoginRegistry::new());
+        registry.inner.lock().unwrap().slot = Slot::Active(NativeLoginSession::synthetic_connected_for_test(
+            ATTEMPT,NativeAccessGrant::synthetic_for_test(TokenScope::Read,PROFILE)));
+        struct FakeSnapshot { registry: Arc<NativeLoginRegistry>, disconnect: bool, name: &'static str }
+        impl GroupSnapshotTransport for FakeSnapshot {
+            fn fetch_groups(&self, _: &Url, _: &NativeAccessGrant) -> Result<HashMap<String,Vec<String>>,()> {
+                if self.disconnect { assert!(self.registry.disconnect(ATTEMPT)); }
+                Ok(HashMap::from([(CHART.into(),vec![self.name.into()])]))
+            }
+        }
+        let first = FakeSnapshot {registry:Arc::clone(&registry),disconnect:false,name:"Web"};
+        assert_eq!(registry.refresh_linked_groups(ATTEMPT,TOKEN,&paths,&keys,&first),Ok(1));
+        assert_eq!(chart_archive::handle(&paths,&keys,&list,2000).charts.unwrap()[0].groups,["Web"]);
+        let late = FakeSnapshot {registry:Arc::clone(&registry),disconnect:true,name:"Tardivo"};
+        assert_eq!(registry.refresh_linked_groups(ATTEMPT,TOKEN,&paths,&keys,&late),Err(NativeRegistryError::Closed));
+        assert_eq!(chart_archive::handle(&paths,&keys,&list,3000).charts.unwrap()[0].groups,["Web"]);
     }
 
     #[derive(Default)]

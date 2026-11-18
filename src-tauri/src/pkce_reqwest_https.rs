@@ -20,6 +20,45 @@ const MAX_TOKEN_CONTENT_TYPE_BYTES: usize = 64;
 const MAX_TOKEN_DEADLINE: Duration = Duration::from_secs(10);
 const MAX_SESSION_RESPONSE_BYTES: u64 = 1024;
 const MAX_GROUP_RESPONSE_BYTES: u64 = 65536;
+const MAX_SNAPSHOT_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SnapshotCursor { epoch: String, change_seq: String }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SnapshotChart {
+    contract_version: u8, sync_id: String, groups: Vec<String>, notes: serde_json::Value,
+    name: serde::de::IgnoredAny, kind: serde::de::IgnoredAny, birth: serde::de::IgnoredAny,
+    place: serde::de::IgnoredAny, sex: serde::de::IgnoredAny, is_account_chart: serde::de::IgnoredAny,
+    revision: serde::de::IgnoredAny, updated_at: serde::de::IgnoredAny,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct GroupSnapshot { contract_version: u8, cursor: SnapshotCursor, charts: Vec<SnapshotChart> }
+
+pub(crate) trait GroupSnapshotTransport {
+    fn fetch_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant)
+        -> Result<std::collections::HashMap<String, Vec<String>>, ()>;
+}
+
+fn parse_group_snapshot(bytes: &[u8], profile: &str) -> Result<std::collections::HashMap<String,Vec<String>>, ()> {
+    let response: GroupSnapshot = serde_json::from_slice(bytes).map_err(|_| ())?;
+    if response.contract_version != 1 || response.cursor.epoch != profile || response.charts.len() > 500
+        || response.cursor.change_seq.is_empty() || response.cursor.change_seq.len() > 19
+        || !response.cursor.change_seq.bytes().all(|c| c.is_ascii_digit())
+        || (response.cursor.change_seq.len() > 1 && response.cursor.change_seq.starts_with('0'))
+        || response.cursor.change_seq.parse::<i64>().is_err() { return Err(()); }
+    let mut result = std::collections::HashMap::with_capacity(response.charts.len());
+    for chart in response.charts {
+        if chart.contract_version != 1 || !crate::chart_archive::valid_id(&chart.sync_id)
+            || !crate::chart_archive::valid_groups(&chart.groups) || !chart.notes.is_null()
+            || result.insert(chart.sync_id,chart.groups).is_some() { return Err(()); }
+    }
+    Ok(result)
+}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +143,33 @@ impl Read for SecretFormReader {
 /// Rust-only transport, never constructed in or returned to the WebView.
 /// `post_form` is blocking: it MUST run on the dedicated native worker.
 pub struct StagingReqwestHttps;
+
+impl GroupSnapshotTransport for StagingReqwestHttps {
+    fn fetch_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant)
+        -> Result<std::collections::HashMap<String, Vec<String>>, ()> {
+        if !grant.matches_token_endpoint(token_endpoint) || grant.remaining_seconds(std::time::Instant::now()) == 0 {
+            return Err(());
+        }
+        let profile = grant.profile_ref().ok_or(())?;
+        let mut destination = valid_staging_token_endpoint(token_endpoint.as_str()).ok_or(())?;
+        destination.set_path("/chart-sync/v1/snapshot");
+        let client = restricted_client(MAX_TOKEN_DEADLINE)?;
+        let auth_value = Zeroizing::new(format!("Bearer {}",grant.bearer()));
+        let mut auth = HeaderValue::from_str(&auth_value).map_err(|_| ())?;
+        auth.set_sensitive(true);
+        let response = client.get(destination).header(ACCEPT,"application/json")
+            .header(AUTHORIZATION,auth).send().map_err(|_| ())?;
+        if response.status().as_u16() != 200
+            || response.content_length().is_some_and(|n| n > MAX_SNAPSHOT_RESPONSE_BYTES) { return Err(()); }
+        let content_type = response.headers().get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).ok_or(())?;
+        if !content_type.eq_ignore_ascii_case("application/json")
+            && !content_type.eq_ignore_ascii_case("application/json; charset=utf-8") { return Err(()); }
+        let mut bytes = Zeroizing::new(Vec::new());
+        response.take(MAX_SNAPSHOT_RESPONSE_BYTES + 1).read_to_end(&mut bytes).map_err(|_| ())?;
+        if bytes.len() as u64 > MAX_SNAPSHOT_RESPONSE_BYTES { return Err(()); }
+        parse_group_snapshot(&bytes,profile)
+    }
+}
 
 impl GroupWriteTransport for StagingReqwestHttps {
     /// Native-only, bounded group update. The caller must tie any result to
@@ -230,6 +296,27 @@ impl TokenHttpTransport for StagingReqwestHttps {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn group_snapshot_rejects_other_profile_duplicates_notes_and_unrepresentable_groups() {
+        let profile = "44444444-4444-4444-8444-444444444444";
+        let chart_id = "11111111-1111-4111-8111-111111111111";
+        let chart = serde_json::json!({"contractVersion":1,"syncId":chart_id,"groups":["Fittizio"],"notes":null,
+            "name":"Persona fittizia","kind":"person","birth":{},"place":{},"sex":null,
+            "isAccountChart":false,"revision":1,"updatedAt":"2026-01-01T00:00:00Z"});
+        let mut snapshot = serde_json::json!({"contractVersion":1,"cursor":{"epoch":profile,"changeSeq":"0"},"charts":[chart.clone()]});
+        let bytes = serde_json::to_vec(&snapshot).unwrap();
+        assert_eq!(parse_group_snapshot(&bytes,profile).unwrap().get(chart_id).unwrap(),&["Fittizio"]);
+        assert!(parse_group_snapshot(&bytes,"55555555-5555-4555-8555-555555555555").is_err());
+        snapshot["charts"] = serde_json::json!([chart.clone(),chart.clone()]);
+        assert!(parse_group_snapshot(&serde_json::to_vec(&snapshot).unwrap(),profile).is_err());
+        snapshot["charts"] = serde_json::json!([chart.clone()]);
+        snapshot["charts"][0]["notes"] = serde_json::json!("private");
+        assert!(parse_group_snapshot(&serde_json::to_vec(&snapshot).unwrap(),profile).is_err());
+        snapshot["charts"][0]["notes"] = serde_json::Value::Null;
+        snapshot["charts"][0]["groups"] = serde_json::json!((0..51).map(|n| format!("Group {n}")).collect::<Vec<_>>());
+        assert!(parse_group_snapshot(&serde_json::to_vec(&snapshot).unwrap(),profile).is_err());
+    }
 
     #[test]
     fn sensitive_form_reader_streams_exact_bytes_then_exhausts() {

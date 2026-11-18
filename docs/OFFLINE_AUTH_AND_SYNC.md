@@ -17,8 +17,12 @@ group synchronization in the UI.
 
 The local archive contains an unexposed candidate link/pending record for group
 updates, including profile binding and stale-acknowledgement protection. An
-unexposed native worker can submit linked pending changes. Safe initial link
-creation, automatic scheduling, and conflict-resolution UI are not connected.
+unexposed native worker can submit linked pending changes; a separate candidate
+fetches an authenticated snapshot and reconciles groups for already linked
+charts. It rejects mismatched account epochs, notes, duplicate identities and
+groups that cannot be represented locally. Neither worker is invoked by the app.
+Safe initial link creation, automatic scheduling, and conflict-resolution UI
+are not connected.
 The native grant receives the authenticated server's sync epoch as its
 profile reference; it does not cross IPC. If the server epoch changes, the
 old local profile remains separate and must not be silently reassigned.
