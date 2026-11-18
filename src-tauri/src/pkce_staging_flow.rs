@@ -68,7 +68,7 @@ impl StagingLoginAttempt {
             }
         })?;
         if self.cancellation.is_cancelled() { return Err(StagingLoginError::Cancelled); }
-        let grant = exchange_approved_code(
+        let mut grant = exchange_approved_code(
             transport,
             self.token_endpoint.as_str(),
             &redirect,
@@ -76,8 +76,9 @@ impl StagingLoginAttempt {
             Instant::now(),
         ).map_err(StagingLoginError::TokenExchange)?;
         if self.cancellation.is_cancelled() { return Err(StagingLoginError::Cancelled); }
-        transport.verify_grant(&self.token_endpoint, &grant)
+        let profile_ref = transport.verify_grant(&self.token_endpoint, &grant)
             .map_err(|_| StagingLoginError::TokenExchange(TokenExchangeError::Rejected))?;
+        grant.bind_profile(profile_ref).map_err(|_| StagingLoginError::TokenExchange(TokenExchangeError::Rejected))?;
         if grant.remaining_seconds(Instant::now()) == 0 {
             return Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected));
         }
@@ -150,7 +151,7 @@ mod tests {
                 body:format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes(),
             })
         }
-        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> { Ok(()) }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<String, ()> { Ok("44444444-4444-4444-8444-444444444444".into()) }
     }
 
     #[test]
@@ -172,6 +173,23 @@ mod tests {
             self.0.post_form(endpoint, body, timeout, max)
         }
         // The default verification intentionally fails closed.
+    }
+
+    struct WrongProfileHttp(FakeHttp);
+    impl TokenHttpTransport for WrongProfileHttp {
+        fn post_form(&self, endpoint: &Url, body: &str, timeout: Duration, max: usize) -> Result<TokenHttpResponse, ()> {
+            self.0.post_form(endpoint, body, timeout, max)
+        }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<String, ()> { Ok("invalid-profile".into()) }
+    }
+
+    #[test]
+    fn malformed_server_profile_never_becomes_a_connected_session() {
+        let browser = SyntheticBrowser {send_callback:true, ..Default::default()};
+        let attempt = StagingLoginAttempt::begin(&browser, CONSENT, TOKEN).unwrap();
+        assert!(matches!(attempt.wait_and_exchange(&WrongProfileHttp(FakeHttp::default()), Duration::from_secs(3)),
+            Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected))));
+        browser.callback_worker.lock().unwrap().take().unwrap().join().unwrap();
     }
 
     #[test]

@@ -4,10 +4,11 @@
   "title": "Verified desktop connected session v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contractVersion", "status", "scope"],
+  "required": ["contractVersion", "status", "scope", "profileRef"],
   "properties": {
     "contractVersion": { "const": 1 },
     "status": { "const": "active" },
-    "scope": { "enum": ["chart_sync:read", "chart_sync:read chart_sync:groups:write"] }
+    "scope": { "enum": ["chart_sync:read", "chart_sync:read chart_sync:groups:write"] },
+    "profileRef": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
   }
 }

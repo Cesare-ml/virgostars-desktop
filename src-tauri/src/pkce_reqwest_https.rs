@@ -1,6 +1,6 @@
 //! Compiled native HTTPS adapter candidate for staging PKCE token exchange.
-//! It is not wired into the login flow or IPC. Transport and live service
-//! integration still require independent tests and review before activation.
+//! The guarded login flow uses this transport on a native worker. Group writes
+//! remain unexposed; live service integration and review are still required.
 #![allow(dead_code)]
 
 use crate::pkce_token_exchange::{
@@ -32,6 +32,11 @@ struct GroupResponse { contract_version: u8, status: String, groups: Vec<String>
 #[derive(PartialEq, Eq)]
 pub(crate) enum GroupWriteResult { Updated, Unchanged, Conflict(Vec<String>) }
 
+pub(crate) trait GroupWriteTransport {
+    fn replace_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant,
+        sync_id: &str, base_groups: &[String], groups: &[String]) -> Result<GroupWriteResult, ()>;
+}
+
 fn parse_group_response(status: u16, bytes: &[u8], desired: &[String]) -> Result<GroupWriteResult, ()> {
     let response: GroupResponse = serde_json::from_slice(bytes).map_err(|_| ())?;
     if response.contract_version != 1 || !crate::chart_archive::valid_groups(&response.groups) { return Err(()); }
@@ -62,11 +67,14 @@ struct SessionResponse {
     contract_version: u8,
     status: String,
     scope: String,
+    profile_ref: String,
 }
 
-fn valid_session_response(bytes: &[u8], expected_scope: &str) -> bool {
-    serde_json::from_slice::<SessionResponse>(bytes).is_ok_and(|response|
-        response.contract_version == 1 && response.status == "active" && response.scope == expected_scope)
+fn valid_session_response(bytes: &[u8], expected_scope: &str) -> Option<String> {
+    let response = serde_json::from_slice::<SessionResponse>(bytes).ok()?;
+    if response.contract_version != 1 || response.status != "active" || response.scope != expected_scope
+        || !crate::chart_archive::valid_id(&response.profile_ref) { return None; }
+    Some(response.profile_ref)
 }
 
 /// Owns the only intentionally retained copy of the one-use form payload.
@@ -97,13 +105,14 @@ impl Read for SecretFormReader {
 /// `post_form` is blocking: it MUST run on the dedicated native worker.
 pub struct StagingReqwestHttps;
 
-impl StagingReqwestHttps {
+impl GroupWriteTransport for StagingReqwestHttps {
     /// Native-only, bounded group update. The caller must tie any result to
     /// the still-current verified session and persist it transactionally; this
     /// helper is deliberately not exposed to the WebView or invoked yet.
-    pub(crate) fn replace_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant,
+    fn replace_groups(&self, token_endpoint: &Url, grant: &NativeAccessGrant,
         sync_id: &str, base_groups: &[String], groups: &[String]) -> Result<GroupWriteResult, ()> {
-        if grant.scope() != TokenScope::ReadAndGroupWrite
+        if grant.scope() != TokenScope::ReadAndGroupWrite || grant.profile_ref().is_none()
+            || !grant.matches_token_endpoint(token_endpoint)
             || grant.remaining_seconds(std::time::Instant::now()) == 0
             || !crate::chart_archive::valid_id(sync_id)
             || !crate::chart_archive::valid_groups(base_groups)
@@ -194,7 +203,8 @@ impl TokenHttpTransport for StagingReqwestHttps {
         })
     }
 
-    fn verify_grant(&self, endpoint: &Url, grant: &NativeAccessGrant) -> Result<(), ()> {
+    fn verify_grant(&self, endpoint: &Url, grant: &NativeAccessGrant) -> Result<String, ()> {
+        if !grant.matches_token_endpoint(endpoint) { return Err(()); }
         let mut session = valid_staging_token_endpoint(endpoint.as_str()).ok_or(())?;
         session.set_path("/chart-sync/v1/session");
         let client = restricted_client(MAX_TOKEN_DEADLINE)?;
@@ -212,8 +222,8 @@ impl TokenHttpTransport for StagingReqwestHttps {
             && !content_type.eq_ignore_ascii_case("application/json; charset=utf-8") { return Err(()); }
         let mut body = Vec::new();
         response.take(MAX_SESSION_RESPONSE_BYTES + 1).read_to_end(&mut body).map_err(|_| ())?;
-        if body.len() as u64 > MAX_SESSION_RESPONSE_BYTES || !valid_session_response(&body, grant.scope().as_str()) { return Err(()); }
-        Ok(())
+        if body.len() as u64 > MAX_SESSION_RESPONSE_BYTES { return Err(()); }
+        valid_session_response(&body, grant.scope().as_str()).ok_or(())
     }
 }
 
@@ -255,9 +265,10 @@ mod tests {
 
     #[test]
     fn session_verification_requires_the_exact_public_contract() {
-        let body = br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read"}"#;
-        assert!(valid_session_response(body, "chart_sync:read"));
-        assert!(!valid_session_response(body, "chart_sync:read chart_sync:groups:write"));
+        let body = br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read","profileRef":"44444444-4444-4444-8444-444444444444"}"#;
+        assert!(valid_session_response(body, "chart_sync:read").is_some());
+        assert!(valid_session_response(body, "chart_sync:read chart_sync:groups:write").is_none());
+        assert!(valid_session_response(br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read","profileRef":"other"}"#, "chart_sync:read").is_none());
         let schema: serde_json::Value = serde_json::from_str(include_str!(
             "../../contracts/connected-session.v1.schema.json"
         )).unwrap();
@@ -273,7 +284,7 @@ mod tests {
             &br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read chart_sync:notes"}"#[..],
             &br#"{"contractVersion":1,"status":"active","status":"active","scope":"chart_sync:read"}"#[..],
             &br#"{"contractVersion":2,"status":"active","scope":"chart_sync:read"}"#[..],
-        ] { assert!(!valid_session_response(invalid, "chart_sync:read")); }
+        ] { assert!(valid_session_response(invalid, "chart_sync:read").is_none()); }
     }
 
     #[test]

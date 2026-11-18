@@ -1,8 +1,7 @@
 //! Staging-only OAuth authorization-code token exchange boundary for Desktop.
 //!
-//! This module only constructs/verifies form and response contracts; a real
-//! HTTPS transport, credential store, Tauri IPC and UI are NOT connected.
-//! Access tokens are ephemeral and never serialized or logged to the WebView.
+//! The guarded login flow uses a native HTTPS transport and ephemeral grants.
+//! Access tokens are never serialized or logged to the WebView.
 #![allow(dead_code)]
 
 use crate::pkce_login::{valid_consent_origin, valid_loopback_uri, CallbackDecision};
@@ -42,7 +41,7 @@ pub trait TokenHttpTransport {
 
     /// A syntactically valid token is not proof of an active backend session.
     /// Implementations must fail closed until the backend confirms the grant.
-    fn verify_grant(&self, _endpoint: &Url, _grant: &NativeAccessGrant) -> Result<(), ()> {
+    fn verify_grant(&self, _endpoint: &Url, _grant: &NativeAccessGrant) -> Result<String, ()> {
         Err(())
     }
 }
@@ -74,6 +73,8 @@ pub struct NativeAccessGrant {
     access_token: Zeroizing<String>,
     scope: TokenScope,
     expires_at: Instant,
+    profile_ref: Option<String>,
+    token_endpoint: Option<Url>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,6 +94,28 @@ impl NativeAccessGrant {
     /// Only a future native HTTPS client may borrow this value to call the
     /// owner-authorized backend. Never return it from Tauri IPC or print it.
     pub(crate) fn bearer(&self) -> &str { &self.access_token }
+    pub(crate) fn bind_profile(&mut self, profile_ref: String) -> Result<(), ()> {
+        if !crate::chart_archive::valid_id(&profile_ref) || self.profile_ref.is_some() { return Err(()); }
+        self.profile_ref = Some(profile_ref);
+        Ok(())
+    }
+    pub(crate) fn profile_ref(&self) -> Option<&str> { self.profile_ref.as_deref() }
+    pub(crate) fn matches_token_endpoint(&self, endpoint: &Url) -> bool {
+        self.token_endpoint.as_ref() == Some(endpoint)
+    }
+    /// A bounded native worker can own a short-lived copy without holding the
+    /// session mutex over network I/O. Both copies are zeroized on drop.
+    pub(crate) fn copy_for_worker(&self, now: Instant) -> Option<Self> {
+        if self.remaining_seconds(now) == 0 || self.profile_ref.is_none() { return None; }
+        Some(Self {access_token:Zeroizing::new(self.access_token.to_string()), scope:self.scope,
+            expires_at:self.expires_at, profile_ref:self.profile_ref.clone(),token_endpoint:self.token_endpoint.clone()})
+    }
+    #[cfg(test)]
+    pub(crate) fn synthetic_for_test(scope: TokenScope, profile: &str) -> Self {
+        Self {access_token:Zeroizing::new("synthetic.test.token".into()),scope,
+            expires_at:Instant::now() + Duration::from_secs(60), profile_ref:Some(profile.into()),
+            token_endpoint:Url::parse("https://staging.virgostars.it/chart-sync/v1/token").ok()}
+    }
 }
 
 pub(crate) fn valid_staging_token_endpoint(value: &str) -> Option<Url> {
@@ -148,7 +171,7 @@ fn parse_response(response: TokenHttpResponse, now: Instant) -> Result<NativeAcc
     };
     let expires_at = now.checked_add(Duration::from_secs(expires))
         .ok_or(TokenExchangeError::InvalidResponse)?;
-    Ok(NativeAccessGrant { access_token: raw_token, scope, expires_at })
+    Ok(NativeAccessGrant { access_token: raw_token, scope, expires_at, profile_ref: None, token_endpoint:None })
 }
 
 /// Consumes the one-time callback. A denial never contacts the network. No
@@ -180,7 +203,9 @@ pub fn exchange_approved_code<T: TokenHttpTransport>(
     if body.len() > MAX_FORM_BYTES { return Err(TokenExchangeError::InvalidCode); }
     let response = transport.post_form(&endpoint, &body, HTTP_TIMEOUT, MAX_RESPONSE_BYTES)
         .map_err(|_| TokenExchangeError::TransportUnavailable)?;
-    parse_response(response, now)
+    let mut grant = parse_response(response, now)?;
+    grant.token_endpoint = Some(endpoint);
+    Ok(grant)
 }
 
 #[cfg(test)]

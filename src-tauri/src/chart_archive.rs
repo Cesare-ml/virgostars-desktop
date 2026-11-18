@@ -21,7 +21,7 @@ use crate::archive_keys::{new_key, Key, KeyError, KeyStore, OsKeyStore};
 use crate::archive_vault::{self, VaultError};
 use crate::chart_calculation::{self, ChartRequestV1};
 use rusqlite::serialize::OwnedData;
-use rusqlite::{params, Connection, DatabaseName, ErrorCode, OpenFlags, TransactionBehavior};
+use rusqlite::{params, Connection, DatabaseName, ErrorCode, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,8 +31,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 const PROTOCOL_VERSION: u8 = 1;
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 const LEGACY_SCHEMA_VERSION: i64 = 1;
+const GROUPS_SCHEMA_VERSION: i64 = 2;
 const LEGACY_FILE_NAME: &str = "charts-v1.sqlite3";
 const SEALED_FILE_NAME: &str = "charts-v2.vsarchive";
 const STAGING_FILE_NAME: &str = "charts-v2.vsarchive.tmp";
@@ -187,7 +188,16 @@ const SCHEMA: &str = "CREATE TABLE saved_charts (
        PRIMARY KEY (chart_id, position),
        UNIQUE (chart_id, name)
      ) STRICT;
-     PRAGMA user_version = 2;";
+     CREATE TABLE chart_group_sync_links (
+       chart_id TEXT PRIMARY KEY NOT NULL REFERENCES saved_charts(id) ON DELETE CASCADE,
+       profile_ref TEXT NOT NULL,
+       remote_sync_id TEXT NOT NULL,
+       base_groups_json TEXT NOT NULL,
+       conflict_groups_json TEXT,
+       pending INTEGER NOT NULL CHECK (pending IN (0, 1, 2)),
+       UNIQUE (profile_ref, remote_sync_id)
+     ) STRICT;
+     PRAGMA user_version = 3;";
 
 const MIGRATE_GROUPS: &str = "BEGIN IMMEDIATE;
     CREATE TABLE saved_chart_groups (
@@ -198,6 +208,19 @@ const MIGRATE_GROUPS: &str = "BEGIN IMMEDIATE;
       UNIQUE (chart_id, name)
     ) STRICT;
     PRAGMA user_version = 2;
+    COMMIT;";
+
+const MIGRATE_GROUP_LINKS: &str = "BEGIN IMMEDIATE;
+    CREATE TABLE chart_group_sync_links (
+      chart_id TEXT PRIMARY KEY NOT NULL REFERENCES saved_charts(id) ON DELETE CASCADE,
+      profile_ref TEXT NOT NULL,
+      remote_sync_id TEXT NOT NULL,
+      base_groups_json TEXT NOT NULL,
+      conflict_groups_json TEXT,
+      pending INTEGER NOT NULL CHECK (pending IN (0, 1, 2)),
+      UNIQUE (profile_ref, remote_sync_id)
+    ) STRICT;
+    PRAGMA user_version = 3;
     COMMIT;";
 
 /// An empty database at the current schema, in memory only.
@@ -218,7 +241,7 @@ fn check_connection(connection: &Connection) -> Result<(), Failure> {
     let version: i64 =
         connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     match version {
-        SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
+        SCHEMA_VERSION | GROUPS_SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
         // Written by a newer application: reading it with old rules could lose data.
         newer if newer > SCHEMA_VERSION => Err("archive_newer"),
         _ => Err("archive_corrupt"),
@@ -247,6 +270,9 @@ fn connection_from_bytes(bytes: &[u8]) -> Result<Connection, Failure> {
         // Upgrade in memory only. The encrypted original remains unchanged
         // until a later successful atomic archive write.
         connection.execute_batch(MIGRATE_GROUPS).map_err(|error| classify(&error))?;
+    }
+    if version == LEGACY_SCHEMA_VERSION || version == GROUPS_SCHEMA_VERSION {
+        connection.execute_batch(MIGRATE_GROUP_LINKS).map_err(|error| classify(&error))?;
     }
     Ok(connection)
 }
@@ -307,7 +333,206 @@ fn set_groups(connection: &mut Connection, id: &str, groups: &[String]) -> Resul
         transaction.execute("INSERT INTO saved_chart_groups (chart_id, position, name) VALUES (?1, ?2, ?3)",
             params![id, position as i64, name]).map_err(|error| classify(&error))?;
     }
+    // A linked chart's edit and its pending marker commit together. A chart
+    // not explicitly linked to a verified profile never enters an outbox.
+    transaction.execute("UPDATE chart_group_sync_links SET pending=CASE WHEN pending=2 THEN 2 ELSE 1 END WHERE chart_id=?1", [id])
+        .map_err(|error| classify(&error))?;
     transaction.commit().map_err(|error| classify(&error))
+}
+
+/// Internal candidate only: a sync orchestrator must first verify the server
+/// account/profile and the remote chart identity before creating this link.
+/// Local-only charts are never automatically assigned to an account.
+#[allow(dead_code)]
+fn link_group_sync(connection: &mut Connection, chart_id: &str, profile_ref: &str,
+    remote_sync_id: &str, server_groups: &[String]) -> Result<(), Failure> {
+    if !valid_id(chart_id) || !valid_id(profile_ref) || !valid_id(remote_sync_id) || !valid_groups(server_groups) {
+        return Err("invalid_request");
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| classify(&error))?;
+    let exists: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts WHERE id=?1)", [chart_id], |r| r.get(0))
+        .map_err(|error| classify(&error))?;
+    if !exists { return Err("not_found"); }
+    let existing: Option<(String,String)> = transaction.query_row(
+        "SELECT profile_ref,remote_sync_id FROM chart_group_sync_links WHERE chart_id=?1", [chart_id],
+        |r| Ok((r.get(0)?,r.get(1)?)),
+    ).optional().map_err(|error| classify(&error))?;
+    if let Some((profile,remote)) = existing {
+        if profile != profile_ref || remote != remote_sync_id { return Err("profile_conflict"); }
+        return transaction.commit().map_err(|error| classify(&error));
+    }
+    let local_groups = chart_groups(&transaction, chart_id)?;
+    let base_json = serde_json::to_string(server_groups).map_err(|_| "archive_unavailable")?;
+    transaction.execute(
+        "INSERT INTO chart_group_sync_links (chart_id,profile_ref,remote_sync_id,base_groups_json,conflict_groups_json,pending) VALUES (?1,?2,?3,?4,?5,?6)",
+        // A mismatch at first link is a conflict requiring an explicit choice,
+        // not permission to overwrite either pre-existing set of groups.
+        params![chart_id,profile_ref,remote_sync_id,base_json,
+            if local_groups != server_groups { Some(base_json.as_str()) } else { None },
+            if local_groups != server_groups { 2 } else { 0 }],
+    ).map_err(|error| classify(&error))?;
+    transaction.commit().map_err(|error| classify(&error))
+}
+
+fn chart_groups(connection: &Connection, chart_id: &str) -> Result<Vec<String>, Failure> {
+    let mut statement = connection.prepare("SELECT name FROM saved_chart_groups WHERE chart_id=?1 ORDER BY position")
+        .map_err(|error| classify(&error))?;
+    let groups = statement.query_map([chart_id], |row| row.get::<_,String>(0))
+        .map_err(|error| classify(&error))?.collect::<Result<Vec<_>,_>>().map_err(|error| classify(&error))?;
+    if !valid_groups(&groups) { return Err("archive_corrupt"); }
+    Ok(groups)
+}
+
+/// Acknowledge only the base and contents actually sent. A later local edit
+/// remains pending; a stale response cannot overwrite a newer server base.
+#[allow(dead_code)]
+fn acknowledge_group_sync(connection: &mut Connection, chart_id: &str, profile_ref: &str,
+    remote_sync_id: &str, sent_base: &[String], sent_groups: &[String]) -> Result<(), Failure> {
+    if !valid_id(chart_id) || !valid_id(profile_ref) || !valid_id(remote_sync_id)
+        || !valid_groups(sent_base) || !valid_groups(sent_groups) { return Err("invalid_request"); }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| classify(&error))?;
+    let old: Option<(String,i64)> = transaction.query_row(
+        "SELECT base_groups_json,pending FROM chart_group_sync_links WHERE chart_id=?1 AND profile_ref=?2 AND remote_sync_id=?3",
+        params![chart_id,profile_ref,remote_sync_id], |r| Ok((r.get(0)?,r.get(1)?)),
+    ).optional().map_err(|error| classify(&error))?;
+    let (old_json,pending) = old.ok_or("profile_conflict")?;
+    if pending != 1 { return Err("stale_sync"); }
+    let saved_base: Vec<String> = serde_json::from_str(&old_json)
+        .map_err(|_| "archive_corrupt")?;
+    if !valid_groups(&saved_base) { return Err("archive_corrupt"); }
+    if saved_base != sent_base { return Err("stale_sync"); }
+    let local = chart_groups(&transaction, chart_id)?;
+    let base_json = serde_json::to_string(sent_groups).map_err(|_| "archive_unavailable")?;
+    transaction.execute("UPDATE chart_group_sync_links SET base_groups_json=?2,pending=?3,conflict_groups_json=NULL WHERE chart_id=?1",
+        params![chart_id,base_json,i64::from(local != sent_groups)]).map_err(|error| classify(&error))?;
+    transaction.commit().map_err(|error| classify(&error))
+}
+
+/// Record the server's conflicting groups without replacing local edits. A
+/// later UI must ask the user which version to keep or merge explicitly.
+#[allow(dead_code)]
+fn record_group_conflict(connection: &mut Connection, chart_id: &str, profile_ref: &str,
+    remote_sync_id: &str, sent_base: &[String], server_groups: &[String]) -> Result<(), Failure> {
+    if !valid_id(chart_id) || !valid_id(profile_ref) || !valid_id(remote_sync_id)
+        || !valid_groups(sent_base) || !valid_groups(server_groups) { return Err("invalid_request"); }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| classify(&error))?;
+    let old: Option<(String,i64)> = transaction.query_row(
+        "SELECT base_groups_json,pending FROM chart_group_sync_links WHERE chart_id=?1 AND profile_ref=?2 AND remote_sync_id=?3",
+        params![chart_id,profile_ref,remote_sync_id], |r| Ok((r.get(0)?,r.get(1)?)),
+    ).optional().map_err(|error| classify(&error))?;
+    let (old_json,pending) = old.ok_or("profile_conflict")?;
+    let base: Vec<String> = serde_json::from_str(&old_json).map_err(|_| "archive_corrupt")?;
+    if !valid_groups(&base) { return Err("archive_corrupt"); }
+    if pending != 1 || base != sent_base { return Err("stale_sync"); }
+    let conflict = serde_json::to_string(server_groups).map_err(|_| "archive_unavailable")?;
+    transaction.execute("UPDATE chart_group_sync_links SET pending=2,conflict_groups_json=?2 WHERE chart_id=?1",
+        params![chart_id,conflict]).map_err(|error| classify(&error))?;
+    transaction.commit().map_err(|error| classify(&error))
+}
+
+/// Called only after an explicit choice in a future conflict UI. The shown
+/// server version must still match the stored conflict; otherwise nothing is
+/// changed. Choosing server clears pending, while a local/merged choice is
+/// queued relative to the version the user reviewed.
+#[allow(dead_code)]
+fn resolve_group_conflict(connection: &mut Connection, chart_id: &str, profile_ref: &str,
+    remote_sync_id: &str, shown_server: &[String], chosen: &[String]) -> Result<(), Failure> {
+    if !valid_id(chart_id) || !valid_id(profile_ref) || !valid_id(remote_sync_id)
+        || !valid_groups(shown_server) || !valid_groups(chosen) { return Err("invalid_request"); }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| classify(&error))?;
+    let old: Option<(Option<String>,i64)> = transaction.query_row(
+        "SELECT conflict_groups_json,pending FROM chart_group_sync_links WHERE chart_id=?1 AND profile_ref=?2 AND remote_sync_id=?3",
+        params![chart_id,profile_ref,remote_sync_id], |r| Ok((r.get(0)?,r.get(1)?)),
+    ).optional().map_err(|error| classify(&error))?;
+    let (old_json,pending) = old.ok_or("profile_conflict")?;
+    let conflict: Vec<String> = serde_json::from_str(old_json.as_deref().ok_or("stale_sync")?)
+        .map_err(|_| "archive_corrupt")?;
+    if !valid_groups(&conflict) { return Err("archive_corrupt"); }
+    if pending != 2 || conflict != shown_server { return Err("stale_sync"); }
+    transaction.execute("DELETE FROM saved_chart_groups WHERE chart_id=?1", [chart_id])
+        .map_err(|error| classify(&error))?;
+    for (position,name) in chosen.iter().enumerate() {
+        transaction.execute("INSERT INTO saved_chart_groups (chart_id,position,name) VALUES (?1,?2,?3)",
+            params![chart_id,position as i64,name]).map_err(|error| classify(&error))?;
+    }
+    let base_json = serde_json::to_string(shown_server).map_err(|_| "archive_unavailable")?;
+    transaction.execute("UPDATE chart_group_sync_links SET base_groups_json=?2,conflict_groups_json=NULL,pending=?3 WHERE chart_id=?1",
+        params![chart_id,base_json,i64::from(chosen != shown_server)]).map_err(|error| classify(&error))?;
+    transaction.commit().map_err(|error| classify(&error))
+}
+
+/// Native-only snapshot of one explicitly bound profile's pending group edit.
+/// No Serialize or Debug: it contains private chart group names.
+#[allow(dead_code)]
+pub(crate) struct PendingGroupUpdate {
+    pub chart_id: String,
+    pub remote_sync_id: String,
+    pub base_groups: Vec<String>,
+    pub groups: Vec<String>,
+}
+
+/// Future sync worker entry point. The reference must come from its verified
+/// native grant, not IPC. Callers must never infer or fabricate chart links.
+#[allow(dead_code)]
+fn pending_group_updates(connection: &Connection, profile_ref: &str) -> Result<Vec<PendingGroupUpdate>, Failure> {
+    if !valid_id(profile_ref) { return Err("invalid_request"); }
+    let mut query = connection.prepare(
+        "SELECT chart_id,remote_sync_id,base_groups_json FROM chart_group_sync_links WHERE profile_ref=?1 AND pending=1 ORDER BY chart_id LIMIT ?2"
+    ).map_err(|error| classify(&error))?;
+    let rows = query.query_map(params![profile_ref,MAX_CHARTS], |r|
+        Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))
+        .map_err(|error| classify(&error))?.collect::<Result<Vec<_>,_>>().map_err(|error| classify(&error))?;
+    let mut pending = Vec::with_capacity(rows.len());
+    for (chart_id,remote_sync_id,base_json) in rows {
+        if !valid_id(&chart_id) || !valid_id(&remote_sync_id) { return Err("archive_corrupt"); }
+        let base_groups: Vec<String> = serde_json::from_str(&base_json).map_err(|_| "archive_corrupt")?;
+        if !valid_groups(&base_groups) { return Err("archive_corrupt"); }
+        let groups = chart_groups(connection,&chart_id)?;
+        pending.push(PendingGroupUpdate {chart_id,remote_sync_id,base_groups,groups});
+    }
+    Ok(pending)
+}
+
+/// Copies pending work under the archive lock. No network operation may hold
+/// this lock; a later edit is detected when the response is committed.
+#[allow(dead_code)]
+pub(crate) fn pending_groups_for_profile(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str) -> Result<Vec<PendingGroupUpdate>, Failure> {
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let session = open_session(paths,keys)?;
+    pending_group_updates(&session.connection,profile_ref)
+}
+
+/// No IPC exposure: the future caller must validate the profile from the
+/// active grant and require an explicit user-approved chart association.
+#[allow(dead_code)]
+pub(crate) fn link_groups_to_verified_profile(paths: &ArchivePaths, keys: &dyn KeyStore,
+    chart_id: &str, profile_ref: &str, remote_sync_id: &str, server_groups: &[String]) -> Result<(), Failure> {
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut session = open_session(paths,keys)?;
+    link_group_sync(&mut session.connection,chart_id,profile_ref,remote_sync_id,server_groups)?;
+    persist(paths,keys,&session.connection)
+}
+
+/// Persists only a response for the exact profile, chart, server base and
+/// groups that were sent. Failure leaves the previous encrypted file intact.
+#[allow(dead_code)]
+pub(crate) fn apply_group_sync_result(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str, update: &PendingGroupUpdate,
+    result: &crate::pkce_reqwest_https::GroupWriteResult) -> Result<(), Failure> {
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut session = open_session(paths,keys)?;
+    match result {
+        crate::pkce_reqwest_https::GroupWriteResult::Updated | crate::pkce_reqwest_https::GroupWriteResult::Unchanged =>
+            acknowledge_group_sync(&mut session.connection,&update.chart_id,profile_ref,&update.remote_sync_id,&update.base_groups,&update.groups)?,
+        crate::pkce_reqwest_https::GroupWriteResult::Conflict(server_groups) =>
+            record_group_conflict(&mut session.connection,&update.chart_id,profile_ref,&update.remote_sync_id,&update.base_groups,server_groups)?,
+    }
+    persist(paths,keys,&session.connection)
 }
 
 fn save(connection: &mut Connection, chart: &ChartRecordV1, now_ms: i64, limit: i64) -> Result<(), Failure> {
@@ -683,7 +908,7 @@ mod tests {
         fs::create_dir_all(&archive.folder).unwrap();
         let connection = Connection::open(&archive.paths.legacy).unwrap();
         connection.execute_batch(SCHEMA).unwrap();
-        connection.execute_batch("DROP TABLE saved_chart_groups; PRAGMA user_version = 1;").unwrap();
+        connection.execute_batch("DROP TABLE chart_group_sync_links; DROP TABLE saved_chart_groups; PRAGMA user_version = 1;").unwrap();
         for (id, name, created, updated) in rows {
             connection
                 .execute(
@@ -736,7 +961,7 @@ mod tests {
         fs::create_dir_all(&archive.folder).unwrap();
         let mut connection = fresh_connection().unwrap();
         save(&mut connection, &record(ID_A, "Preesistente"), 1000, MAX_CHARTS).unwrap();
-        connection.execute_batch("DROP TABLE saved_chart_groups; PRAGMA user_version=1;").unwrap();
+        connection.execute_batch("DROP TABLE chart_group_sync_links; DROP TABLE saved_chart_groups; PRAGMA user_version=1;").unwrap();
         persist(&archive.paths, &keys, &connection).unwrap();
         let original = fs::read(&archive.paths.sealed).unwrap();
         let charts = go(&archive, &keys, &list_request(), 2000).charts.unwrap();
@@ -747,7 +972,130 @@ mod tests {
         assert_eq!(go(&archive, &keys, &list_request(), 4000).charts.unwrap()[0].groups, ["Famiglia fittizia"]);
         let upgraded = load_sealed(&archive.paths, &keys).unwrap();
         let version: i64 = upgraded.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
+    }
+
+    #[test]
+    fn version_two_keeps_groups_and_does_not_rewrite_ciphertext_on_read() {
+        let archive = TempArchive::new("group-v2-upgrade");
+        let keys = FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        let mut connection = fresh_connection().unwrap();
+        save(&mut connection, &record(ID_A,"Fittizio"),1000,MAX_CHARTS).unwrap();
+        set_groups(&mut connection, ID_A, &["Gruppo fittizio".into()]).unwrap();
+        connection.execute_batch("DROP TABLE chart_group_sync_links; PRAGMA user_version=2;").unwrap();
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let original = fs::read(&archive.paths.sealed).unwrap();
+        assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].groups,["Gruppo fittizio"]);
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(),original);
+    }
+
+    #[test]
+    fn group_outbox_is_profile_bound_and_keeps_new_edits_after_an_old_response() {
+        let archive = TempArchive::new("profile-outbox");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        let mut connection = load_sealed(&archive.paths,&keys).unwrap();
+        let base: Vec<String> = vec![];
+        link_group_sync(&mut connection,ID_A,ID_B,ID_A,&base).unwrap();
+        assert_eq!(link_group_sync(&mut connection,ID_A,ID_A,ID_A,&base),Err("profile_conflict"));
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let first = vec!["Prima modifica".to_string()];
+        let second = vec!["Seconda modifica".to_string()];
+        for groups in [&first,&second] {
+            let update = ArchiveRequestV1 {id:Some(ID_A.into()),groups:Some(groups.clone()),..request("set_groups")};
+            assert_eq!(go(&archive,&keys,&update,2000).status,"ok");
+        }
+        let mut connection = load_sealed(&archive.paths,&keys).unwrap();
+        assert_eq!(acknowledge_group_sync(&mut connection,ID_A,ID_A,ID_A,&base,&first),Err("profile_conflict"));
+        acknowledge_group_sync(&mut connection,ID_A,ID_B,ID_A,&base,&first).unwrap();
+        let pending: i64 = connection.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
+        assert_eq!(pending,1, "an edit made during a request must remain pending");
+        assert_eq!(acknowledge_group_sync(&mut connection,ID_A,ID_B,ID_A,&base,&first),Err("stale_sync"));
+        acknowledge_group_sync(&mut connection,ID_A,ID_B,ID_A,&first,&second).unwrap();
+        let pending: i64 = connection.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
+        assert_eq!(pending,0);
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let reopened = load_sealed(&archive.paths,&keys).unwrap();
+        let pending: i64 = reopened.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
+        assert_eq!(pending,0);
+    }
+
+    #[test]
+    fn initial_link_with_different_groups_requires_resolution_before_any_acknowledgement() {
+        let archive = TempArchive::new("initial-group-conflict");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        let mut connection = load_sealed(&archive.paths,&keys).unwrap();
+        let remote = vec!["Remoto fittizio".to_string()];
+        link_group_sync(&mut connection,ID_A,ID_B,ID_A,&remote).unwrap();
+        set_groups(&mut connection,ID_A,&["Locale fittizio".into()]).unwrap();
+        let pending: i64 = connection.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
+        assert_eq!(pending,2);
+        assert_eq!(acknowledge_group_sync(&mut connection,ID_A,ID_B,ID_A,&remote,&[]),Err("stale_sync"));
+    }
+
+    #[test]
+    fn remote_conflict_preserves_local_groups_and_requires_a_user_choice() {
+        let archive = TempArchive::new("remote-group-conflict");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        let mut connection = load_sealed(&archive.paths,&keys).unwrap();
+        let base: Vec<String> = vec![];
+        link_group_sync(&mut connection,ID_A,ID_B,ID_A,&base).unwrap();
+        let local = vec!["Locale fittizio".to_string()];
+        let remote = vec!["Web fittizio".to_string()];
+        set_groups(&mut connection,ID_A,&local).unwrap();
+        record_group_conflict(&mut connection,ID_A,ID_B,ID_A,&base,&remote).unwrap();
+        assert_eq!(chart_groups(&connection,ID_A).unwrap(),local);
+        let (pending,json): (i64,String) = connection.query_row(
+            "SELECT pending,conflict_groups_json FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(pending,2);
+        assert_eq!(serde_json::from_str::<Vec<String>>(&json).unwrap(),remote);
+        assert_eq!(acknowledge_group_sync(&mut connection,ID_A,ID_B,ID_A,&base,&local),Err("stale_sync"));
+        assert_eq!(resolve_group_conflict(&mut connection,ID_A,ID_B,ID_A,&base,&local),Err("stale_sync"));
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let mut reopened = load_sealed(&archive.paths,&keys).unwrap();
+        assert_eq!(chart_groups(&reopened,ID_A).unwrap(),local);
+        let merged = vec!["Locale fittizio".to_string(),"Web fittizio".to_string()];
+        resolve_group_conflict(&mut reopened,ID_A,ID_B,ID_A,&remote,&merged).unwrap();
+        assert_eq!(chart_groups(&reopened,ID_A).unwrap(),merged);
+        let pending: i64 = reopened.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
+        assert_eq!(pending,1);
+        acknowledge_group_sync(&mut reopened,ID_A,ID_B,ID_A,&remote,&merged).unwrap();
+        assert_eq!(acknowledge_group_sync(&mut reopened,ID_A,ID_B,ID_A,&remote,&merged),Err("stale_sync"));
+    }
+
+    #[test]
+    fn pending_worker_reads_only_its_profile_and_never_loses_a_concurrent_edit() {
+        use crate::pkce_reqwest_https::GroupWriteResult;
+        let archive = TempArchive::new("pending-worker");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        let mut connection = load_sealed(&archive.paths,&keys).unwrap();
+        link_group_sync(&mut connection,ID_A,ID_B,ID_A,&[]).unwrap();
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let first = ArchiveRequestV1 {id:Some(ID_A.into()),groups:Some(vec!["Prima".into()]),..request("set_groups")};
+        go(&archive,&keys,&first,2000);
+        assert!(pending_groups_for_profile(&archive.paths,&keys,ID_A).unwrap().is_empty());
+        let pending = pending_groups_for_profile(&archive.paths,&keys,ID_B).unwrap();
+        assert_eq!(pending.len(),1);
+        assert_eq!(pending[0].groups,["Prima"]);
+        let second = ArchiveRequestV1 {id:Some(ID_A.into()),groups:Some(vec!["Seconda".into()]),..request("set_groups")};
+        go(&archive,&keys,&second,3000);
+        assert_eq!(apply_group_sync_result(&archive.paths,&keys,ID_A,&pending[0],&GroupWriteResult::Updated),Err("profile_conflict"));
+        apply_group_sync_result(&archive.paths,&keys,ID_B,&pending[0],&GroupWriteResult::Updated).unwrap();
+        let next = pending_groups_for_profile(&archive.paths,&keys,ID_B).unwrap();
+        assert_eq!(next.len(),1);
+        assert_eq!(next[0].base_groups,["Prima"]);
+        assert_eq!(next[0].groups,["Seconda"]);
+        apply_group_sync_result(&archive.paths,&keys,ID_B,&next[0],&GroupWriteResult::Conflict(vec!["Web".into()])).unwrap();
+        assert!(pending_groups_for_profile(&archive.paths,&keys,ID_B).unwrap().is_empty());
+        let reopened = load_sealed(&archive.paths,&keys).unwrap();
+        assert_eq!(chart_groups(&reopened,ID_A).unwrap(),["Seconda"]);
+        let (pending,remote):(i64,String)=reopened.query_row("SELECT pending,conflict_groups_json FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(pending,2);
+        assert_eq!(serde_json::from_str::<Vec<String>>(&remote).unwrap(),["Web"]);
     }
 
     #[test]

@@ -43,7 +43,13 @@ struct RegistryState {
 
 /// Not a network client or secret store: only one ephemeral Rust session may
 /// occupy this app-owned registry at a time. There is no Serialize or Debug.
-pub struct NativeLoginRegistry { inner: Mutex<RegistryState> }
+pub struct NativeLoginRegistry { inner: Mutex<RegistryState>, sync_busy: AtomicBool }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GroupSyncProgress { pub processed: usize, pub conflicts: usize }
+
+struct SyncReservation<'a>(&'a AtomicBool);
+impl Drop for SyncReservation<'_> { fn drop(&mut self) { self.0.store(false, Ordering::SeqCst); } }
 
 impl Default for NativeLoginRegistry {
     fn default() -> Self { Self::new() }
@@ -51,7 +57,7 @@ impl Default for NativeLoginRegistry {
 
 impl NativeLoginRegistry {
     pub fn new() -> Self {
-        Self { inner: Mutex::new(RegistryState { closed: false, slot: Slot::Idle }) }
+        Self { inner: Mutex::new(RegistryState { closed: false, slot: Slot::Idle }), sync_busy: AtomicBool::new(false) }
     }
 
     /// Must be invoked by a bounded native owner, never on Angular/UI or an
@@ -151,6 +157,63 @@ impl NativeLoginRegistry {
         true
     }
 
+    /// Native-only candidate for a bounded group synchronization pass. The
+    /// caller must run this on a blocking worker, never the Tauri UI executor.
+    /// A new session/logout wins over a late response; the server operation
+    /// may already have completed, and will be safely retried idempotently.
+    #[allow(dead_code)]
+    pub(crate) fn sync_pending_groups<T: crate::pkce_reqwest_https::GroupWriteTransport>(
+        &self, expected_attempt_id: &str, token_endpoint: &str,
+        paths: &crate::chart_archive::ArchivePaths, keys: &dyn crate::archive_keys::KeyStore,
+        transport: &T,
+    ) -> Result<GroupSyncProgress, NativeRegistryError> {
+        if self.sync_busy.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err() {
+            return Err(NativeRegistryError::Busy);
+        }
+        let _reservation = SyncReservation(&self.sync_busy);
+        let endpoint = crate::pkce_token_exchange::valid_staging_token_endpoint(token_endpoint)
+            .ok_or(NativeRegistryError::Unavailable)?;
+        let grant = {
+            let state = self.inner.lock().map_err(|_| NativeRegistryError::Unavailable)?;
+            if state.closed { return Err(NativeRegistryError::Closed); }
+            let Slot::Active(session) = &state.slot else { return Err(NativeRegistryError::Unavailable); };
+            if session.snapshot().attempt_id != expected_attempt_id { return Err(NativeRegistryError::Unavailable); }
+            session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?
+        };
+        if grant.scope() != crate::pkce_token_exchange::TokenScope::ReadAndGroupWrite || !grant.matches_token_endpoint(&endpoint) {
+            return Err(NativeRegistryError::Unavailable);
+        }
+        let profile = grant.profile_ref().ok_or(NativeRegistryError::Unavailable)?;
+        let pending = crate::chart_archive::pending_groups_for_profile(paths,keys,profile)
+            .map_err(|_| NativeRegistryError::Unavailable)?;
+        let mut progress = GroupSyncProgress {processed:0,conflicts:0};
+        for update in pending.iter().take(20) {
+            {
+                let state = self.inner.lock().map_err(|_| NativeRegistryError::Unavailable)?;
+                let Slot::Active(session) = &state.slot else { return Err(NativeRegistryError::Closed); };
+                if state.closed || session.snapshot().attempt_id != expected_attempt_id
+                    || session.copy_active_grant().and_then(|current| current.profile_ref().map(str::to_owned)).as_deref() != Some(profile) {
+                    return Err(NativeRegistryError::Closed);
+                }
+            }
+            let result = transport.replace_groups(&endpoint,&grant,&update.remote_sync_id,&update.base_groups,&update.groups)
+                .map_err(|_| NativeRegistryError::Unavailable)?;
+            // Revalidate under the registry lock immediately before persisting.
+            // Logout/new login cannot race the local acknowledgement.
+            let state = self.inner.lock().map_err(|_| NativeRegistryError::Unavailable)?;
+            let Slot::Active(session) = &state.slot else { return Err(NativeRegistryError::Closed); };
+            if state.closed || session.snapshot().attempt_id != expected_attempt_id
+                || session.copy_active_grant().and_then(|current| current.profile_ref().map(str::to_owned)).as_deref() != Some(profile) {
+                return Err(NativeRegistryError::Closed);
+            }
+            crate::chart_archive::apply_group_sync_result(paths,keys,profile,update,&result)
+                .map_err(|_| NativeRegistryError::Unavailable)?;
+            if matches!(result,crate::pkce_reqwest_https::GroupWriteResult::Conflict(_)) { progress.conflicts += 1; }
+            progress.processed += 1;
+        }
+        Ok(progress)
+    }
+
     /// Permanently closes this registry. If a browser opener is blocked in
     /// `start`, its reservation is invalidated so it cannot install a session
     /// after shutdown. This does not forcibly kill an OS browser process.
@@ -182,6 +245,54 @@ mod tests {
 
     const CONSENT: &str = "https://staging.virgostars.it/collega-dispositivo";
     const TOKEN: &str = "https://staging.virgostars.it/chart-sync/v1/token";
+
+    #[test]
+    fn group_worker_commits_only_current_profile_and_keeps_pending_after_logout_race() {
+        use crate::archive_keys::fake::FakeKeyStore;
+        use crate::chart_archive::{self, ArchivePaths, ArchiveRequestV1, ChartRecordV1};
+        use crate::pkce_reqwest_https::{GroupWriteResult, GroupWriteTransport};
+        use crate::pkce_token_exchange::{NativeAccessGrant, TokenScope};
+        use std::fs;
+        const PROFILE: &str = "44444444-4444-4444-8444-444444444444";
+        const CHART: &str = "11111111-1111-4111-8111-111111111111";
+        const ATTEMPT: &str = "123e4567-e89b-42d3-a456-426614174000";
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
+        let fixture = Fixture(std::env::temp_dir().join(format!("virgo-sync-test-{}-{:?}", std::process::id(), std::thread::current().id())).with_extension("tmp"));
+        fs::create_dir_all(&fixture.0).unwrap();
+        let paths = ArchivePaths::in_folder(&fixture.0);
+        let keys = FakeKeyStore::empty();
+        let chart = ChartRecordV1 {id:CHART.into(),name:"Fittizio".into(),utc_iso:"2001-02-03T04:05:06.000Z".into(),
+            time_zone:"Europe/Rome".into(),lat_micro:44_000_000,lng_micro:11_000_000,place_name:"Fittizio".into()};
+        let save = ArchiveRequestV1 {protocol_version:1,operation:"save".into(),chart:Some(chart),id:None,groups:None};
+        assert_eq!(chart_archive::handle(&paths,&keys,&save,1000).status,"ok");
+        chart_archive::link_groups_to_verified_profile(&paths,&keys,CHART,PROFILE,CHART,&[]).unwrap();
+        let groups = |name: &str| ArchiveRequestV1 {protocol_version:1,operation:"set_groups".into(),chart:None,
+            id:Some(CHART.into()),groups:Some(vec![name.into()])};
+        assert_eq!(chart_archive::handle(&paths,&keys,&groups("Primo"),2000).status,"ok");
+        let registry = Arc::new(NativeLoginRegistry::new());
+        registry.inner.lock().unwrap().slot = Slot::Active(NativeLoginSession::synthetic_connected_for_test(
+            ATTEMPT,NativeAccessGrant::synthetic_for_test(TokenScope::ReadAndGroupWrite,PROFILE)));
+        struct FakeGroup { registry: Arc<NativeLoginRegistry>, disconnect: bool }
+        impl GroupWriteTransport for FakeGroup {
+            fn replace_groups(&self, _: &Url, _: &NativeAccessGrant, _: &str, _: &[String], _: &[String]) -> Result<GroupWriteResult,()> {
+                if self.disconnect { assert!(self.registry.disconnect(ATTEMPT)); }
+                Ok(GroupWriteResult::Updated)
+            }
+        }
+        let transport = FakeGroup {registry:Arc::clone(&registry),disconnect:false};
+        assert_eq!(registry.sync_pending_groups(ATTEMPT,"https://preview.virgostars.it/chart-sync/v1/token",&paths,&keys,&transport),Err(NativeRegistryError::Unavailable));
+        assert_eq!(chart_archive::pending_groups_for_profile(&paths,&keys,PROFILE).unwrap().len(),1);
+        assert_eq!(registry.sync_pending_groups(ATTEMPT,TOKEN,&paths,&keys,&transport),Ok(GroupSyncProgress {processed:1,conflicts:0}));
+        assert!(chart_archive::pending_groups_for_profile(&paths,&keys,PROFILE).unwrap().is_empty());
+        assert_eq!(chart_archive::handle(&paths,&keys,&groups("Secondo"),3000).status,"ok");
+        let transport = FakeGroup {registry:Arc::clone(&registry),disconnect:true};
+        assert_eq!(registry.sync_pending_groups(ATTEMPT,TOKEN,&paths,&keys,&transport),Err(NativeRegistryError::Closed));
+        let pending = chart_archive::pending_groups_for_profile(&paths,&keys,PROFILE).unwrap();
+        assert_eq!(pending.len(),1);
+        assert_eq!(pending[0].base_groups,["Primo"]);
+        assert_eq!(pending[0].groups,["Secondo"]);
+    }
 
     #[derive(Default)]
     struct QuietBrowser { opens: AtomicUsize }

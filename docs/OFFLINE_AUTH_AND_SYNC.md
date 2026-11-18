@@ -12,8 +12,16 @@ present the connected login as completed group synchronization.
 
 The candidate native HTTPS adapter can validate and send an owner-authorized
 group replacement and parse a conflict response. It is not invoked by the app:
-account isolation, chart identity/creation, a durable outbox and reconciliation
-are still required before connecting this transport to the archive or UI.
+chart identity/creation and reconciliation are still required before exposing
+group synchronization in the UI.
+
+The local archive contains an unexposed candidate link/pending record for group
+updates, including profile binding and stale-acknowledgement protection. An
+unexposed native worker can submit linked pending changes. Safe initial link
+creation, automatic scheduling, and conflict-resolution UI are not connected.
+The native grant receives the authenticated server's sync epoch as its
+profile reference; it does not cross IPC. If the server epoch changes, the
+old local profile remains separate and must not be silently reassigned.
 
 ## Required user journey
 1. **First online login:** open trusted VirgoStars identity flow in the system browser using OAuth 2 Authorization Code + PKCE (or a rigorously reviewed desktop-safe equivalent). Register this installation with a per-device identifier; obtain only account-scoped privileges.

@@ -26,6 +26,10 @@ the operation's fields. `set_groups` takes a chart id and the complete ordered
 group-name array. Unknown fields, duplicate/empty/unsafe names, more than 50
 names and names longer than 160 characters are rejected before disk access.
 Every successful operation returns the whole archive, ordered by name.
+The candidate website read model permits up to 500 groups on a chart, so an
+account containing more than 50 cannot yet be imported losslessly into this
+local representation. Synchronization must detect and report that condition;
+it must never truncate the remote groups.
 
 | Status | Meaning |
 | --- | --- |
@@ -42,10 +46,17 @@ Rules enforced on both sides: lowercase UUID id; name up to 80 characters and pl
 Saving the same id again updates the row in place, keeps its creation time and
 preserves groups. Group replacement is transactional; deleting a chart also
 removes its assignments. Schema changes are tracked with `PRAGMA user_version`
-(currently 2). Version 1 encrypted databases are upgraded in memory, leaving
+(currently 3). Version 1 and 2 encrypted databases are upgraded in memory, leaving
 the old ciphertext untouched until the next successful atomic write. Older
-application versions cannot open a version 2 archive. There is no automatic
+application versions cannot open a version 3 archive. There is no automatic
 repair, deletion or downgrade.
+
+The encrypted database also has a candidate account-bound group sync record.
+It tracks a remote base and pending local group edits together with the edit;
+an older response cannot clear an edit made in the meantime. Linking and
+network synchronization are not exposed in the app yet. Linking requires a
+verified profile and explicit chart identity; local charts are never silently
+assigned to an account.
 
 ## Interface
 

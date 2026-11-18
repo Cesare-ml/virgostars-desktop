@@ -59,6 +59,11 @@ pub struct NativeLoginSession {
 }
 
 impl NativeLoginSession {
+    #[cfg(test)]
+    pub(crate) fn synthetic_connected_for_test(attempt_id: &str, grant: NativeAccessGrant) -> Self {
+        Self {attempt_id:attempt_id.into(),cancellation:LoginCancelHandle::synthetic_for_test(),
+            state:Arc::new(Mutex::new(SecretState::Connected(grant))),deadline:Instant::now()+Duration::from_secs(60)}
+    }
     /// `start` opens the already allowlisted consent page and immediately
     /// schedules a dedicated Rust worker. Do not invoke on an async executor;
     /// the future host will provide a bounded native owner and off-UI launch.
@@ -177,6 +182,11 @@ impl NativeLoginSession {
         NativeLoginSnapshot {attempt_id:self.attempt_id.clone(), phase, remaining_seconds, scope}
     }
 
+    pub(crate) fn copy_active_grant(&self) -> Option<NativeAccessGrant> {
+        let state = self.state.lock().ok()?;
+        match &*state { SecretState::Connected(grant) => grant.copy_for_worker(Instant::now()), _ => None }
+    }
+
     /// Cancels only an in-flight login. If native completion already won,
     /// `cancel()` is inert; `disconnect()` revokes the local grant instead.
     pub fn cancel(&self) {
@@ -237,7 +247,7 @@ mod tests {
                 body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes(),
             })
         }
-        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> { Ok(()) }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<String, ()> { Ok("44444444-4444-4444-8444-444444444444".into()) }
     }
 
     #[test]
@@ -325,9 +335,10 @@ mod tests {
             Ok(TokenHttpResponse { status: 200, content_type: "application/json".to_owned(),
                 body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes() })
         }
-        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> {
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<String, ()> {
             self.entered.send(()).map_err(|_| ())?;
-            self.release.recv_timeout(Duration::from_secs(3)).map_err(|_| ())
+            self.release.recv_timeout(Duration::from_secs(3)).map_err(|_| ())?;
+            Ok("44444444-4444-4444-8444-444444444444".into())
         }
     }
 
@@ -381,7 +392,7 @@ mod tests {
             Ok(TokenHttpResponse { status: 200, content_type: "application/json".to_owned(),
                 body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":2,"scope":"chart_sync:read"}}"#).into_bytes() })
         }
-        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<(), ()> { Ok(()) }
+        fn verify_grant(&self, _: &Url, _: &NativeAccessGrant) -> Result<String, ()> { Ok("44444444-4444-4444-8444-444444444444".into()) }
     }
 
     #[test]
