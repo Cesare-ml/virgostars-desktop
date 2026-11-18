@@ -475,14 +475,14 @@ fn record_group_conflict(connection: &mut Connection, chart_id: &str, profile_re
 }
 
 /// Called only after an explicit choice in a future conflict UI. The shown
-/// server version must still match the stored conflict; otherwise nothing is
-/// changed. Choosing server clears pending, while a local/merged choice is
+/// server and local versions must still match what the user saw; otherwise
+/// nothing is changed. Choosing server clears pending, while a local/merged choice is
 /// queued relative to the version the user reviewed.
 #[allow(dead_code)]
 fn resolve_group_conflict(connection: &mut Connection, chart_id: &str, profile_ref: &str,
-    remote_sync_id: &str, shown_server: &[String], chosen: &[String]) -> Result<(), Failure> {
+    remote_sync_id: &str, shown_server: &[String], shown_local: &[String], chosen: &[String]) -> Result<(), Failure> {
     if !valid_id(chart_id) || !valid_id(profile_ref) || !valid_id(remote_sync_id)
-        || !valid_groups(shown_server) || !valid_groups(chosen) { return Err("invalid_request"); }
+        || !valid_groups(shown_server) || !valid_groups(shown_local) || !valid_groups(chosen) { return Err("invalid_request"); }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| classify(&error))?;
     let old: Option<(Option<String>,i64)> = transaction.query_row(
@@ -493,7 +493,9 @@ fn resolve_group_conflict(connection: &mut Connection, chart_id: &str, profile_r
     let conflict: Vec<String> = serde_json::from_str(old_json.as_deref().ok_or("stale_sync")?)
         .map_err(|_| "archive_corrupt")?;
     if !valid_groups(&conflict) { return Err("archive_corrupt"); }
-    if pending != 2 || conflict != shown_server { return Err("stale_sync"); }
+    if pending != 2 || conflict != shown_server || chart_groups(&transaction,chart_id)? != shown_local {
+        return Err("stale_sync");
+    }
     transaction.execute("DELETE FROM saved_chart_groups WHERE chart_id=?1", [chart_id])
         .map_err(|error| classify(&error))?;
     for (position,name) in chosen.iter().enumerate() {
@@ -523,6 +525,56 @@ pub(crate) struct LinkedGroupBaseline {
     pub chart_id: String,
     pub remote_sync_id: String,
     pub base_groups: Vec<String>,
+}
+
+/// The browser can display only chart labels and the two versions of the
+/// groups; account references and remote identifiers remain native-only.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GroupConflictView {
+    pub chart_id: String,
+    pub chart_name: String,
+    pub local_groups: Vec<String>,
+    pub server_groups: Vec<String>,
+}
+
+#[allow(dead_code)]
+pub(crate) fn group_conflicts_for_profile(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str) -> Result<Vec<GroupConflictView>, Failure> {
+    if !valid_id(profile_ref) { return Err("invalid_request"); }
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let session = open_session(paths,keys)?;
+    let mut query = session.connection.prepare(
+        "SELECT l.chart_id,c.name,l.conflict_groups_json FROM chart_group_sync_links l JOIN saved_charts c ON c.id=l.chart_id WHERE l.profile_ref=?1 AND l.pending=2 ORDER BY c.name,l.chart_id LIMIT ?2"
+    ).map_err(|error| classify(&error))?;
+    let rows = query.query_map(params![profile_ref,MAX_CHARTS], |r|
+        Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))
+        .map_err(|error| classify(&error))?.collect::<Result<Vec<_>,_>>().map_err(|error| classify(&error))?;
+    let mut result = Vec::with_capacity(rows.len());
+    for (chart_id,chart_name,json) in rows {
+        let server_groups: Vec<String> = serde_json::from_str(&json).map_err(|_| "archive_corrupt")?;
+        if !valid_id(&chart_id) || !valid_text(&chart_name,MAX_NAME_CHARS)
+            || !valid_groups(&server_groups) { return Err("archive_corrupt"); }
+        let local_groups = chart_groups(&session.connection,&chart_id)?;
+        result.push(GroupConflictView {chart_id,chart_name,local_groups,server_groups});
+    }
+    Ok(result)
+}
+
+#[allow(dead_code)]
+pub(crate) fn apply_conflict_resolution(paths: &ArchivePaths, keys: &dyn KeyStore,
+    profile_ref: &str, chart_id: &str, shown_server: &[String], shown_local: &[String],
+    chosen: &[String]) -> Result<(), Failure> {
+    if !valid_id(profile_ref) || !valid_id(chart_id) { return Err("invalid_request"); }
+    let _guard = ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut session = open_session(paths,keys)?;
+    let remote: Option<String> = session.connection.query_row(
+        "SELECT remote_sync_id FROM chart_group_sync_links WHERE chart_id=?1 AND profile_ref=?2",
+        params![chart_id,profile_ref], |r| r.get(0),
+    ).optional().map_err(|error| classify(&error))?;
+    resolve_group_conflict(&mut session.connection,chart_id,profile_ref,
+        &remote.ok_or("profile_conflict")?,shown_server,shown_local,chosen)?;
+    persist(paths,keys,&session.connection)
 }
 
 #[allow(dead_code)]
@@ -1179,6 +1231,33 @@ mod tests {
     }
 
     #[test]
+    fn conflict_view_is_profile_bound_and_resolution_rejects_stale_local_choice() {
+        let archive = TempArchive::new("conflict-view");
+        let keys = FakeKeyStore::empty();
+        go(&archive,&keys,&save_request(record(ID_A,"Fittizio")),1000);
+        link_groups_to_verified_profile(&archive.paths,&keys,ID_A,ID_B,ID_A,&[]).unwrap();
+        let baseline = group_baselines_for_profile(&archive.paths,&keys,ID_B).unwrap();
+        let local = vec!["Locale".to_string()];
+        let remote = vec!["Web".to_string()];
+        let later = vec!["Modificato".to_string()];
+        let request = |names: Vec<String>| ArchiveRequestV1 {protocol_version:1,operation:"set_groups".into(),
+            chart:None,id:Some(ID_A.into()),groups:Some(names)};
+        assert_eq!(go(&archive,&keys,&request(local.clone()),2000).status,"ok");
+        apply_remote_group_snapshot(&archive.paths,&keys,ID_B,&baseline[0],&remote).unwrap();
+        assert!(group_conflicts_for_profile(&archive.paths,&keys,ID_A).unwrap().is_empty());
+        let conflicts = group_conflicts_for_profile(&archive.paths,&keys,ID_B).unwrap();
+        assert_eq!(conflicts.len(),1);
+        assert_eq!(conflicts[0].local_groups,local);
+        assert_eq!(conflicts[0].server_groups,remote);
+        assert_eq!(go(&archive,&keys,&request(later.clone()),3000).status,"ok");
+        assert_eq!(apply_conflict_resolution(&archive.paths,&keys,ID_B,ID_A,&remote,&local,&remote),Err("stale_sync"));
+        assert_eq!(apply_conflict_resolution(&archive.paths,&keys,ID_A,ID_A,&remote,&later,&remote),Err("profile_conflict"));
+        apply_conflict_resolution(&archive.paths,&keys,ID_B,ID_A,&remote,&later,&remote).unwrap();
+        assert!(group_conflicts_for_profile(&archive.paths,&keys,ID_B).unwrap().is_empty());
+        assert_eq!(go(&archive,&keys,&list_request(),4000).charts.unwrap()[0].groups,remote);
+    }
+
+    #[test]
     fn remote_conflict_preserves_local_groups_and_requires_a_user_choice() {
         let archive = TempArchive::new("remote-group-conflict");
         let keys = FakeKeyStore::empty();
@@ -1196,12 +1275,13 @@ mod tests {
         assert_eq!(pending,2);
         assert_eq!(serde_json::from_str::<Vec<String>>(&json).unwrap(),remote);
         assert_eq!(acknowledge_group_sync(&mut connection,ID_A,ID_B,ID_A,&base,&local),Err("stale_sync"));
-        assert_eq!(resolve_group_conflict(&mut connection,ID_A,ID_B,ID_A,&base,&local),Err("stale_sync"));
+        assert_eq!(resolve_group_conflict(&mut connection,ID_A,ID_B,ID_A,&base,&local,&local),Err("stale_sync"));
+        assert_eq!(resolve_group_conflict(&mut connection,ID_A,ID_B,ID_A,&remote,&base,&local),Err("stale_sync"));
         persist(&archive.paths,&keys,&connection).unwrap();
         let mut reopened = load_sealed(&archive.paths,&keys).unwrap();
         assert_eq!(chart_groups(&reopened,ID_A).unwrap(),local);
         let merged = vec!["Locale fittizio".to_string(),"Web fittizio".to_string()];
-        resolve_group_conflict(&mut reopened,ID_A,ID_B,ID_A,&remote,&merged).unwrap();
+        resolve_group_conflict(&mut reopened,ID_A,ID_B,ID_A,&remote,&local,&merged).unwrap();
         assert_eq!(chart_groups(&reopened,ID_A).unwrap(),merged);
         let pending: i64 = reopened.query_row("SELECT pending FROM chart_group_sync_links WHERE chart_id=?1",[ID_A],|r|r.get(0)).unwrap();
         assert_eq!(pending,1);

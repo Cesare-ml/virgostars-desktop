@@ -21,11 +21,19 @@ unexposed native worker can submit linked pending changes; a separate candidate
 fetches an authenticated snapshot and reconciles groups for already linked
 charts. It rejects mismatched account epochs, notes, duplicate identities and
 groups that cannot be represented locally. Neither worker is invoked by the app.
-Safe initial link creation, automatic scheduling, and conflict-resolution UI
-are not connected.
+The guarded account UI can display existing conflicts and explicitly choose
+either the local or server group set. Native code checks the verified profile,
+requires write consent for the local choice, and rejects a choice if either
+shown version changed. This cannot create links or run the workers: safe initial
+link creation and automatic scheduling are not connected.
 The native grant receives the authenticated server's sync epoch as its
 profile reference; it does not cross IPC. If the server epoch changes, the
 old local profile remains separate and must not be silently reassigned.
+
+An isolated civil-time classifier preserves unknown birth times as unknown and
+requires review for missing zones, ambiguous/nonexistent times or inconsistent
+instants. It is tested with fictional data but is not yet connected to archive
+import; the current archive still requires an actual UTC instant.
 
 ## Required user journey
 1. **First online login:** open trusted VirgoStars identity flow in the system browser using OAuth 2 Authorization Code + PKCE (or a rigorously reviewed desktop-safe equivalent). Register this installation with a per-device identifier; obtain only account-scoped privileges.

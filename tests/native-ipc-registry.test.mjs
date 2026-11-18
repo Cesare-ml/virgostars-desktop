@@ -7,14 +7,14 @@ import {auditNativeIpc, auditCheckout} from '../scripts/verify-native-ipc.mjs';
 
 function fixture() {
   return {
-    entry:'tauri::Builder::default().invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, connected_account_ipc::desktop_connected_account_v1])',
+    entry:'tauri::Builder::default().invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1])',
     rustModules:{
       runtime_probe:'#[tauri::command]\npub fn desktop_runtime_info() {}',
       offline_places:'#[tauri::command]\npub async fn search_offline_places() {}',
       chart_calculation:'#[tauri::command]\npub fn calculate_chart() {}',
       chart_archive:'#[tauri::command]\npub fn chart_archive() {}',
       return_search:'#[tauri::command]\npub fn find_returns() {}',
-      connected_account_ipc:'#[tauri::command]\npub fn desktop_connected_account_v1() {}',
+      connected_account_ipc:'#[tauri::command]\npub fn desktop_connected_account_v1() {}\n#[tauri::command]\npub fn desktop_group_conflicts_v1() {}',
     },
     runtimeContract:"async function run(port) { return port.invoke('desktop_runtime_info'); }",
     placesContract:"async function search(port) { return port.invoke('search_offline_places', {query:'A'}); }",
@@ -22,6 +22,7 @@ function fixture() {
     archiveContract:"async function archive(port) { return port.invoke('chart_archive', {request:{}}); }",
     returnContract:"async function returns(port) { return port.invoke('find_returns', {request:{}}); }",
     accountContract:"async function account(port) { return port.invoke('desktop_connected_account_v1', {request:{}}); }",
+    conflictsContract:"async function conflicts(port) { return port.invoke('desktop_group_conflicts_v1', {request:{}}); }",
     tsFiles:{
       'src/app/native/runtime.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command)=>invoke<unknown>(command);",
       'src/app/native/offline-places.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
@@ -29,6 +30,7 @@ function fixture() {
       'src/app/native/chart-archive.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/return-search.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/connected-account.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
+      'src/app/native/group-conflicts.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/workspace-state.ts':'export const state=1;',
     },
     tauriConfig:{app:{security:{capabilities:[]}}},
@@ -37,10 +39,10 @@ function fixture() {
 
 test('reviewed read-only registry and restricted adapters pass',()=>{
   const checked=auditNativeIpc(fixture());
-  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1']);
+  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1','desktop_group_conflicts_v1']);
 });
 test('extra native command cannot enter without a conscious allowlist review',()=>{
-  const f=fixture();f.entry=f.entry.replace('connected_account_ipc::desktop_connected_account_v1]', 'connected_account_ipc::desktop_connected_account_v1, account::read_token]');
+  const f=fixture();f.entry=f.entry.replace('connected_account_ipc::desktop_group_conflicts_v1]', 'connected_account_ipc::desktop_group_conflicts_v1, account::read_token]');
   assert.throws(()=>auditNativeIpc(f),/command count/);
 });
 test('duplicate or missing native commands fail',()=>{
@@ -58,7 +60,7 @@ test('missing Rust command function fails',()=>{
   assert.throws(()=>auditNativeIpc(f),/Unregistered/);
 });
 test('renamed Angular native commands fail the exact cross-language contract',()=>{
-  const commandOf={runtimeContract:'desktop_runtime_info',placesContract:'search_offline_places',chartContract:'calculate_chart',archiveContract:'chart_archive',returnContract:'find_returns',accountContract:'desktop_connected_account_v1'};
+  const commandOf={runtimeContract:'desktop_runtime_info',placesContract:'search_offline_places',chartContract:'calculate_chart',archiveContract:'chart_archive',returnContract:'find_returns',accountContract:'desktop_connected_account_v1',conflictsContract:'desktop_group_conflicts_v1'};
   for(const which of Object.keys(commandOf)){
     const f=fixture();f[which]=f[which].replace(commandOf[which],'unreviewed_native_method');
     assert.throws(()=>auditNativeIpc(f),/contract command mismatch/);
@@ -144,10 +146,11 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       'src/app/native/chart-archive-contract.ts':f.archiveContract,
       'src/app/native/return-search-contract.ts':f.returnContract,
       'src/app/native/connected-account-contract.ts':f.accountContract,
+      'src/app/native/group-conflicts-contract.ts':f.conflictsContract,
       ...f.tsFiles,
       'src/main.ts':'export const demo = true;',
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1','desktop_group_conflicts_v1']);
     for(const [path,content] of [
       ['src/main.ts',"import('@tauri-apps/api/core');"],
       ['src/app/misc/native.tsx',"import {invoke} from '@tauri-apps/api/core';"],
@@ -158,7 +161,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       assert.throws(()=>auditCheckout(root),/Unexpected Tauri import/,path);
       write(path,'export const ok = true;');
     }
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1','desktop_group_conflicts_v1']);
     // In Tauri 2 an empty capabilities array still auto-loads capability files.
     // An unexpected JSON/TOML permission file must fail closed.
     for(const name of ['unexpected.json','unexpected.toml','readme.txt']) {
@@ -171,13 +174,13 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
     mkdirSync(join(root,'src-tauri/capabilities','nested'));
     assert.throws(()=>auditCheckout(root),/auto-discovered capability files/);
     rmSync(join(root,'src-tauri/capabilities','nested'),{recursive:true});
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1','desktop_group_conflicts_v1']);
     // A command in a newly added nested Rust file must not evade the audit.
     write('src-tauri/src/features/new_command.rs',
       '#[tauri::command]\npub fn reveal_secret() {}');
     assert.throws(()=>auditCheckout(root),/Unregistered native command/);
     write('src-tauri/src/features/new_command.rs','pub fn helper() {}');
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1','desktop_group_conflicts_v1']);
 
     // Distinct Rust files with identical basenames are ambiguous in the flat
     // module-name inventory and must be reviewed rather than silently merged.
@@ -230,9 +233,10 @@ test('changing Tauri build.rs from its reviewed build-only form fails closed',()
       'src/app/native/chart-archive-contract.ts':f.archiveContract,
       'src/app/native/return-search-contract.ts':f.returnContract,
       'src/app/native/connected-account-contract.ts':f.accountContract,
+      'src/app/native/group-conflicts-contract.ts':f.conflictsContract,
       ...f.tsFiles,
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','desktop_connected_account_v1','desktop_group_conflicts_v1']);
     write('src-tauri/build.rs','fn main() { tauri_build::try_build(custom_attributes()); }');
     assert.throws(()=>auditCheckout(root),/build configuration changed/);
   } finally {rmSync(root,{recursive:true,force:true});}

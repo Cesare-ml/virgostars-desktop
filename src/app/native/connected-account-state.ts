@@ -15,6 +15,9 @@ export class ConnectedAccountState {
   private readonly request: Request;
   private readonly changed: () => void;
 
+  /** Public correlation ID only while connected; never an access credential. */
+  get connectedAttemptId(): string | null { return this.status === 'connected' ? this.attemptId : null; }
+
   constructor(request: Request, changed: () => void) {
     this.request = request;
     this.changed = changed;

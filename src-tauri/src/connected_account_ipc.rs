@@ -44,6 +44,88 @@ fn valid_attempt_id(value: &str) -> bool {
     })
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GroupConflictRequest {
+    protocol_version: u8,
+    operation: String,
+    attempt_id: String,
+    chart_id: Option<String>,
+    local_groups: Option<Vec<String>>,
+    server_groups: Option<Vec<String>>,
+    choice: Option<String>,
+}
+
+impl GroupConflictRequest {
+    fn valid(&self) -> bool {
+        if self.protocol_version != 1 || !valid_attempt_id(&self.attempt_id) { return false; }
+        match self.operation.as_str() {
+            "list" => self.chart_id.is_none() && self.local_groups.is_none()
+                && self.server_groups.is_none() && self.choice.is_none(),
+            "resolve" => self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.local_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
+                && self.server_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
+                && matches!(self.choice.as_deref(),Some("local" | "server")),
+            _ => false,
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupConflictReply {
+    protocol_version: u8,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conflicts: Option<Vec<crate::chart_archive::GroupConflictView>>,
+}
+
+/// Candidate conflict UI boundary. Account/profile and server chart identity
+/// are resolved by native code, never accepted from the WebView.
+#[tauri::command]
+pub async fn desktop_group_conflicts_v1(
+    request: GroupConflictRequest, _app: tauri::AppHandle,
+) -> Result<GroupConflictReply, &'static str> {
+    if !request.valid() { return Err(NATIVE_UNAVAILABLE); }
+    #[cfg(feature = "staging-connected-account")]
+    {
+        use crate::chart_archive::ArchivePaths;
+        use crate::pkce_native_registry::GroupConflictChoice;
+        let (Some(consent),Some(token)) = (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"),
+            option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) else {
+            return Ok(GroupConflictReply {protocol_version:1,status:"disabled",conflicts:None});
+        };
+        if crate::pkce_login::valid_consent_origin(consent).is_none()
+            || crate::pkce_token_exchange::valid_staging_token_endpoint(token).is_none() {
+            return Ok(GroupConflictReply {protocol_version:1,status:"disabled",conflicts:None});
+        }
+        let app = _app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let folder = app.path().app_local_data_dir().map_err(|_| NATIVE_UNAVAILABLE)?;
+            let paths = ArchivePaths::in_folder(&folder);
+            let registry = app.state::<NativeLoginRegistry>();
+            if request.operation == "list" {
+                let conflicts = registry.list_group_conflicts(&request.attempt_id,&paths,&crate::archive_keys::OsKeyStore)
+                    .map_err(|_| NATIVE_UNAVAILABLE)?;
+                return Ok(GroupConflictReply {protocol_version:1,status:"ok",conflicts:Some(conflicts)});
+            }
+            let local = request.local_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?;
+            let server = request.server_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?;
+            let chosen = if request.choice.as_deref() == Some("local") { local } else { server };
+            let choice = GroupConflictChoice {chart_id:request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,local,server,chosen};
+            let status = match registry.resolve_group_conflict(&request.attempt_id,&paths,&crate::archive_keys::OsKeyStore,&choice) {
+                Ok(()) => "resolved",
+                Err("stale") => "stale",
+                Err("write_not_authorized") => "write_not_authorized",
+                Err(_) => return Err(NATIVE_UNAVAILABLE),
+            };
+            Ok(GroupConflictReply {protocol_version:1,status,conflicts:None})
+        }).await.map_err(|_| NATIVE_UNAVAILABLE)?
+    }
+    #[cfg(not(feature = "staging-connected-account"))]
+    { Ok(GroupConflictReply {protocol_version:1,status:"disabled",conflicts:None}) }
+}
+
 fn valid_request(value: &Value) -> bool {
     let Some(obj) = value.as_object() else { return false; };
     if obj.get("protocolVersion").and_then(Value::as_u64) != Some(PROTOCOL_VERSION) {
@@ -152,6 +234,22 @@ mod tests {
         assert!(value.get("attemptId").is_none());
         assert!(value.get("accessToken").is_none());
         assert!(value.get("deviceId").is_none());
+    }
+
+    #[test]
+    fn group_conflict_request_requires_exact_bounded_data_without_account_ids() {
+        let list = json!({"protocolVersion":1,"operation":"list","attemptId":UUID});
+        assert!(serde_json::from_value::<GroupConflictRequest>(list.clone()).unwrap().valid());
+        let resolve = json!({"protocolVersion":1,"operation":"resolve","attemptId":UUID,
+            "chartId":"11111111-1111-4111-8111-111111111111","localGroups":["Locale"],
+            "serverGroups":["Web"],"choice":"local"});
+        assert!(serde_json::from_value::<GroupConflictRequest>(resolve.clone()).unwrap().valid());
+        let mut extra = list;
+        extra["profileRef"] = json!("11111111-1111-4111-8111-111111111111");
+        assert!(serde_json::from_value::<GroupConflictRequest>(extra).is_err());
+        let mut bad = resolve;
+        bad["localGroups"] = json!((0..51).map(|n| format!("Gruppo {n}")).collect::<Vec<_>>());
+        assert!(!serde_json::from_value::<GroupConflictRequest>(bad).unwrap().valid());
     }
 
     #[cfg(feature = "staging-connected-account")]

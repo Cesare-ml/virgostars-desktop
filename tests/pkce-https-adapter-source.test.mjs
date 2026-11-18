@@ -41,7 +41,10 @@ test('response body is bounded by streaming, with no redirects followed or secre
   assert.match(rust, /\.take\(\(max_response_bytes \+ 1\) as u64\)/);
   assert.match(rust, /if status != 200/);
   assert.match(rust, /if bytes\.len\(\) > max_response_bytes/);
-  assert.doesNotMatch(rust, /println!|eprintln!|dbg!|tracing::|log::|localStorage|serde::Serialize/);
+  assert.doesNotMatch(rust, /println!|eprintln!|dbg!|tracing::|log::|localStorage/);
+  const serialized = [...rust.matchAll(/#\[derive\(serde::Serialize\)\][\s\S]*?struct\s+(\w+)/g)].map(m => m[1]);
+  assert.deepEqual(serialized, ['GroupRequest']);
+  assert.match(rust, /struct GroupRequest<'a> \{ sync_id: &'a str, base_groups: &'a \[String\], groups: &'a \[String\] \}/);
 });
 
 test('native HTTPS activation gate remains explicit after compilation', () => {

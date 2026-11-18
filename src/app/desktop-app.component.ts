@@ -14,6 +14,8 @@ import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { connectedAccount } from './native/connected-account';
 import { ConnectedAccountState, type AccountViewStatus } from './native/connected-account-state';
+import { groupConflicts } from './native/group-conflicts';
+import type { GroupConflict } from './native/group-conflicts-contract';
 import { RenderGeneration } from './render-generation';
 import {validatePngDataUrl, calculatedPngFilename} from './png-export-safety';
 import {requestSyntheticPngDownload} from './png-download';
@@ -148,6 +150,51 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly cd = inject(ChangeDetectorRef);
   readonly account = new ConnectedAccountState(connectedAccount, () => this.cd.markForCheck());
   get accountStatusKey(): MessageKey { return ACCOUNT_STATUS_KEYS[this.account.status]; }
+  conflicts: readonly GroupConflict[] = [];
+  conflictsForAttempt: string | null = null;
+  conflictsBusy = false;
+  conflictsMessage: MessageKey | null = null;
+
+  async loadGroupConflicts(): Promise<void> {
+    const attemptId = this.account.connectedAttemptId;
+    if (!attemptId || this.conflictsBusy || this.destroyed) return;
+    this.conflictsBusy = true;
+    const result = await groupConflicts({operation:'list',attemptId});
+    this.conflictsBusy = false;
+    if (this.destroyed || this.account.connectedAttemptId !== attemptId) return;
+    this.conflictsForAttempt = attemptId;
+    if (result.kind === 'ok') {
+      this.conflicts = result.conflicts;
+      this.conflictsMessage = result.conflicts.length ? null : 'sync.conflicts.empty';
+    } else {
+      this.conflicts = [];
+      this.conflictsMessage = 'sync.conflicts.unavailable';
+    }
+    this.cd.markForCheck();
+  }
+
+  async resolveGroupConflict(conflict: GroupConflict, choice: 'local' | 'server'): Promise<void> {
+    const attemptId = this.account.connectedAttemptId;
+    if (!attemptId || this.conflictsForAttempt !== attemptId || this.conflictsBusy || this.destroyed) return;
+    this.conflictsBusy = true;
+    const result = await groupConflicts({operation:'resolve',attemptId,conflict,choice});
+    this.conflictsBusy = false;
+    if (this.destroyed || this.account.connectedAttemptId !== attemptId) return;
+    if (result.kind === 'resolved') {
+      this.conflicts = this.conflicts.filter(item => item.chartId !== conflict.chartId);
+      this.conflictsMessage = choice === 'local' ? 'sync.conflicts.queued' : 'sync.conflicts.resolved';
+      await this.loadArchive();
+    } else if (result.kind === 'stale') {
+      await this.loadGroupConflicts();
+      if (this.destroyed || this.account.connectedAttemptId !== attemptId) return;
+      this.conflictsMessage = 'sync.conflicts.changed';
+    } else if (result.kind === 'write_not_authorized') {
+      this.conflictsMessage = 'sync.conflicts.writeRequired';
+    } else {
+      this.conflictsMessage = 'sync.conflicts.unavailable';
+    }
+    if (!this.destroyed && this.account.connectedAttemptId === attemptId) this.cd.markForCheck();
+  }
   private readonly renderer = new GraficoRenderService();
   private resizeObserver?: ResizeObserver;
   private initialized = false;

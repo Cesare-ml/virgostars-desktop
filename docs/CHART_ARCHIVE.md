@@ -56,8 +56,10 @@ It tracks a remote base and pending local group edits together with the edit;
 an older response cannot clear an edit made in the meantime. A native-only
 reconciliation candidate applies a server snapshot for an already linked
 chart, detects concurrent edits and preserves unresolved conflicts. It checks
-the captured base before writing the encrypted archive. Linking and network
-synchronization are not exposed in the app yet. Linking requires a
+the captured base before writing the encrypted archive. The guarded account UI
+can display and resolve existing conflicts; both displayed versions are checked
+again atomically, and selecting the local version requires group-write consent.
+Linking and network synchronization are not exposed in the app yet. Linking requires a
 verified profile and explicit chart identity; local charts are never silently
 assigned to an account.
 

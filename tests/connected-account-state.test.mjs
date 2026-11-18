@@ -24,11 +24,14 @@ test('only confirmed status becomes connected and expiry remains visible', async
   const model = new ConnectedAccountState(async op => op.operation === 'start' ? pending : status, () => {});
   await model.start();
   assert.equal(model.status, 'pending');
+  assert.equal(model.connectedAttemptId, null);
   await model.poll(model.generation);
   assert.equal(model.status, 'connected');
+  assert.equal(model.connectedAttemptId, ID);
   status = {kind:'expired', attemptId:ID};
   await model.poll(model.generation);
   assert.equal(model.status, 'expired');
+  assert.equal(model.connectedAttemptId, null);
   model.dispose();
 });
 

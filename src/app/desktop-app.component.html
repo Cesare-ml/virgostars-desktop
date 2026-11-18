@@ -306,6 +306,20 @@
               (click)="account.cancel()">{{t('account.cancel')}}</button>
             <button type="button" class="toolbar-button" *ngIf="account.status==='connected'"
               (click)="account.cancel()">{{t('account.disconnect')}}</button>
+            <div *ngIf="account.status==='connected'">
+              <button type="button" class="toolbar-button" [disabled]="conflictsBusy"
+                (click)="loadGroupConflicts()">{{t('sync.conflicts.check')}}</button>
+              <p *ngIf="conflictsMessage && conflictsForAttempt===account.connectedAttemptId" class="inspector-hint" role="status">{{t(conflictsMessage)}}</p>
+              <div *ngIf="conflictsForAttempt===account.connectedAttemptId">
+                <div *ngFor="let conflict of conflicts" class="settings-section">
+                  <strong>{{conflict.chartName || t('sync.conflicts.unnamed')}}</strong>
+                  <p>{{t('sync.conflicts.local')}}: {{conflict.localGroups.join(', ') || t('sync.conflicts.none')}}</p>
+                  <p>{{t('sync.conflicts.server')}}: {{conflict.serverGroups.join(', ') || t('sync.conflicts.none')}}</p>
+                  <button type="button" class="toolbar-button" [disabled]="conflictsBusy" (click)="resolveGroupConflict(conflict,'local')">{{t('sync.conflicts.keepLocal')}}</button>
+                  <button type="button" class="toolbar-button" [disabled]="conflictsBusy" (click)="resolveGroupConflict(conflict,'server')">{{t('sync.conflicts.keepServer')}}</button>
+                </div>
+              </div>
+            </div>
           </details>
           <details class="settings-section" open>
             <summary>{{t('startup.title')}}</summary>

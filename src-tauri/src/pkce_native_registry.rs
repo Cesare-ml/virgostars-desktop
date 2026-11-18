@@ -48,6 +48,13 @@ pub struct NativeLoginRegistry { inner: Mutex<RegistryState>, sync_busy: AtomicB
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct GroupSyncProgress { pub processed: usize, pub conflicts: usize }
 
+pub(crate) struct GroupConflictChoice<'a> {
+    pub chart_id: &'a str,
+    pub server: &'a [String],
+    pub local: &'a [String],
+    pub chosen: &'a [String],
+}
+
 struct SyncReservation<'a>(&'a AtomicBool);
 impl Drop for SyncReservation<'_> { fn drop(&mut self) { self.0.store(false, Ordering::SeqCst); } }
 
@@ -266,6 +273,37 @@ impl NativeLoginRegistry {
         Ok(applied)
     }
 
+    /// Read or resolve conflicts only under the currently verified account;
+    /// the registry lock prevents logout/account switching during persistence.
+    pub(crate) fn list_group_conflicts(&self, attempt_id: &str,
+        paths: &crate::chart_archive::ArchivePaths, keys: &dyn crate::archive_keys::KeyStore,
+    ) -> Result<Vec<crate::chart_archive::GroupConflictView>, &'static str> {
+        let state = self.inner.lock().map_err(|_| "unavailable")?;
+        if state.closed { return Err("unavailable"); }
+        let Slot::Active(session) = &state.slot else { return Err("unavailable"); };
+        if session.snapshot().attempt_id != attempt_id { return Err("unavailable"); }
+        let grant = session.copy_active_grant().ok_or("unavailable")?;
+        let profile = grant.profile_ref().ok_or("unavailable")?;
+        crate::chart_archive::group_conflicts_for_profile(paths,keys,profile).map_err(|_| "unavailable")
+    }
+
+    pub(crate) fn resolve_group_conflict(&self, attempt_id: &str,
+        paths: &crate::chart_archive::ArchivePaths, keys: &dyn crate::archive_keys::KeyStore,
+        choice: &GroupConflictChoice<'_>,
+    ) -> Result<(), &'static str> {
+        let state = self.inner.lock().map_err(|_| "unavailable")?;
+        if state.closed { return Err("unavailable"); }
+        let Slot::Active(session) = &state.slot else { return Err("unavailable"); };
+        if session.snapshot().attempt_id != attempt_id { return Err("unavailable"); }
+        let grant = session.copy_active_grant().ok_or("unavailable")?;
+        if choice.chosen != choice.server && grant.scope() != crate::pkce_token_exchange::TokenScope::ReadAndGroupWrite {
+            return Err("write_not_authorized");
+        }
+        let profile = grant.profile_ref().ok_or("unavailable")?;
+        crate::chart_archive::apply_conflict_resolution(paths,keys,profile,choice.chart_id,choice.server,choice.local,choice.chosen)
+            .map_err(|error| if error == "stale_sync" { "stale" } else { "unavailable" })
+    }
+
     /// Permanently closes this registry. If a browser opener is blocked in
     /// `start`, its reservation is invalidated so it cannot install a session
     /// after shutdown. This does not forcibly kill an OS browser process.
@@ -381,9 +419,24 @@ mod tests {
         let first = FakeSnapshot {registry:Arc::clone(&registry),disconnect:false,name:"Web"};
         assert_eq!(registry.refresh_linked_groups(ATTEMPT,TOKEN,&paths,&keys,&first),Ok(1));
         assert_eq!(chart_archive::handle(&paths,&keys,&list,2000).charts.unwrap()[0].groups,["Web"]);
+        let edit = ArchiveRequestV1 {protocol_version:1,operation:"set_groups".into(),chart:None,
+            id:Some(CHART.into()),groups:Some(vec!["Locale".into()])};
+        assert_eq!(chart_archive::handle(&paths,&keys,&edit,2200).status,"ok");
+        let diverged = FakeSnapshot {registry:Arc::clone(&registry),disconnect:false,name:"Altro Web"};
+        assert_eq!(registry.refresh_linked_groups(ATTEMPT,TOKEN,&paths,&keys,&diverged),Ok(1));
+        let conflicts = registry.list_group_conflicts(ATTEMPT,&paths,&keys).unwrap();
+        assert_eq!(conflicts.len(),1);
+        let conflict = &conflicts[0];
+        let local_choice = GroupConflictChoice {chart_id:CHART,server:&conflict.server_groups,
+            local:&conflict.local_groups,chosen:&conflict.local_groups};
+        assert_eq!(registry.resolve_group_conflict(ATTEMPT,&paths,&keys,&local_choice),Err("write_not_authorized"));
+        let server_choice = GroupConflictChoice {chart_id:CHART,server:&conflict.server_groups,
+            local:&conflict.local_groups,chosen:&conflict.server_groups};
+        assert_eq!(registry.resolve_group_conflict("wrong-attempt",&paths,&keys,&server_choice),Err("unavailable"));
+        assert!(registry.resolve_group_conflict(ATTEMPT,&paths,&keys,&server_choice).is_ok());
         let late = FakeSnapshot {registry:Arc::clone(&registry),disconnect:true,name:"Tardivo"};
         assert_eq!(registry.refresh_linked_groups(ATTEMPT,TOKEN,&paths,&keys,&late),Err(NativeRegistryError::Closed));
-        assert_eq!(chart_archive::handle(&paths,&keys,&list,3000).charts.unwrap()[0].groups,["Web"]);
+        assert_eq!(chart_archive::handle(&paths,&keys,&list,3000).charts.unwrap()[0].groups,["Altro Web"]);
     }
 
     #[derive(Default)]
