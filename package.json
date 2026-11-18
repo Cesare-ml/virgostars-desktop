@@ -9,6 +9,7 @@
     "verify:version": "node scripts/verify-desktop-version.mjs",
     "verify:translations": "node scripts/verify-translations.mjs",
     "verify:ipc": "node scripts/verify-native-ipc.mjs",
+    "verify:charts-lock": "node scripts/verify-charts-npm-lock.mjs",
     "check": "npm run test && npm run verify:ipc && npm run build:ui",
     "prepare:frontend": "npm run verify:translations && node scripts/prepare-synthetic-frontend.mjs",
     "prepare:icon": "node scripts/verify-brand-icon.mjs",

@@ -53,6 +53,18 @@ The bootstrap first runs `node scripts/verify-desktop-version.mjs` before instal
 
 The same `verify:version` gate is now the **first step** in every npm Tauri entrypoint (`tauri:dev`, `tauri:build`, `tauri:build:private`, and both `tauri:build:places:*` variants). This prevents development or alternate Windows packaging commands from bypassing the version check. The manual bootstrap invokes the gate directly because it deliberately runs Tauri through `npm.cmd exec --offline`, not through those scripts. Run `node --test tests/desktop-version-entrypoints.test.mjs` to check the wrappers. Running the gate alone is not a signed-update or release-integrity guarantee.
 
+Before either `npm ci`, the bootstrap also runs `node
+scripts/verify-charts-npm-lock.mjs` from Desktop. It checks the **sibling
+astrological-charts** `package.json` and lockfile v3 together, rejects
+unreviewed `file:` links, alternate registries, tarball name/version
+substitution, malformed SHA-512 SRI and symlinked checkout metadata paths.
+The current reviewed Charts lock uses registry tarballs only (no local links).
+This is a structural lockfile provenance check, **not** a download checksum,
+package-signature audit, network check or dependency vulnerability scanner.
+Run it manually with `npm.cmd run verify:charts-lock`; if Charts changes its
+legitimate dependency layout, review the new lockfile contract rather than
+weakening the gate. It does not install anything or read accounts.
+
 The runner uses `npm.cmd` on Windows to avoid the `npm.ps1` execution-policy issue. It first runs the read-only doctor, **audits the committed Desktop npm lockfile before invoking any package installer**, then uses the Charts repository's committed lockfile, builds only the upstream **library**, generates an original synthetic development asset pack if missing, installs desktop development dependencies **using the reviewed npm lockfile (`npm ci`)**, runs Node tests, audits the reviewed native IPC command registry and Tauri capabilities, builds Angular with exact asset verification, checks that the bundled stylesheet exists, runs Rust unit tests with `cargo test --locked`, compiles Tauri **from that same already-audited Angular output** and checks expected output files. It stops at the first failed command.
 
 The bootstrap invokes the locally installed Tauri CLI using `npm.cmd exec --offline -- tauri build` rather than `npm.cmd run tauri:build`: the general-purpose npm script rebuilds Angular and would invalidate the independent CSS check. The current `tauri.conf.json` has no `beforeBuildCommand`; adding one requires reviewing this gate again. The separate `npm run tauri:build` command remains available for ordinary standalone builds.
@@ -172,3 +184,85 @@ read-only and does not fetch tarballs: it verifies only lockfile metadata,
 not actual downloaded bytes, publishers, lifecycle scripts, transitive code
 safety, or dependency vulnerabilities. npm remains responsible for validating
 tarball contents against the pinned integrity digests during installation.
+
+
+## Charts lockfile metadata safety (2026-11-14)
+
+The combined draft Windows preflight in PR #237 checks the sibling public Charts
+`package.json` and `package-lock.json` **before** either `npm ci`. It rejects
+non-regular files (including symlinks and special files) and refuses to read
+oversized metadata using **byte limits** (1 MB manifest, 4 MB lockfile).
+Both UTF-8 inputs are decoded with `TextDecoder('utf-8', {fatal:true})`, so invalid
+sequences cannot be silently replaced with U+FFFD before `JSON.parse`.
+
+```powershell
+node --test tests/charts-npm-lock.test.mjs
+node scripts/verify-charts-npm-lock.mjs
+```
+
+**Verification (Linux, Node 22.16.0):** 11/11 tests passed against the exact
+committed validator and test files using a local synthetic checkout. The
+7 original lockfile-structure tests and 4 additional checkout-read tests cover
+regular metadata, symlinked and directory paths, malformed UTF-8 and oversize
+metadata. The current upstream Astrological Charts `main` manifest/lockfile
+(GitHub blob SHAs `f84a72173400985527403ace887651eaad25b15b` /
+`95251c65fc503cfb6d2199548cd36df3011c95f1`) also passed the pure
+metadata validator for 1,059 registry package entries in an isolated JS check.
+That upstream check used simplified V8 runtime shims, not a full native Node
+checkout or `npm ci`; it does **not** attest downloaded package bytes.
+
+This remains a best-effort read-only source preflight, not a race-free filesystem
+integrity guarantee or substitute for npm integrity enforcement, native Windows
+build, full test suite, WebView2 smoke and maintainer release review.
+
+
+## Bounded Charts metadata file-descriptor reads (2026-11-14)
+
+The draft pre-install verifier now uses `scripts/read-bounded-metadata.mjs` rather
+than a size check followed by unrestricted `readFileSync`. The helper opens
+the verified regular file **read-only**, checks the open descriptor's identity
+and byte size against the initial `lstat`, and reads no more than the
+preverified size **plus one byte**. A short read, newly appended data, or
+different file metadata causes a closed-failure result. On POSIX it also uses
+`O_NOFOLLOW` and `O_NONBLOCK` when supported to reduce symlink-swap and
+named-pipe hazards. On Windows it uses `O_RDONLY` and compares the opened
+descriptor against the original metadata.
+
+This bounds memory consumption during the read even if another process grows
+a file between validation and reading. Filesystem identity and timestamp
+checks are **best effort, not an atomic snapshot guarantee**. The caller's CLI
+continues to hide absolute paths and file contents in error messages.
+
+```powershell
+node --test tests/read-bounded-metadata.test.mjs
+node --test tests/charts-npm-lock.test.mjs
+```
+
+**Executed on Linux with Node.js 22.16.0:** 5/5 tests for the new bounded
+reader, plus 4/4 standalone synthetic checkout smoke cases invoking the
+updated Charts verifier (9/9 total). The exact committed source blob hashes
+for the bounded helper and Charts verifier were matched to those tested.
+The full committed Charts test suite has now been rerun after the bounded
+reader integration and an additional strict root-table validation update.
+**Current targeted synthetic test result: 45/45 PASS** with
+`node --test tests/*.test.mjs` inside a minimal Linux Node/Git fixture:
+12 Charts npm provenance/checkout tests, 5 bounded reader tests, and
+28 Git Windows tracked-path/bootstrap-order tests. All tested module files,
+test files, and build entrypoint scripts were matched by Git blob SHA to the
+feature branch. The fixture's `package.json` was deliberately minimal and
+contains the required `verify:charts-lock` script, rather than the full
+Desktop manifest; it is not the project's complete `npm test`.
+
+New validation of root `dependencies`, `devDependencies`,
+`peerDependencies`, `optionalDependencies`, and `engines` requires
+absent or non-array objects whose values are nonempty strings. This rejects
+manifest and lockfile pairs that contain the same **malformed** tables; matching
+bad inputs are no longer sufficient. Rechecking the published
+Astrological Charts `main` manifest and lock in an isolated V8 metadata
+validator still accepted **1,059 pinned registry package records**. That
+metadata-only check uses stand-ins for Node URL/base64 decoding and does not
+fetch or authenticate archive bytes.
+
+None of these tests validates Windows PowerShell, the full Desktop npm
+dependency graph, Cargo, Tauri packaging, or WebView2. The existing 11/11
+result in the previous section is historical and precedes the current code.
