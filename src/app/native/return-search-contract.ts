@@ -65,7 +65,7 @@ type DecodedReturns =
   | Readonly<{status: 'provider_unavailable' | 'invalid_request' | 'calculation_failed'}>;
 
 /** Detached, frozen values from one native response; throws a generic error otherwise. */
-export function decodeReturnResponse(raw: unknown): DecodedReturns {
+export function decodeReturnResponse(raw: unknown, expectedYear?: number): DecodedReturns {
   try {
     if (!plainObject(raw) || field(raw, 'protocolVersion') !== 1) throw new Error(PROTOCOL_ERROR);
     const status = field(raw, 'status');
@@ -88,7 +88,13 @@ export function decodeReturnResponse(raw: unknown): DecodedReturns {
     const decoded: ReturnInstantV1[] = [];
     for (let index = 0; index < instants.length; index++) {
       const previous = decoded.length ? decoded[decoded.length - 1].julianDayUt : Number.NEGATIVE_INFINITY;
-      decoded.push(decodeInstant(field(instants, String(index)), previous));
+      const instant = decodeInstant(field(instants, String(index)), previous);
+      // A successful response to a calendar-year search must not include
+      // instants from the preceding or following UTC year.
+      if (expectedYear !== undefined && instant.utcIso.slice(0, 4) !== String(expectedYear)) {
+        throw new Error(PROTOCOL_ERROR);
+      }
+      decoded.push(instant);
     }
     return Object.freeze({status: 'ok', provider: Object.freeze({id, engineVersion}), instants: Object.freeze(decoded)});
   } catch {
@@ -115,7 +121,7 @@ export async function requestReturns(
     const raw = await transport.invoke('find_returns', {
       request: {protocolVersion: 1, body: request.body, targetLongitudeDeg: request.targetLongitudeDeg, year: request.year},
     });
-    const decoded = decodeReturnResponse(raw);
+    const decoded = decodeReturnResponse(raw, request.year);
     return decoded.status === 'ok'
       ? {kind: 'ready', provider: decoded.provider, instants: decoded.instants}
       : {kind: decoded.status};
