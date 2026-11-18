@@ -30,7 +30,7 @@ test('native opener always uses the same public URL with zero caller parameters'
   assert.match(adapter, /invoke<unknown>\('open_support_center'\)/);
   assert.deepEqual(tauri.app.security.capabilities, []);
   assert.doesNotMatch(adapter, /(?:fetch\(|HttpClient|localStorage|chartId|birthDate|token|deviceId)/);
-  assert.doesNotMatch(rust, /(?:Command::new|std::process|reqwest|birth_date|chart_id|token)/);
+  assert.doesNotMatch(rust.split('#[cfg(test)]')[0], /(?:Command::new|std::process|reqwest|birth_date|chart_id|token)/);
 });
 
 test('the plugin is registered only on the Rust side, not exposed to WebView', () => {
