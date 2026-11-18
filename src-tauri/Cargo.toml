@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 # The canonical astronomy provider, VirgoStars-Ephemeris (CPAL-1.0). Without it nothing is calculated.
 default = ["virgostars-ephemeris"]
-virgostars-ephemeris = ["dep:virgostars-ephemeris-core", "dep:serde_json"]
+virgostars-ephemeris = ["dep:virgostars-ephemeris-core"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -30,8 +30,7 @@ sha2 = "0.10"
 url = "2.5"
 httparse = "1.10"
 keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
+# Required by both the native account-token response parser and the ephemeris adapter.
+serde_json = "1"
 # Pinned to one reviewed commit of the Ephemeris repository; never a floating branch.
 virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "6835e00e4b4ba5fc52d882a793e2dfa2b2a436aa", optional = true }
-serde_json = { version = "1", optional = true }
-[dev-dependencies]
-serde_json = "1"
