@@ -4,6 +4,7 @@
  * exactly which field stops it. The civil-time resolver is injected.
  */
 import type {CivilTimeChoice, CivilTimeInput, CivilTimeResult} from './native/civil-time';
+import type {SavedChartV1} from './native/chart-archive-contract';
 
 export type NewChartFields = Readonly<{
   name: string;
@@ -38,10 +39,40 @@ export type NewChartResolution =
 
 export const MAX_CHART_NAME_LENGTH = 80;
 
+/** Recover editable local birth fields from the persisted UTC instant and IANA zone. */
+export function savedChartFields(chart: SavedChartV1): NewChartFields {
+  // Older archives may contain a syntactically acceptable but unsupported IANA zone.
+  // Keep the editor usable so that the user can correct that value rather than crashing.
+  const formatting = {year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23'} as const;
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-GB', {timeZone:chart.timeZone, ...formatting})
+      .formatToParts(new Date(chart.utcIso));
+  } catch {
+    parts = new Intl.DateTimeFormat('en-GB', {timeZone:'UTC', ...formatting})
+      .formatToParts(new Date(chart.utcIso));
+  }
+  const value = (key: string) => parts.find(part => part.type === key)?.value ?? '';
+  return {
+    name:chart.name,
+    date:`${value('year')}-${value('month')}-${value('day')}`,
+    time:`${value('hour')}:${value('minute')}:${value('second')}`,
+    timeZone:chart.timeZone,
+    latitude:(chart.latMicro / 1e6).toFixed(6),
+    longitude:(chart.lngMicro / 1e6).toFixed(6),
+    placeName:chart.placeName,
+  };
+}
+
 /** Strip control characters and trim; the name is display-only text. */
 export function cleanChartName(raw: string): string {
   return [...String(raw ?? '')].filter(ch => ch >= ' ' && ch !== '\u007f').join('')
     .trim().slice(0, MAX_CHART_NAME_LENGTH);
+}
+
+export function cleanPlaceName(raw: string): string {
+  return [...String(raw ?? '')].filter(ch => ch >= ' ' && ch !== '\u007f').join('').trim().slice(0, 160);
 }
 
 /** Decimal degrees with `.` or `,`; returns micro-degrees or null. */
@@ -99,7 +130,7 @@ export function resolveNewChart(
       timeZone: civil.timeZone,
       offsetSeconds: choice.offsetSeconds,
       latMicro, lngMicro,
-      placeName: cleanChartName(fields.placeName),
+      placeName: cleanPlaceName(fields.placeName),
     },
   };
 }

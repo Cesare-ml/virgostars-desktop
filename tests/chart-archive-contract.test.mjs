@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  decodeArchiveResponse, newChartId, requestArchive, validChartRecord,
+  decodeArchiveResponse, newChartId, requestArchive, validChartRecord, validPhotoBytes,
 } from '../src/app/native/chart-archive-contract.ts';
 
 const ID_A = '11111111-1111-4111-8111-111111111111';
@@ -29,6 +29,38 @@ test('a native list is copied into detached frozen records', () => {
   assert.deepEqual(decodeArchiveResponse({protocolVersion: 1, status: 'ok', charts: [], legacyPresent: false}).charts, []);
   assert.equal(decoded.legacyPresent, false);
   assert.equal(decodeArchiveResponse({...okResponse(), legacyPresent: true}).legacyPresent, true);
+});
+
+test('device-only photo metadata and image bytes are independent of saved-chart DTOs', async () => {
+  const jpeg = [255, 216, 255, 224, 0, 0, 0, 255, 217];
+  const response = {...okResponse(), photoIds:[ID_A], photoData:jpeg};
+  const result = decodeArchiveResponse(response);
+  assert.deepEqual(result.photoIds, [ID_A]);
+  assert.deepEqual(result.photoData, jpeg);
+  assert.ok(!Object.hasOwn(result.charts[0], 'photoData'));
+  response.photoData[3] = 3;
+  assert.equal(result.photoData[3], 224, 'photo bytes detached from mutable IPC response');
+  const transport = native(() => ({...okResponse(), photoIds:[ID_A], photoData:null}));
+  assert.equal((await requestArchive(transport, {operation:'photo_save', id:ID_A, photoData:jpeg})).kind, 'ready');
+  await requestArchive(transport, {operation:'photo_read', id:ID_A});
+  await requestArchive(transport, {operation:'photo_delete', id:ID_A});
+  assert.deepEqual(transport.calls, [
+    ['chart_archive', {request:{protocolVersion:1,operation:'photo_save',id:ID_A,photoData:jpeg}}],
+    ['chart_archive', {request:{protocolVersion:1,operation:'photo_read',id:ID_A}}],
+    ['chart_archive', {request:{protocolVersion:1,operation:'photo_delete',id:ID_A}}],
+  ]);
+  assert.equal(validPhotoBytes(jpeg), true);
+  for (const bad of [[], [1, 2], Array(9).fill(255), [255,216,255,224,0,0,0,255,999]]) {
+    assert.equal(validPhotoBytes(bad), false);
+    assert.deepEqual(await requestArchive(transport, {operation:'photo_save', id:ID_A, photoData:bad}), {kind:'invalid_request'});
+  }
+});
+
+test('photo ID lists cannot smuggle unknown chart IDs or invalid bytes through native IPC', () => {
+  for (const photoIds of [[ID_B, ID_B], ['../../bad'], [ID_A, ID_A]]) {
+    assert.throws(() => decodeArchiveResponse({...okResponse(), photoIds}), /Invalid chart archive protocol/);
+  }
+  assert.throws(() => decodeArchiveResponse({...okResponse(), photoData:[255,216,255,0,0,0,0,0,0]}), /Invalid chart archive protocol/);
 });
 
 test('every archive failure state is passed through without details', () => {
