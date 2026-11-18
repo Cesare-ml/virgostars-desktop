@@ -36,7 +36,7 @@ try {
   const opened=await evaluate(`(() => {const b=[...document.querySelectorAll('.nav-item')].find(x=>/Pianeti storici|Historical planets/.test(x.textContent)); if(!b)return false; b.click(); return true;})()`);
   if(!opened) throw Error('PANEL_NOT_FOUND');
   await pause(250);
-  const filled=await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const inputs=p?.querySelectorAll('input[type=number]'); if(!inputs || inputs.length!==6)return false; inputs[5].value='3600'; inputs[5].dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('input[type=checkbox]').click(); p.querySelector('form').requestSubmit(); return true;})()`);
+  const filled=await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const inputs=p?.querySelectorAll('input[type=number]'); if(!inputs || inputs.length!==6)return false; inputs[5].value='3600'; inputs[5].dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('#historical-scenarios').click(); p.querySelector('form').requestSubmit(); return true;})()`);
   if(!filled) throw Error('FORM_NOT_FOUND');
   let result='';
   for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
@@ -48,5 +48,11 @@ try {
   result='';
   for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
   if(!/synthetic/.test(result) || !/meno incertezza|minus uncertainty/.test(result)) throw Error('ANCIENT_SCENARIOS_NOT_SHOWN');
-  process.stdout.write('WebView2 historical panel: model, ancient explicit source and sensitivity samples passed.\n');
+  await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const sel=p.querySelectorAll('select')[1]; sel.value='espenakMeeus2006'; sel.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await pause(150);
+  await evaluate(`(() => {const p=document.querySelector('vs-historical-planets'); const year=p.querySelector('input[type=number]'); year.value='-500'; year.dispatchEvent(new Event('input',{bubbles:true})); p.querySelector('#historical-estimate-uncertainty').click(); p.querySelector('form').requestSubmit();})()`);
+  result='';
+  for(let i=0;i<50 && !result;i++){await pause(300); result=await evaluate(`document.querySelector('vs-historical-planets .result')?.textContent ?? ''`);}
+  if(!/Morrison-Stephenson 2004 standard error/.test(result) || !/meno incertezza|minus uncertainty/.test(result)) throw Error('ESTIMATED_UNCERTAINTY_NOT_SHOWN');
+  process.stdout.write('WebView2 historical panel: model, BCE estimate, uncertainty and explicit source passed.\n');
 } finally { socket?.close(); child.kill(); }

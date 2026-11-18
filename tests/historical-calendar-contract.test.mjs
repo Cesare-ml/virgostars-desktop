@@ -34,7 +34,9 @@ test('accepts Gregorian leap days and enforces model and requested date bounds',
   assert.equal(validHistoricalCalendar({...request, month:2, day:29}), true);
   assert.equal(validHistoricalCalendar({...request, year:1900, month:2, day:29}), false);
   assert.equal(validHistoricalCalendar({...request, year:0, month:2, day:29}), true);
-  assert.equal(validHistoricalCalendar({...request, year:-1}), false);
+  assert.equal(validHistoricalCalendar({...request, year:-1}), true);
+  assert.equal(validHistoricalCalendar({...request, year:-1999}), true);
+  assert.equal(validHistoricalCalendar({...request, year:-2000}), false);
   assert.equal(validHistoricalCalendar({...request, year:3000, month:12, day:31}), true);
   assert.equal(validHistoricalCalendar({...request, year:3001}), false);
   const manual = {kind:'supplied', seconds:200, uncertaintySeconds:50, source:'synthetic'};
@@ -44,6 +46,26 @@ test('accepts Gregorian leap days and enforces model and requested date bounds',
   assert.equal(validHistoricalCalendar({...request, year:4000, deltaT:manual}), false);
   assert.equal(validHistoricalCalendar({...request, deltaT:{...manual, source:' '}}), false);
   assert.equal(validHistoricalCalendar({...request, deltaT:{...manual, uncertaintySeconds:-1}}), false);
+});
+
+test('requires the 2004 standard-error estimate to stay inside its stated range', async () => {
+  const deltaT = {kind:'espenakMeeus2006EstimatedUncertainty'};
+  const estimated = {...request, year:0, month:1, day:1, hour:0, deltaT};
+  assert.equal(validHistoricalCalendar({...estimated, year:-999}), true);
+  assert.equal(validHistoricalCalendar({...estimated, year:-1000}), false);
+  assert.equal(validHistoricalCalendar({...estimated, year:1200}), true);
+  assert.equal(validHistoricalCalendar({...estimated, year:1200, minute:1}), false);
+  assert.equal(validHistoricalCalendar({...estimated, year:1201}), false);
+  const raw = ok();
+  raw.result.deltaTSeconds = 10583.6;
+  raw.result.uncertaintySeconds = 264.992;
+  raw.result.uncertaintySource = 'Morrison-Stephenson 2004 standard error';
+  const transport = {isNative:()=>true, invoke:async ()=>raw};
+  const result = await requestHistoricalCalendar(transport, estimated);
+  assert.equal(result.kind, 'ready');
+  assert.equal(result.planet.uncertaintySource, raw.result.uncertaintySource);
+  delete raw.result.uncertaintySource;
+  assert.equal((await requestHistoricalCalendar(transport, estimated)).kind, 'unavailable');
 });
 
 test('dispatches the selected model and checks source and uncertainty in the reply', async () => {

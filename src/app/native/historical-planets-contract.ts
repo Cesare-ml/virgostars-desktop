@@ -8,6 +8,7 @@ export type HistoricalPlanet = HistoricalRequest & Readonly<{
   longitudeSpeedDegPerTdbDay: number; latitudeSpeedDegPerTdbDay: number; radialSpeedAuPerTdbDay: number;
   radialCorrectionApplied: boolean;
   sensitivity?: HistoricalSensitivity;
+  uncertaintySource?: string;
 }>;
 export type HistoricalResult = Readonly<{kind: 'ready'; planet: HistoricalPlanet}> |
   Readonly<{kind: 'not_native' | 'invalid_request' | 'provider_unavailable' | 'calculation_failed' | 'unavailable'}>;
@@ -30,8 +31,8 @@ export function validHistoricalRequest(value: HistoricalRequest): boolean {
     Number.isFinite(value.deltaTSeconds) && Number.isFinite(value.uncertaintySeconds) && value.uncertaintySeconds >= 0 &&
     typeof value.deltaTSource === 'string' && value.deltaTSource.trim().length > 0 && new TextEncoder().encode(value.deltaTSource).length <= 200;
 }
-export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: HistoricalBody; uncertaintySeconds: number;
-  deltaTSource: string; jdUt1?: number; deltaTSeconds?: number; includeScenarios?: boolean}>): HistoricalResult {
+export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: HistoricalBody; uncertaintySeconds?: number;
+  deltaTSource: string; jdUt1?: number; deltaTSeconds?: number; includeScenarios?: boolean; uncertaintySource?: string}>): HistoricalResult {
     if (!record(raw) || field(raw, 'protocolVersion') !== 1) throw new Error();
     const status = field(raw, 'status');
     if (status === 'invalid_request' || status === 'provider_unavailable' || status === 'calculation_failed') return {kind: status};
@@ -42,7 +43,9 @@ export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: H
     const values = Object.fromEntries(keys.map(key => [key, field(result, key)]));
     if (keys.some(key => typeof values[key] !== 'number' || !Number.isFinite(values[key])) ||
         field(result, 'body') !== expected.body || (expected.jdUt1 !== undefined && values['jdUt1'] !== expected.jdUt1) ||
-        (expected.deltaTSeconds !== undefined && values['deltaTSeconds'] !== expected.deltaTSeconds) || values['uncertaintySeconds'] !== expected.uncertaintySeconds ||
+        (expected.deltaTSeconds !== undefined && values['deltaTSeconds'] !== expected.deltaTSeconds) ||
+        (values['uncertaintySeconds'] as number) < 0 ||
+        (expected.uncertaintySeconds !== undefined && values['uncertaintySeconds'] !== expected.uncertaintySeconds) ||
         field(result, 'deltaTSource') !== expected.deltaTSource.trim() ||
         typeof field(result, 'radialCorrectionApplied') !== 'boolean' ||
         (values['longitudeDeg'] as number) < 0 || (values['longitudeDeg'] as number) >= 360 ||
@@ -63,11 +66,13 @@ export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: H
             typeof latitudeDeg !== 'number' || !Number.isFinite(latitudeDeg) || latitudeDeg < -90 || latitudeDeg > 90) throw new Error();
         return Object.freeze({deltaTSeconds, longitudeDeg, latitudeDeg});
       };
-      sensitivity = Object.freeze({lower: decodeSample('lower', -expected.uncertaintySeconds),
-        upper: decodeSample('upper', expected.uncertaintySeconds)});
+      sensitivity = Object.freeze({lower: decodeSample('lower', -(values['uncertaintySeconds'] as number)),
+        upper: decodeSample('upper', values['uncertaintySeconds'] as number)});
     }
+    if (expected.uncertaintySource !== undefined && field(result, 'uncertaintySource') !== expected.uncertaintySource) throw new Error();
     const planet = Object.freeze({...values, body: expected.body, deltaTSource: expected.deltaTSource.trim(),
-      radialCorrectionApplied: field(result, 'radialCorrectionApplied'), ...(sensitivity ? {sensitivity} : {})}) as HistoricalPlanet;
+      radialCorrectionApplied: field(result, 'radialCorrectionApplied'), ...(sensitivity ? {sensitivity} : {}),
+      ...(expected.uncertaintySource ? {uncertaintySource: expected.uncertaintySource} : {})}) as HistoricalPlanet;
     return {kind: 'ready', planet};
 }
 export async function requestHistoricalPlanet(transport: HistoricalTransport, request: HistoricalRequest): Promise<HistoricalResult> {

@@ -11,6 +11,8 @@ pub struct HistoricalPlanetRequest {
     pub(crate) delta_t_seconds: f64,
     pub(crate) uncertainty_seconds: f64,
     pub(crate) delta_t_source: String,
+    #[serde(skip)]
+    pub(crate) uncertainty_source: Option<String>,
     #[serde(default)]
     pub(crate) include_scenarios: bool,
 }
@@ -48,6 +50,7 @@ enum HistoricalDeltaT {
     EspenakMeeus2006 {
         uncertainty_seconds: f64,
     },
+    EspenakMeeus2006EstimatedUncertainty,
 }
 
 #[cfg(feature = "virgostars-ephemeris")]
@@ -78,30 +81,39 @@ fn resolve_calendar(request: HistoricalCalendarRequest) -> Result<HistoricalPlan
     };
     let hour = f64::from(request.hour) + f64::from(request.minute) / 60.0 + request.second / 3600.0;
     let jd_ut1 = date(request.year, request.month, request.day, hour)?;
-    let (delta_t_seconds, uncertainty_seconds, delta_t_source) = match request.delta_t {
+    let (delta_t_seconds, uncertainty_seconds, delta_t_source, uncertainty_source) = match request
+        .delta_t
+    {
         HistoricalDeltaT::Supplied {
             seconds,
             uncertainty_seconds,
             source,
-        } => (seconds, uncertainty_seconds, source),
-        HistoricalDeltaT::EspenakMeeus2006 {
-            uncertainty_seconds,
-        } => {
-            if !(0..=3000).contains(&request.year) {
+        } => (seconds, uncertainty_seconds, source, None),
+        choice => {
+            if !(-1999..=3000).contains(&request.year) {
                 return Err(());
             }
             let start = date(request.year, 1, 1, 0.0)?;
             let end = date(request.year + 1, 1, 1, 0.0)?;
             let decimal_year = f64::from(request.year) + (jd_ut1 - start) / (end - start);
             let seconds =
-                virgostars_ephemeris_core::delta_t_long_range::espenak_meeus_2006_long_range(
+                virgostars_ephemeris_core::delta_t_long_range::espenak_meeus_2006_extended(
                     decimal_year,
                 )
                 .map_err(|_| ())?;
+            let (uncertainty_seconds, uncertainty_source) = match choice {
+                HistoricalDeltaT::EspenakMeeus2006 { uncertainty_seconds } => (uncertainty_seconds, None),
+                HistoricalDeltaT::EspenakMeeus2006EstimatedUncertainty => (
+                    virgostars_ephemeris_core::delta_t_long_range::morrison_stephenson_2004_standard_error(decimal_year).map_err(|_| ())?,
+                    Some("Morrison-Stephenson 2004 standard error".to_string()),
+                ),
+                HistoricalDeltaT::Supplied { .. } => unreachable!(),
+            };
             (
                 seconds,
                 uncertainty_seconds,
                 "Espenak-Meeus 2006".to_string(),
+                uncertainty_source,
             )
         }
     };
@@ -112,12 +124,13 @@ fn resolve_calendar(request: HistoricalCalendarRequest) -> Result<HistoricalPlan
         delta_t_seconds,
         uncertainty_seconds,
         delta_t_source,
+        uncertainty_source,
         include_scenarios: request.include_scenarios,
     };
     resolved.valid().then_some(resolved).ok_or(())
 }
 
-/// Calendar conversion is strictly UT1; the model is opt-in and only for years 0–3000.
+/// Calendar conversion is strictly UT1; the model and its uncertainty are opt-in and bounded.
 #[tauri::command]
 pub fn calculate_historical_planet_calendar(
     request: HistoricalCalendarRequest,
@@ -171,6 +184,8 @@ pub struct HistoricalPlanetResult {
     pub delta_t_seconds: f64,
     pub uncertainty_seconds: f64,
     pub delta_t_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uncertainty_source: Option<String>,
     pub longitude_deg: f64,
     pub latitude_deg: f64,
     pub distance_au: f64,
@@ -246,6 +261,7 @@ mod tests {
             delta_t_seconds: 64.0,
             uncertainty_seconds: 1.0,
             delta_t_source: "test source".into(),
+            uncertainty_source: None,
             include_scenarios: false,
         }
     }
@@ -302,7 +318,9 @@ mod tests {
         assert!((r.delta_t_seconds - 63.86).abs() < 0.01);
         assert_eq!(r.delta_t_source, "Espenak-Meeus 2006");
         assert_eq!(r.uncertainty_seconds, 2.0);
-        assert!(resolve_calendar(parse(&model.replace("2000", "-1"))).is_err());
+        assert!(resolve_calendar(parse(&model.replace("2000", "-1"))).is_ok());
+        assert!(resolve_calendar(parse(&model.replace("2000", "-1999"))).is_ok());
+        assert!(resolve_calendar(parse(&model.replace("2000", "-2000"))).is_err());
         assert!(resolve_calendar(parse(&model.replace("2000", "3001"))).is_err());
         assert!(resolve_calendar(parse(&model.replace("\"month\":1", "\"month\":13"))).is_err());
         assert!(resolve_calendar(parse(
@@ -315,6 +333,17 @@ mod tests {
         assert_eq!(r.delta_t_source, "synthetic");
         assert!(resolve_calendar(parse(&supplied.replace("-12999", "-13000"))).is_err());
         assert!(resolve_calendar(parse(&supplied.replace("-12999", "4000"))).is_err());
+        let auto = r#"{"protocolVersion":1,"body":"Moon","year":0,"month":1,"day":1,"hour":0,"minute":0,"second":0,"deltaT":{"kind":"espenakMeeus2006EstimatedUncertainty"}}"#;
+        let r = resolve_calendar(parse(auto)).unwrap();
+        assert!((r.uncertainty_seconds - 264.992).abs() < 1.0e-8);
+        assert_eq!(
+            r.uncertainty_source.as_deref(),
+            Some("Morrison-Stephenson 2004 standard error")
+        );
+        assert!(resolve_calendar(parse(&auto.replace("\"year\":0", "\"year\":-999"))).is_ok());
+        assert!(resolve_calendar(parse(&auto.replace("\"year\":0", "\"year\":-1000"))).is_err());
+        assert!(resolve_calendar(parse(&auto.replace("\"year\":0", "\"year\":1200"))).is_ok());
+        assert!(resolve_calendar(parse(&auto.replace("\"year\":0", "\"year\":1201"))).is_err());
     }
 
     #[cfg(feature = "virgostars-ephemeris")]
@@ -408,6 +437,17 @@ mod tests {
         assert_eq!(result.jd_ut1, 2451545.0);
         assert_eq!(result.delta_t_source, "Espenak-Meeus 2006");
         assert!((result.delta_t_seconds - 63.86).abs() < 0.01);
+        let input = r#"{"protocolVersion":1,"body":"Moon","year":-500,"month":1,"day":1,"hour":0,"minute":0,"second":0,"deltaT":{"kind":"espenakMeeus2006EstimatedUncertainty"},"includeScenarios":true}"#;
+        let output = calculate_historical_planet_calendar(serde_json::from_str(input).unwrap());
+        assert_eq!(output.status, "ok");
+        let result = output.result.unwrap();
+        assert!((result.delta_t_seconds - 17203.7).abs() < 0.1);
+        assert!((result.uncertainty_seconds - 430.592).abs() < 1.0e-8);
+        assert_eq!(
+            result.uncertainty_source.as_deref(),
+            Some("Morrison-Stephenson 2004 standard error")
+        );
+        assert!(result.sensitivity.is_some());
         use virgostars_ephemeris_core::historical_delta_t_scenarios::{
             historical_delta_t_scenarios, ScenarioFrame,
         };
