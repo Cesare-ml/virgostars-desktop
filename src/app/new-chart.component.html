@@ -7,7 +7,7 @@
       [value]="name" (input)="set('name', $event)">
   </label>
 
-  <label class="historical-toggle"><input type="checkbox" [checked]="historicalMode" (change)="setHistoricalMode($event)"> {{t('form.historical')}}</label>
+  <!-- Historical entry is deferred for MVP; saved historical records remain editable. -->
   <p class="form-note" *ngIf="historicalMode">{{t('form.historicalNote')}}</p>
 
   <div class="field-row">
