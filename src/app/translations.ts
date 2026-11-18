@@ -1,7 +1,8 @@
 export const STRINGS = {
   it: {
     "historical.title":"Pianeti storici · sperimentale",
-    "historical.intro":"Calcola la posizione di un corpo; non crea un tema e non include case o nodi lunari.",
+    "historical.intro":"Calcola la posizione di uno o più corpi; non crea un tema e non include case o nodi lunari.",
+    "historical.allBodies":"Calcola Sole, Luna e tutti i pianeti disponibili",
     "historical.ut1Note":"Inserisci data e ora in UT1, non l'ora locale o UTC. Calendario gregoriano prolettico.",
     "historical.second":"Secondi UT1 (anche decimali)",
     "historical.yearNote":"Numerazione astronomica: anno 0 = 1 a.C.; −12999 = 13000 a.C. Intervallo richiesto: −12999–3999.",
@@ -458,7 +459,8 @@ export const STRINGS = {
   },
   en: {
     "historical.title":"Historical planets · experimental",
-    "historical.intro":"Calculate one body's position; this does not create a chart or include houses or lunar nodes.",
+    "historical.intro":"Calculate one or more bodies; this does not create a chart or include houses or lunar nodes.",
+    "historical.allBodies":"Calculate the Sun, Moon and all available planets",
     "historical.ut1Note":"Enter date and time in UT1, not local time or UTC. Proleptic Gregorian calendar.",
     "historical.second":"UT1 seconds (fractional allowed)",
     "historical.yearNote":"Astronomical numbering: year 0 = 1 BCE; −12999 = 13000 BCE. Requested range: −12999–3999.",
