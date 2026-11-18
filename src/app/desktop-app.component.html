@@ -218,7 +218,7 @@
                 <span>{{savedPlace(saved)}}</span>
               </button>
               <button type="button" class="small-control wide" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
-              <button type="button" class="small-control" [disabled]="archiveBusy"
+              <button type="button" class="small-control" [disabled]="archiveBusy || pendingCreateIds.includes(saved.id) || rejectedCreateIds.includes(saved.id)"
                 [attr.aria-label]="t('archive.delete')" [attr.title]="t('archive.delete')" (click)="askDeleteSaved(saved.id)">×</button>
               </div>
               <div class="archive-groups" [attr.aria-label]="t('archive.groups')">
@@ -231,7 +231,20 @@
                 <button type="button" class="small-control" [disabled]="archiveBusy || !groupDrafts[saved.id]?.trim()" (click)="addSavedGroup(saved)">{{t('archive.groups.add')}}</button>
               </div>
               <p class="inspector-hint" *ngIf="account.status==='connected' && isAssociated(saved.id)">{{t('sync.associate.linked')}}</p>
-              <div *ngIf="account.status==='connected' && syncedCharts.length && syncedAttempt===account.connectedAttemptId && !isAssociated(saved.id)">
+              <p class="inspector-hint" *ngIf="pendingCreateIds.includes(saved.id)">{{t('sync.create.queued')}}</p>
+              <p class="inspector-hint" *ngIf="rejectedCreateIds.includes(saved.id)">{{t('sync.create.full')}}</p>
+              <button type="button" class="small-control wide" *ngIf="account.status==='connected' && rejectedCreateIds.includes(saved.id)" [disabled]="syncGroupBusy" (click)="cancelRejectedCreate(saved)">{{t('sync.create.cancel')}}</button>
+              <button type="button" class="small-control wide" *ngIf="account.status==='connected' && account.scope?.includes('chart_sync:charts:write') && !isAssociated(saved.id) && !pendingCreateIds.includes(saved.id) && !rejectedCreateIds.includes(saved.id)"
+                [disabled]="syncGroupBusy" (click)="prepareChartCreate(saved)">{{t('sync.create.start')}}</button>
+              <div *ngIf="createCandidate?.chart?.id===saved.id && createCandidate as creation" role="group">
+                <p>{{t('sync.create.review')}}</p>
+                <p>{{creation.chart.name}} · {{creation.localDate}} · {{creation.localTime}} · {{creation.chart.timeZone}} · {{creation.chart.placeName}}</p>
+                <p>{{t('archive.groups')}}: {{creation.chart.groups.join(', ')}}</p>
+                <p *ngIf="!account.scope?.includes('chart_sync:groups:write')">{{t('sync.create.groupsLater')}}</p>
+                <button type="button" class="small-control wide" [disabled]="syncGroupBusy" (click)="confirmChartCreate()">{{t('sync.create.confirm')}}</button>
+                <button type="button" class="small-control wide" (click)="createCandidate=null">{{t('sync.associate.cancel')}}</button>
+              </div>
+              <div *ngIf="account.status==='connected' && syncedCharts.length && syncedAttempt===account.connectedAttemptId && !isAssociated(saved.id) && !pendingCreateIds.includes(saved.id) && !rejectedCreateIds.includes(saved.id)">
                 <label>{{t('sync.associate.choose')}}
                   <select (change)="chooseAssociation(saved,$event)" [disabled]="syncGroupBusy">
                     <option value="">{{t('sync.associate.select')}}</option>

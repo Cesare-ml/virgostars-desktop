@@ -317,7 +317,7 @@ impl NativeLoginRegistry {
         paths: &crate::chart_archive::ArchivePaths, keys: &dyn crate::archive_keys::KeyStore, transport: &T,
     ) -> Result<ChartSyncSummary, NativeRegistryError>
     where T: crate::pkce_reqwest_https::CivilSnapshotTransport + crate::pkce_reqwest_https::GroupWriteTransport
-        + crate::pkce_reqwest_https::GroupSnapshotTransport {
+        + crate::pkce_reqwest_https::GroupSnapshotTransport + crate::pkce_reqwest_https::ChartCreateTransport {
         let scope = {
             let state = self.inner.lock().map_err(|_| NativeRegistryError::Unavailable)?;
             if state.closed { return Err(NativeRegistryError::Closed); }
@@ -325,6 +325,21 @@ impl NativeLoginRegistry {
             if session.snapshot().attempt_id != attempt_id { return Err(NativeRegistryError::Unavailable); }
             session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?.scope()
         };
+        if scope.allows_chart_write() {
+            self.sync_pending_chart_creates(attempt_id,endpoint,paths,keys,transport)?;
+        }
+        {
+            let state=self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+            let Slot::Active(session)=&state.slot else {return Err(NativeRegistryError::Unavailable);};
+            if state.closed || session.snapshot().attempt_id!=attempt_id {return Err(NativeRegistryError::Unavailable);}
+            let grant=session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?;
+            let profile=grant.profile_ref().ok_or(NativeRegistryError::Unavailable)?;
+            // A prior POST may have succeeded without its response. Importing
+            // before every queued replay could create a duplicate.
+            if !crate::chart_archive::pending_chart_creates(paths,keys,profile).map_err(|_|NativeRegistryError::Unavailable)?.is_empty() {
+                return Err(NativeRegistryError::Unavailable);
+            }
+        }
         let imported = self.import_civil_snapshot(attempt_id,endpoint,paths,keys,transport)?;
         let uploaded = if scope.allows_group_write() {
             self.sync_pending_groups(attempt_id,endpoint,paths,keys,transport)?
@@ -332,6 +347,82 @@ impl NativeLoginRegistry {
         self.refresh_linked_groups(attempt_id,endpoint,paths,keys,transport)?;
         Ok(ChartSyncSummary {imported:imported.inserted,updated:imported.updated,already_linked:imported.already_linked,
             uploaded:uploaded.processed,conflicts:uploaded.conflicts})
+    }
+
+    pub(crate) fn queue_chart_create(&self,attempt_id:&str,paths:&crate::chart_archive::ArchivePaths,
+        keys:&dyn crate::archive_keys::KeyStore,choice:&crate::chart_archive::CreateChartChoice<'_>) -> Result<(),&'static str> {
+        let state=self.inner.lock().map_err(|_|"unavailable")?;
+        if state.closed {return Err("unavailable");}
+        let Slot::Active(session)=&state.slot else {return Err("unavailable");};
+        if session.snapshot().attempt_id!=attempt_id {return Err("unavailable");}
+        let grant=session.copy_active_grant().ok_or("unavailable")?;
+        if !grant.scope().allows_chart_write() {return Err("unavailable");}
+        let profile=grant.profile_ref().ok_or("unavailable")?;
+        let choice=crate::chart_archive::CreateChartChoice {include_groups:grant.scope().allows_group_write(),..*choice};
+        crate::chart_archive::queue_chart_create(paths,keys,profile,&choice)
+            .map_err(|e|if e=="stale_sync" {"stale"} else {"unavailable"})
+    }
+
+    pub(crate) fn pending_chart_create_ids(&self,attempt_id:&str,paths:&crate::chart_archive::ArchivePaths,
+        keys:&dyn crate::archive_keys::KeyStore,rejected:bool) -> Result<Vec<String>,NativeRegistryError> {
+        let state=self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+        let Slot::Active(session)=&state.slot else {return Err(NativeRegistryError::Unavailable);};
+        if state.closed || session.snapshot().attempt_id!=attempt_id {return Err(NativeRegistryError::Unavailable);}
+        let grant=session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?;
+        let profile=grant.profile_ref().ok_or(NativeRegistryError::Unavailable)?;
+        crate::chart_archive::pending_chart_create_ids(paths,keys,profile,rejected).map_err(|_|NativeRegistryError::Unavailable)
+    }
+    pub(crate) fn offline_pending_chart_create_ids(&self,paths:&crate::chart_archive::ArchivePaths,
+        keys:&dyn crate::archive_keys::KeyStore,rejected:bool) -> Result<Vec<String>,NativeRegistryError> {
+        let state=self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+        if !Self::allow_offline(&state) {return Err(NativeRegistryError::Unavailable);}
+        crate::chart_archive::offline_pending_chart_create_ids(paths,keys,rejected).map_err(|_|NativeRegistryError::Unavailable)
+    }
+    pub(crate) fn cancel_rejected_chart_create(&self,attempt_id:&str,paths:&crate::chart_archive::ArchivePaths,
+        keys:&dyn crate::archive_keys::KeyStore,chart_id:&str) -> Result<(),&'static str> {
+        let state=self.inner.lock().map_err(|_|"unavailable")?;
+        let Slot::Active(session)=&state.slot else {return Err("unavailable");};
+        if state.closed || session.snapshot().attempt_id!=attempt_id {return Err("unavailable");}
+        let grant=session.copy_active_grant().ok_or("unavailable")?;
+        let profile=grant.profile_ref().ok_or("unavailable")?;
+        crate::chart_archive::cancel_rejected_chart_create(paths,keys,profile,chart_id)
+            .map_err(|e|if e=="stale_sync" {"stale"} else {"unavailable"})
+    }
+
+    fn sync_pending_chart_creates<T:crate::pkce_reqwest_https::ChartCreateTransport>(&self,attempt_id:&str,endpoint:&str,
+        paths:&crate::chart_archive::ArchivePaths,keys:&dyn crate::archive_keys::KeyStore,transport:&T) -> Result<usize,NativeRegistryError> {
+        if self.sync_busy.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err() {return Err(NativeRegistryError::Busy);}
+        let _reservation=SyncReservation(&self.sync_busy);
+        let endpoint=crate::pkce_token_exchange::valid_staging_token_endpoint(endpoint).ok_or(NativeRegistryError::Unavailable)?;
+        let grant={
+            let state=self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+            let Slot::Active(session)=&state.slot else {return Err(NativeRegistryError::Unavailable);};
+            if state.closed || session.snapshot().attempt_id!=attempt_id {return Err(NativeRegistryError::Unavailable);}
+            session.copy_active_grant().ok_or(NativeRegistryError::Unavailable)?
+        };
+        if !grant.scope().allows_chart_write() || !grant.matches_token_endpoint(&endpoint) {return Err(NativeRegistryError::Unavailable);}
+        let profile=grant.profile_ref().ok_or(NativeRegistryError::Unavailable)?;
+        let pending=crate::chart_archive::pending_chart_creates(paths,keys,profile).map_err(|_|NativeRegistryError::Unavailable)?;
+        let mut processed=0;
+        for item in &pending {
+            {
+                let state=self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+                let Slot::Active(session)=&state.slot else {return Err(NativeRegistryError::Closed);};
+                if state.closed || session.snapshot().attempt_id!=attempt_id || session.copy_active_grant()
+                    .and_then(|current|current.profile_ref().map(str::to_owned)).as_deref()!=Some(profile) {return Err(NativeRegistryError::Closed);}
+            }
+            let result=transport.create_chart(&endpoint,&grant,&item.payload).map_err(|_|NativeRegistryError::Unavailable)?;
+            let state=self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+            let Slot::Active(session)=&state.slot else {return Err(NativeRegistryError::Closed);};
+            if state.closed || session.snapshot().attempt_id!=attempt_id || session.copy_active_grant()
+                .and_then(|current|current.profile_ref().map(str::to_owned)).as_deref()!=Some(profile) {return Err(NativeRegistryError::Closed);}
+            match result {
+                crate::pkce_reqwest_https::ChartCreateResult::Created(remote)=>crate::chart_archive::acknowledge_chart_create(paths,keys,profile,item,&remote),
+                crate::pkce_reqwest_https::ChartCreateResult::ArchiveFull=>crate::chart_archive::reject_chart_create_full(paths,keys,profile,item),
+            }.map_err(|_|NativeRegistryError::Unavailable)?;
+            processed+=1;
+        }
+        Ok(processed)
     }
 
     pub(crate) fn list_civil_charts(&self, attempt_id: &str, paths: &crate::chart_archive::ArchivePaths,
@@ -572,7 +663,7 @@ mod tests {
     fn connected_sync_imports_unknown_time_then_uploads_groups_without_losing_offline_edits() {
         use crate::archive_keys::fake::FakeKeyStore;
         use crate::chart_archive::{ArchivePaths,RemoteCivilChart};
-        use crate::pkce_reqwest_https::{CivilSnapshotTransport,GroupSnapshotTransport,GroupWriteResult,GroupWriteTransport};
+        use crate::pkce_reqwest_https::{CivilSnapshotTransport,GroupSnapshotTransport,GroupWriteResult,GroupWriteTransport,ChartCreateTransport};
         use crate::pkce_token_exchange::{NativeAccessGrant,TokenScope};
         use std::{collections::HashMap,fs};
         const PROFILE:&str="44444444-4444-4444-8444-444444444444";
@@ -602,6 +693,9 @@ mod tests {
             fn fetch_groups(&self,_:&Url,_:&NativeAccessGrant)->Result<HashMap<String,Vec<String>>,()> {
                 Ok(HashMap::from([(CHART.into(),self.groups.lock().unwrap().clone())]))
             }
+        }
+        impl ChartCreateTransport for Fake {
+            fn create_chart(&self,_:&Url,_:&NativeAccessGrant,_:&crate::chart_archive::CreateChartPayload)->Result<crate::pkce_reqwest_https::ChartCreateResult,()> {Err(())}
         }
         impl GroupWriteTransport for Fake {
             fn replace_groups(&self,_:&Url,_:&NativeAccessGrant,id:&str,base:&[String],next:&[String])->Result<GroupWriteResult,()> {
@@ -633,6 +727,70 @@ mod tests {
         assert_eq!(offline.len(),1);
         registry.set_offline_civil_groups(&paths,&keys,&offline[0].id,&offline[0].groups,&["Offline".into()]).unwrap();
         assert_eq!(registry.list_offline_civil_charts(&paths,&keys).unwrap()[0].sync_status,"pending");
+    }
+
+    #[test]
+    fn creation_replays_lost_response_before_importing_and_never_duplicates_local_chart() {
+        use crate::archive_keys::fake::FakeKeyStore;
+        use crate::chart_archive::{self,ArchivePaths,ArchiveRequestV1,ChartRecordV1,CreateChartChoice,CreateChartPayload,RemoteCivilChart};
+        use crate::pkce_reqwest_https::{ChartCreateTransport,CivilSnapshotTransport,GroupSnapshotTransport,GroupWriteResult,GroupWriteTransport};
+        use crate::pkce_token_exchange::{NativeAccessGrant,TokenScope};
+        use std::{collections::HashMap,fs};
+        const PROFILE:&str="44444444-4444-4444-8444-444444444444";
+        const LOCAL:&str="22222222-2222-4222-8222-222222222222";
+        const REMOTE:&str="11111111-1111-4111-8111-111111111111";
+        const ATTEMPT:&str="123e4567-e89b-42d3-a456-426614174000";
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {fn drop(&mut self){let _=fs::remove_dir_all(&self.0);}}
+        let fixture=Fixture(std::env::temp_dir().join(format!("virgo-create-test-{}-{:?}",std::process::id(),std::thread::current().id())).with_extension("tmp"));
+        fs::create_dir_all(&fixture.0).unwrap();
+        let paths=ArchivePaths::in_folder(&fixture.0);
+        let keys=FakeKeyStore::empty();
+        let chart=ChartRecordV1{id:LOCAL.into(),name:"Fittizio".into(),utc_iso:"2001-02-03T04:05:06.000Z".into(),
+            time_zone:"Europe/Rome".into(),lat_micro:44_000_000,lng_micro:11_000_000,place_name:"Luogo".into()};
+        let save=ArchiveRequestV1{protocol_version:1,operation:"save".into(),chart:Some(chart),id:None,groups:None};
+        assert_eq!(chart_archive::handle(&paths,&keys,&save,1000).status,"ok");
+        let registry=NativeLoginRegistry::new();
+        registry.inner.lock().unwrap().slot=Slot::Active(NativeLoginSession::synthetic_connected_for_test(
+            ATTEMPT,NativeAccessGrant::synthetic_for_test(TokenScope::ReadAndBothWrites,PROFILE)));
+        let choice=CreateChartChoice{chart_id:LOCAL,updated_at_ms:1000,groups:&[],local_date:"2001-02-03",local_time:"05:05:06",include_groups:false};
+        registry.queue_chart_create(ATTEMPT,&paths,&keys,&choice).unwrap();
+        struct Fake {mutation:Mutex<Option<String>>,calls:AtomicUsize,fetches:AtomicUsize}
+        impl ChartCreateTransport for Fake {
+            fn create_chart(&self,_:&Url,_:&NativeAccessGrant,payload:&CreateChartPayload)->Result<crate::pkce_reqwest_https::ChartCreateResult,()> {
+                let mut saved=self.mutation.lock().unwrap();
+                if let Some(previous)=saved.as_ref() {assert_eq!(previous,&payload.mutation_id);} else {*saved=Some(payload.mutation_id.clone());}
+                if self.calls.fetch_add(1,Ordering::SeqCst)==0 {return Err(());}
+                Ok(crate::pkce_reqwest_https::ChartCreateResult::Created(REMOTE.into()))
+            }
+        }
+        impl CivilSnapshotTransport for Fake {
+            fn fetch_civil_charts(&self,_:&Url,_:&NativeAccessGrant)->Result<Vec<RemoteCivilChart>,()> {
+                self.fetches.fetch_add(1,Ordering::SeqCst);
+                Ok(vec![RemoteCivilChart{sync_id:REMOTE.into(),name:"Fittizio".into(),kind:"unclassified".into(),
+                    civil_date:"2001-02-03".into(),civil_time:Some("05:05:06".into()),time_unknown:false,
+                    time_zone:Some("Europe/Rome".into()),lat_micro:Some(44_000_000),lng_micro:Some(11_000_000),
+                    place_name:"Luogo".into(),place_mode:"manual".into(),city_ref:None,sex:None,is_account_chart:false,
+                    revision:1,updated_at:"2026-11-18T10:00:00Z".into(),groups:vec![]}])
+            }
+        }
+        impl GroupSnapshotTransport for Fake {
+            fn fetch_groups(&self,_:&Url,_:&NativeAccessGrant)->Result<HashMap<String,Vec<String>>,()> {Ok(HashMap::from([(REMOTE.into(),vec![])]))}
+        }
+        impl GroupWriteTransport for Fake {
+            fn replace_groups(&self,_:&Url,_:&NativeAccessGrant,_:&str,_:&[String],_:&[String])->Result<GroupWriteResult,()> {Err(())}
+        }
+        let transport=Fake{mutation:Mutex::new(None),calls:AtomicUsize::new(0),fetches:AtomicUsize::new(0)};
+        assert!(registry.sync_civil_charts(ATTEMPT,TOKEN,&paths,&keys,&transport).is_err());
+        assert_eq!(transport.fetches.load(Ordering::SeqCst),0);
+        assert_eq!(registry.pending_chart_create_ids(ATTEMPT,&paths,&keys,false).unwrap(),[LOCAL]);
+        registry.sync_civil_charts(ATTEMPT,TOKEN,&paths,&keys,&transport).unwrap();
+        assert_eq!(transport.calls.load(Ordering::SeqCst),2);
+        assert!(registry.pending_chart_create_ids(ATTEMPT,&paths,&keys,false).unwrap().is_empty());
+        let linked=registry.list_civil_charts(ATTEMPT,&paths,&keys).unwrap();
+        assert_eq!(linked.len(),1);
+        assert_eq!(linked[0].id,LOCAL);
+        assert_eq!(linked[0].sync_status,"clean");
     }
 
     #[derive(Default)]

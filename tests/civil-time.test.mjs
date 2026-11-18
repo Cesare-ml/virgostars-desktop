@@ -4,6 +4,16 @@ import {resolveCivilTime} from '../src/app/native/civil-time.ts';
 
 const resolve = (date, time, timeZone = 'Europe/Rome') => resolveCivilTime({date, time, timeZone});
 
+test('archive transfer can resolve historical dates without extending calculation defaults',()=>{
+  assert.equal(resolve('1850-01-02','12:00:00','UTC').status,'invalid');
+  const result=resolveCivilTime({date:'1850-01-02',time:'12:00:00',timeZone:'UTC'},{yearRange:'archive'});
+  assert.equal(result.status,'resolved');
+  assert.equal(result.choice.instantUtc,'1850-01-02T12:00:00.000Z');
+  const ancient=resolveCivilTime({date:'0001-01-02',time:'12:00:00',timeZone:'UTC'},{yearRange:'archive'});
+  assert.equal(ancient.status,'resolved');
+  assert.equal(ancient.choice.instantUtc,'0001-01-02T12:00:00.000Z');
+});
+
 test('winter Rome UTC conversion is deterministic', () => {
   assert.deepEqual(resolve('2026-01-15', '08:05'), {
     status: 'resolved', timeZone: 'Europe/Rome',

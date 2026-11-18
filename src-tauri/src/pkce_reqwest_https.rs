@@ -62,6 +62,32 @@ pub(crate) trait CivilSnapshotTransport {
         -> Result<Vec<crate::chart_archive::RemoteCivilChart>, ()>;
 }
 
+pub(crate) trait ChartCreateTransport {
+    fn create_chart(&self, token_endpoint:&Url, grant:&NativeAccessGrant,
+        payload:&crate::chart_archive::CreateChartPayload) -> Result<ChartCreateResult,()>;
+}
+pub(crate) enum ChartCreateResult { Created(String), ArchiveFull }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields,rename_all="camelCase")]
+struct CreateChartResponse {contract_version:u8,status:String,sync_id:String,revision:String}
+
+fn parse_create_response(status:u16,bytes:&[u8]) -> Result<ChartCreateResult,()> {
+    if status==409 {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct ErrorBody {error:String}
+        let body:ErrorBody=serde_json::from_slice(bytes).map_err(|_|())?;
+        return if body.error=="archive_full" {Ok(ChartCreateResult::ArchiveFull)} else {Err(())};
+    }
+    let response:CreateChartResponse=serde_json::from_slice(bytes).map_err(|_|())?;
+    if response.contract_version!=1 || !matches!((status,response.status.as_str()),(201,"created") | (200,"replayed"))
+        || !crate::chart_archive::valid_id(&response.sync_id) || response.revision.is_empty()
+        || response.revision.len()>19 || response.revision.starts_with('0')
+        || !response.revision.bytes().all(|c|c.is_ascii_digit()) || response.revision.parse::<i64>().is_err() {return Err(());}
+    Ok(ChartCreateResult::Created(response.sync_id))
+}
+
 fn parse_snapshot(bytes: &[u8], profile: &str) -> Result<GroupSnapshot, ()> {
     let response: GroupSnapshot = serde_json::from_slice(bytes).map_err(|_| ())?;
     if response.contract_version != 1 || response.cursor.epoch != profile || response.charts.len() > 500
@@ -226,6 +252,32 @@ impl CivilSnapshotTransport for StagingReqwestHttps {
         -> Result<Vec<crate::chart_archive::RemoteCivilChart>, ()> {
         let bytes = self.snapshot_body(token_endpoint,grant)?;
         parse_civil_snapshot(&bytes,grant.profile_ref().ok_or(())?)
+    }
+}
+
+impl ChartCreateTransport for StagingReqwestHttps {
+    fn create_chart(&self,token_endpoint:&Url,grant:&NativeAccessGrant,payload:&crate::chart_archive::CreateChartPayload) -> Result<ChartCreateResult,()> {
+        if !grant.scope().allows_chart_write() || ( !payload.groups.is_empty() && !grant.scope().allows_group_write())
+            || grant.profile_ref().is_none() || !grant.matches_token_endpoint(token_endpoint)
+            || grant.remaining_seconds(std::time::Instant::now())==0 || !crate::chart_archive::valid_create_payload(payload) {return Err(());}
+        let mut destination=valid_staging_token_endpoint(token_endpoint.as_str()).ok_or(())?;
+        destination.set_path("/chart-sync/v1/charts");
+        let body=Zeroizing::new(serde_json::to_string(payload).map_err(|_|())?);
+        if body.len()>65536 {return Err(());}
+        let auth_value=Zeroizing::new(format!("Bearer {}",grant.bearer()));
+        let mut auth=HeaderValue::from_str(&auth_value).map_err(|_|())?;
+        auth.set_sensitive(true);
+        let client=restricted_client(MAX_TOKEN_DEADLINE)?;
+        let response=client.post(destination).header(ACCEPT,"application/json").header(CONTENT_TYPE,"application/json")
+            .header(AUTHORIZATION,auth).body(Body::sized(SecretFormReader::new(&body),body.len() as u64)).send().map_err(|_|())?;
+        let status=response.status().as_u16();
+        if !matches!(status,200 | 201 | 409) || response.content_length().is_some_and(|n|n>MAX_SESSION_RESPONSE_BYTES) {return Err(());}
+        let content_type=response.headers().get(CONTENT_TYPE).and_then(|v|v.to_str().ok()).ok_or(())?;
+        if !content_type.eq_ignore_ascii_case("application/json") && !content_type.eq_ignore_ascii_case("application/json; charset=utf-8") {return Err(());}
+        let mut bytes=Zeroizing::new(Vec::new());
+        response.take(MAX_SESSION_RESPONSE_BYTES+1).read_to_end(&mut bytes).map_err(|_|())?;
+        if bytes.len() as u64>MAX_SESSION_RESPONSE_BYTES {return Err(());}
+        parse_create_response(status,&bytes)
     }
 }
 
@@ -454,5 +506,21 @@ mod tests {
         assert!(parse_group_response(200, br#"{"contractVersion":1,"status":"updated","groups":["sbagliato"]}"#, &desired).is_err());
         assert!(parse_group_response(200, br#"{"contractVersion":1,"status":"updated","groups":["Gruppo fittizio"],"token":"no"}"#, &desired).is_err());
         assert!(parse_group_response(409, br#"{"contractVersion":1,"status":"unchanged","groups":["Gruppo fittizio"]}"#, &desired).is_err());
+    }
+
+    #[test]
+    fn create_reply_requires_exact_status_version_uuid_and_revision() {
+        let created=br#"{"contractVersion":1,"status":"created","syncId":"11111111-1111-4111-8111-111111111111","revision":"1"}"#;
+        assert!(parse_create_response(201,created).is_ok());
+        assert!(parse_create_response(200,created).is_err());
+        let replay=br#"{"contractVersion":1,"status":"replayed","syncId":"11111111-1111-4111-8111-111111111111","revision":"1"}"#;
+        assert!(parse_create_response(200,replay).is_ok());
+        let extra=br#"{"contractVersion":1,"status":"replayed","syncId":"11111111-1111-4111-8111-111111111111","revision":"1","owner":8}"#;
+        assert!(parse_create_response(200,extra).is_err());
+        let invalid=br#"{"contractVersion":1,"status":"replayed","syncId":"11111111-1111-4111-8111-111111111111","revision":"01"}"#;
+        assert!(parse_create_response(200,invalid).is_err());
+        assert!(matches!(parse_create_response(409,br#"{"error":"archive_full"}"#),Ok(ChartCreateResult::ArchiveFull)));
+        assert!(parse_create_response(409,br#"{"error":"mutation_conflict"}"#).is_err());
+        assert!(parse_create_response(409,br#"{"error":"archive_full","extra":true}"#).is_err());
     }
 }

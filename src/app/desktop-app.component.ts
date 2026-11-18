@@ -158,6 +158,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   conflictsBusy = false;
   conflictsMessage: MessageKey | null = null;
   syncedCharts: readonly SyncedChart[] = [];
+  pendingCreateIds: readonly string[] = [];
+  rejectedCreateIds: readonly string[] = [];
+  createCandidate: {chart:SavedChartV1;localDate:string;localTime:string} | null = null;
   syncedAttempt: string | null = null;
   syncOfflineMode = false;
   syncBusy = false;
@@ -184,6 +187,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.syncedAttempt = attempt;
     this.syncOfflineMode = offline;
     this.syncedCharts = [];
+    this.pendingCreateIds = [];
+    this.rejectedCreateIds = [];
+    this.createCandidate = null;
     this.syncGroupDrafts = {};
     this.associationCandidate = null;
     this.syncBusy = false;
@@ -210,7 +216,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const ticket=++this.syncListGeneration;
     const result=attemptId ? await chartSync({operation:'list',attemptId}) : await chartSync({operation:'offline_list'});
     if (this.destroyed || this.account.connectedAttemptId!==attemptId || generation!==this.syncGeneration || ticket!==this.syncListGeneration) return;
-    if (result.kind==='list') this.syncedCharts=result.charts;
+    if (result.kind==='list') {this.syncedCharts=result.charts;this.pendingCreateIds=result.pendingChartIds;this.rejectedCreateIds=result.rejectedChartIds;}
     else if (!offline) this.syncMessage='sync.unavailable';
     this.cd.markForCheck();
   }
@@ -271,6 +277,46 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   trackSynced(_index:number,chart:SyncedChart):string { return chart.id; }
   isAssociated(id:string):boolean { return this.syncedCharts.some(chart=>chart.id===id); }
   isLocalChart(id:string):boolean { return this.savedCharts.some(chart=>chart.id===id); }
+  prepareChartCreate(chart:SavedChartV1):void {
+    this.createCandidate=null;
+    try {
+      const instant=new Date(chart.utcIso);
+      if (!Number.isFinite(instant.getTime()) || instant.getUTCMilliseconds()!==0 || [...chart.placeName].length>100) throw new Error('unsupported');
+      const formatter=new Intl.DateTimeFormat('en-CA',{timeZone:chart.timeZone,calendar:'gregory',numberingSystem:'latn',
+        year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+      const parts=Object.fromEntries(formatter.formatToParts(instant).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+      const localDate=`${parts['year'].padStart(4,'0')}-${parts['month']}-${parts['day']}`;
+      const localTime=`${parts['hour']}:${parts['minute']}:${parts['second']}`;
+      const resolved=resolveCivilTime({date:localDate,time:localTime,timeZone:chart.timeZone},{yearRange:'archive'});
+      if (resolved.status!=='resolved' || resolved.choice.instantUtc!==instant.toISOString()) throw new Error('ambiguous');
+      this.createCandidate={chart,localDate,localTime};
+    } catch {this.syncMessage='sync.timeReview';}
+  }
+  async confirmChartCreate():Promise<void> {
+    const choice=this.createCandidate,attemptId=this.account.connectedAttemptId;
+    if (!choice || !attemptId || this.syncGroupBusy || this.destroyed) return;
+    const generation=this.syncGeneration;
+    this.syncGroupBusy=true;
+    const result=await chartSync({operation:'queue_create',attemptId,chartId:choice.chart.id,
+      localUpdatedAtMs:choice.chart.updatedAtMs,localDate:choice.localDate,localTime:choice.localTime,baseGroups:choice.chart.groups});
+    if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+    this.syncGroupBusy=false;
+    this.createCandidate=null;
+    this.syncMessage=result.kind==='saved' ? 'sync.create.queued' : result.kind==='stale' ? 'sync.changed' : 'sync.unavailable';
+    await this.loadSyncedCharts();
+    if (result.kind==='saved') {if (this.syncBusy) this.syncRequested=true; else this.scheduleSync(0);}
+  }
+  async cancelRejectedCreate(chart:SavedChartV1):Promise<void> {
+    const attemptId=this.account.connectedAttemptId;
+    if (!attemptId || this.syncGroupBusy || this.destroyed) return;
+    const generation=this.syncGeneration;
+    this.syncGroupBusy=true;
+    const result=await chartSync({operation:'cancel_rejected',attemptId,chartId:chart.id});
+    if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+    this.syncGroupBusy=false;
+    this.syncMessage=result.kind==='saved' ? 'sync.create.cancelled' : result.kind==='stale' ? 'sync.changed' : 'sync.unavailable';
+    await this.loadSyncedCharts();
+  }
   chooseAssociation(local:SavedChartV1,event:Event):void {
     const id=(event.target as HTMLSelectElement).value;
     const remote=this.syncedCharts.find(chart=>chart.id===id && chart.syncStatus==='clean' && !this.isLocalChart(chart.id));

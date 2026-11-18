@@ -138,27 +138,39 @@ pub struct ChartSyncRequest {
     local_chart_id: Option<String>,
     local_updated_at_ms: Option<i64>,
     source_updated_at_ms: Option<i64>,
+    local_date: Option<String>,
+    local_time: Option<String>,
 }
 
 impl ChartSyncRequest {
     fn valid(&self) -> bool {
         if self.protocol_version != 1 { return false; }
         let association_fields=self.local_chart_id.is_some() || self.local_updated_at_ms.is_some() || self.source_updated_at_ms.is_some();
+        let civil_fields=self.local_date.is_some() || self.local_time.is_some();
         match self.operation.as_str() {
             "sync" | "list" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
-                && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields,
-            "offline_list" => self.attempt_id.is_none() && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields,
+                && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields,
+            "offline_list" => self.attempt_id.is_none() && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields,
             "set_groups" | "offline_set_groups" => (if self.operation=="set_groups" {
                 self.attempt_id.as_deref().is_some_and(valid_attempt_id)
             } else { self.attempt_id.is_none() }) && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
                 && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
-                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !association_fields,
+                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !association_fields && !civil_fields,
             "associate" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
                 && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
                 && self.local_chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
                 && self.local_updated_at_ms.is_some_and(|v|v>=0) && self.source_updated_at_ms.is_some_and(|v|v>=0)
                 && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
-                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups),
+                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !civil_fields,
+            "queue_create" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
+                && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.local_updated_at_ms.is_some_and(|v|v>=0) && self.local_chart_id.is_none() && self.source_updated_at_ms.is_none()
+                && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && self.groups.is_none()
+                && self.local_date.as_deref().is_some_and(crate::chart_archive::valid_civil_date)
+                && self.local_time.as_deref().is_some_and(crate::chart_archive::valid_civil_clock),
+            "cancel_rejected" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
+                && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields,
             _ => false,
         }
     }
@@ -177,6 +189,10 @@ pub struct ChartSyncReply {
     charts: Option<Vec<crate::chart_archive::CivilChartView>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<ChartSyncSummaryReply>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pending_chart_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rejected_chart_ids: Option<Vec<String>>,
 }
 
 /// All account scoping and HTTP credentials are owned by native code. Network
@@ -189,11 +205,11 @@ pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHa
     {
         let (Some(consent),Some(token)) = (option_env!("VIRGOSTARS_DESKTOP_STAGING_CONSENT"),
             option_env!("VIRGOSTARS_DESKTOP_STAGING_TOKEN")) else {
-            return Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None});
+            return Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None});
         };
         if crate::pkce_login::valid_consent_origin(consent).is_none()
             || crate::pkce_token_exchange::valid_staging_token_endpoint(token).is_none() {
-            return Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None});
+            return Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None});
         }
         let app = _app.clone();
         tauri::async_runtime::spawn_blocking(move || {
@@ -204,24 +220,28 @@ pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHa
             match request.operation.as_str() {
                 "list" => {
                     let charts=registry.list_civil_charts(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys).map_err(|_| NATIVE_UNAVAILABLE)?;
-                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:Some(charts),summary:None})
+                    let pending=registry.pending_chart_create_ids(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,false).map_err(|_|NATIVE_UNAVAILABLE)?;
+                    let rejected=registry.pending_chart_create_ids(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,true).map_err(|_|NATIVE_UNAVAILABLE)?;
+                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:Some(charts),summary:None,pending_chart_ids:Some(pending),rejected_chart_ids:Some(rejected)})
                 },
                 "offline_list" => {
                     let charts=registry.list_offline_civil_charts(&paths,&keys).map_err(|_| NATIVE_UNAVAILABLE)?;
-                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:Some(charts),summary:None})
+                    let pending=registry.offline_pending_chart_create_ids(&paths,&keys,false).map_err(|_|NATIVE_UNAVAILABLE)?;
+                    let rejected=registry.offline_pending_chart_create_ids(&paths,&keys,true).map_err(|_|NATIVE_UNAVAILABLE)?;
+                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:Some(charts),summary:None,pending_chart_ids:Some(pending),rejected_chart_ids:Some(rejected)})
                 },
                 "sync" => {
                     let summary=registry.sync_civil_charts(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,token,&paths,&keys,&crate::pkce_reqwest_https::StagingReqwestHttps)
                         .map_err(|_| NATIVE_UNAVAILABLE)?;
                     let summary=ChartSyncSummaryReply {imported:summary.imported,updated:summary.updated,
                         already_linked:summary.already_linked,uploaded:summary.uploaded,conflicts:summary.conflicts};
-                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:None,summary:Some(summary)})
+                    Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:None,summary:Some(summary),pending_chart_ids:None,rejected_chart_ids:None})
                 },
                 "set_groups" => {
                     let result=registry.set_civil_groups(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
                         request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,request.groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?);
                     let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
-                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None})
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
                 },
                 "associate" => {
                     let choice=crate::chart_archive::AssociationChoice {
@@ -230,20 +250,33 @@ pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHa
                         local_groups:request.groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,source_groups:request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?};
                     let result=registry.associate_civil_chart(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,&choice);
                     let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
-                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None})
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
+                },
+                "queue_create" => {
+                    let choice=crate::chart_archive::CreateChartChoice {chart_id:request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
+                        updated_at_ms:request.local_updated_at_ms.ok_or(NATIVE_UNAVAILABLE)?,groups:request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
+                        local_date:request.local_date.as_deref().ok_or(NATIVE_UNAVAILABLE)?,local_time:request.local_time.as_deref().ok_or(NATIVE_UNAVAILABLE)?,include_groups:false};
+                    let result=registry.queue_chart_create(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,&choice);
+                    let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
+                },
+                "cancel_rejected" => {
+                    let result=registry.cancel_rejected_chart_create(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?);
+                    let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
                 },
                 "offline_set_groups" => {
                     let result=registry.set_offline_civil_groups(&paths,&keys,request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
                         request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,request.groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?);
                     let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
-                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None})
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
                 },
                 _ => Err(NATIVE_UNAVAILABLE),
             }
         }).await.map_err(|_| NATIVE_UNAVAILABLE)?
     }
     #[cfg(not(feature = "staging-connected-account"))]
-    { Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None}) }
+    { Ok(ChartSyncReply {protocol_version:1,status:"disabled",charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None}) }
 }
 
 fn valid_request(value: &Value) -> bool {
@@ -390,6 +423,14 @@ mod tests {
         assert!(serde_json::from_value::<ChartSyncRequest>(extra).is_err());
         let mut invalid=request; invalid["groups"]=json!(["dup","dup"]);
         assert!(!serde_json::from_value::<ChartSyncRequest>(invalid).unwrap().valid());
+        let queue=json!({"protocolVersion":1,"operation":"queue_create","attemptId":UUID,
+            "chartId":"11111111-1111-4111-8111-111111111111","localUpdatedAtMs":1000,
+            "localDate":"2001-02-03","localTime":"05:05:06","baseGroups":[]});
+        assert!(serde_json::from_value::<ChartSyncRequest>(queue.clone()).unwrap().valid());
+        let mut invalid=queue.clone(); invalid["localTime"]=json!("25:00:00");
+        assert!(!serde_json::from_value::<ChartSyncRequest>(invalid).unwrap().valid());
+        let mut extra=queue; extra["profileRef"]=json!(UUID);
+        assert!(serde_json::from_value::<ChartSyncRequest>(extra).is_err());
     }
 
     #[cfg(feature = "staging-connected-account")]

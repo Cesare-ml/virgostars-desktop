@@ -22,8 +22,13 @@ ambiguous or nonexistent local times require review. The snapshot is limited to
 truncation. The candidate creates a separate local copy for each remote identity.
 The user can explicitly associate it with an existing local chart after reviewing
 both; conflicting groups remain unresolved until the user chooses. Deleting the
-local chart retains the imported record and its pending group state. Upload of
-local-only charts is not implemented. Browser production consent, deployment and real end-to-end
+local chart retains the imported record and its pending group state. A separately
+consented creation queues an immutable encrypted payload and mutation ID before
+network I/O; a retry is completed before importing a snapshot. Ambiguous civil
+times and lossy subsecond values are refused. A definitive server rejection at
+the 500-chart limit can be cancelled without deleting the local chart. A network
+failure remains queued because the server may already have created the chart.
+Browser production consent, deployment and real end-to-end
 verification remain outstanding. The proposed journey and API below describe
 the target, not capabilities proven in production.
 

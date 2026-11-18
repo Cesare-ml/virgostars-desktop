@@ -31,7 +31,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 const PROTOCOL_VERSION: u8 = 1;
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
+const ASSOCIATION_SCHEMA_VERSION: i64 = 5;
 const CIVIL_SCHEMA_VERSION: i64 = 4;
 const LEGACY_SCHEMA_VERSION: i64 = 1;
 const GROUPS_SCHEMA_VERSION: i64 = 2;
@@ -193,7 +194,7 @@ fn safe_remote_text(value: &str, max: usize, nonempty: bool) -> bool {
         && !value.chars().any(|ch| ch.is_control() || matches!(ch, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'))
 }
 
-fn valid_civil_date(value: &str) -> bool {
+pub(crate) fn valid_civil_date(value: &str) -> bool {
     let b=value.as_bytes();
     if b.len()!=10 || b[4]!=b'-' || b[7]!=b'-'
         || !b.iter().enumerate().all(|(i,c)| i==4 || i==7 || c.is_ascii_digit()) { return false; }
@@ -205,7 +206,7 @@ fn valid_civil_date(value: &str) -> bool {
     day<=days[(month-1) as usize]
 }
 
-fn valid_civil_clock(value: &str) -> bool {
+pub(crate) fn valid_civil_clock(value: &str) -> bool {
     let b=value.as_bytes();
     if b.len()!=8 || b[2]!=b':' || b[5]!=b':'
         || !b.iter().enumerate().all(|(i,c)| i==2 || i==5 || c.is_ascii_digit()) { return false; }
@@ -280,7 +281,12 @@ const SCHEMA: &str = "CREATE TABLE saved_charts (
        chart_id TEXT PRIMARY KEY REFERENCES saved_charts(id) ON DELETE CASCADE,
        source_id TEXT NOT NULL UNIQUE REFERENCES saved_charts(id) ON DELETE RESTRICT
      ) STRICT;
-     PRAGMA user_version = 5;";
+     CREATE TABLE chart_sync_create_outbox (
+       chart_id TEXT PRIMARY KEY REFERENCES saved_charts(id) ON DELETE RESTRICT,
+       profile_ref TEXT NOT NULL, mutation_id TEXT NOT NULL UNIQUE, payload_json TEXT NOT NULL,
+       rejected_full INTEGER NOT NULL DEFAULT 0 CHECK(rejected_full IN (0,1))
+     ) STRICT;
+     PRAGMA user_version = 6;";
 
 const MIGRATE_GROUPS: &str = "BEGIN IMMEDIATE;
     CREATE TABLE saved_chart_groups (
@@ -342,6 +348,15 @@ const MIGRATE_ASSOCIATIONS: &str = "BEGIN IMMEDIATE;
     PRAGMA user_version=5;
     COMMIT;";
 
+const MIGRATE_CREATE_OUTBOX: &str = "BEGIN IMMEDIATE;
+    CREATE TABLE chart_sync_create_outbox (
+      chart_id TEXT PRIMARY KEY REFERENCES saved_charts(id) ON DELETE RESTRICT,
+      profile_ref TEXT NOT NULL, mutation_id TEXT NOT NULL UNIQUE, payload_json TEXT NOT NULL,
+      rejected_full INTEGER NOT NULL DEFAULT 0 CHECK(rejected_full IN (0,1))
+    ) STRICT;
+    PRAGMA user_version=6;
+    COMMIT;";
+
 /// An empty database at the current schema, in memory only.
 fn fresh_connection() -> Result<Connection, Failure> {
     let connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
@@ -360,7 +375,7 @@ fn check_connection(connection: &Connection) -> Result<(), Failure> {
     let version: i64 =
         connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     match version {
-        SCHEMA_VERSION | CIVIL_SCHEMA_VERSION | GROUP_LINKS_SCHEMA_VERSION | GROUPS_SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
+        SCHEMA_VERSION | ASSOCIATION_SCHEMA_VERSION | CIVIL_SCHEMA_VERSION | GROUP_LINKS_SCHEMA_VERSION | GROUPS_SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
         // Written by a newer application: reading it with old rules could lose data.
         newer if newer > SCHEMA_VERSION => Err("archive_newer"),
         _ => Err("archive_corrupt"),
@@ -406,8 +421,11 @@ fn connection_from_bytes(bytes: &[u8]) -> Result<Connection, Failure> {
         connection.execute_batch("PRAGMA foreign_keys=ON;").map_err(|error| classify(&error))?;
         migrated?;
     }
-    if version < SCHEMA_VERSION {
+    if version < ASSOCIATION_SCHEMA_VERSION {
         connection.execute_batch(MIGRATE_ASSOCIATIONS).map_err(|error| classify(&error))?;
+    }
+    if version < SCHEMA_VERSION {
+        connection.execute_batch(MIGRATE_CREATE_OUTBOX).map_err(|error| classify(&error))?;
     }
     Ok(connection)
 }
@@ -744,7 +762,7 @@ pub(crate) fn associate_civil_chart(paths: &ArchivePaths, keys: &dyn KeyStore, p
     let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
     let mut session=open_session(paths,keys)?;
     let tx=session.connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e|classify(&e))?;
-    let local_ok: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts c WHERE c.id=?1 AND c.civil_date IS NULL AND c.updated_at_ms=?2 AND NOT EXISTS (SELECT 1 FROM chart_group_sync_links l WHERE l.chart_id=c.id))",params![local_id,local_updated],|r|r.get(0)).map_err(|e|classify(&e))?;
+    let local_ok: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts c WHERE c.id=?1 AND c.civil_date IS NULL AND c.updated_at_ms=?2 AND NOT EXISTS (SELECT 1 FROM chart_group_sync_links l WHERE l.chart_id=c.id) AND NOT EXISTS (SELECT 1 FROM chart_sync_create_outbox o WHERE o.chart_id=c.id))",params![local_id,local_updated],|r|r.get(0)).map_err(|e|classify(&e))?;
     let source: Option<(String,String,i64,i64)>=tx.query_row("SELECT l.remote_sync_id,l.base_groups_json,l.pending,l.remote_missing FROM chart_group_sync_links l JOIN saved_charts c ON c.id=l.chart_id WHERE l.chart_id=?1 AND l.profile_ref=?2 AND c.civil_date IS NOT NULL AND c.updated_at_ms=?3 AND NOT EXISTS (SELECT 1 FROM chart_sync_civil_sources a WHERE a.chart_id=l.chart_id)",params![source_id,profile,source_updated],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(|e|classify(&e))?;
     let (_,base,pending,missing)=source.ok_or("stale_sync")?;
     let base_groups: Vec<String>=serde_json::from_str(&base).map_err(|_|"archive_corrupt")?;
@@ -756,6 +774,136 @@ pub(crate) fn associate_civil_chart(paths: &ArchivePaths, keys: &dyn KeyStore, p
     tx.execute("UPDATE chart_group_sync_links SET chart_id=?1,pending=?2,conflict_groups_json=?3 WHERE chart_id=?4 AND profile_ref=?5",
         params![local_id,if conflict.is_some(){2}else{0},conflict,source_id,profile]).map_err(|e|classify(&e))?;
     tx.execute("INSERT INTO chart_sync_civil_sources(chart_id,source_id) VALUES(?1,?2)",params![local_id,source_id]).map_err(|e|classify(&e))?;
+    tx.commit().map_err(|e|classify(&e))?;
+    persist(paths,keys,&session.connection)
+}
+
+#[derive(serde::Serialize,serde::Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub(crate) struct CreateChartPayload {
+    pub mutation_id:String, pub name:String, pub local_date:String, pub local_time:String,
+    pub time_unknown:bool, pub utc_iso:String, pub time_zone:String, pub lat_micro:i32, pub lng_micro:i32,
+    pub place_name:String, pub groups:Vec<String>,
+}
+#[derive(Clone,Copy)]
+pub(crate) struct CreateChartChoice<'a> {
+    pub chart_id:&'a str, pub updated_at_ms:i64, pub groups:&'a [String],
+    pub local_date:&'a str, pub local_time:&'a str, pub include_groups:bool,
+}
+pub(crate) struct PendingChartCreate {
+    pub chart_id:String, pub payload:CreateChartPayload,
+}
+
+pub(crate) fn valid_create_payload(payload:&CreateChartPayload) -> bool {
+    valid_id(&payload.mutation_id) && valid_text(&payload.name,80) && !payload.name.is_empty()
+        && valid_civil_date(&payload.local_date) && valid_civil_clock(&payload.local_time)
+        && !payload.time_unknown && chart_calculation::validate(&ChartRequestV1 {protocol_version:chart_calculation::PROTOCOL_VERSION,
+            utc_iso:payload.utc_iso.clone(),lat_micro:payload.lat_micro,lng_micro:payload.lng_micro}).is_some()
+        && (payload.utc_iso.ends_with(".000Z") || (payload.utc_iso.ends_with('Z') && !payload.utc_iso.contains('.')))
+        && valid_zone(&payload.time_zone) && (-90_000_000..=90_000_000).contains(&payload.lat_micro)
+        && (-180_000_000..=180_000_000).contains(&payload.lng_micro)
+        && valid_text(&payload.place_name,100) && valid_groups(&payload.groups)
+}
+
+pub(crate) fn queue_chart_create(paths:&ArchivePaths,keys:&dyn KeyStore,profile:&str,
+    choice:&CreateChartChoice<'_>) -> Result<(),Failure> {
+    if !valid_id(profile) || !valid_id(choice.chart_id) || choice.updated_at_ms<0
+        || !valid_groups(choice.groups) || !valid_civil_date(choice.local_date) || !valid_civil_clock(choice.local_time) {
+        return Err("invalid_request");
+    }
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let mut session=open_session(paths,keys)?;
+    let tx=session.connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e|classify(&e))?;
+    let existing:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM chart_sync_create_outbox WHERE chart_id=?1)",[choice.chart_id],|r|r.get(0)).map_err(|e|classify(&e))?;
+    if existing { return Err("stale_sync"); }
+    let capacity:(i64,i64)=tx.query_row("SELECT (SELECT count(*) FROM saved_charts),(SELECT count(*) FROM chart_sync_create_outbox)",[],|r|Ok((r.get(0)?,r.get(1)?))).map_err(|e|classify(&e))?;
+    if capacity.0+capacity.1>=MAX_CHARTS {return Err("archive_full");}
+    let linked:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM chart_group_sync_links WHERE chart_id=?1)",[choice.chart_id],|r|r.get(0)).map_err(|e|classify(&e))?;
+    let chart=list(&tx,true)?.into_iter().find(|c|c.id==choice.chart_id).ok_or("not_found")?;
+    if linked || chart.updated_at_ms!=choice.updated_at_ms || chart.groups!=choice.groups { return Err("stale_sync"); }
+    let payload=CreateChartPayload {mutation_id:crate::pkce_login::random_uuid_v4().map_err(|_|"archive_unavailable")?,
+        name:chart.name,local_date:choice.local_date.into(),local_time:choice.local_time.into(),time_unknown:false,
+        utc_iso:chart.utc_iso,time_zone:chart.time_zone,lat_micro:chart.lat_micro,lng_micro:chart.lng_micro,
+        place_name:chart.place_name,groups:if choice.include_groups {chart.groups} else {Vec::new()}};
+    if !valid_create_payload(&payload) { return Err("invalid_request"); }
+    let json=zeroize::Zeroizing::new(serde_json::to_string(&payload).map_err(|_|"archive_unavailable")?);
+    tx.execute("INSERT INTO chart_sync_create_outbox(chart_id,profile_ref,mutation_id,payload_json) VALUES(?1,?2,?3,?4)",
+        params![choice.chart_id,profile,payload.mutation_id,json.as_str()]).map_err(|e|classify(&e))?;
+    tx.execute("INSERT INTO chart_sync_offline_profile(singleton,profile_ref) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET profile_ref=excluded.profile_ref",[profile]).map_err(|e|classify(&e))?;
+    tx.commit().map_err(|e|classify(&e))?;
+    persist(paths,keys,&session.connection)
+}
+
+pub(crate) fn pending_chart_creates(paths:&ArchivePaths,keys:&dyn KeyStore,profile:&str) -> Result<Vec<PendingChartCreate>,Failure> {
+    if !valid_id(profile) { return Err("invalid_request"); }
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let session=open_session(paths,keys)?;
+    let mut query=session.connection.prepare("SELECT chart_id,mutation_id,payload_json FROM chart_sync_create_outbox WHERE profile_ref=?1 AND rejected_full=0 ORDER BY chart_id LIMIT 20").map_err(|e|classify(&e))?;
+    let rows=query.query_map([profile],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))
+        .map_err(|e|classify(&e))?.collect::<Result<Vec<_>,_>>().map_err(|e|classify(&e))?;
+    let mut result=Vec::with_capacity(rows.len());
+    for (chart_id,mutation_id,json) in rows {
+        let json=zeroize::Zeroizing::new(json);
+        let payload:CreateChartPayload=serde_json::from_str(&json).map_err(|_|"archive_corrupt")?;
+        if !valid_id(&chart_id) || payload.mutation_id!=mutation_id || !valid_create_payload(&payload) { return Err("archive_corrupt"); }
+        result.push(PendingChartCreate {chart_id,payload});
+    }
+    Ok(result)
+}
+
+fn create_ids(connection:&Connection,profile:&str,rejected:bool) -> Result<Vec<String>,Failure> {
+    let mut query=connection.prepare("SELECT chart_id FROM chart_sync_create_outbox WHERE profile_ref=?1 AND rejected_full=?2 ORDER BY chart_id LIMIT ?3").map_err(|e|classify(&e))?;
+    let rows=query.query_map(params![profile,i64::from(rejected),MAX_CHARTS],|r|r.get::<_,String>(0)).map_err(|e|classify(&e))?
+        .collect::<Result<Vec<_>,_>>().map_err(|e|classify(&e))?;
+    if rows.iter().any(|id|!valid_id(id)) {return Err("archive_corrupt");}
+    Ok(rows)
+}
+pub(crate) fn pending_chart_create_ids(paths:&ArchivePaths,keys:&dyn KeyStore,profile:&str,rejected:bool) -> Result<Vec<String>,Failure> {
+    if !valid_id(profile) {return Err("invalid_request");}
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let session=open_session(paths,keys)?;
+    create_ids(&session.connection,profile,rejected)
+}
+pub(crate) fn offline_pending_chart_create_ids(paths:&ArchivePaths,keys:&dyn KeyStore,rejected:bool) -> Result<Vec<String>,Failure> {
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let session=open_session(paths,keys)?;
+    match last_offline_profile(&session.connection)? {Some(profile)=>create_ids(&session.connection,&profile,rejected),None=>Ok(Vec::new())}
+}
+
+pub(crate) fn reject_chart_create_full(paths:&ArchivePaths,keys:&dyn KeyStore,profile:&str,pending:&PendingChartCreate) -> Result<(),Failure> {
+    if !valid_id(profile) || !valid_id(&pending.chart_id) || !valid_create_payload(&pending.payload) {return Err("invalid_request");}
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let session=open_session(paths,keys)?;
+    let changed=session.connection.execute("UPDATE chart_sync_create_outbox SET rejected_full=1 WHERE chart_id=?1 AND profile_ref=?2 AND mutation_id=?3 AND rejected_full=0",
+        params![pending.chart_id,profile,pending.payload.mutation_id]).map_err(|e|classify(&e))?;
+    if changed!=1 {return Err("stale_sync");}
+    persist(paths,keys,&session.connection)
+}
+pub(crate) fn cancel_rejected_chart_create(paths:&ArchivePaths,keys:&dyn KeyStore,profile:&str,chart_id:&str) -> Result<(),Failure> {
+    if !valid_id(profile) || !valid_id(chart_id) {return Err("invalid_request");}
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let session=open_session(paths,keys)?;
+    let changed=session.connection.execute("DELETE FROM chart_sync_create_outbox WHERE chart_id=?1 AND profile_ref=?2 AND rejected_full=1",params![chart_id,profile]).map_err(|e|classify(&e))?;
+    if changed!=1 {return Err("stale_sync");}
+    persist(paths,keys,&session.connection)
+}
+
+pub(crate) fn acknowledge_chart_create(paths:&ArchivePaths,keys:&dyn KeyStore,profile:&str,
+    pending:&PendingChartCreate,remote_id:&str) -> Result<(),Failure> {
+    if !valid_id(profile) || !valid_id(remote_id) || !valid_id(&pending.chart_id) || !valid_create_payload(&pending.payload) { return Err("invalid_request"); }
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let mut session=open_session(paths,keys)?;
+    let tx=session.connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e|classify(&e))?;
+    let saved:Option<String>=tx.query_row("SELECT payload_json FROM chart_sync_create_outbox WHERE chart_id=?1 AND profile_ref=?2 AND mutation_id=?3 AND rejected_full=0",
+        params![pending.chart_id,profile,pending.payload.mutation_id],|r|r.get(0)).optional().map_err(|e|classify(&e))?;
+    let expected=zeroize::Zeroizing::new(serde_json::to_string(&pending.payload).map_err(|_|"archive_unavailable")?);
+    let saved=zeroize::Zeroizing::new(saved.ok_or("stale_sync")?);
+    if *saved!=*expected { return Err("stale_sync"); }
+    let groups=chart_groups(&tx,&pending.chart_id)?;
+    let base=serde_json::to_string(&pending.payload.groups).map_err(|_|"archive_unavailable")?;
+    tx.execute("INSERT INTO chart_group_sync_links(chart_id,profile_ref,remote_sync_id,base_groups_json,conflict_groups_json,pending) VALUES(?1,?2,?3,?4,NULL,?5)",
+        params![pending.chart_id,profile,remote_id,base,i64::from(groups!=pending.payload.groups)]).map_err(|e|classify(&e))?;
+    tx.execute("DELETE FROM chart_sync_create_outbox WHERE chart_id=?1 AND profile_ref=?2",params![pending.chart_id,profile]).map_err(|e|classify(&e))?;
     tx.commit().map_err(|e|classify(&e))?;
     persist(paths,keys,&session.connection)
 }
@@ -808,6 +956,29 @@ pub(crate) fn set_offline_civil_groups(paths: &ArchivePaths, keys: &dyn KeyStore
     persist(paths,keys,&session.connection)
 }
 
+fn insert_civil_source(connection:&Connection,chart:&RemoteCivilChart,now_ms:i64) -> Result<String,Failure> {
+    let mut local_id=None;
+    for _ in 0..4 {
+        let candidate=crate::pkce_login::random_uuid_v4().map_err(|_|"archive_unavailable")?;
+        let used:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts WHERE id=?1)",[&candidate],|r|r.get(0)).map_err(|e|classify(&e))?;
+        if !used {local_id=Some(candidate);break;}
+    }
+    let local_id=local_id.ok_or("archive_unavailable")?;
+    connection.execute("INSERT INTO saved_charts
+      (id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms,civil_date,civil_time,time_unknown,
+       source_kind,source_sex,source_account,source_place_mode,source_city_ref,source_revision,source_updated_at)
+      VALUES (?1,?2,NULL,?3,?4,?5,?6,?7,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+      params![local_id,chart.name,chart.time_zone,chart.lat_micro,chart.lng_micro,chart.place_name,now_ms,
+        chart.civil_date,chart.civil_time,i64::from(chart.time_unknown),chart.kind,chart.sex,
+        i64::from(chart.is_account_chart),chart.place_mode,chart.city_ref,chart.revision,chart.updated_at])
+        .map_err(|e|classify(&e))?;
+    for (position,name) in chart.groups.iter().enumerate() {
+        connection.execute("INSERT INTO saved_chart_groups (chart_id,position,name) VALUES (?1,?2,?3)",
+            params![local_id,position as i64,name]).map_err(|e|classify(&e))?;
+    }
+    Ok(local_id)
+}
+
 /// Import a verified owner's bounded snapshot in one encrypted archive write.
 /// Existing links are never overwritten or inferred from names or birth data.
 #[allow(dead_code)]
@@ -823,6 +994,7 @@ pub(crate) fn import_remote_civil_charts(paths: &ArchivePaths, keys: &dyn KeySto
         .map_err(|error| classify(&error))?;
     let mut total: i64 = tx.query_row("SELECT count(*) FROM saved_charts",[],|r|r.get(0))
         .map_err(|error| classify(&error))?;
+    let reserved:i64=tx.query_row("SELECT count(*) FROM chart_sync_create_outbox",[],|r|r.get(0)).map_err(|e|classify(&e))?;
     if total > MAX_CHARTS { return Err("archive_corrupt"); }
     let previous_profile: Option<String> = tx.query_row(
         "SELECT profile_ref FROM chart_sync_offline_profile WHERE singleton=1",[],|r|r.get(0),
@@ -859,31 +1031,20 @@ pub(crate) fn import_remote_civil_charts(paths: &ArchivePaths, keys: &dyn KeySto
                     i64::from(chart.is_account_chart),chart.place_mode,chart.city_ref,chart.revision,chart.updated_at])
                     .map_err(|error| classify(&error))?;
                 summary.updated+=changed;
+            } else {
+                // A locally-created chart was just acknowledged by the
+                // server. Preserve the server's civil copy independently.
+                if total+reserved>=MAX_CHARTS { return Err("archive_full"); }
+                let source=insert_civil_source(&tx,chart,now_ms)?;
+                tx.execute("INSERT INTO chart_sync_civil_sources(chart_id,source_id) VALUES(?1,?2)",params![id,source]).map_err(|e|classify(&e))?;
+                total+=1;
+                summary.updated+=1;
             }
             continue;
         }
-        if total >= MAX_CHARTS { return Err("archive_full"); }
+        if total+reserved >= MAX_CHARTS { return Err("archive_full"); }
         // A new local ID is never derived from a site ID or matched by name.
-        let mut local_id = None;
-        for _ in 0..4 {
-            let candidate = crate::pkce_login::random_uuid_v4().map_err(|_| "archive_unavailable")?;
-            let used: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts WHERE id=?1)",[&candidate],|r|r.get(0))
-                .map_err(|error| classify(&error))?;
-            if !used { local_id=Some(candidate); break; }
-        }
-        let local_id = local_id.ok_or("archive_unavailable")?;
-        tx.execute("INSERT INTO saved_charts
-          (id,name,utc_iso,time_zone,lat_micro,lng_micro,place_name,created_at_ms,updated_at_ms,civil_date,civil_time,time_unknown,
-           source_kind,source_sex,source_account,source_place_mode,source_city_ref,source_revision,source_updated_at)
-          VALUES (?1,?2,NULL,?3,?4,?5,?6,?7,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
-          params![local_id,chart.name,chart.time_zone,chart.lat_micro,chart.lng_micro,chart.place_name,now_ms,
-            chart.civil_date,chart.civil_time,i64::from(chart.time_unknown),chart.kind,chart.sex,
-            i64::from(chart.is_account_chart),chart.place_mode,chart.city_ref,chart.revision,chart.updated_at])
-            .map_err(|error| classify(&error))?;
-        for (position,name) in chart.groups.iter().enumerate() {
-            tx.execute("INSERT INTO saved_chart_groups (chart_id,position,name) VALUES (?1,?2,?3)",
-                params![local_id,position as i64,name]).map_err(|error| classify(&error))?;
-        }
+        let local_id=insert_civil_source(&tx,chart,now_ms)?;
         let base = serde_json::to_string(&chart.groups).map_err(|_| "archive_unavailable")?;
         tx.execute("INSERT INTO chart_group_sync_links (chart_id,profile_ref,remote_sync_id,base_groups_json,conflict_groups_json,pending)
           VALUES (?1,?2,?3,?4,NULL,0)",params![local_id,profile_ref,chart.sync_id,base])
@@ -1069,6 +1230,8 @@ fn save(connection: &mut Connection, chart: &ChartRecordV1, now_ms: i64, limit: 
             "SELECT civil_date IS NOT NULL FROM saved_charts WHERE id=?1", [&chart.id], |row| row.get(0),
         ).map_err(|error| classify(&error))?;
         if civil_record { return Err("invalid_request"); }
+        let pending:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM chart_sync_create_outbox WHERE chart_id=?1)",[&chart.id],|r|r.get(0)).map_err(|e|classify(&e))?;
+        if pending {return Err("archive_unavailable");}
     }
     if !exists {
         let count: i64 = transaction
@@ -1600,7 +1763,7 @@ mod tests {
         fs::create_dir_all(&archive.folder).unwrap();
         let mut connection=fresh_connection().unwrap();
         save(&mut connection,&record(ID_A,"Fittizio"),1000,MAX_CHARTS).unwrap();
-        connection.execute_batch("DROP TABLE chart_sync_civil_sources; PRAGMA user_version=4;").unwrap();
+        connection.execute_batch("DROP TABLE chart_sync_create_outbox; DROP TABLE chart_sync_civil_sources; PRAGMA user_version=4;").unwrap();
         persist(&archive.paths,&keys,&connection).unwrap();
         let original=fs::read(&archive.paths.sealed).unwrap();
         assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].name,"Fittizio");
@@ -1608,6 +1771,88 @@ mod tests {
         let upgraded=load_sealed(&archive.paths,&keys).unwrap();
         let version:i64=upgraded.query_row("PRAGMA user_version",[],|r|r.get(0)).unwrap();
         assert_eq!(version,SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn creation_outbox_is_encrypted_profile_bound_and_replay_keeps_later_edits() {
+        let archive=TempArchive::new("create-outbox");
+        let keys=FakeKeyStore::empty();
+        let profile="44444444-4444-4444-8444-444444444444";
+        let other="55555555-5555-4555-8555-555555555555";
+        assert_eq!(go(&archive,&keys,&save_request(record(ID_B,"Locale fittizio")),1000).status,"ok");
+        let first=ArchiveRequestV1 {id:Some(ID_B.into()),groups:Some(vec!["Primo".into()]),..request("set_groups")};
+        assert_eq!(go(&archive,&keys,&first,1100).status,"ok");
+        let choice=CreateChartChoice {chart_id:ID_B,updated_at_ms:1000,groups:&["Primo".into()],
+            local_date:"2001-02-03",local_time:"05:05:06",include_groups:true};
+        queue_chart_create(&archive.paths,&keys,profile,&choice).unwrap();
+        let original=fs::read(&archive.paths.sealed).unwrap();
+        assert!(!original.windows("Locale fittizio".len()).any(|w|w==b"Locale fittizio"));
+        let pending=pending_chart_creates(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(pending.len(),1);
+        let schema:serde_json::Value=serde_json::from_str(include_str!("../../contracts/chart-create.v1.schema.json")).unwrap();
+        let value=serde_json::to_value(&pending[0].payload).unwrap();
+        let mut actual:Vec<_>=value.as_object().unwrap().keys().cloned().collect();actual.sort();
+        let mut required:Vec<_>=schema["required"].as_array().unwrap().iter().map(|v|v.as_str().unwrap().to_string()).collect();required.sort();
+        assert_eq!(actual,required);
+        assert!(pending_chart_creates(&archive.paths,&keys,other).unwrap().is_empty());
+        assert_eq!(pending_chart_create_ids(&archive.paths,&keys,profile,false).unwrap(),[ID_B]);
+        assert_eq!(offline_pending_chart_create_ids(&archive.paths,&keys,false).unwrap(),[ID_B]);
+        assert_eq!(go(&archive,&keys,&delete_request(ID_B),1200).status,"archive_unavailable");
+        assert_eq!(go(&archive,&keys,&save_request(record(ID_B,"Modifica tardiva")),1250).status,"archive_unavailable");
+        let edited=ArchiveRequestV1 {id:Some(ID_B.into()),groups:Some(vec!["Secondo".into()]),..request("set_groups")};
+        assert_eq!(go(&archive,&keys,&edited,1300).status,"ok");
+        let replay=pending_chart_creates(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(replay[0].payload.mutation_id,pending[0].payload.mutation_id);
+        assert_eq!(replay[0].payload.groups,["Primo"]);
+        assert_eq!(acknowledge_chart_create(&archive.paths,&keys,other,&replay[0],ID_A),Err("stale_sync"));
+        acknowledge_chart_create(&archive.paths,&keys,profile,&replay[0],ID_A).unwrap();
+        assert!(pending_chart_creates(&archive.paths,&keys,profile).unwrap().is_empty());
+        let queued=pending_groups_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(queued[0].base_groups,["Primo"]);
+        assert_eq!(queued[0].groups,["Secondo"]);
+        let mut remote=remote_chart(ID_A,false);
+        remote.groups=vec!["Primo".into()];
+        import_remote_civil_charts(&archive.paths,&keys,profile,&[remote],2000).unwrap();
+        let imported=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(imported.len(),1);
+        assert_eq!(imported[0].id,ID_B);
+        assert_eq!(imported[0].groups,["Secondo"]);
+        assert_eq!(imported[0].sync_status,"pending");
+    }
+
+    #[test]
+    fn version_five_adds_creation_outbox_without_rewriting_ciphertext_on_read() {
+        let archive=TempArchive::new("create-v6-upgrade");
+        let keys=FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        let mut connection=fresh_connection().unwrap();
+        save(&mut connection,&record(ID_A,"Fittizio"),1000,MAX_CHARTS).unwrap();
+        connection.execute_batch("DROP TABLE chart_sync_create_outbox; PRAGMA user_version=5;").unwrap();
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let original=fs::read(&archive.paths.sealed).unwrap();
+        assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].name,"Fittizio");
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(),original);
+        assert!(pending_chart_creates(&archive.paths,&keys,ID_B).unwrap().is_empty());
+    }
+
+    #[test]
+    fn only_definitive_full_rejections_can_be_cancelled_and_local_data_remains() {
+        let archive=TempArchive::new("create-rejected");
+        let keys=FakeKeyStore::empty();
+        let profile="44444444-4444-4444-8444-444444444444";
+        let other="55555555-5555-4555-8555-555555555555";
+        assert_eq!(go(&archive,&keys,&save_request(record(ID_B,"Fittizio")),1000).status,"ok");
+        let choice=CreateChartChoice {chart_id:ID_B,updated_at_ms:1000,groups:&[],local_date:"2001-02-03",local_time:"05:05:06",include_groups:false};
+        queue_chart_create(&archive.paths,&keys,profile,&choice).unwrap();
+        assert_eq!(cancel_rejected_chart_create(&archive.paths,&keys,profile,ID_B),Err("stale_sync"));
+        let pending=pending_chart_creates(&archive.paths,&keys,profile).unwrap();
+        reject_chart_create_full(&archive.paths,&keys,profile,&pending[0]).unwrap();
+        assert!(pending_chart_creates(&archive.paths,&keys,profile).unwrap().is_empty());
+        assert_eq!(pending_chart_create_ids(&archive.paths,&keys,profile,true).unwrap(),[ID_B]);
+        assert_eq!(cancel_rejected_chart_create(&archive.paths,&keys,other,ID_B),Err("stale_sync"));
+        cancel_rejected_chart_create(&archive.paths,&keys,profile,ID_B).unwrap();
+        assert!(pending_chart_create_ids(&archive.paths,&keys,profile,true).unwrap().is_empty());
+        assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].name,"Fittizio");
     }
 
     #[test]

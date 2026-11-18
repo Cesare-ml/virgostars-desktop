@@ -7,9 +7,11 @@ export type SyncedChart = Readonly<{
 export type SyncOperation = Readonly<{operation:'sync'|'list';attemptId:string}> |
   Readonly<{operation:'set_groups';attemptId:string;chartId:string;baseGroups:readonly string[];groups:readonly string[]}> |
   Readonly<{operation:'associate';attemptId:string;chartId:string;localChartId:string;localUpdatedAtMs:number;sourceUpdatedAtMs:number;baseGroups:readonly string[];groups:readonly string[]}> |
+  Readonly<{operation:'queue_create';attemptId:string;chartId:string;localUpdatedAtMs:number;localDate:string;localTime:string;baseGroups:readonly string[]}> |
+  Readonly<{operation:'cancel_rejected';attemptId:string;chartId:string}> |
   Readonly<{operation:'offline_list'}> |
   Readonly<{operation:'offline_set_groups';chartId:string;baseGroups:readonly string[];groups:readonly string[]}>;
-export type SyncResult = Readonly<{kind:'list';charts:readonly SyncedChart[]}> |
+export type SyncResult = Readonly<{kind:'list';charts:readonly SyncedChart[];pendingChartIds:readonly string[];rejectedChartIds:readonly string[]}> |
   Readonly<{kind:'sync';imported:number;updated:number;alreadyLinked:number;uploaded:number;conflicts:number}> |
   Readonly<{kind:'saved'|'stale'|'disabled'|'unavailable'}>;
 export interface SyncTransport {
@@ -77,7 +79,13 @@ export async function requestChartSync(port:SyncTransport, operation:SyncOperati
     if (!offline && (!('attemptId' in operation) || typeof operation.attemptId!=='string' || !ATTEMPT.test(operation.attemptId))) return {kind:'unavailable'};
     let request:Record<string,unknown>={protocolVersion:1,operation:operation.operation};
     if ('attemptId' in operation) request={...request,attemptId:operation.attemptId};
-    if (operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') {
+    if (operation.operation==='cancel_rejected') {
+      if (!ID.test(operation.chartId)) return {kind:'unavailable'};
+      request={...request,chartId:operation.chartId};
+    } else if (operation.operation==='queue_create') {
+      if (!ID.test(operation.chartId) || !Number.isSafeInteger(operation.localUpdatedAtMs) || operation.localUpdatedAtMs<0 || !date(operation.localDate) || !clock(operation.localTime)) return {kind:'unavailable'};
+      request={...request,chartId:operation.chartId,localUpdatedAtMs:operation.localUpdatedAtMs,localDate:operation.localDate,localTime:operation.localTime,baseGroups:groups(operation.baseGroups)};
+    } else if (operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') {
       if (!ID.test(operation.chartId)) return {kind:'unavailable'};
       request={...request,chartId:operation.chartId,baseGroups:groups(operation.baseGroups),groups:groups(operation.groups)};
       if (operation.operation==='associate') {
@@ -89,15 +97,23 @@ export async function requestChartSync(port:SyncTransport, operation:SyncOperati
     if (!object(raw) || prop(raw,'protocolVersion')!==1) throw new Error('Invalid response');
     const status=prop(raw,'status');
     if (status==='disabled' && keys(raw,['protocolVersion','status'])) return {kind:'disabled'};
-    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') && status==='stale' && keys(raw,['protocolVersion','status'])) return {kind:'stale'};
+    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate' || operation.operation==='queue_create' || operation.operation==='cancel_rejected') && status==='stale' && keys(raw,['protocolVersion','status'])) return {kind:'stale'};
     if (status!=='ok') throw new Error('Invalid response');
-    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') && keys(raw,['protocolVersion','status'])) return {kind:'saved'};
-    if ((operation.operation==='list' || operation.operation==='offline_list') && keys(raw,['protocolVersion','status','charts'])) {
+    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate' || operation.operation==='queue_create' || operation.operation==='cancel_rejected') && keys(raw,['protocolVersion','status'])) return {kind:'saved'};
+    if ((operation.operation==='list' || operation.operation==='offline_list') && keys(raw,['protocolVersion','status','charts','pendingChartIds','rejectedChartIds'])) {
       const values=prop(raw,'charts');
       if (!Array.isArray(values) || Object.getPrototypeOf(values)!==Array.prototype || values.length>5000 || Reflect.ownKeys(values).length!==values.length+1) throw new Error('Invalid response');
       const charts=Array.from({length:values.length},(_,i)=>chart(prop(values,String(i))));
       if (new Set(charts.map(c=>c.id)).size!==charts.length) throw new Error('Duplicate chart');
-      return {kind:'list',charts:Object.freeze(charts)};
+      const ids=prop(raw,'pendingChartIds');
+      if (!Array.isArray(ids) || Object.getPrototypeOf(ids)!==Array.prototype || ids.length>5000 || Reflect.ownKeys(ids).length!==ids.length+1) throw new Error('Invalid response');
+      const pendingChartIds=Array.from({length:ids.length},(_,i)=>prop(ids,String(i)));
+      if (pendingChartIds.some(id=>typeof id!=='string' || !ID.test(id)) || new Set(pendingChartIds).size!==pendingChartIds.length) throw new Error('Invalid pending IDs');
+      const rejected=prop(raw,'rejectedChartIds');
+      if (!Array.isArray(rejected) || Object.getPrototypeOf(rejected)!==Array.prototype || rejected.length>5000 || Reflect.ownKeys(rejected).length!==rejected.length+1) throw new Error('Invalid response');
+      const rejectedChartIds=Array.from({length:rejected.length},(_,i)=>prop(rejected,String(i)));
+      if (rejectedChartIds.some(id=>typeof id!=='string' || !ID.test(id) || pendingChartIds.includes(id)) || new Set(rejectedChartIds).size!==rejectedChartIds.length) throw new Error('Invalid rejected IDs');
+      return {kind:'list',charts:Object.freeze(charts),pendingChartIds:Object.freeze(pendingChartIds as string[]),rejectedChartIds:Object.freeze(rejectedChartIds as string[])};
     }
     if (operation.operation==='sync' && keys(raw,['protocolVersion','status','summary'])) {
       const s=prop(raw,'summary');

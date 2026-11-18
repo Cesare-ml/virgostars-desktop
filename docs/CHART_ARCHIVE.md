@@ -48,9 +48,9 @@ Rules enforced on both sides: lowercase UUID id; name up to 80 characters and pl
 Saving the same id again updates the row in place, keeps its creation time and
 preserves groups. Group replacement is transactional; deleting a chart also
 removes its assignments. Schema changes are tracked with `PRAGMA user_version`
-(currently 5). Versions 1 through 4 encrypted databases are upgraded in memory, leaving
+(currently 6). Versions 1 through 5 encrypted databases are upgraded in memory, leaving
 the old ciphertext untouched until the next successful atomic write. Older
-application versions cannot open a version 5 archive. There is no automatic
+application versions cannot open a version 6 archive. There is no automatic
 repair, deletion or downgrade.
 
 The encrypted database also has a candidate account-bound group sync record.
@@ -68,7 +68,9 @@ Existing local charts are never silently matched. A guarded explicit association
 compares both displayed versions, preserves the website civil record independently,
 and requires conflict resolution when groups differ. Deleting the local chart
 retains the imported record and its pending group state. Upload of local-only
-charts remains unimplemented. Imported records retain an unknown birth
+charts is available in the guarded candidate after separate consent. The
+creation request and its stable mutation ID remain encrypted until acknowledged;
+an uncertain response is retried before importing a snapshot. Imported records retain an unknown birth
 time as unknown; the older archive command cannot overwrite or delete those rows.
 
 ## Interface
