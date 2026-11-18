@@ -93,15 +93,37 @@
           [showTransaturnians]="showTransaturnians" (toggleTransaturnians)="toggleTransaturnians()"></vs-elements-view>
 
         <section class="monomeric-stage" *ngIf="view==='chart' && activeChart && chartPresentation==='monomeric-cross'" aria-label="Croce monomerica">
-          <label class="monomeric-manual-ruler">
-            {{ locale==='it' ? "Maestro dell'ora planetaria" : 'Planetary-hour ruler' }}
-            <select [value]="manualHourRuler" (change)="setManualHourRuler($event)">
-              <option value="">{{ locale==='it' ? 'Seleziona il pianeta' : 'Select planet' }}</option>
-              <option *ngFor="let planet of hourRulerOptions" [value]="planet">{{planet}}</option>
-            </select>
-          </label>
-          <p class="monomeric-caution">{{ locale==='it' ? "Selezione manuale: la determinazione astronomica dell'ora planetaria e il catalogo storico non sono ancora collegati a questa vista." : 'Manual selection: planetary-hour solar events and the historical monomer catalog are not connected yet.' }}</p>
+          <div class="monomeric-controls" role="group" [attr.aria-label]="locale==='it' ? 'Impostazioni della Croce' : 'Cross settings'">
+            <label class="monomeric-option">
+              <span>{{ locale==='it' ? "Maestro dell'ora planetaria" : 'Planetary-hour ruler' }}</span>
+              <select [value]="manualHourRuler" (change)="setManualHourRuler($event)">
+                <option value="">{{ locale==='it' ? 'Scegli il pianeta' : 'Choose planet' }}</option>
+                <option *ngFor="let planet of hourRulerOptions" [value]="planet">{{planet==='SUN'?(locale==='it'?'Sole':'Sun'):planet==='MOON'?(locale==='it'?'Luna':'Moon'):planet==='MERCURY'?(locale==='it'?'Mercurio':'Mercury'):planet==='VENUS'?(locale==='it'?'Venere':'Venus'):planet==='MARS'?(locale==='it'?'Marte':'Mars'):planet==='JUPITER'?(locale==='it'?'Giove':'Jupiter'):(locale==='it'?'Saturno':'Saturn')}}</option>
+              </select>
+            </label>
+            <label class="monomeric-option">
+              <span>{{ locale==='it' ? 'Corrispondenza dei gradi' : 'Degree correspondence' }}</span>
+              <select [value]="monomericDegreeMode" (change)="setMonomericDegreeMode($event)">
+                <option value="shown-degree">{{ locale==='it' ? 'Grado mostrato (0–29)' : 'Displayed degree (0–29)' }}</option>
+                <option value="costeseque-1940">Costesèque · 1940</option>
+              </select>
+            </label>
+            <span class="monomeric-source-tag">✦ {{ locale==='it' ? '360 simboli · catalogo legacy' : '360 symbols · legacy catalog' }}</span>
+          </div>
+          <p class="monomeric-caution" role="note">{{ locale==='it' ? "Il maestro dell'ora va indicato manualmente finché non sono disponibili alba e tramonto verificati. La scelta dei gradi è esplicita; non si attribuisce automaticamente il metodo di Costesèque ad Angelini." : 'Choose the hour ruler manually until verified sunrise and sunset are available. The degree convention is explicit; the Costesèque method is not automatically attributed to Angelini.' }}</p>
           <vs-monomeric-cross [cross]="monomericCross" [locale]="locale"></vs-monomeric-cross>
+          <section class="monomeric-neighbors" *ngIf="monomericAdjacentRows.length" [attr.aria-label]="locale==='it' ? 'Monomeri adiacenti attivi' : 'Active adjacent monomers'">
+            <div class="monomeric-neighbors-heading">
+              <h3>{{locale==='it' ? 'Simboli adiacenti' : 'Adjacent symbols'}}</h3>
+              <p>{{locale==='it' ? 'Nella variante Costesèque anche i due punti vicini a ciascun monomero principale restano attivi.' : 'In the Costesèque variant, the two points beside each primary monomer are active as well.'}}</p>
+            </div>
+            <div class="monomeric-neighbor-grid">
+              <article class="monomeric-neighbor-card" *ngFor="let row of monomericAdjacentRows">
+                <h4>{{row.label}}</h4>
+                <p *ngFor="let symbol of row.symbols"><strong>{{symbol.label}}</strong> · {{symbol.text}}</p>
+              </article>
+            </div>
+          </section>
         </section>
 
         <div class="stage-tools">

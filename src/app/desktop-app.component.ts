@@ -20,6 +20,7 @@ import {requestSyntheticPngDownload} from './png-download';
 import { browserUiPreferencesStorage, loadUiPreferences, saveUiPreferences } from './ui-preferences';
 import { DeviceClock, formatDeviceClock } from './device-clock';
 import { aspectSymbol } from './aspect-symbols';
+import { monomerPointLabel, resolveMonomers, type MonomericDegreeMode } from './astro/monomeric-catalog';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import {
@@ -160,6 +161,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   chartPresentation: 'wheel' | 'elements' | 'aspects' | 'monomeric-cross' = 'wheel';
   readonly hourRulerOptions: readonly TraditionalPlanet[] = ['SUN','MOON','MERCURY','VENUS','MARS','JUPITER','SATURN'];
   manualHourRuler: TraditionalPlanet | '' = '';
+  monomericDegreeMode: MonomericDegreeMode = 'shown-degree';
   /** No source-backed sunrise/sunset in this client yet; the user must enter a known ruler. */
   get monomericCross(): MonomericCrossView | null {
     const chart = this.activeChart;
@@ -179,8 +181,37 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
         hourRuler:this.manualHourRuler, planetLongitudesDeg:longitudes,
         houseCuspsDeg:houses.house, houseSystemId:this.houseSystem,
       });
-      return monomericCrossViewFromGeometry(geometry, this.locale);
+      const view = monomericCrossViewFromGeometry(geometry, this.locale);
+      return {
+        ...view,
+        degreeConvention: this.monomericDegreeMode === 'shown-degree'
+          ? (this.locale === 'it' ? 'Etichette del grado visualizzato 0–29 (scelta grafica, non regola Angelini verificata)' : 'Displayed degree labels 0–29 (visual choice, not a verified Angelini rule)')
+          : (this.locale === 'it' ? 'Costesèque 1940: punto a minuti interi, con due simboli adiacenti attivi' : 'Costesèque 1940: whole-minute point and both adjacent symbols active'),
+        catalogAttribution: this.locale === 'it'
+          ? 'Testi dal catalogo legacy VirgoStars / Serto di Iside; provenienza e diritti da verificare prima della distribuzione'
+          : 'Texts from VirgoStars legacy / Serto di Iside; provenance and rights pending release review',
+        arms: view.arms.map((arm, index) => {
+          const point = resolveMonomers(geometry.arms[index].longitudeDeg, this.monomericDegreeMode).primary;
+          const rulerPoint = resolveMonomers(geometry.arms[index].rulerLongitudeDeg, this.monomericDegreeMode).primary;
+          return {
+            ...arm,
+            description: `${monomerPointLabel(point, this.locale)} · ${point.sourceText}`,
+            rulerDescription: `${monomerPointLabel(rulerPoint, this.locale)} · ${rulerPoint.sourceText}`,
+          };
+        }),
+      };
     } catch { return null; }
+  }
+  get monomericAdjacentRows(): readonly {label: string; symbols: readonly {label: string; text: string}[]}[] {
+    if (this.monomericDegreeMode !== 'costeseque-1940') return [];
+    return (this.monomericCross?.arms ?? []).map(arm => ({
+      label: arm.sign + ' · ' + (arm.position === 'master' ? (this.locale === 'it' ? "Maestro dell'ora" : 'Hour ruler') :
+        arm.position === 'opposite' ? (this.locale === 'it' ? 'Opposizione' : 'Opposition') :
+        arm.position === 'square-left' ? '+90°' : '−90°'),
+      symbols: resolveMonomers(arm.longitudeDeg, 'costeseque-1940').adjacent.map(symbol => ({
+        label: monomerPointLabel(symbol, this.locale), text: symbol.sourceText,
+      })),
+    }));
   }
   showDodecatemoria = false;
   showTransaturnians = false;
@@ -857,6 +888,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setManualHourRuler(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
     this.manualHourRuler = this.hourRulerOptions.includes(value as TraditionalPlanet) ? value as TraditionalPlanet : '';
+    this.cd.markForCheck();
+  }
+  setMonomericDegreeMode(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.monomericDegreeMode = value === 'costeseque-1940' ? 'costeseque-1940' : 'shown-degree';
     this.cd.markForCheck();
   }
   toggleDodecatemoria(): void {
