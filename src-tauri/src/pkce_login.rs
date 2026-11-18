@@ -66,7 +66,7 @@ fn random_uuid_v4() -> Result<String, LoginError> {
     Ok(id)
 }
 
-fn valid_loopback_uri(candidate: &str) -> bool {
+pub(crate) fn valid_loopback_uri(candidate: &str) -> bool {
     if candidate.len() > 512 { return false; }
     let Ok(uri) = Url::parse(candidate) else { return false; };
     let Some(port) = uri.port() else { return false; };
@@ -80,7 +80,7 @@ fn valid_loopback_uri(candidate: &str) -> bool {
 /// Consent is staging-only while the backend PKCE authorization is disabled
 /// in production. The caller supplies the exact URL, but it must still be a
 /// VirgoStars-owned staging/preview host. No arbitrary HTTPS origin is valid.
-fn valid_consent_origin(candidate: &str) -> Option<Url> {
+pub(crate) fn valid_consent_origin(candidate: &str) -> Option<Url> {
     let uri = Url::parse(candidate).ok()?;
     let host = uri.host_str()?;
     let labels: Vec<_> = host.split('.').collect();
