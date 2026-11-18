@@ -11,6 +11,8 @@ pub struct HistoricalPlanetRequest {
     pub(crate) delta_t_seconds: f64,
     pub(crate) uncertainty_seconds: f64,
     pub(crate) delta_t_source: String,
+    #[serde(default)]
+    pub(crate) include_scenarios: bool,
 }
 
 /// A proleptic Gregorian date already expressed in UT1, not civil time or UTC.
@@ -26,6 +28,8 @@ pub struct HistoricalCalendarRequest {
     minute: u8,
     second: f64,
     delta_t: HistoricalDeltaT,
+    #[serde(default)]
+    include_scenarios: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,6 +112,7 @@ fn resolve_calendar(request: HistoricalCalendarRequest) -> Result<HistoricalPlan
         delta_t_seconds,
         uncertainty_seconds,
         delta_t_source,
+        include_scenarios: request.include_scenarios,
     };
     resolved.valid().then_some(resolved).ok_or(())
 }
@@ -173,6 +178,24 @@ pub struct HistoricalPlanetResult {
     pub latitude_speed_deg_per_tdb_day: f64,
     pub radial_speed_au_per_tdb_day: f64,
     pub radial_correction_applied: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensitivity: Option<HistoricalSensitivity>,
+}
+
+/// Two explicit perturbations, not bounds or confidence intervals.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoricalSensitivitySample {
+    pub delta_t_seconds: f64,
+    pub longitude_deg: f64,
+    pub latitude_deg: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoricalSensitivity {
+    pub lower: HistoricalSensitivitySample,
+    pub upper: HistoricalSensitivitySample,
 }
 
 #[derive(Debug, Serialize)]
@@ -223,6 +246,7 @@ mod tests {
             delta_t_seconds: 64.0,
             uncertainty_seconds: 1.0,
             delta_t_source: "test source".into(),
+            include_scenarios: false,
         }
     }
     #[test]
@@ -344,6 +368,7 @@ mod tests {
                 assert_eq!(wire["protocolVersion"], 1);
                 assert_eq!(wire["result"]["jdUt1"], jd);
                 assert_eq!(wire["result"]["deltaTSource"], "synthetic test");
+                assert!(wire["result"].get("sensitivity").is_none());
                 assert!(wire["result"]["longitudeSpeedDegPerTdbDay"].is_number());
                 assert!(wire["result"]["latitudeSpeedDegPerTdbDay"].is_number());
                 assert!(wire["result"]["radialSpeedAuPerTdbDay"].is_number());
@@ -383,5 +408,51 @@ mod tests {
         assert_eq!(result.jd_ut1, 2451545.0);
         assert_eq!(result.delta_t_source, "Espenak-Meeus 2006");
         assert!((result.delta_t_seconds - 63.86).abs() < 0.01);
+        use virgostars_ephemeris_core::historical_delta_t_scenarios::{
+            historical_delta_t_scenarios, ScenarioFrame,
+        };
+        let samples = historical_delta_t_scenarios(
+            &mut ephemeris,
+            Body::Moon,
+            2451545.0,
+            64.0,
+            3600.0,
+            ScenarioFrame::DirectObliquity,
+        )
+        .unwrap();
+        let r = HistoricalPlanetRequest {
+            jd_ut1: 2451545.0,
+            delta_t_seconds: 64.0,
+            uncertainty_seconds: 3600.0,
+            include_scenarios: true,
+            ..request()
+        };
+        let output = calculate_historical_planet(r);
+        assert_eq!(output.status, "ok");
+        let sensitivity = output.result.unwrap().sensitivity.unwrap();
+        assert_eq!(
+            sensitivity.lower.delta_t_seconds,
+            samples.lower.epoch.delta_t_seconds
+        );
+        assert_eq!(
+            sensitivity.lower.longitude_deg,
+            samples.lower.fields.longitude_deg
+        );
+        assert_eq!(
+            sensitivity.upper.delta_t_seconds,
+            samples.upper.epoch.delta_t_seconds
+        );
+        assert_eq!(
+            sensitivity.upper.longitude_deg,
+            samples.upper.fields.longitude_deg
+        );
+        let r = HistoricalPlanetRequest {
+            jd_ut1: 2451545.0,
+            delta_t_seconds: 64.0,
+            uncertainty_seconds: 1.0e-20,
+            include_scenarios: true,
+            ..request()
+        };
+        assert_eq!(calculate_historical_planet(r).status, "calculation_failed");
     }
 }
