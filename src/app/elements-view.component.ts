@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, OnChanges, Output } from '@angular/core';
 import type { HouseSystemId } from './native/chart-calculation-contract';
 import { formatDegreeInSign, houseDisplay, type TemaRenderData } from './astro/tema-render-data';
-import { formatOrb, type AspectRow } from './astro/aspects';
+import { formatOrb, matrixPointOrder, type AspectRow } from './astro/aspects';
 import { aspectSymbol } from './aspect-symbols';
 import {
   elementDistribution, zodiacElementOfSign, type ElementDistribution, type ElementId, type ElementPlacement, type ModalityId,
@@ -16,6 +16,8 @@ const PLANET_LABELS: Record<string, MessageKey> = {
   Sun:'name.sun', Moon:'name.moon', Mercury:'name.mercury', Venus:'name.venus',
   Mars:'name.mars', Jupiter:'name.jupiter', Saturn:'name.saturn',
   Uranus:'name.uranus', Neptune:'name.neptune', Pluto:'name.pluto',
+  'osc. Apogee':'name.oscApogee', 'true Node':'name.trueNode',
+  AS:'angle.asc', MC:'angle.mc',
 };
 const SIGN_LABELS: readonly MessageKey[] = [
   'sign.aries','sign.taurus','sign.gemini','sign.cancer','sign.leo','sign.virgo',
@@ -23,7 +25,6 @@ const SIGN_LABELS: readonly MessageKey[] = [
 ];
 // VS15 requests monochrome glyphs on Windows rather than colored Unicode emoji.
 const SIGN_SYMBOLS = ['♈︎','♉︎','♊︎','♋︎','♌︎','♍︎','♎︎','♏︎','♐︎','♑︎','♒︎','♓︎'];
-const PLANETS = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto'] as const;
 const MAJOR_ASPECTS = new Set(['congiunzione','opposizione','trigono','quadrato','sestile']);
 const ASPECT_NAMES: Record<string, readonly [string,string]> = {
   congiunzione:['Congiunzione','Conjunction'], opposizione:['Opposizione','Opposition'],
@@ -49,7 +50,7 @@ export class ElementsViewComponent implements OnChanges {
   @Output() readonly toggleDodecatemoria = new EventEmitter<void>();
   @Output() readonly toggleTransaturnians = new EventEmitter<void>();
 
-  readonly planets = PLANETS;
+  get planets(): readonly string[] { return matrixPointOrder(this.showTransaturnians); }
   readonly aspectLegend = ['congiunzione','sestile','quadrato','trigono','opposizione'] as const;
   distribution: ElementDistribution | null = null;
   private readonly aspectMap = new Map<string,AspectRow>();
@@ -59,10 +60,10 @@ export class ElementsViewComponent implements OnChanges {
       this.data,this.houseSystem,house => houseDisplay(house)?.element ?? null,this.showTransaturnians,
     );
     this.aspectMap.clear();
+    const displayedPoints = this.planets;
     for (const row of this.aspects) {
       if (row.kind !== 'longitude' || !MAJOR_ASPECTS.has(row.aspect) ||
-        !PLANETS.includes(row.from as typeof PLANETS[number]) ||
-        !PLANETS.includes(row.to as typeof PLANETS[number])) continue;
+        !displayedPoints.includes(row.from) || !displayedPoints.includes(row.to)) continue;
       const key = [row.from,row.to].sort().join(':');
       const previous = this.aspectMap.get(key);
       if (!previous || row.orbDeg < previous.orbDeg) this.aspectMap.set(key,row);
@@ -73,7 +74,10 @@ export class ElementsViewComponent implements OnChanges {
   copy(it:string,en:string): string { return this.locale === 'it' ? it : en; }
   elementLabel(element: ElementId): string { return this.t(ELEMENT_LABELS[element]); }
   signSymbol(sign: number): string { return SIGN_SYMBOLS[sign] ?? '—'; }
-  planetLabel(name: string): string { return this.t(PLANET_LABELS[name] ?? 'tab.planets'); }
+  planetLabel(name: string): string {
+    if (name === 'osc. Apogee') return this.copy('Luna Nera vera','True Black Moon');
+    return this.t(PLANET_LABELS[name] ?? 'tab.planets');
+  }
   houseLabel(house: number | null): string { return house === null ? '—' : houseDisplay(house)?.text ?? '—'; }
   modalityLabel(id: ModalityId): string {
     const labels: Record<ModalityId,readonly [string,string]> = {
@@ -83,7 +87,7 @@ export class ElementsViewComponent implements OnChanges {
   }
   planetSymbol(name:string): string {
     return ({Sun:'☉',Moon:'☽',Mercury:'☿',Venus:'♀',Mars:'♂',Jupiter:'♃',Saturn:'♄',
-      Uranus:'♅',Neptune:'♆',Pluto:'♇'} as Record<string,string>)[name] ?? '•';
+      Uranus:'♅',Neptune:'♆',Pluto:'♇','osc. Apogee':'⚸','true Node':'☊',AS:'ASC',MC:'MC'} as Record<string,string>)[name] ?? '•';
   }
   planetRetrograde(name:string): boolean { return (this.data?.planets[name]?.longitudeSpeed ?? 0)<0; }
   signElement(sign:number): ElementId | null { return zodiacElementOfSign(sign); }

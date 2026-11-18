@@ -193,7 +193,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // Aspects, orbs and points: device-only display preferences, no personal data.
   chartSettings: ChartSettings = loadChartSettings(this.uiPreferencesStorage);
   private aspectCache: {chartId: number; settings: ChartSettings; rows: AspectRow[]} | null = null;
-  private matrixAspectCache: {chartId: number; data: TemaRenderData; settings: ChartSettings; rows: AspectRow[]} | null = null;
+  private matrixAspectCache: {chartId: number; data: TemaRenderData; settings: ChartSettings; outer: boolean; rows: AspectRow[]} | null = null;
   private crossAspectCache: {from: SessionChart; to: SessionChart; mode: 'transits' | 'synastry'; settings: ChartSettings; rows: AspectRow[]} | null = null;
   // Solar or lunar return panel; its radix is the chart that was active when it opened.
   returnTool: ReturnKind | null = null;
@@ -271,9 +271,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const chart = this.activeChart;
     if (!chart) return [];
     const cache = this.matrixAspectCache;
-    if (cache && cache.chartId===chart.id && cache.data===chart.data && cache.settings===this.chartSettings) return cache.rows;
-    const rows = computePlanetMatrixAspects(chart.data,this.chartSettings,ASPECT_DEFINITIONS);
-    this.matrixAspectCache = {chartId:chart.id, data:chart.data, settings:this.chartSettings, rows};
+    if (cache && cache.chartId===chart.id && cache.data===chart.data &&
+      cache.settings===this.chartSettings && cache.outer===this.showTransaturnians) return cache.rows;
+    const rows = computePlanetMatrixAspects(chart.data,this.chartSettings,ASPECT_DEFINITIONS,this.showTransaturnians);
+    this.matrixAspectCache = {chartId:chart.id, data:chart.data, settings:this.chartSettings,
+      outer:this.showTransaturnians, rows};
     return rows;
   }
   get crossAspectRows(): AspectRow[] {

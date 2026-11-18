@@ -4,8 +4,8 @@
     <div class="elements-heading">
       <h2>{{t(presentation==='elements' ? 'elements.title' : 'elements.aspectsTitle')}} <span class="heading-dot" aria-hidden="true">✦</span></h2>
     </div>
-    <div class="elements-actions" *ngIf="presentation==='elements'">
-      <button class="dodeca-toggle" type="button" [class.active]="showDodecatemoria"
+    <div class="elements-actions">
+      <button *ngIf="presentation==='elements'" class="dodeca-toggle" type="button" [class.active]="showDodecatemoria"
         [attr.aria-pressed]="showDodecatemoria" (click)="toggleDodecatemoria.emit()">
         <span class="dodeca-indicator" aria-hidden="true"></span>
         {{t(showDodecatemoria ? 'elements.hideDodeca' : 'elements.showDodeca')}}
@@ -97,7 +97,7 @@
   <div class="analysis-grid" *ngIf="presentation==='elements'">
     <section class="analysis-card modality-card" aria-labelledby="modality-title">
       <div class="analysis-title">
-        <h3 id="modality-title">{{copy('Modalità dei segni','Zodiac modalities')}}</h3>
+        <h3 id="modality-title">{{copy('Assi','Axes')}}</h3>
       </div>
       <div class="modality-row" *ngFor="let group of model.modalities" [attr.data-modality]="group.id">
         <div class="modality-head">
@@ -124,7 +124,7 @@
   <section class="analysis-card aspect-card" *ngIf="presentation==='aspects'" aria-labelledby="aspect-matrix-title">
       <h3 id="aspect-matrix-title" class="sr-only">{{t('elements.aspectsTitle')}}</h3>
       <div class="matrix-scroll">
-        <table class="aspect-matrix" [attr.aria-label]="copy('Aspetti tra i dieci pianeti','Aspects between ten planets')">
+        <table class="aspect-matrix" [attr.aria-label]="t('elements.aspectsTitle')">
           <thead><tr><th scope="col" class="matrix-corner"></th>
             <th scope="col" *ngFor="let planet of planets; trackBy:trackName" [attr.title]="planetLabel(planet)">
               <ng-container [ngTemplateOutlet]="planetMark" [ngTemplateOutletContext]="{$implicit:planet,retrograde:planetRetrograde(planet),white:false}"></ng-container>
@@ -160,7 +160,7 @@
 </section>
 
 <ng-template #planetMark let-name let-retrograde="retrograde" let-white="white">
-  <span class="astro-glyph" [class.asset-on-light]="!white" aria-hidden="true">
+  <span class="astro-glyph" [class.asset-on-light]="!white" [class.axis-glyph]="name==='AS'||name==='MC'" aria-hidden="true">
     <img class="asset-glyph" alt="" [src]="planetImageUrl(name,retrograde)"
       (load)="imageLoaded($event)" (error)="imageMissing($event)">
     <span class="glyph-fallback">{{planetSymbol(name)}}</span>

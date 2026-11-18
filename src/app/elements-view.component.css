@@ -1,7 +1,7 @@
 :host {
   display:block;position:absolute;inset:0;z-index:2;min-width:0;min-height:0;
   overflow-y:auto;overflow-x:hidden;background:var(--vs-surface);color:var(--vs-text);
-  padding:76px clamp(16px,3vw,44px) 88px;
+  padding:104px clamp(16px,3vw,44px) 88px;
 }
 .elements-view {max-width:1020px;margin:0 auto;}
 .elements-head {display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:0 0 21px;}
@@ -70,6 +70,7 @@
   font-variant-emoji:text;line-height:1;
 }
 .glyph-fallback {font-size:21px;}
+.axis-glyph .glyph-fallback {font-size:10px;font-weight:800;letter-spacing:-.025em;}
 .sign-glyph {width:20px;color:inherit;}
 .sign-glyph .glyph-fallback {font-size:20px;}
 .asset-glyph {display:none;}
@@ -143,6 +144,7 @@
 .aspect-matrix tbody th {width:66px;text-align:right;white-space:nowrap;padding-right:5px;font-size:11px;}
 .aspect-matrix th .astro-glyph {width:22px;height:26px;color:var(--vs-text);}
 .aspect-matrix th .glyph-fallback {font-size:22px;}
+.aspect-matrix th .axis-glyph .glyph-fallback {font-size:10px;}
 .sr-only {
   position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0,0,0,0);white-space:nowrap;border:0;
@@ -168,7 +170,7 @@
   .modality-row {margin:0;}
 }
 @media(max-width:650px) {
-  :host {padding:70px 9px 75px;}
+  :host {padding:98px 9px 75px;}
   .elements-head {gap:8px;align-items:flex-start;margin-bottom:13px;flex-direction:column;}
   .elements-actions {justify-content:flex-start;width:100%;}
   .elements-heading h2 {font-size:20px;}

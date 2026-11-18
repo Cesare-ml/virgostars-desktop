@@ -32,6 +32,14 @@ const PARALLEL_ORB_DEG = 1;
 export const MATRIX_PLANETS: readonly string[] = Object.freeze([
   'Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto',
 ]);
+export const MATRIX_EXTRA_POINTS: readonly string[] = Object.freeze([
+  'osc. Apogee','true Node','AS','MC',
+]);
+
+/** The same ordering is used by both axes of the optional outer-planet matrix. */
+export function matrixPointOrder(includeTransaturnians: boolean): readonly string[] {
+  return [...(includeTransaturnians ? MATRIX_PLANETS : MATRIX_PLANETS.slice(0,7)), ...MATRIX_EXTRA_POINTS];
+}
 
 export type AspectPoint = Readonly<{
   name: string;
@@ -144,21 +152,23 @@ export function computeAspects(
 }
 
 /**
- * The dedicated aspects matrix always evaluates the ten planets available in
- * the chart, even when the wheel excludes outer-planet aspect lines by default.
- * Retain each planet's configured orb and the user's active aspect definitions;
- * do not mutate settings or affect the wheel/inspector calculations.
+ * The dedicated aspects matrix evaluates traditional planets plus true Black
+ * Moon (osculating apogee), true North Node, ASC and MC. Outer planets can be
+ * toggled independently of the wheel's default aspect-line configuration.
+ * Keep the chart's configured orbs and active aspect definitions intact.
  */
 export function computePlanetMatrixAspects(
   data: TemaRenderData, settings: ChartSettings, definitions: readonly AspectDefinition[],
+  includeTransaturnians = false,
 ): AspectRow[] {
   const points = {...settings.points};
-  for (const name of MATRIX_PLANETS) {
+  const visiblePoints = matrixPointOrder(includeTransaturnians);
+  for (const name of visiblePoints) {
     const id = name as keyof ChartSettings['points'];
     points[id] = {...points[id], shown:true, aspects:true};
   }
   const matrixSettings = {...settings, points};
-  const planetPoints = aspectPoints(data,matrixSettings.points).filter(point=>MATRIX_PLANETS.includes(point.name));
+  const planetPoints = aspectPoints(data,matrixSettings.points).filter(point=>visiblePoints.includes(point.name));
   return computeAspects(planetPoints,matrixSettings,definitions);
 }
 

@@ -49,7 +49,17 @@ test('elemental axis arrows live in their element rows; modalities and aspect ma
   assert.match(html,/\*ngIf="presentation==='elements'"/);
   assert.match(html,/matrixAspect\(planet,other\)/);
   assert.match(desktop,/\[theme\]="theme" \[aspects\]="matrixAspectRows"/);
-  assert.match(source,/const PLANETS = \['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto'\]/);
+  assert.match(source,/matrixPointOrder\(this\.showTransaturnians\)/);
+  assert.match(source,/'osc\. Apogee':'name\.oscApogee'/);
+  assert.match(source,/'true Node':'name\.trueNode'/);
+  assert.match(source,/AS:'angle\.asc', MC:'angle\.mc'/);
+  assert.match(html,/<div class="elements-actions">/);
+  assert.match(html,/<button \*ngIf="presentation==='elements'" class="dodeca-toggle"/);
+  assert.doesNotMatch(html,/<div class="elements-actions" \*ngIf/);
+  assert.match(html,/copy\('Assi','Axes'\)/);
+  const css=read('src/app/elements-view.component.css');
+  assert.match(css,/padding:104px clamp\(16px,3vw,44px\) 88px/);
+  assert.match(css,/padding:98px 9px 75px/);
   assert.match(source,/MAJOR_ASPECTS/);
   assert.match(source,/planetImageUrl\(name:string,retrograde=false\)/);
   assert.match(source,/simboli-bianchi\/elementi-celesti/);
