@@ -56,6 +56,28 @@ legacy della stessa organizzazione in una **PR desktop in bozza** per
 prototipazione. Non distribuire una release o dichiarare le frasi liberamente
 redistribuibili prima della verifica dei diritti su testi e trascrizioni.
 
+## Collegamento con VirgoStars-Ephemeris: preparato, non ancora attivato
+
+Esiste il modulo puro `src/app/astro/ephemeris-planetary-hour.ts`, che riceve
+un risultato `SolarEventAdapterInput` da un **futuro** comando astronomico
+locale, verifica che latitudine e longitudine corrispondano al tema, che il
+giorno civile sia quello dell'alba **nel fuso del tema**, valida i metadati
+tramite `astrological-functions/planetary-hours-solar-adapter` e risolve l'ora.
+Il risultato preserva l'identificatore del kernel, algoritmo, orizzonte e
+rifrazione e mantiene il flag `CALLER_ASSERTED_NOT_SCIENTIFICALLY_VERIFIED`.
+Non è una verifica di precisione indipendente.
+
+Il produttore nativo **non è ancora collegato**. Nel repository
+`Cesare-ml/VirgoStars-Ephemeris` il lavoro pertinente esiste già nelle PR
+[#304](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/304) (eventi
+geometrici), [#309](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/309)
+(rifrazione + alba/tramonto convenzionali) e
+[#419](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/419)
+(API di esposizione). Sono impilate su altre dipendenze e non vanno aggirate.
+La [issue #432](https://github.com/Cesare-ml/VirgoStars-Ephemeris/issues/432)
+descrive i gate di revisione e integrazione prima di poter aggiornare il
+commit Rust fissato da Desktop. Non si crea un algoritmo duplicato in Angular.
+
 Prima della release: integrare alba/tramonto sorgente-verificati con il
 `PlanetaryHoursSchedule` esistente nel pacchetto di calcolo; approvare il
 catalogo e i diritti sui testi; test di render desktop Windows, macOS,
