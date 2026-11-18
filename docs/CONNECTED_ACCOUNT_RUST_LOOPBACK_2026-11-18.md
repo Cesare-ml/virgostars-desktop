@@ -59,6 +59,7 @@ On Mirko's Windows checkout, run:
 ```powershell
 cd D:\GitHub\virgostars-desktop
 cargo test --manifest-path src-tauri/Cargo.toml pkce_
+cargo test --manifest-path src-tauri/Cargo.toml system_browser::tests
 cargo check --manifest-path src-tauri/Cargo.toml --locked
 npm test
 ```
