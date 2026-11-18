@@ -43,6 +43,22 @@ test('missing, malformed, reversed or DST-impossible event readings fail closed'
   assert.equal(resolveManualPlanetaryHour('2024-06-20T09:00:00Z','Bad/Zone', solar).status,'INVALID_CLOCK');
 });
 
+test('repeated fall-back wall time fails closed rather than silently choosing its first UTC occurrence', () => {
+  // Europe/Rome 2024-10-27 02:30 occurred twice, once at UTC+2 and once at UTC+1.
+  const repeated = {
+    sunriseLocal:'2024-10-27T02:30', sunsetLocal:'2024-10-27T12:30',
+    nextSunriseLocal:'2024-10-28T02:30',
+  };
+  assert.deepEqual(resolveManualPlanetaryHour('2024-10-27T05:00:00Z','Europe/Rome',repeated),{
+    status:'AMBIGUOUS_CLOCK', ruler:null,
+  });
+  const unambiguous = {
+    sunriseLocal:'2024-10-27T03:30',sunsetLocal:'2024-10-27T13:30',
+    nextSunriseLocal:'2024-10-28T03:30',
+  };
+  assert.equal(resolveManualPlanetaryHour('2024-10-27T05:00:00Z','Europe/Rome',unambiguous).status,'READY');
+});
+
 test('outside sunrise-to-next-sunrise schedule never guesses an hour ruler', () => {
   assert.deepEqual(resolveManualPlanetaryHour('2024-06-20T02:59:59.000Z','Europe/Rome',solar), {
     status:'OUTSIDE_INTERVAL', ruler:null,

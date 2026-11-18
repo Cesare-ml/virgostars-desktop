@@ -99,6 +99,13 @@ function instantsOfWall(parts: LocalParts, timeZone: string): number[] {
   return [...found].sort((a, b) => a - b);
 }
 
+/** All exact UTC instants matching a civil-time reading. Useful for sources
+ * without an explicit UTC offset: a repeated clock hour must not be guessed. */
+export function utcInstantsOfLocal(parts: LocalParts, timeZone: string): readonly number[] {
+  if (!formatter(timeZone)) return [];
+  return instantsOfWall(parts, timeZone);
+}
+
 /**
  * The instant of a wall-clock reading. An ambiguous reading (the clock goes back) takes the earlier
  * instant; a reading that does not exist (the clock jumps forward) takes the same minute one hour

@@ -131,6 +131,7 @@
               <ng-container [ngSwitch]="hour.status">
                 <span *ngSwitchCase="'READY'">✓ {{manualSolarHourSummary}}</span>
                 <span *ngSwitchCase="'INVALID_CLOCK'">{{locale==='it' ? 'Orari non validi: controlla date, ordine degli eventi e cambio d’ora.' : 'Invalid times: check dates, event order and daylight-saving transitions.'}}</span>
+                <span *ngSwitchCase="'AMBIGUOUS_CLOCK'">{{locale==='it' ? 'Ora locale ambigua durante il ritorno all’ora solare: usa orari non ripetuti oppure una fonte UTC verificabile.' : 'Repeated local time at the end of daylight saving: use unambiguous readings or a verifiable UTC source.'}}</span>
                 <span *ngSwitchCase="'OUTSIDE_INTERVAL'">{{locale==='it' ? 'La nascita è fuori dall’intervallo fra le due albe.' : 'Birth time is outside the interval between the sunrises.'}}</span>
                 <span *ngSwitchDefault>{{locale==='it' ? 'Inserisci tutti e tre gli eventi.' : 'Enter all three events.'}}</span>
               </ng-container>

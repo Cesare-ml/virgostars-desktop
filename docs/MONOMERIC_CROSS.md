@@ -33,7 +33,9 @@ Il software preserva il testo legacy, non inventa correzioni né interpretazioni
 **Maestro dell'Ora:** oltre alla selezione diretta del pianeta, l'utente può
 inserire *alba iniziale, tramonto e alba successiva* come data e ora **locali**
 nel fuso orario del tema. Il modulo `manual-planetary-hour` converte gli orari
-in UTC, controlla i cambi di ora e le date impossibili, deriva il giorno della
+in UTC, rifiuta le ore inesistenti e quelle **ripetute/ambigue** al cambio di
+ora (il campo `datetime-local` non contiene l'offset UTC), controlla le date
+impossibili e deriva il giorno della
 settimana dall'**alba iniziale locale** e usa i contratti già testati
 `buildPlanetaryHours` + `lookupPlanetaryHour` di `astrological-functions`.
 La Croce viene quindi generata automaticamente per il pianeta che governa la
@@ -50,6 +52,13 @@ locale verificato per gli eventi solari, e calcolarne uno nuovo in Angular
 violerebbe la separazione astronomia/astrologia del progetto. Le descrizioni
 hanno significato storico-simbolico, non costituiscono interpretazioni,
 diagnosi o previsioni.
+
+Se un evento solare cade in un'ora ripetuta al ritorno all'ora solare, la
+schermata mostra un errore specifico: non sceglie implicitamente la prima delle
+due occorrenze. Servono letture UTC dotate di provenienza o il futuro provider
+astronomico nativo; la UI manuale non può rappresentare un offset per
+disambiguare. Questa regola riguarda solo gli eventi **inseriti manualmente**,
+senza modificare la navigazione civile del tema.
 
 **Gate diritti e provenienza:** il catalogo è stato trasferito dai sorgenti
 legacy della stessa organizzazione in una **PR desktop in bozza** per

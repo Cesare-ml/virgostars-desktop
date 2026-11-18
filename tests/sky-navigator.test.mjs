@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, isoFromMs, localParts, shiftInstant, stepInstant, utcFromLocal,
+  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, isoFromMs, localParts, shiftInstant, stepInstant, utcFromLocal, utcInstantsOfLocal,
 } from '../src/app/sky-navigator.ts';
 
 const ROME = 'Europe/Rome';
@@ -52,6 +52,20 @@ test('a local time that does not exist takes the reading after the clock change,
   // Stepping a day onto the missing hour never leaves the day.
   const before = utc('2026-03-28T01:30:00Z'); // 02:30 in Rome the day before the change
   assert.equal(wall(shiftInstant(before, ROME, 'day', 1)), '2026,3,29,3,30,0');
+});
+
+test('exact wall-clock candidates distinguish gaps, single readings and repeated minutes', () => {
+  const clock = (year,month,day,hour,minute) => ({year,month,day,hour,minute,second:0});
+  assert.deepEqual(utcInstantsOfLocal(clock(2024,3,31,2,30),ROME), []);
+  assert.deepEqual(utcInstantsOfLocal(clock(2024,10,27,2,30),ROME), [
+    utc('2024-10-27T00:30:00Z'),utc('2024-10-27T01:30:00Z'),
+  ]);
+  assert.deepEqual(utcInstantsOfLocal(clock(2024,10,27,3,30),ROME), [utc('2024-10-27T02:30:00Z')]);
+  // Lord Howe's offset moves by half an hour, not the common one-hour DST jump.
+  assert.deepEqual(utcInstantsOfLocal(clock(2024,4,7,1,45),'Australia/Lord_Howe'), [
+    utc('2024-04-06T14:45:00Z'),utc('2024-04-06T15:15:00Z'),
+  ]);
+  assert.deepEqual(utcInstantsOfLocal(clock(2024,10,27,2,30),'Invalid/Zone'), []);
 });
 
 test('a step goes forwards or backwards by the chosen amount and unit', () => {
