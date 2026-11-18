@@ -2,6 +2,18 @@
 
 Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed features.
 
+## Current maintainer priority (2026-11-15)
+
+The active execution order is governed by [MVP Desktop issue #318](https://github.com/Cesare-ml/virgostars-desktop/issues/318). It prioritizes a genuinely usable Windows MVP over secondary features:
+
+1. **P0 — canonical astronomy:** integrate VirgoStars-Ephemeris behind `EphemerisProvider`, preserve explicit unavailability/rollback behavior, and validate independent numerical references before claiming scientific parity. Swiss Ephemeris remains an optional local-use prototype, not the canonical or distributable provider.
+2. **P0 — encrypted offline archive:** replace the current plaintext SQLite chart archive with a reviewed encrypted design and prove native Rust/Windows open, close, migration, corruption recovery, key handling and rejection of plaintext fallback.
+3. **P0 — account and synchronization:** implement owner-scoped authentication and offline-first sync only against an approved backend contract; test retries, idempotency, ACKs, conflicts, revocation and recovery end-to-end.
+4. **P1 — Windows stabilization:** reconcile existing draft PRs against current `main`, close the known test failures, then run complete Node/Angular/Rust checks and actual Windows/WebView2 offline smoke tests.
+5. **P1 — distribution readiness:** complete security, privacy, licensing, asset-rights and reproducible build gates before considering a signed installer or beta.
+
+This priority section is an execution directive, **not evidence that any item is complete**. Existing partial implementations and draft PRs must be checked against the exact current `main` and their own acceptance criteria before being treated as integrated. In particular, synthetic charts are not scientifically validated charts; source-level checks are not a Windows executable smoke test; and a plain SQLite archive is not encrypted. Track implementation and verification in issue #318 and its linked work items.
+
 ## Gate 0 — Documentation and safe workspace
 - [x] Create private repository and initial README.
 - [x] Draft stack ADR, architecture, auth/sync/privacy, update, licensing and agent guidance (draft PR, not assumed merged).
