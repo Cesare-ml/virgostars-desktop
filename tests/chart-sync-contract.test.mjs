@@ -5,7 +5,7 @@ import {requestChartSync} from '../src/app/native/chart-sync-contract.ts';
 const attemptId='123e4567-e89b-42d3-a456-426614174000';
 const item={id:'11111111-1111-4111-8111-111111111111',name:'Persona fittizia',civilDate:'1984-03-25',
   civilTime:null,timeUnknown:true,timeZone:'Europe/Rome',latMicro:44000000,lngMicro:11000000,
-  placeName:'Luogo fittizio',groups:['Gruppo'],syncStatus:'clean'};
+  placeName:'Luogo fittizio',groups:['Gruppo'],syncStatus:'clean',sourceUpdatedAtMs:1000};
 const native=reply=>({isNative:()=>true,invoke:async()=>reply});
 
 test('keeps an unknown birth time explicitly null on imported charts',async()=>{
@@ -41,4 +41,14 @@ test('offline access never accepts a profile selector or invents a login',async(
   const result=await requestChartSync(port,{operation:'offline_list'});
   assert.equal(result.kind,'list');
   assert.deepEqual(sent,{command:'desktop_chart_sync_v1',args:{request:{protocolVersion:1,operation:'offline_list'}}});
+});
+
+test('explicit association transmits both displayed versions and rejects a bad local id',async()=>{
+  let sent;
+  const port={isNative:()=>true,invoke:async(command,args)=>{sent=args.request;return {protocolVersion:1,status:'ok'};}};
+  const operation={operation:'associate',attemptId,chartId:item.id,localChartId:'22222222-2222-4222-8222-222222222222',localUpdatedAtMs:2000,sourceUpdatedAtMs:1000,baseGroups:item.groups,groups:['Locale']};
+  assert.deepEqual(await requestChartSync(port,operation),{kind:'saved'});
+  assert.deepEqual(sent,{protocolVersion:1,...operation});
+  assert.deepEqual(await requestChartSync(port,{...operation,localChartId:item.id}),{kind:'unavailable'});
+  assert.deepEqual(await requestChartSync(native({protocolVersion:1,status:'stale'}),operation),{kind:'stale'});
 });

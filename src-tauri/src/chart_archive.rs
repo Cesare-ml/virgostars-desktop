@@ -31,7 +31,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 const PROTOCOL_VERSION: u8 = 1;
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
+const CIVIL_SCHEMA_VERSION: i64 = 4;
 const LEGACY_SCHEMA_VERSION: i64 = 1;
 const GROUPS_SCHEMA_VERSION: i64 = 2;
 const GROUP_LINKS_SCHEMA_VERSION: i64 = 3;
@@ -275,7 +276,11 @@ const SCHEMA: &str = "CREATE TABLE saved_charts (
      CREATE TABLE chart_sync_offline_profile (
        singleton INTEGER PRIMARY KEY CHECK (singleton=1), profile_ref TEXT NOT NULL
      ) STRICT;
-     PRAGMA user_version = 4;";
+     CREATE TABLE chart_sync_civil_sources (
+       chart_id TEXT PRIMARY KEY REFERENCES saved_charts(id) ON DELETE CASCADE,
+       source_id TEXT NOT NULL UNIQUE REFERENCES saved_charts(id) ON DELETE RESTRICT
+     ) STRICT;
+     PRAGMA user_version = 5;";
 
 const MIGRATE_GROUPS: &str = "BEGIN IMMEDIATE;
     CREATE TABLE saved_chart_groups (
@@ -329,6 +334,14 @@ const MIGRATE_CIVIL_CHARTS: &str = "BEGIN IMMEDIATE;
     ) STRICT;
     PRAGMA user_version=4;";
 
+const MIGRATE_ASSOCIATIONS: &str = "BEGIN IMMEDIATE;
+    CREATE TABLE chart_sync_civil_sources (
+      chart_id TEXT PRIMARY KEY REFERENCES saved_charts(id) ON DELETE CASCADE,
+      source_id TEXT NOT NULL UNIQUE REFERENCES saved_charts(id) ON DELETE RESTRICT
+    ) STRICT;
+    PRAGMA user_version=5;
+    COMMIT;";
+
 /// An empty database at the current schema, in memory only.
 fn fresh_connection() -> Result<Connection, Failure> {
     let connection = Connection::open_in_memory().map_err(|error| classify(&error))?;
@@ -347,7 +360,7 @@ fn check_connection(connection: &Connection) -> Result<(), Failure> {
     let version: i64 =
         connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| classify(&error))?;
     match version {
-        SCHEMA_VERSION | GROUP_LINKS_SCHEMA_VERSION | GROUPS_SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
+        SCHEMA_VERSION | CIVIL_SCHEMA_VERSION | GROUP_LINKS_SCHEMA_VERSION | GROUPS_SCHEMA_VERSION | LEGACY_SCHEMA_VERSION => Ok(()),
         // Written by a newer application: reading it with old rules could lose data.
         newer if newer > SCHEMA_VERSION => Err("archive_newer"),
         _ => Err("archive_corrupt"),
@@ -380,7 +393,7 @@ fn connection_from_bytes(bytes: &[u8]) -> Result<Connection, Failure> {
     if version == LEGACY_SCHEMA_VERSION || version == GROUPS_SCHEMA_VERSION {
         connection.execute_batch(MIGRATE_GROUP_LINKS).map_err(|error| classify(&error))?;
     }
-    if version < SCHEMA_VERSION {
+    if version < CIVIL_SCHEMA_VERSION {
         connection.execute_batch("PRAGMA foreign_keys=OFF;").map_err(|error| classify(&error))?;
         let migrated = (|| -> Result<(),Failure> {
             connection.execute_batch(MIGRATE_CIVIL_CHARTS).map_err(|error| classify(&error))?;
@@ -392,6 +405,9 @@ fn connection_from_bytes(bytes: &[u8]) -> Result<Connection, Failure> {
         if migrated.is_err() { let _ = connection.execute_batch("ROLLBACK;"); }
         connection.execute_batch("PRAGMA foreign_keys=ON;").map_err(|error| classify(&error))?;
         migrated?;
+    }
+    if version < SCHEMA_VERSION {
+        connection.execute_batch(MIGRATE_ASSOCIATIONS).map_err(|error| classify(&error))?;
     }
     Ok(connection)
 }
@@ -669,6 +685,7 @@ pub(crate) struct CivilChartView {
     pub place_name: String,
     pub groups: Vec<String>,
     pub sync_status: &'static str,
+    pub source_updated_at_ms: i64,
 }
 
 #[allow(dead_code)]
@@ -682,17 +699,18 @@ pub(crate) fn list_civil_charts_for_profile(paths: &ArchivePaths, keys: &dyn Key
 
 fn list_civil_charts(connection: &Connection, profile_ref: &str) -> Result<Vec<CivilChartView>, Failure> {
     let mut query = connection.prepare(
-        "SELECT c.id,c.name,c.civil_date,c.civil_time,c.time_unknown,c.time_zone,c.lat_micro,c.lng_micro,c.place_name,l.pending,l.remote_missing
-         FROM saved_charts c JOIN chart_group_sync_links l ON l.chart_id=c.id
-         WHERE l.profile_ref=?1 AND c.civil_date IS NOT NULL ORDER BY c.name COLLATE NOCASE,c.id LIMIT ?2"
+        "SELECT l.chart_id,c.name,c.civil_date,c.civil_time,c.time_unknown,c.time_zone,c.lat_micro,c.lng_micro,c.place_name,l.pending,l.remote_missing,c.updated_at_ms
+         FROM chart_group_sync_links l LEFT JOIN chart_sync_civil_sources a ON a.chart_id=l.chart_id
+         JOIN saved_charts c ON c.id=COALESCE(a.source_id,l.chart_id)
+         WHERE l.profile_ref=?1 AND c.civil_date IS NOT NULL ORDER BY c.name COLLATE NOCASE,l.chart_id LIMIT ?2"
     ).map_err(|error| classify(&error))?;
     let rows = query.query_map(params![profile_ref,MAX_CHARTS], |r| Ok((
         r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,Option<String>>(3)?,
         r.get::<_,i64>(4)?,r.get::<_,Option<String>>(5)?,r.get::<_,Option<i32>>(6)?,r.get::<_,Option<i32>>(7)?,
-        r.get::<_,String>(8)?,r.get::<_,i64>(9)?,r.get::<_,i64>(10)?,
+        r.get::<_,String>(8)?,r.get::<_,i64>(9)?,r.get::<_,i64>(10)?,r.get::<_,i64>(11)?,
     ))).map_err(|error| classify(&error))?.collect::<Result<Vec<_>,_>>().map_err(|error| classify(&error))?;
     let mut result = Vec::with_capacity(rows.len());
-    for (id,name,date,time,unknown,zone,lat,lng,place,pending,missing) in rows {
+    for (id,name,date,time,unknown,zone,lat,lng,place,pending,missing,source_updated_at_ms) in rows {
         let status = match (pending,missing) {(0..=2,1)=>"missing",(0,0)=>"clean",(1,0)=>"pending",(2,0)=>"conflict",_=>return Err("archive_corrupt")};
         if !valid_id(&id) || !safe_remote_text(&name,255,true) || !valid_civil_date(&date)
             || !matches!(unknown,0 | 1) || (unknown==1 && time.is_some())
@@ -702,9 +720,44 @@ fn list_civil_charts(connection: &Connection, profile_ref: &str) -> Result<Vec<C
             || !safe_remote_text(&place,160,false) { return Err("archive_corrupt"); }
         let groups = chart_groups(connection,&id)?;
         result.push(CivilChartView {id,name,civil_date:date,civil_time:time,time_unknown:unknown==1,
-            time_zone:zone,lat_micro:lat,lng_micro:lng,place_name:place,groups,sync_status:status});
+            time_zone:zone,lat_micro:lat,lng_micro:lng,place_name:place,groups,sync_status:status,source_updated_at_ms});
     }
     Ok(result)
+}
+
+/// Transfer a verified remote identity to an explicitly selected local chart.
+/// The imported civil row remains separately preserved as the remote source.
+/// No association is inferred; both group sets and displayed revisions must
+/// still match, and an unresolved imported edit cannot be discarded.
+#[derive(Clone,Copy)]
+pub(crate) struct AssociationChoice<'a> {
+    pub local_id: &'a str, pub source_id: &'a str, pub local_updated: i64, pub source_updated: i64,
+    pub local_groups: &'a [String], pub source_groups: &'a [String],
+}
+pub(crate) fn associate_civil_chart(paths: &ArchivePaths, keys: &dyn KeyStore, profile: &str,
+    choice: &AssociationChoice<'_>) -> Result<(), Failure> {
+    let AssociationChoice {local_id,source_id,local_updated,source_updated,local_groups,source_groups}=*choice;
+    if !valid_id(profile) || !valid_id(local_id) || !valid_id(source_id) || local_id==source_id
+        || local_updated<0 || source_updated<0 || !valid_groups(local_groups) || !valid_groups(source_groups) {
+        return Err("invalid_request");
+    }
+    let _guard=ARCHIVE_LOCK.lock().unwrap_or_else(|p|p.into_inner());
+    let mut session=open_session(paths,keys)?;
+    let tx=session.connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e|classify(&e))?;
+    let local_ok: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM saved_charts c WHERE c.id=?1 AND c.civil_date IS NULL AND c.updated_at_ms=?2 AND NOT EXISTS (SELECT 1 FROM chart_group_sync_links l WHERE l.chart_id=c.id))",params![local_id,local_updated],|r|r.get(0)).map_err(|e|classify(&e))?;
+    let source: Option<(String,String,i64,i64)>=tx.query_row("SELECT l.remote_sync_id,l.base_groups_json,l.pending,l.remote_missing FROM chart_group_sync_links l JOIN saved_charts c ON c.id=l.chart_id WHERE l.chart_id=?1 AND l.profile_ref=?2 AND c.civil_date IS NOT NULL AND c.updated_at_ms=?3 AND NOT EXISTS (SELECT 1 FROM chart_sync_civil_sources a WHERE a.chart_id=l.chart_id)",params![source_id,profile,source_updated],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(|e|classify(&e))?;
+    let (_,base,pending,missing)=source.ok_or("stale_sync")?;
+    let base_groups: Vec<String>=serde_json::from_str(&base).map_err(|_|"archive_corrupt")?;
+    if !local_ok || pending!=0 || missing!=0 || base_groups!=source_groups
+        || chart_groups(&tx,local_id)?!=local_groups || chart_groups(&tx,source_id)?!=source_groups {
+        return Err("stale_sync");
+    }
+    let conflict=if local_groups==source_groups {None} else {Some(base.as_str())};
+    tx.execute("UPDATE chart_group_sync_links SET chart_id=?1,pending=?2,conflict_groups_json=?3 WHERE chart_id=?4 AND profile_ref=?5",
+        params![local_id,if conflict.is_some(){2}else{0},conflict,source_id,profile]).map_err(|e|classify(&e))?;
+    tx.execute("INSERT INTO chart_sync_civil_sources(chart_id,source_id) VALUES(?1,?2)",params![local_id,source_id]).map_err(|e|classify(&e))?;
+    tx.commit().map_err(|e|classify(&e))?;
+    persist(paths,keys,&session.connection)
 }
 
 #[allow(dead_code)]
@@ -720,7 +773,7 @@ pub(crate) fn set_civil_groups_for_profile(paths: &ArchivePaths, keys: &dyn KeyS
 fn set_scoped_civil_groups(connection: &mut Connection, profile_ref: &str,
     chart_id: &str, expected: &[String], groups: &[String]) -> Result<(), Failure> {
     let exists: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM saved_charts c JOIN chart_group_sync_links l ON l.chart_id=c.id WHERE c.id=?1 AND l.profile_ref=?2 AND c.civil_date IS NOT NULL)",
+        "SELECT EXISTS(SELECT 1 FROM chart_group_sync_links l LEFT JOIN chart_sync_civil_sources a ON a.chart_id=l.chart_id JOIN saved_charts c ON c.id=COALESCE(a.source_id,l.chart_id) WHERE l.chart_id=?1 AND l.profile_ref=?2 AND c.civil_date IS NOT NULL)",
         params![chart_id,profile_ref],|r|r.get(0),
     ).map_err(|error| classify(&error))?;
     if !exists { return Err("profile_conflict"); }
@@ -783,7 +836,7 @@ pub(crate) fn import_remote_civil_charts(paths: &ArchivePaths, keys: &dyn KeySto
     let mut summary = CivilImportSummary {inserted:0,updated:0,already_linked:0};
     for chart in charts {
         let existing: Option<(String,Option<String>)> = tx.query_row(
-            "SELECT c.id,c.civil_date FROM chart_group_sync_links l JOIN saved_charts c ON c.id=l.chart_id
+            "SELECT c.id,c.civil_date FROM chart_group_sync_links l LEFT JOIN chart_sync_civil_sources a ON a.chart_id=l.chart_id JOIN saved_charts c ON c.id=COALESCE(a.source_id,l.chart_id)
              WHERE l.profile_ref=?1 AND l.remote_sync_id=?2",
             params![profile_ref,chart.sync_id], |r|Ok((r.get(0)?,r.get(1)?)),
         ).optional().map_err(|error| classify(&error))?;
@@ -1040,12 +1093,24 @@ fn save(connection: &mut Connection, chart: &ChartRecordV1, now_ms: i64, limit: 
     transaction.commit().map_err(|error| classify(&error))
 }
 
-fn delete(connection: &Connection, id: &str) -> Result<(), Failure> {
-    match connection.execute("DELETE FROM saved_charts WHERE id=?1", [id]) {
-        Ok(0) => Err("not_found"),
-        Ok(_) => Ok(()),
-        Err(error) => Err(classify(&error)),
+fn delete(connection: &mut Connection, id: &str) -> Result<(), Failure> {
+    let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e|classify(&e))?;
+    let source: Option<String>=tx.query_row("SELECT source_id FROM chart_sync_civil_sources WHERE chart_id=?1",[id],|r|r.get(0))
+        .optional().map_err(|e|classify(&e))?;
+    if let Some(source)=source {
+        // Deleting the local copy must not discard its pending/conflicting
+        // groups or the independently downloaded website record.
+        let groups=chart_groups(&tx,id)?;
+        tx.execute("DELETE FROM saved_chart_groups WHERE chart_id=?1",[&source]).map_err(|e|classify(&e))?;
+        for (position,name) in groups.iter().enumerate() {
+            tx.execute("INSERT INTO saved_chart_groups(chart_id,position,name) VALUES(?1,?2,?3)",params![source,position as i64,name]).map_err(|e|classify(&e))?;
+        }
+        let moved=tx.execute("UPDATE chart_group_sync_links SET chart_id=?1 WHERE chart_id=?2",params![source,id]).map_err(|e|classify(&e))?;
+        if moved!=1 { return Err("archive_corrupt"); }
+        tx.execute("DELETE FROM chart_sync_civil_sources WHERE chart_id=?1",[id]).map_err(|e|classify(&e))?;
     }
+    if tx.execute("DELETE FROM saved_charts WHERE id=?1",[id]).map_err(|e|classify(&e))? != 1 { return Err("not_found"); }
+    tx.commit().map_err(|e|classify(&e))
 }
 
 /// Where the archive files live: all inside the one folder the application owns.
@@ -1280,15 +1345,19 @@ fn run(paths: &ArchivePaths, keys: &dyn KeyStore, request: &ArchiveRequestV1, no
             outcome(paths, &session.connection)
         }
         ("delete", None, Some(id), None) if valid_id(id) => {
-            let session = open_session(paths, keys)?;
+            let mut session = open_session(paths, keys)?;
             require_legacy_chart(&session.connection,id)?;
-            delete(&session.connection, id)?;
+            delete(&mut session.connection, id)?;
             persist(paths, keys, &session.connection)?;
             outcome(paths, &session.connection)
         }
         ("set_groups", None, Some(id), Some(groups)) if valid_id(id) && valid_groups(groups) => {
             let mut session = open_session(paths, keys)?;
             require_legacy_chart(&session.connection,id)?;
+            let associated: bool=session.connection.query_row("SELECT EXISTS(SELECT 1 FROM chart_sync_civil_sources WHERE chart_id=?1)",[id],|r|r.get(0)).map_err(|e|classify(&e))?;
+            // Associated groups require an account-scoped compare-and-swap;
+            // the older v1 command cannot supply the version shown to the user.
+            if associated { return Err("archive_unavailable"); }
             set_groups(&mut session.connection, id, groups)?;
             persist(paths, keys, &session.connection)?;
             outcome(paths, &session.connection)
@@ -1485,7 +1554,7 @@ mod tests {
         assert_eq!(go(&archive, &keys, &list_request(), 4000).charts.unwrap()[0].groups, ["Famiglia fittizia"]);
         let upgraded = load_sealed(&archive.paths, &keys).unwrap();
         let version: i64 = upgraded.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, SCHEMA_VERSION);
     }
 
     #[test]
@@ -1520,8 +1589,25 @@ mod tests {
         assert_eq!(go(&archive,&keys,&save_request(record(ID_A,"Aggiornato")),3000).status,"ok");
         let reopened = load_sealed(&archive.paths,&keys).unwrap();
         let version: i64 = reopened.query_row("PRAGMA user_version",[],|r|r.get(0)).unwrap();
-        assert_eq!(version,4);
+        assert_eq!(version,SCHEMA_VERSION);
         assert_eq!(pending_groups_for_profile(&archive.paths,&keys,ID_B).unwrap().len(),1);
+    }
+
+    #[test]
+    fn version_four_upgrades_without_rewriting_ciphertext_on_read() {
+        let archive=TempArchive::new("association-v5-upgrade");
+        let keys=FakeKeyStore::empty();
+        fs::create_dir_all(&archive.folder).unwrap();
+        let mut connection=fresh_connection().unwrap();
+        save(&mut connection,&record(ID_A,"Fittizio"),1000,MAX_CHARTS).unwrap();
+        connection.execute_batch("DROP TABLE chart_sync_civil_sources; PRAGMA user_version=4;").unwrap();
+        persist(&archive.paths,&keys,&connection).unwrap();
+        let original=fs::read(&archive.paths.sealed).unwrap();
+        assert_eq!(go(&archive,&keys,&list_request(),2000).charts.unwrap()[0].name,"Fittizio");
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(),original);
+        let upgraded=load_sealed(&archive.paths,&keys).unwrap();
+        let version:i64=upgraded.query_row("PRAGMA user_version",[],|r|r.get(0)).unwrap();
+        assert_eq!(version,SCHEMA_VERSION);
     }
 
     #[test]
@@ -1573,6 +1659,51 @@ mod tests {
         set_offline_civil_groups(&archive.paths,&keys,&offline[0].id,&offline[0].groups,&["Offline".into()]).unwrap();
         assert_eq!(pending_groups_for_profile(&archive.paths,&keys,other).unwrap().len(),1);
         assert_eq!(pending_groups_for_profile(&archive.paths,&keys,profile).unwrap().len(),1);
+    }
+
+    #[test]
+    fn explicit_association_preserves_both_birth_records_and_detects_stale_or_foreign_choices() {
+        let archive=TempArchive::new("associate");
+        let keys=FakeKeyStore::empty();
+        let profile="44444444-4444-4444-8444-444444444444";
+        let other="55555555-5555-4555-8555-555555555555";
+        assert_eq!(go(&archive,&keys,&save_request(record(ID_B,"Locale fittizio")),1000).status,"ok");
+        import_remote_civil_charts(&archive.paths,&keys,profile,&[remote_chart(ID_A,true)],2000).unwrap();
+        let source=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap().remove(0);
+        let before=fs::read(&archive.paths.sealed).unwrap();
+        let mut choice=AssociationChoice {local_id:ID_B,source_id:&source.id,local_updated:1000,source_updated:2000,local_groups:&[],source_groups:&source.groups};
+        assert_eq!(associate_civil_chart(&archive.paths,&keys,other,&choice),Err("stale_sync"));
+        choice.local_updated=999;
+        assert_eq!(associate_civil_chart(&archive.paths,&keys,profile,&choice),Err("stale_sync"));
+        choice.local_updated=1000; choice.source_updated=1999;
+        assert_eq!(associate_civil_chart(&archive.paths,&keys,profile,&choice),Err("stale_sync"));
+        assert_eq!(fs::read(&archive.paths.sealed).unwrap(),before);
+        choice.source_updated=2000;
+        associate_civil_chart(&archive.paths,&keys,profile,&choice).unwrap();
+        let visible=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(visible[0].id,ID_B);
+        assert!(visible[0].time_unknown && visible[0].civil_time.is_none());
+        assert_eq!(visible[0].sync_status,"conflict");
+        assert_eq!(go(&archive,&keys,&list_request(),2100).charts.unwrap()[0].name,"Locale fittizio");
+        assert_eq!(group_conflicts_for_profile(&archive.paths,&keys,profile).unwrap().len(),1);
+        let unsafe_edit=ArchiveRequestV1 {id:Some(ID_B.into()),groups:Some(vec!["Senza controllo".into()]),..request("set_groups")};
+        assert_eq!(go(&archive,&keys,&unsafe_edit,2150).status,"archive_unavailable");
+        assert_eq!(set_civil_groups_for_profile(&archive.paths,&keys,other,ID_B,&[],&["Altrui".into()]),Err("profile_conflict"));
+        let mut changed=remote_chart(ID_A,true);
+        changed.civil_date="1984-03-26".into();
+        import_remote_civil_charts(&archive.paths,&keys,profile,&[changed],3000).unwrap();
+        let after=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(after[0].id,ID_B);
+        assert_eq!(after[0].civil_date,"1984-03-26");
+        assert_eq!(after[0].sync_status,"conflict");
+        assert_eq!(go(&archive,&keys,&list_request(),3100).charts.unwrap()[0].utc_iso,"2001-02-03T04:05:06.000Z");
+        assert_eq!(go(&archive,&keys,&delete_request(ID_B),3200).status,"ok");
+        let retained=list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap();
+        assert_eq!(retained[0].id,source.id);
+        assert_eq!(retained[0].sync_status,"conflict");
+        assert_eq!(retained[0].civil_date,"1984-03-26");
+        apply_conflict_resolution(&archive.paths,&keys,profile,&source.id,&source.groups,&[],&source.groups).unwrap();
+        assert_eq!(list_civil_charts_for_profile(&archive.paths,&keys,profile).unwrap()[0].groups,source.groups);
     }
 
     #[test]

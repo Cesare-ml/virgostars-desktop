@@ -359,6 +359,19 @@ impl NativeLoginRegistry {
             .map_err(|error| if error=="stale_sync" {"stale"} else {"unavailable"})
     }
 
+    pub(crate) fn associate_civil_chart(&self, attempt_id: &str, paths: &crate::chart_archive::ArchivePaths,
+        keys: &dyn crate::archive_keys::KeyStore, choice: &crate::chart_archive::AssociationChoice<'_>,
+    ) -> Result<(), &'static str> {
+        let state=self.inner.lock().map_err(|_| "unavailable")?;
+        if state.closed { return Err("unavailable"); }
+        let Slot::Active(session)=&state.slot else { return Err("unavailable"); };
+        if session.snapshot().attempt_id!=attempt_id { return Err("unavailable"); }
+        let grant=session.copy_active_grant().ok_or("unavailable")?;
+        let profile=grant.profile_ref().ok_or("unavailable")?;
+        crate::chart_archive::associate_civil_chart(paths,keys,profile,choice)
+            .map_err(|e|if e=="stale_sync" {"stale"} else {"unavailable"})
+    }
+
     /// The remembered profile is stored only inside the OS-key-protected vault.
     /// Never let an offline request select a different profile or race a login.
     fn allow_offline(state: &RegistryState) -> bool {

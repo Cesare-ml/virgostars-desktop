@@ -135,18 +135,28 @@ pub struct ChartSyncRequest {
     chart_id: Option<String>,
     base_groups: Option<Vec<String>>,
     groups: Option<Vec<String>>,
+    local_chart_id: Option<String>,
+    local_updated_at_ms: Option<i64>,
+    source_updated_at_ms: Option<i64>,
 }
 
 impl ChartSyncRequest {
     fn valid(&self) -> bool {
         if self.protocol_version != 1 { return false; }
+        let association_fields=self.local_chart_id.is_some() || self.local_updated_at_ms.is_some() || self.source_updated_at_ms.is_some();
         match self.operation.as_str() {
             "sync" | "list" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
-                && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none(),
-            "offline_list" => self.attempt_id.is_none() && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none(),
+                && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields,
+            "offline_list" => self.attempt_id.is_none() && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields,
             "set_groups" | "offline_set_groups" => (if self.operation=="set_groups" {
                 self.attempt_id.as_deref().is_some_and(valid_attempt_id)
             } else { self.attempt_id.is_none() }) && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
+                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !association_fields,
+            "associate" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
+                && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.local_chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.local_updated_at_ms.is_some_and(|v|v>=0) && self.source_updated_at_ms.is_some_and(|v|v>=0)
                 && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
                 && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups),
             _ => false,
@@ -210,6 +220,15 @@ pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHa
                 "set_groups" => {
                     let result=registry.set_civil_groups(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
                         request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,request.groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?);
+                    let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None})
+                },
+                "associate" => {
+                    let choice=crate::chart_archive::AssociationChoice {
+                        local_id:request.local_chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,source_id:request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
+                        local_updated:request.local_updated_at_ms.ok_or(NATIVE_UNAVAILABLE)?,source_updated:request.source_updated_at_ms.ok_or(NATIVE_UNAVAILABLE)?,
+                        local_groups:request.groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,source_groups:request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?};
+                    let result=registry.associate_civil_chart(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,&choice);
                     let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
                     Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None})
                 },

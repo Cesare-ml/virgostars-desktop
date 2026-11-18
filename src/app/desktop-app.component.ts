@@ -164,6 +164,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   syncGroupBusy = false;
   syncMessage: MessageKey | null = null;
   syncGroupDrafts: Record<string,string> = {};
+  associationCandidate: {local:SavedChartV1; remote:SyncedChart} | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncGeneration = 0;
   private syncListGeneration = 0;
@@ -184,6 +185,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.syncOfflineMode = offline;
     this.syncedCharts = [];
     this.syncGroupDrafts = {};
+    this.associationCandidate = null;
     this.syncBusy = false;
     this.syncGroupBusy = false;
     this.syncMessage = null;
@@ -228,6 +230,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.syncBusy=false;
     this.syncMessage=result.kind==='sync' ? 'sync.complete' : 'sync.offline';
     await this.loadSyncedCharts();
+    await this.loadArchive();
     if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
     this.scheduleSync(this.syncRequested ? 0 : 60_000);
     this.cd.markForCheck();
@@ -255,6 +258,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if (!offline) { if (this.syncBusy) this.syncRequested=true; else this.scheduleSync(0); }
     } else this.syncMessage=result.kind==='stale' ? 'sync.changed' : 'sync.unavailable';
     await this.loadSyncedCharts();
+    await this.loadArchive();
   }
 
   addSyncedGroup(chart:SyncedChart):void {
@@ -265,6 +269,28 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     void this.updateSyncedGroups(chart,chart.groups.filter(group=>group!==name));
   }
   trackSynced(_index:number,chart:SyncedChart):string { return chart.id; }
+  isAssociated(id:string):boolean { return this.syncedCharts.some(chart=>chart.id===id); }
+  isLocalChart(id:string):boolean { return this.savedCharts.some(chart=>chart.id===id); }
+  chooseAssociation(local:SavedChartV1,event:Event):void {
+    const id=(event.target as HTMLSelectElement).value;
+    const remote=this.syncedCharts.find(chart=>chart.id===id && chart.syncStatus==='clean' && !this.isLocalChart(chart.id));
+    this.associationCandidate=remote ? {local,remote} : null;
+  }
+  async confirmAssociation():Promise<void> {
+    const choice=this.associationCandidate, attemptId=this.account.connectedAttemptId;
+    if (!choice || !attemptId || this.syncGroupBusy || this.destroyed) return;
+    const generation=this.syncGeneration;
+    this.syncGroupBusy=true;
+    const result=await chartSync({operation:'associate',attemptId,chartId:choice.remote.id,localChartId:choice.local.id,
+      localUpdatedAtMs:choice.local.updatedAtMs,sourceUpdatedAtMs:choice.remote.sourceUpdatedAtMs,
+      baseGroups:choice.remote.groups,groups:choice.local.groups});
+    if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+    this.syncGroupBusy=false;
+    this.associationCandidate=null;
+    this.syncMessage=result.kind==='saved' ? 'sync.associated' : result.kind==='stale' ? 'sync.changed' : 'sync.unavailable';
+    await this.loadArchive();
+    await this.loadSyncedCharts();
+  }
   syncedStatusKey(chart:SyncedChart):MessageKey {
     return chart.syncStatus==='clean' ? 'sync.status.clean' : chart.syncStatus==='pending' ? 'sync.status.pending'
       : chart.syncStatus==='missing' ? 'sync.status.missing' : 'sync.status.conflict';
@@ -1096,11 +1122,22 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async addSavedGroup(chart: SavedChartV1): Promise<void> {
     const name = (this.groupDrafts[chart.id] ?? '').trim();
     if (!name || chart.groups.includes(name)) return;
+    const linked=this.syncedCharts.find(item=>item.id===chart.id);
+    if (linked) {
+      await this.updateSyncedGroups({...linked,groups:chart.groups},[...chart.groups,name]);
+      this.groupDrafts={...this.groupDrafts,[chart.id]:''};
+      return;
+    }
     const ok = await this.runArchive({operation:'set_groups', id:chart.id, groups:[...chart.groups, name]}, 'archive.groups.saved');
     if (ok) this.groupDrafts = {...this.groupDrafts, [chart.id]: ''};
     this.cd.markForCheck();
   }
   async removeSavedGroup(chart: SavedChartV1, name: string): Promise<void> {
+    const linked=this.syncedCharts.find(item=>item.id===chart.id);
+    if (linked) {
+      await this.updateSyncedGroups({...linked,groups:chart.groups},chart.groups.filter(group=>group!==name));
+      return;
+    }
     await this.runArchive({operation:'set_groups', id:chart.id, groups:chart.groups.filter(group => group !== name)}, 'archive.groups.saved');
   }
   setArchiveQuery(event: Event): void {
@@ -1151,6 +1188,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (deleted) {
       // The chart stays open in this session, but is no longer a saved one.
       this.sessionCharts = this.sessionCharts.map(item => item.archiveId === id ? {...item, archiveId:null} : item);
+      await this.loadSyncedCharts();
       this.cd.markForCheck();
     }
   }

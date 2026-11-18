@@ -2,10 +2,11 @@
 export type SyncedChart = Readonly<{
   id:string; name:string; civilDate:string; civilTime:string|null; timeUnknown:boolean; timeZone:string|null;
   latMicro:number|null; lngMicro:number|null; placeName:string; groups:readonly string[];
-  syncStatus:'clean'|'pending'|'conflict'|'missing';
+  syncStatus:'clean'|'pending'|'conflict'|'missing'; sourceUpdatedAtMs:number;
 }>;
 export type SyncOperation = Readonly<{operation:'sync'|'list';attemptId:string}> |
   Readonly<{operation:'set_groups';attemptId:string;chartId:string;baseGroups:readonly string[];groups:readonly string[]}> |
+  Readonly<{operation:'associate';attemptId:string;chartId:string;localChartId:string;localUpdatedAtMs:number;sourceUpdatedAtMs:number;baseGroups:readonly string[];groups:readonly string[]}> |
   Readonly<{operation:'offline_list'}> |
   Readonly<{operation:'offline_set_groups';chartId:string;baseGroups:readonly string[];groups:readonly string[]}>;
 export type SyncResult = Readonly<{kind:'list';charts:readonly SyncedChart[]}> |
@@ -57,17 +58,17 @@ function clock(x:unknown):x is string {
 }
 function micro(x:unknown,max:number):x is number {return typeof x==='number' && Number.isSafeInteger(x) && Math.abs(x)<=max;}
 function chart(raw:unknown):SyncedChart {
-  if (!object(raw) || !keys(raw,['id','name','civilDate','civilTime','timeUnknown','timeZone','latMicro','lngMicro','placeName','groups','syncStatus'])) throw new Error('Invalid chart');
+  if (!object(raw) || !keys(raw,['id','name','civilDate','civilTime','timeUnknown','timeZone','latMicro','lngMicro','placeName','groups','syncStatus','sourceUpdatedAtMs'])) throw new Error('Invalid chart');
   const id=prop(raw,'id'),name=prop(raw,'name'),civilDate=prop(raw,'civilDate'),civilTime=prop(raw,'civilTime');
   const timeUnknown=prop(raw,'timeUnknown'),timeZone=prop(raw,'timeZone'),latMicro=prop(raw,'latMicro'),lngMicro=prop(raw,'lngMicro');
-  const placeName=prop(raw,'placeName'),syncStatus=prop(raw,'syncStatus');
+  const placeName=prop(raw,'placeName'),syncStatus=prop(raw,'syncStatus'),sourceUpdatedAtMs=prop(raw,'sourceUpdatedAtMs');
   if (typeof id!=='string' || !ID.test(id) || !label(name,255,true) || !date(civilDate) || typeof timeUnknown!=='boolean' ||
       !(timeUnknown ? civilTime===null : clock(civilTime)) ||
       !(timeZone===null || (typeof timeZone==='string' && timeZone.length<=120 && ZONE.test(timeZone))) ||
       !((latMicro===null && lngMicro===null) || (micro(latMicro,90_000_000) && micro(lngMicro,180_000_000))) ||
-      !label(placeName,160,false) || (syncStatus!=='clean' && syncStatus!=='pending' && syncStatus!=='conflict' && syncStatus!=='missing')) throw new Error('Invalid chart');
+      !label(placeName,160,false) || typeof sourceUpdatedAtMs!=='number' || !Number.isSafeInteger(sourceUpdatedAtMs) || sourceUpdatedAtMs<0 || (syncStatus!=='clean' && syncStatus!=='pending' && syncStatus!=='conflict' && syncStatus!=='missing')) throw new Error('Invalid chart');
   return Object.freeze({id,name,civilDate,civilTime:civilTime as string|null,timeUnknown,timeZone:timeZone as string|null,
-    latMicro:latMicro as number|null,lngMicro:lngMicro as number|null,placeName,groups:groups(prop(raw,'groups')),syncStatus});
+    latMicro:latMicro as number|null,lngMicro:lngMicro as number|null,placeName,groups:groups(prop(raw,'groups')),syncStatus,sourceUpdatedAtMs});
 }
 export async function requestChartSync(port:SyncTransport, operation:SyncOperation):Promise<SyncResult> {
   try {
@@ -76,17 +77,21 @@ export async function requestChartSync(port:SyncTransport, operation:SyncOperati
     if (!offline && (!('attemptId' in operation) || typeof operation.attemptId!=='string' || !ATTEMPT.test(operation.attemptId))) return {kind:'unavailable'};
     let request:Record<string,unknown>={protocolVersion:1,operation:operation.operation};
     if ('attemptId' in operation) request={...request,attemptId:operation.attemptId};
-    if (operation.operation==='set_groups' || operation.operation==='offline_set_groups') {
+    if (operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') {
       if (!ID.test(operation.chartId)) return {kind:'unavailable'};
       request={...request,chartId:operation.chartId,baseGroups:groups(operation.baseGroups),groups:groups(operation.groups)};
+      if (operation.operation==='associate') {
+        if (!ID.test(operation.localChartId) || operation.localChartId===operation.chartId || !Number.isSafeInteger(operation.localUpdatedAtMs) || operation.localUpdatedAtMs<0 || !Number.isSafeInteger(operation.sourceUpdatedAtMs) || operation.sourceUpdatedAtMs<0) return {kind:'unavailable'};
+        request={...request,localChartId:operation.localChartId,localUpdatedAtMs:operation.localUpdatedAtMs,sourceUpdatedAtMs:operation.sourceUpdatedAtMs};
+      }
     } else if (operation.operation!=='list' && operation.operation!=='sync' && operation.operation!=='offline_list') return {kind:'unavailable'};
     const raw=await port.invoke('desktop_chart_sync_v1',{request});
     if (!object(raw) || prop(raw,'protocolVersion')!==1) throw new Error('Invalid response');
     const status=prop(raw,'status');
     if (status==='disabled' && keys(raw,['protocolVersion','status'])) return {kind:'disabled'};
-    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups') && status==='stale' && keys(raw,['protocolVersion','status'])) return {kind:'stale'};
+    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') && status==='stale' && keys(raw,['protocolVersion','status'])) return {kind:'stale'};
     if (status!=='ok') throw new Error('Invalid response');
-    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups') && keys(raw,['protocolVersion','status'])) return {kind:'saved'};
+    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') && keys(raw,['protocolVersion','status'])) return {kind:'saved'};
     if ((operation.operation==='list' || operation.operation==='offline_list') && keys(raw,['protocolVersion','status','charts'])) {
       const values=prop(raw,'charts');
       if (!Array.isArray(values) || Object.getPrototypeOf(values)!==Array.prototype || values.length>5000 || Reflect.ownKeys(values).length!==values.length+1) throw new Error('Invalid response');

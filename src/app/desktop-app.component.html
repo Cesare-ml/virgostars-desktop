@@ -230,6 +230,24 @@
                   [value]="groupDrafts[saved.id] || ''" (input)="setGroupDraft(saved.id, $event)">
                 <button type="button" class="small-control" [disabled]="archiveBusy || !groupDrafts[saved.id]?.trim()" (click)="addSavedGroup(saved)">{{t('archive.groups.add')}}</button>
               </div>
+              <p class="inspector-hint" *ngIf="account.status==='connected' && isAssociated(saved.id)">{{t('sync.associate.linked')}}</p>
+              <div *ngIf="account.status==='connected' && syncedCharts.length && syncedAttempt===account.connectedAttemptId && !isAssociated(saved.id)">
+                <label>{{t('sync.associate.choose')}}
+                  <select (change)="chooseAssociation(saved,$event)" [disabled]="syncGroupBusy">
+                    <option value="">{{t('sync.associate.select')}}</option>
+                    <option *ngFor="let candidate of syncedCharts" [value]="candidate.id" [disabled]="candidate.syncStatus!=='clean' || isLocalChart(candidate.id)">
+                      {{candidate.name}} · {{candidate.civilDate}} · {{candidate.timeUnknown ? t('sync.unknownTime') : candidate.civilTime}}
+                    </option>
+                  </select>
+                </label>
+                <div *ngIf="associationCandidate?.local?.id===saved.id && associationCandidate as selection" role="group">
+                  <p>{{t('sync.associate.review')}}</p>
+                  <p>{{t('sync.associate.local')}}: {{selection.local.name}} · {{selection.local.utcIso}} · {{selection.local.timeZone}} · {{selection.local.placeName}} · {{selection.local.groups.join(', ')}}</p>
+                  <p>{{t('sync.associate.remote')}}: {{selection.remote.name}} · {{selection.remote.civilDate}} · {{selection.remote.timeUnknown ? t('sync.unknownTime') : selection.remote.civilTime}} · {{selection.remote.timeZone}} · {{selection.remote.placeName}} · {{selection.remote.groups.join(', ')}}</p>
+                  <button type="button" class="small-control wide" [disabled]="syncGroupBusy" (click)="confirmAssociation()">{{t('sync.associate.confirm')}}</button>
+                  <button type="button" class="small-control wide" (click)="associationCandidate=null">{{t('sync.associate.cancel')}}</button>
+                </div>
+              </div>
             </div>
             <div *ngIf="(account.status==='connected' && syncedAttempt===account.connectedAttemptId) || (syncOfflineMode && syncedCharts.length)">
               <h3 class="panel-title">{{t('sync.charts')}} ({{syncedCharts.length}})</h3>

@@ -19,9 +19,11 @@ Imported civil data preserve unknown times without inventing an instant. A
 known time is calculated only when its time zone resolves unambiguously; missing,
 ambiguous or nonexistent local times require review. The snapshot is limited to
 500 charts and each chart to 50 groups; unsupported snapshots fail without
-truncation. The candidate creates a separate local copy for each remote identity:
-explicit association of pre-existing local charts and upload of local-only charts
-are not implemented. Browser production consent, deployment and real end-to-end
+truncation. The candidate creates a separate local copy for each remote identity.
+The user can explicitly associate it with an existing local chart after reviewing
+both; conflicting groups remain unresolved until the user chooses. Deleting the
+local chart retains the imported record and its pending group state. Upload of
+local-only charts is not implemented. Browser production consent, deployment and real end-to-end
 verification remain outstanding. The proposed journey and API below describe
 the target, not capabilities proven in production.
 
