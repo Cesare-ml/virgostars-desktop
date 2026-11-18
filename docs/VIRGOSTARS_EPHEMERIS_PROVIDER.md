@@ -4,7 +4,7 @@
 
 ## What it does
 
-- `src-tauri/src/virgostars_provider.rs` implements the `EphemerisProvider` port with `virgostars-ephemeris-core` (CPAL-1.0), pinned to proposed commit `5491f828af1caf24db356ffbbfa5b9c878ee0660` of `Cesare-ml/VirgoStars-Ephemeris`. **This dependency commit is currently local and must be published and reviewed before this Desktop branch can be built by another checkout or merged.** The git dependency needs network access the first time it is fetched.
+- `src-tauri/src/virgostars_provider.rs` implements the `EphemerisProvider` port with `virgostars-ephemeris-core` (CPAL-1.0), pinned to proposed commit `5491f828af1caf24db356ffbbfa5b9c878ee0660` of `Cesare-ml/VirgoStars-Ephemeris`. **This commit belongs to [Ephemeris PR #643](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/643), which must be reviewed and integrated before this Desktop change is merged.** The git dependency needs network access the first time it is fetched.
 - `calculate_chart` v1 is unchanged (same IPC contract, no path, name or account data crosses it). It now answers with provider id `virgostars_ephemeris`, source `jpl` and the engine version string.
 - Bodies: Sun, Moon, Mercury, Venus, Mars–Pluto, mean and true lunar Node, mean and osculating Apogee, and Chiron (JPL SPK, NAIF 20002060). Apparent geocentric ecliptic-of-date positions, speeds, right ascension and declination.
 - Mars to Pluto are the **system barycentres** (the usual convention for the outer planets, DE441 carries no separate body for them).
