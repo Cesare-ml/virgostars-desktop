@@ -6,6 +6,7 @@
 import {constants, closeSync, fstatSync, lstatSync, openSync, readSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isFileBackedPeEntryPoint} from './pe-entrypoint-bounds.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_HEADER_BYTES = 8192;
@@ -60,8 +61,10 @@ export function inspectWindowsPeHeader(bytes, fileBytes = BigInt(bytes?.byteLeng
           BigInt(rawPointer) + BigInt(rawSize) > fileBytes) error('SECTION_RAW_BOUNDS');
       hasRawSection = true;
     }
-    if (rawSize && (sectionFlags & 0x20000000) !== 0 &&
-        entryPoint >= virtualAddress && entryPoint < virtualAddress + mappedSize) {
+    // An RVA in virtual zero-fill or on-disk section padding is not an
+    // actual file-backed executable entry point, even if it is mapped.
+    if ((sectionFlags & 0x20000000) !== 0 &&
+        isFileBackedPeEntryPoint(entryPoint, virtualAddress, virtualSize, rawSize)) {
       executableEntry = true;
     }
   }
