@@ -25,6 +25,9 @@ rusqlite = { version = "0.32", features = ["bundled", "serialize"] }
 chacha20poly1305 = "0.10"
 zeroize = "1"
 getrandom = "0.3"
+base64 = "0.23"
+sha2 = "0.10"
+url = "2.5"
 keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
 # Pinned to one reviewed commit of the Ephemeris repository; never a floating branch.
 virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "6835e00e4b4ba5fc52d882a793e2dfa2b2a436aa", optional = true }

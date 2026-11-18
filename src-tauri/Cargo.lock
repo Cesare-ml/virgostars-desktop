@@ -4006,14 +4006,17 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "virgostars-desktop-spike"
 version = "0.0.1"
 dependencies = [
+ "base64 0.23.1",
  "chacha20poly1305",
  "getrandom 0.3.4",
  "keyring",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
+ "url",
  "virgostars-ephemeris-core",
  "zeroize",
 ]
