@@ -15,10 +15,12 @@
     </div>
     <label class="field"><span>{{t('historical.source')}}</span>
       <select [value]="choice" (change)="setChoice($event)">
-        <option value="espenakMeeus2006">{{t('historical.model')}}</option><option value="supplied">{{t('historical.manual')}}</option>
+        <option value="espenakMeeus2006">{{t('historical.model')}}</option><option value="usno">{{t('historical.usno')}}</option><option value="supplied">{{t('historical.manual')}}</option>
       </select>
     </label>
     <p *ngIf="choice==='espenakMeeus2006'">{{t('historical.modelNote')}}</p>
+    <p *ngIf="choice==='usno'">{{t('historical.usnoNote')}}</p>
+    <label class="check" *ngIf="choice==='usno'"><input id="historical-usno-predictions" type="checkbox" [checked]="allowPredictions" (change)="setAllowPredictions($event)"><span>{{t('historical.usnoPredictions')}}</span></label>
     <div class="row" *ngIf="choice==='supplied'">
       <label class="field"><span>{{t('historical.delta')}}</span><input type="number" step="any" [value]="deltaSeconds" (input)="set('deltaSeconds', $event)"></label>
       <label class="field"><span>{{t('historical.sourceLabel')}}</span><input type="text" maxlength="200" [value]="source" (input)="set('source', $event)"></label>

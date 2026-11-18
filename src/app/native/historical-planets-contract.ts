@@ -11,7 +11,7 @@ export type HistoricalPlanet = HistoricalRequest & Readonly<{
   uncertaintySource?: string;
 }>;
 export type HistoricalResult = Readonly<{kind: 'ready'; planet: HistoricalPlanet}> |
-  Readonly<{kind: 'not_native' | 'invalid_request' | 'provider_unavailable' | 'calculation_failed' | 'unavailable'}>;
+  Readonly<{kind: 'not_native' | 'invalid_request' | 'provider_unavailable' | 'time_source_unavailable' | 'time_source_out_of_range' | 'calculation_failed' | 'unavailable'}>;
 export interface HistoricalTransport {
   isNative(): boolean;
   invoke(command: 'calculate_historical_planet', args: {request: HistoricalRequest & {protocolVersion: 1}}): Promise<unknown>;
@@ -32,21 +32,22 @@ export function validHistoricalRequest(value: HistoricalRequest): boolean {
     typeof value.deltaTSource === 'string' && value.deltaTSource.trim().length > 0 && new TextEncoder().encode(value.deltaTSource).length <= 200;
 }
 export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: HistoricalBody; uncertaintySeconds?: number;
-  deltaTSource: string; jdUt1?: number; deltaTSeconds?: number; includeScenarios?: boolean; uncertaintySource?: string}>): HistoricalResult {
+  deltaTSource: string; allowedDeltaTSources?: readonly string[]; jdUt1?: number; deltaTSeconds?: number; includeScenarios?: boolean; uncertaintySource?: string}>): HistoricalResult {
     if (!record(raw) || field(raw, 'protocolVersion') !== 1) throw new Error();
     const status = field(raw, 'status');
-    if (status === 'invalid_request' || status === 'provider_unavailable' || status === 'calculation_failed') return {kind: status};
+    if (status === 'invalid_request' || status === 'provider_unavailable' || status === 'time_source_unavailable' || status === 'time_source_out_of_range' || status === 'calculation_failed') return {kind: status};
     const result = field(raw, 'result');
     if (status !== 'ok' || !record(result)) throw new Error();
     const keys = ['jdUt1', 'jdTt', 'jdTdb', 'deltaTSeconds', 'uncertaintySeconds', 'longitudeDeg', 'latitudeDeg', 'distanceAu',
       'longitudeSpeedDegPerTdbDay', 'latitudeSpeedDegPerTdbDay', 'radialSpeedAuPerTdbDay'] as const;
     const values = Object.fromEntries(keys.map(key => [key, field(result, key)]));
+    const source = field(result, 'deltaTSource');
     if (keys.some(key => typeof values[key] !== 'number' || !Number.isFinite(values[key])) ||
         field(result, 'body') !== expected.body || (expected.jdUt1 !== undefined && values['jdUt1'] !== expected.jdUt1) ||
         (expected.deltaTSeconds !== undefined && values['deltaTSeconds'] !== expected.deltaTSeconds) ||
         (values['uncertaintySeconds'] as number) < 0 ||
         (expected.uncertaintySeconds !== undefined && values['uncertaintySeconds'] !== expected.uncertaintySeconds) ||
-        field(result, 'deltaTSource') !== expected.deltaTSource.trim() ||
+        typeof source !== 'string' || !(expected.allowedDeltaTSources ?? [expected.deltaTSource.trim()]).includes(source) ||
         typeof field(result, 'radialCorrectionApplied') !== 'boolean' ||
         (values['longitudeDeg'] as number) < 0 || (values['longitudeDeg'] as number) >= 360 ||
         (values['latitudeDeg'] as number) < -90 || (values['latitudeDeg'] as number) > 90 || (values['distanceAu'] as number) <= 0) throw new Error();
@@ -70,7 +71,7 @@ export function decodeHistoricalPlanet(raw: unknown, expected: Readonly<{body: H
         upper: decodeSample('upper', values['uncertaintySeconds'] as number)});
     }
     if (expected.uncertaintySource !== undefined && field(result, 'uncertaintySource') !== expected.uncertaintySource) throw new Error();
-    const planet = Object.freeze({...values, body: expected.body, deltaTSource: expected.deltaTSource.trim(),
+    const planet = Object.freeze({...values, body: expected.body, deltaTSource: source,
       radialCorrectionApplied: field(result, 'radialCorrectionApplied'), ...(sensitivity ? {sensitivity} : {}),
       ...(expected.uncertaintySource ? {uncertaintySource: expected.uncertaintySource} : {})}) as HistoricalPlanet;
     return {kind: 'ready', planet};

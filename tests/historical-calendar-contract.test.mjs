@@ -79,6 +79,26 @@ test('dispatches the selected model and checks source and uncertainty in the rep
   assert.equal((await requestHistoricalCalendar({...transport, isNative:()=>false}, request)).kind, 'not_native');
 });
 
+test('USNO source requires explicit uncertainty and prediction permission', async () => {
+  const deltaT = {kind:'usno', uncertaintySeconds:2, allowPredictions:false};
+  const usnoRequest = {...request, deltaT};
+  const raw = ok();
+  raw.result.deltaTSource = 'Local USNO-format non-prediction (source unverified)';
+  const calls = [];
+  const transport = {isNative:()=>true, invoke:async (...args)=>{ calls.push(args); return raw; }};
+  assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).kind, 'ready');
+  assert.deepEqual(calls[0][1].request.deltaT, deltaT);
+  raw.result.deltaTSource = 'Local USNO-format prediction (source unverified)';
+  assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).kind, 'unavailable');
+  const allow = {...usnoRequest, deltaT:{...deltaT, allowPredictions:true}};
+  assert.equal((await requestHistoricalCalendar(transport, allow)).kind, 'ready');
+  assert.equal(validHistoricalCalendar({...usnoRequest, deltaT:{...deltaT, uncertaintySeconds:-1}}), false);
+  raw.status = 'time_source_unavailable';
+  assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).kind, 'time_source_unavailable');
+  raw.status = 'time_source_out_of_range';
+  assert.equal((await requestHistoricalCalendar(transport, usnoRequest)).kind, 'time_source_out_of_range');
+});
+
 test('optionally returns two detached sensitivity samples and rejects incomplete or inconsistent samples', async () => {
   const requested = {...request, includeScenarios:true};
   const raw = ok();

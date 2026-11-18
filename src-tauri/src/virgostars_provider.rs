@@ -181,6 +181,33 @@ pub fn data_available() -> bool {
     with_engine(|_| ()).is_some()
 }
 
+/// Explicitly selected USNO value. Ignore source error metadata: the historical
+/// API requires the caller's own uncertainty, and the table's error semantics
+/// and snapshot vintage are not established by this adapter.
+pub(crate) fn historical_usno_delta_t(
+    jd_ut1: f64,
+    allow_predictions: bool,
+) -> Result<(f64, &'static str), &'static str> {
+    with_engine(|engine| select_historical_usno(engine.delta_t.as_ref(), jd_ut1, allow_predictions))
+        .ok_or("provider_unavailable")?
+}
+
+fn select_historical_usno(
+    table: Option<&DeltaTTable>,
+    jd_ut1: f64,
+    allow_predictions: bool,
+) -> Result<(f64, &'static str), &'static str> {
+    use virgostars_ephemeris_core::delta_t_table::DeltaTKind;
+    let table = table.ok_or("time_source_unavailable")?;
+    let value = table.delta_t(jd_ut1).map_err(|_| "time_source_out_of_range")?;
+    let source = match value.kind {
+        DeltaTKind::Measured => "Local USNO-format non-prediction (source unverified)",
+        DeltaTKind::Predicted if allow_predictions => "Local USNO-format prediction (source unverified)",
+        DeltaTKind::Predicted => return Err("time_source_out_of_range"),
+    };
+    Ok((value.delta_t_seconds, source))
+}
+
 /// Isolated experimental path: the input epoch is explicitly UT1, never civil UTC.
 pub(crate) fn historical_planet(
     request: &crate::historical_planets::HistoricalPlanetRequest,
@@ -379,6 +406,22 @@ impl EphemerisProvider for VirgoStarsEphemeris {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn historical_usno_requires_table_and_explicit_prediction_choice() {
+        let historic = "1950.0 29.15 0.1\n1960.0 33.15 0.02\n1965.0 35.0 0.01\n1970.0 40.18 0.001\n1972.0 42.23 0.001\n1972.5 42.81 0.001\n";
+        let monthly = "1973 2 1 43.4724\n1973 3 1 43.5648\n";
+        let predictions = "41900.0\t1973.5\t44.0\t \t0.3\n42000.0\t1973.8\t45.0\t \t0.4\n";
+        let table = DeltaTTable::from_usno(monthly, historic, Some(predictions)).unwrap();
+        assert_eq!(select_historical_usno(None, 2441714.5, false), Err("time_source_unavailable"));
+        assert_eq!(select_historical_usno(Some(&table), 2441714.5, false),
+            Ok((43.4724, "Local USNO-format non-prediction (source unverified)")));
+        let prediction = 2_400_000.5 + 41900.0;
+        assert_eq!(select_historical_usno(Some(&table), prediction, false), Err("time_source_out_of_range"));
+        assert_eq!(select_historical_usno(Some(&table), prediction, true),
+            Ok((44.0, "Local USNO-format prediction (source unverified)")));
+        assert_eq!(select_historical_usno(Some(&table), 1.0, true), Err("time_source_out_of_range"));
+    }
 
     fn request(year: i32, month: u32, day: u32, hour: f64) -> ValidatedRequest {
         ValidatedRequest { year, month, day, hour, latitude_deg: 41.8928, longitude_deg: 12.4837 }
