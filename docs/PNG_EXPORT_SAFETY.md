@@ -9,9 +9,10 @@ The public Charts renderer's `GraficoRenderService.generaImmagine()` is expected
 - the exact PNG data-URL prefix (no remote, blob, HTML or SVG URLs);
 - a bounded base64 payload (maximum 32 MiB of encoded data), with valid alphabet and padding shape;
 - a PNG signature, an IHDR first chunk of length 13, positive width/height at most 16,384 pixels, spec-permitted color type/bit-depth/compression/filter/interlace values, and the IHDR CRC32;
+- a terminal zero-length `IEND` chunk with standard CRC32 and no data after it;
 - a filename assembled from allowed demonstration modes/themes, always prefixed `virgostars-synthetic-`.
 
-On failure the existing translated generic chart-error UI is shown. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **only the IHDR chunk CRC32**, not the CRCs of later chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
+On failure the existing translated generic chart-error UI is shown. The guard avoids logging raw image data, birth records or file paths. It parses only the 33-byte PNG header and the final 12-byte IEND trailer, not the entire decoded image; the browser is responsible for interpreting the data URL. The guard verifies **the IHDR CRC32 and fixed IEND trailer**, not the CRCs of intervening chunks, complete PNG validity, pixel integrity or the renderer's scientific accuracy. The 32 MiB limit is a protective application bound, not a measured performance threshold.
 
 ## Attached download-anchor lifecycle
 
@@ -48,3 +49,24 @@ Synthetic tests deliberately recompute CRC when mutating dimensions and header f
 - **TypeScript v5.8.3:** strict standalone `tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM` — **passed**, with a matching minimal `ChartMode`/`UiTheme` type stub.
 - The tested source and test files were verified byte-for-byte against their GitHub blob SHAs: `e2de774777b6e09717f5d0ac468532f7fc80d9be` and `f834bd7a2e276881960691b607a537acd6f19a5f`.
 - **Not executed:** repository-wide `npm test`, Angular bundle/build, Tauri/Rust build, or Windows WebView2 GUI/export smoke.
+
+## Final IEND trailer preflight (2026-11-13)
+
+The download validator also inspects the **last 12 decoded bytes** (via a fixed 24-character base64 tail window) and requires the PNG end chunk to be exactly the zero-length `IEND` marker with CRC32 `AE426082`. Missing, corrupted, nonterminal or length-modified `IEND` chunks are rejected. Only the fixed header and tail are decoded, so this remains constant-memory relative to decoded pixel data. The existing 32 MiB base64 size guard applies before decoding.
+
+This is **not a full PNG verifier**: intervening IDAT/ancillary chunks and their CRCs are not parsed, and passing this preflight does not prove a playable image or successful Windows WebView2 save. The synthetic test intentionally corrupts an IDAT byte to prove the limited guarantee is documented rather than overstated. Run `node --experimental-strip-types --test tests/png-export-safety.test.mjs`, the full package tests and an actual Windows PNG export before using a release label.
+
+### Executed focused tests (IEND branch, 2026-11-13)
+
+The exact committed files were mirrored into an isolated Node.js 22.16.0 workspace; every file's Git blob SHA matched the branch, and **the actual Node test runner executed 23/23 cases successfully**:
+
+```sh
+node --experimental-strip-types --test tests/png-export-safety.test.mjs tests/png-download.test.mjs
+# 23 passed, 0 failed, 0 skipped
+```
+
+The two additional IEND regressions cover all three Base64 padding alignments with valid, CRC-encoded private ancillary chunks immediately before IEND, and reject one, two or three stray bytes after IEND. The same mirror also passed **TypeScript 5.8.3 strict standalone compilation** of `src/app/png-export-safety.ts`, `src/app/png-download.ts`, and the exact `src/app/workspace-state.ts`.
+
+Exact Git blobs under test: PNG validator `6dfdcb495973c705a1480d863d9df16cb3cf7d17`, PNG tests `a2a597da759a6a0d5e5042053cc90a41803b51d3`, download helper `60ce14ae64751f16478222c9c44d6ea736f919ca`, download tests `745f2e7482c7050dc2827b01a9eff8f2c359ffa4`, and workspace state `d56b55933305ed7d01b3dd6ee719ad9fd77a2c05`.
+
+This establishes **focused local validation only**, not a full repository `npm test`, Angular/Charts build, Windows WebView2 saved-file result, or production readiness. The separate draft #134 changes the *same* PNG validator to add a total-pixel budget; reconcile both diffs on one tested integration branch before merging either into main.

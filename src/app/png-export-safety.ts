@@ -1,6 +1,6 @@
 /**
  * Validate the renderer's PNG data URL before giving it to a download anchor.
- * This is a transport/format guard, not a decoder or proof of PNG integrity.
+ * Bounds and checks IHDR plus the IEND trailer; not full pixel/chunk validation.
  * No external URLs, SVG/HTML payloads, arbitrary filenames or user data belong here.
  */
 import type {ChartMode, UiTheme} from './workspace-state';
@@ -71,6 +71,19 @@ export function validatePngDataUrl(value: unknown): string {
   if (!IHDR_DEPTHS[colorType]?.includes(bitDepth) ||
       compression !== 0 || filter !== 0 || (interlace !== 0 && interlace !== 1) ||
       ihdrCrc32(header.slice(12, 29)) !== u32(header, 29)) {
+    throw new Error('Invalid PNG export');
+  }
+  // The final PNG chunk must be a zero-length IEND with its fixed CRC.
+  // Decode only the last 24 base64 characters (at most 18 bytes). This
+  // catches missing/trailing/corrupt end markers, not corrupt IDAT pixels.
+  let tail: string;
+  try {
+    tail = atob(body.slice(-24)).slice(-12);
+  } catch {
+    throw new Error('Invalid PNG export');
+  }
+  if (tail.length !== 12 || u32(tail, 0) !== 0 ||
+      tail.slice(4, 8) !== 'IEND' || u32(tail, 8) !== 0xae426082) {
     throw new Error('Invalid PNG export');
   }
   return value;

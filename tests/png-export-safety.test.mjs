@@ -107,3 +107,59 @@ test('filenames are fixed to synthetic charts and known modes/themes', () => {
     assert.throws(() => syntheticPngFilename(mode,theme), /Invalid PNG export/);
   }
 });
+
+test('rejects missing, corrupt, or nonterminal IEND chunks without full PNG decoding', () => {
+  const original = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  const withoutIend = original.subarray(0, -12);
+  const appendedAfterIend = Buffer.concat([original, Buffer.from([0, 0, 0])]);
+  const wrongIendCrc = Buffer.from(original);
+  wrongIendCrc[wrongIendCrc.length - 1] ^= 0x01;
+  const wrongIendType = Buffer.from(original);
+  wrongIendType[wrongIendType.length - 8] = 0x58;
+  const nonzeroIendLength = Buffer.from(original);
+  nonzeroIendLength.writeUInt32BE(1, nonzeroIendLength.length - 12);
+  for (const bytes of [withoutIend, appendedAfterIend, wrongIendCrc, wrongIendType, nonzeroIendLength]) {
+    assert.throws(() => validatePngDataUrl(prefix + bytes.toString('base64')), /Invalid PNG export/);
+  }
+});
+
+test('still accepts a valid PNG header and untouched IEND with modified payload bytes', () => {
+  const image = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  image[41] ^= 0x01; // Corrupt a non-IHDR, non-IEND byte: intentionally not verified here.
+  const dataUrl = prefix + image.toString('base64');
+  assert.equal(validatePngDataUrl(dataUrl), dataUrl);
+});
+
+test('accepts terminal IEND with every base64 padding alignment', () => {
+  const original = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  for (const extraLength of [0, 1, 2]) {
+    // Insert a correctly CRC-encoded private ancillary chunk before IEND.
+    const chunkType = Buffer.from('vpAg', 'ascii');
+    const payload = Buffer.alloc(extraLength, 0x41);
+    const chunkData = Buffer.concat([chunkType, payload]);
+    let crc = 0xffffffff;
+    for (const byte of chunkData) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) {
+        crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+      }
+    }
+    const chunkLength = Buffer.alloc(4);
+    chunkLength.writeUInt32BE(extraLength);
+    const chunkCrc = Buffer.alloc(4);
+    chunkCrc.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+    const candidate = Buffer.concat([
+      original.subarray(0, -12), chunkLength, chunkData, chunkCrc, original.subarray(-12),
+    ]);
+    const dataUrl = prefix + candidate.toString('base64');
+    assert.equal(validatePngDataUrl(dataUrl), dataUrl, `ancillary length ${extraLength}`);
+  }
+});
+
+test('rejects trailing one, two or three bytes after IEND', () => {
+  const original = Buffer.from(VALID_PNG.slice(prefix.length), 'base64');
+  for (const extraLength of [1, 2, 3]) {
+    const bad = Buffer.concat([original, Buffer.alloc(extraLength)]);
+    assert.throws(() => validatePngDataUrl(prefix + bad.toString('base64')), /Invalid PNG export/);
+  }
+});
