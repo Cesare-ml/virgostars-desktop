@@ -12,9 +12,14 @@ $ErrorActionPreference = 'Stop'
 if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
     throw 'NATIVE_SMOKE_WINDOWS_ONLY'
 }
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+# Resolve an actual Node executable once. Do not run a PowerShell alias,
+# function or script named 'node' between the preflight checks.
+$nodeCommand = Get-Command -Name 'node.exe' -CommandType Application -ErrorAction SilentlyContinue
+if ($null -eq $nodeCommand -or [string]::IsNullOrWhiteSpace($nodeCommand.Source) -or
+    -not [System.IO.Path]::IsPathRooted($nodeCommand.Source)) {
     throw 'NATIVE_SMOKE_NODE_REQUIRED'
 }
+$nodeExe = $nodeCommand.Source
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # Exact Cargo binary name; the user cannot supply an arbitrary executable path.
@@ -22,7 +27,15 @@ $exe = Join-Path $root 'src-tauri\target\release\virgostars-desktop-spike.exe'
 
 function Invoke-ReadOnlyGate {
     param([string] $Label, [string] $Path)
-    & node $Path
+    # Gate output and PowerShell invocation errors may contain checkout paths.
+    # Hide both and always report only the fixed gate label, including when
+    # Node cannot start or stderr redirection fails under Windows PowerShell.
+    try {
+        & $nodeExe $Path *> $null
+    }
+    catch {
+        throw ('NATIVE_SMOKE_PREFLIGHT_FAILED_' + $Label)
+    }
     if ($LASTEXITCODE -ne 0) {
         throw ('NATIVE_SMOKE_PREFLIGHT_FAILED_' + $Label)
     }
@@ -34,9 +47,14 @@ try {
     # Verify source configuration and the exact built browser artifacts first.
     Invoke-ReadOnlyGate 'VERSION' 'scripts/verify-desktop-version.mjs'
     Invoke-ReadOnlyGate 'TAURI_SECURITY' 'scripts/verify-tauri-security-config.mjs'
+    Invoke-ReadOnlyGate 'NATIVE_IPC' 'scripts/verify-native-ipc.mjs'
+    # Validate the full synthetic offline package, not only a linked CSS file.
+    Invoke-ReadOnlyGate 'OFFLINE_BUNDLE' 'scripts/verify-offline-bundle.mjs'
     Invoke-ReadOnlyGate 'BUNDLED_CSS' 'scripts/verify-bundled-css.mjs'
     Invoke-ReadOnlyGate 'COMPONENT_STYLES' 'scripts/verify-component-styles.mjs'
     Invoke-ReadOnlyGate 'WINDOWS_PE' 'scripts/verify-windows-pe.mjs'
+    # Prevent trusting a GUI binary older than its current Angular output.
+    Invoke-ReadOnlyGate 'BUNDLE_FRESHNESS' 'scripts/verify-native-bundle-freshness.mjs'
 }
 finally {
     Pop-Location
@@ -52,21 +70,62 @@ catch {
 
 $clock = [System.Diagnostics.Stopwatch]::StartNew()
 $foundWindow = $false
+$windowFailure = 'NATIVE_SMOKE_NO_MAIN_WINDOW'
 while ($clock.Elapsed.TotalSeconds -lt $WindowWaitSeconds) {
-    Start-Sleep -Milliseconds 250
-    try { $appProcess.Refresh() }
-    catch { throw 'NATIVE_SMOKE_PROCESS_UNAVAILABLE' }
-    if ($appProcess.HasExited) {
-        throw 'NATIVE_SMOKE_EARLY_EXIT'
+    try {
+        Start-Sleep -Milliseconds 250
+        $appProcess.Refresh()
+        if ($appProcess.HasExited) {
+            $windowFailure = 'NATIVE_SMOKE_EARLY_EXIT'
+            break
+        }
+        if ($appProcess.MainWindowHandle -ne [IntPtr]::Zero) {
+            $foundWindow = $true
+            break
+        }
     }
-    if ($appProcess.MainWindowHandle -ne [IntPtr]::Zero) {
-        $foundWindow = $true
+    catch {
+        # Never expose an OS exception that could contain a private path.
+        $windowFailure = 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'
         break
     }
 }
 
+# A transient window handle is not enough: a process can crash immediately
+# after the first successful observation. Recheck once after a short dwell.
+if ($foundWindow) {
+    try {
+        Start-Sleep -Milliseconds 250
+        $appProcess.Refresh()
+        if ($appProcess.HasExited) {
+            $foundWindow = $false
+            $windowFailure = 'NATIVE_SMOKE_EARLY_EXIT'
+        }
+        elseif ($appProcess.MainWindowHandle -eq [IntPtr]::Zero) {
+            $foundWindow = $false
+            $windowFailure = 'NATIVE_SMOKE_WINDOW_DISAPPEARED'
+        }
+    }
+    catch {
+        $foundWindow = $false
+        $windowFailure = 'NATIVE_SMOKE_PROCESS_UNAVAILABLE'
+    }
+}
+
 if (-not $foundWindow) {
-    throw 'NATIVE_SMOKE_NO_MAIN_WINDOW'
+    # Cleanup only the process returned by THIS Start-Process call, not other
+    # VirgoStars instances or arbitrary PIDs. Successful runs remain open.
+    try {
+        $appProcess.Refresh()
+        if (-not $appProcess.HasExited) {
+            $appProcess.Kill()
+            [void]$appProcess.WaitForExit(2000)
+        }
+    }
+    catch {
+        # Best-effort cleanup; preserve the stable startup failure label.
+    }
+    throw $windowFailure
 }
 
 Write-Host 'NATIVE_SMOKE_WINDOW_DETECTED: local Windows GUI process has a main window.'
@@ -78,10 +137,27 @@ if (-not $Interactive) {
     exit 0
 }
 
+# The initial main-window observation does not establish that the GUI
+# remains available while the maintainer works through the manual checklist.
+# Only inspect the handle returned by this smoke run; never search by name/PID.
+function Test-SmokeMainWindowAlive {
+    param([System.Diagnostics.Process] $Process)
+    try {
+        $Process.Refresh()
+        return (-not $Process.HasExited -and $Process.MainWindowHandle -ne [IntPtr]::Zero)
+    }
+    catch {
+        # Do not expose process-inspection OS exceptions or local paths.
+        return $false
+    }
+}
+
 # Intentionally no automation of keyboard/mouse, screen capture or filesystem
 # export: each visual observation must come from the maintainer.
 $checks = @(
     @{ Key = 'styles'; Prompt = 'Sidebar, central chart and inspector visibly use the intended CSS grid?' },
+    # Check the live WebView2 computed-style/geometry probe, not just packaged CSS.
+    @{ Key = 'layout'; Prompt = ('Settings > Layout diagnostics / Diagnostica layout > Recheck styles / Ricontrolla stili reports Interface grid detected / Griglia dell{0}interfaccia rilevata?' -f [char]0x2019) },
     @{ Key = 'chart'; Prompt = 'Synthetic chart appears centered at normal size without WebGL errors?' },
     @{ Key = 'themes'; Prompt = 'Light and dark themes both render correctly?' },
     @{ Key = 'modes'; Prompt = 'Four synthetic chart modes and zoom/fit controls work?' },
@@ -92,8 +168,23 @@ $checks = @(
 
 $failures = @()
 foreach ($check in $checks) {
-    $reply = Read-Host ($check.Prompt + ' [y/N]')
-    if ($reply -notin @('y', 'yes', 's', 'si', 'sì')) {
+    if (-not (Test-SmokeMainWindowAlive -Process $appProcess)) {
+        Write-Host 'NATIVE_SMOKE_MANUAL_WINDOW_LOST'
+        exit 1
+    }
+    try {
+        $reply = Read-Host ($check.Prompt + ' [y/N]')
+    }
+    catch {
+        # An unavailable input stream cannot count as an affirmed checkpoint.
+        Write-Host 'NATIVE_SMOKE_MANUAL_INPUT_UNAVAILABLE'
+        exit 1
+    }
+    if (-not (Test-SmokeMainWindowAlive -Process $appProcess)) {
+        Write-Host 'NATIVE_SMOKE_MANUAL_WINDOW_LOST'
+        exit 1
+    }
+    if ($reply -notin @('y', 'yes', 's', 'si', ('s' + [char]0x00EC))) {
         $failures += $check.Key
     }
 }
@@ -102,6 +193,6 @@ if ($failures.Count -gt 0) {
     Write-Host ('NATIVE_SMOKE_MANUAL_FAILED: ' + ($failures -join ', '))
     exit 1
 }
-Write-Host 'NATIVE_SMOKE_MANUAL_PASSED: all seven visual observations confirmed by maintainer.'
+Write-Host 'NATIVE_SMOKE_MANUAL_PASSED: all eight visual observations confirmed by maintainer.'
 Write-Host 'This does not validate installer signing, astronomical precision, cloud accounts or publication readiness.'
 exit 0
