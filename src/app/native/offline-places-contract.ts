@@ -145,7 +145,14 @@ export class OfflinePlaceSearch {
       return {kind: 'ready', items: decodeOfflinePlaceResults(raw)};
     } catch (error: unknown) {
       if (ticket !== this.generation || this.disposed) return {kind: 'stale', items: []};
-      const code = String(error);
+      let code = '';
+      // Tauri normally rejects with a string. Accept Error.message too, but
+      // never coerce arbitrary thrown values (their conversion may throw or
+      // masquerade as an official native status).
+      try {
+        if (typeof error === 'string') code = error;
+        else if (error instanceof Error && typeof error.message === 'string') code = error.message;
+      } catch { /* Malformed native rejection is simply unavailable. */ }
       if (code === 'PLACE_SEARCH_BUSY') return {kind: 'busy', items: []};
       if (code === 'PLACE_CATALOG_UNAVAILABLE') return {kind: 'catalog_unavailable', items: []};
       // Never propagate Rust file paths, SQL texts, stack traces or user data.
