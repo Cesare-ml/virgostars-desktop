@@ -82,13 +82,14 @@ export class ElementsViewComponent implements OnChanges {
   }
   planetRetrograde(name:string): boolean { return (this.data?.planets[name]?.longitudeSpeed ?? 0)<0; }
   signElement(sign:number): ElementId | null { return zodiacElementOfSign(sign); }
-  planetImageUrl(name:string,retrograde=false,white=false): string {
-    return '/assets/img/simboli/elementi-celesti/' + this.theme + '/875x605/' +
-      (white?'bianco/':'')+encodeURIComponent(name+(retrograde?'-r':''))+'.png';
+  planetImageUrl(name:string,retrograde=false): string {
+    // The approved, genuinely shaped monochrome symbols live here. The
+    // historical skin-specific 875x605 files include flat-color placeholders.
+    return '/assets/img/simboli-bianchi/elementi-celesti/' +
+      encodeURIComponent(name+(retrograde?'-r':''))+'.png';
   }
-  signImageUrl(sign:number,white=false): string {
-    return '/assets/img/simboli/segni/' + this.theme + '/785x610/' +
-      (white?'bianco/':'')+String(sign+1).padStart(2,'0')+'.png';
+  signImageUrl(sign:number): string {
+    return '/assets/img/simboli-bianchi/segni/' + String(sign+1).padStart(2,'0')+'.png';
   }
   /**
    * Older asset packs include flat color rectangles instead of shaped glyphs.

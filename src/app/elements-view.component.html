@@ -1,4 +1,4 @@
-<section class="elements-view" [attr.aria-label]="t('elements.title')" *ngIf="distribution as model">
+<section class="elements-view" [class.dark-theme]="theme==='dark'" [attr.aria-label]="t('elements.title')" *ngIf="distribution as model">
   <header class="elements-head">
     <div class="elements-heading">
       <span class="section-kicker">{{copy('ANALISI DEL TEMA','CHART ANALYSIS')}}</span>
@@ -160,15 +160,15 @@
 </section>
 
 <ng-template #planetMark let-name let-retrograde="retrograde" let-white="white">
-  <span class="astro-glyph" aria-hidden="true">
-    <img class="asset-glyph" alt="" [src]="planetImageUrl(name,retrograde,white)"
+  <span class="astro-glyph" [class.asset-on-light]="!white" aria-hidden="true">
+    <img class="asset-glyph" alt="" [src]="planetImageUrl(name,retrograde)"
       (load)="imageLoaded($event)" (error)="imageMissing($event)">
     <span class="glyph-fallback">{{planetSymbol(name)}}</span>
   </span>
 </ng-template>
 <ng-template #signMark let-sign let-white="white">
-  <span class="astro-glyph sign-glyph" aria-hidden="true">
-    <img class="asset-glyph" alt="" [src]="signImageUrl(sign,white)"
+  <span class="astro-glyph sign-glyph" [class.asset-on-light]="!white" aria-hidden="true">
+    <img class="asset-glyph" alt="" [src]="signImageUrl(sign)"
       (load)="imageLoaded($event)" (error)="imageMissing($event)">
     <span class="glyph-fallback">{{signSymbol(sign)}}</span>
   </span>
