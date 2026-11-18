@@ -77,7 +77,13 @@ pub struct NativeAccessGrant {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TokenScope { Read }
+pub enum TokenScope { Read, ReadAndGroupWrite }
+
+impl TokenScope {
+    pub fn as_str(self) -> &'static str {
+        match self { Self::Read => "chart_sync:read", Self::ReadAndGroupWrite => "chart_sync:read chart_sync:groups:write" }
+    }
+}
 
 impl NativeAccessGrant {
     pub fn scope(&self) -> TokenScope { self.scope }
@@ -137,6 +143,7 @@ fn parse_response(response: TokenHttpResponse, now: Instant) -> Result<NativeAcc
     if expires == 0 || expires > MAX_ACCESS_SECONDS { return Err(TokenExchangeError::InvalidResponse); }
     let scope = match parsed.scope.as_str() {
         "chart_sync:read" => TokenScope::Read,
+        "chart_sync:read chart_sync:groups:write" => TokenScope::ReadAndGroupWrite,
         _ => return Err(TokenExchangeError::InvalidResponse),
     };
     let expires_at = now.checked_add(Duration::from_secs(expires))
@@ -272,11 +279,11 @@ mod tests {
     }
 
     #[test]
-    fn connected_schema_and_exchange_allow_only_the_same_read_scope() {
+    fn connected_schema_and_exchange_allow_only_reviewed_scopes() {
         let schema: serde_json::Value = serde_json::from_str(include_str!(
             "../../contracts/connected-account-status.v1.schema.json"
         )).unwrap();
-        assert_eq!(schema["properties"]["scope"]["const"], "chart_sync:read");
+        assert_eq!(schema["properties"]["scope"]["enum"], serde_json::json!(["chart_sync:read", "chart_sync:read chart_sync:groups:write"]));
         let now = Instant::now();
         let jwt = format!("{}.{}.{}", "A".repeat(43), "B".repeat(43), "C".repeat(100));
         let response = |scope: &str| TokenHttpResponse {
@@ -285,6 +292,7 @@ mod tests {
             body: format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"{scope}"}}"#).into_bytes(),
         };
         assert!(parse_response(response("chart_sync:read"), now).is_ok());
+        assert!(parse_response(response("chart_sync:read chart_sync:groups:write"), now).is_ok());
         assert!(matches!(parse_response(response("chart_sync:read chart_sync:notes"), now), Err(TokenExchangeError::InvalidResponse)));
         assert!(matches!(parse_response(response("charts:read"), now), Err(TokenExchangeError::InvalidResponse)));
     }

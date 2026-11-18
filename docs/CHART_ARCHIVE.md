@@ -56,6 +56,15 @@ repair, deletion or downgrade.
 
 ## Verification on 2026-11-15 (Windows 11)
 
+Additional group verification on 2026-11-18: in an isolated Windows debug
+application profile, a fictional chart was saved, assigned a fictional group,
+and the group was still visible after closing and reopening the app. The
+fictional chart was then deleted and the test archive reported empty. Rust
+tests cover encrypted group persistence, migration from encrypted schema v1,
+invalid requests and removal with the chart. This does not verify network
+synchronization or an actual astronomical calculation: DE441 was unavailable
+in that isolated build.
+
 - Rust: 10 archive tests (create, persist across connections, update, delete, invalid input before any disk access, SQL-looking text stored literally, damaged file untouched, newer schema refused, full archive, wire format).
 - Node: 8 contract tests; IPC allowlist reports 4 commands and 4 adapters.
 - Native release build, driven through WebView2's local DevTools port: a fictional chart was created from the offline city picker, saved, still listed after closing and restarting the application, reopened and recalculated, then deleted after confirmation; the archive ended empty.

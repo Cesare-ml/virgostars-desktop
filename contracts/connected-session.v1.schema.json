@@ -8,6 +8,6 @@
   "properties": {
     "contractVersion": { "const": 1 },
     "status": { "const": "active" },
-    "scope": { "const": "chart_sync:read" }
+    "scope": { "enum": ["chart_sync:read", "chart_sync:read chart_sync:groups:write"] }
   }
 }

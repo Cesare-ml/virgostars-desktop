@@ -16,7 +16,7 @@ export type ConnectedAccountOperation =
 export type ConnectedAccountResult =
   | Readonly<{ kind: 'disabled' | 'not_native' | 'native_unavailable' }>
   | Readonly<{ kind: 'pending'; attemptId: string; expiresInSeconds: number }>
-  | Readonly<{ kind: 'connected'; attemptId: string; scope: 'chart_sync:read' }>
+  | Readonly<{ kind: 'connected'; attemptId: string; scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' }>
   | Readonly<{ kind: 'denied' | 'expired' | 'cancelled' | 'disconnected' | 'failed'; attemptId: string }>;
 
 export interface ConnectedAccountTransport {
@@ -77,7 +77,7 @@ export function decodeConnectedAccountResponse(
   if (status === 'connected' && operation.operation === 'status' &&
       exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'scope'])) {
     const scope = ownData(raw, 'scope');
-    if (scope === 'chart_sync:read') {
+    if (scope === 'chart_sync:read' || scope === 'chart_sync:read chart_sync:groups:write') {
       return Object.freeze({kind: 'connected', attemptId, scope});
     }
   }

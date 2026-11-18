@@ -41,9 +41,9 @@ struct SessionResponse {
     scope: String,
 }
 
-fn valid_session_response(bytes: &[u8]) -> bool {
+fn valid_session_response(bytes: &[u8], expected_scope: &str) -> bool {
     serde_json::from_slice::<SessionResponse>(bytes).is_ok_and(|response|
-        response.contract_version == 1 && response.status == "active" && response.scope == "chart_sync:read")
+        response.contract_version == 1 && response.status == "active" && response.scope == expected_scope)
 }
 
 /// Owns the only intentionally retained copy of the one-use form payload.
@@ -154,7 +154,7 @@ impl TokenHttpTransport for StagingReqwestHttps {
             && !content_type.eq_ignore_ascii_case("application/json; charset=utf-8") { return Err(()); }
         let mut body = Vec::new();
         response.take(MAX_SESSION_RESPONSE_BYTES + 1).read_to_end(&mut body).map_err(|_| ())?;
-        if body.len() as u64 > MAX_SESSION_RESPONSE_BYTES || !valid_session_response(&body) { return Err(()); }
+        if body.len() as u64 > MAX_SESSION_RESPONSE_BYTES || !valid_session_response(&body, grant.scope().as_str()) { return Err(()); }
         Ok(())
     }
 }
@@ -198,21 +198,23 @@ mod tests {
     #[test]
     fn session_verification_requires_the_exact_public_contract() {
         let body = br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read"}"#;
-        assert!(valid_session_response(body));
+        assert!(valid_session_response(body, "chart_sync:read"));
+        assert!(!valid_session_response(body, "chart_sync:read chart_sync:groups:write"));
         let schema: serde_json::Value = serde_json::from_str(include_str!(
             "../../contracts/connected-session.v1.schema.json"
         )).unwrap();
         let response: serde_json::Value = serde_json::from_slice(body).unwrap();
         assert_eq!(schema["additionalProperties"], false);
         assert_eq!(schema["required"].as_array().unwrap().len(), response.as_object().unwrap().len());
-        for key in ["contractVersion", "status", "scope"] {
+        for key in ["contractVersion", "status"] {
             assert_eq!(schema["properties"][key]["const"], response[key]);
         }
+        assert!(schema["properties"]["scope"]["enum"].as_array().unwrap().contains(&response["scope"]));
         for invalid in [
             &br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read","deviceId":"x"}"#[..],
             &br#"{"contractVersion":1,"status":"active","scope":"chart_sync:read chart_sync:notes"}"#[..],
             &br#"{"contractVersion":1,"status":"active","status":"active","scope":"chart_sync:read"}"#[..],
             &br#"{"contractVersion":2,"status":"active","scope":"chart_sync:read"}"#[..],
-        ] { assert!(!valid_session_response(invalid)); }
+        ] { assert!(!valid_session_response(invalid, "chart_sync:read")); }
     }
 }

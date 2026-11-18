@@ -13,11 +13,14 @@ test('v1 connected schema and decoder agree on fields and backend scope', () => 
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual(Object.keys(connected).sort(), [...schema.required].sort());
   assert.deepEqual(Object.keys(schema.properties).sort(), [...schema.required].sort());
-  assert.equal(schema.properties.scope.const, connected.scope);
+  assert.ok(schema.properties.scope.enum.includes(connected.scope));
   assert.match(connected.attemptId, new RegExp(schema.properties.attemptId.pattern));
   assert.equal(schema.properties.protocolVersion.const, connected.protocolVersion);
   assert.equal(schema.properties.status.const, connected.status);
-  assert.equal(decodeConnectedAccountResponse(connected, {operation: 'status', attemptId: ATTEMPT}).scope, schema.properties.scope.const);
+  assert.equal(decodeConnectedAccountResponse(connected, {operation: 'status', attemptId: ATTEMPT}).scope, connected.scope);
+  const write = {...connected, scope:'chart_sync:read chart_sync:groups:write'};
+  assert.ok(schema.properties.scope.enum.includes(write.scope));
+  assert.equal(decodeConnectedAccountResponse(write, {operation:'status',attemptId:ATTEMPT}).scope, write.scope);
 });
 
 test('default disabled, no native probe or invocation', async () => {

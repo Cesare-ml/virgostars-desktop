@@ -7,7 +7,7 @@
 
 use crate::pkce_loopback::{LoginCancelHandle, LoopbackError, SystemBrowserOpener};
 use crate::pkce_staging_flow::{StagingLoginAttempt, StagingLoginError};
-use crate::pkce_token_exchange::{NativeAccessGrant, TokenExchangeError, TokenHttpTransport};
+use crate::pkce_token_exchange::{NativeAccessGrant, TokenExchangeError, TokenHttpTransport, TokenScope};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -30,6 +30,7 @@ pub struct NativeLoginSnapshot {
     pub attempt_id: String,
     pub phase: NativeLoginPhase,
     pub remaining_seconds: u64,
+    pub scope: Option<TokenScope>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,6 +142,7 @@ impl NativeLoginSession {
                 attempt_id: self.attempt_id.clone(),
                 phase: NativeLoginPhase::Failed,
                 remaining_seconds: 0,
+                scope: None,
             },
         };
         let (phase, remaining_seconds) = match &*state {
@@ -171,7 +173,8 @@ impl NativeLoginSession {
             SecretState::Expired => (NativeLoginPhase::Expired, 0),
             SecretState::Disconnected => (NativeLoginPhase::Disconnected, 0),
         };
-        NativeLoginSnapshot {attempt_id:self.attempt_id.clone(), phase, remaining_seconds}
+        let scope = match &*state { SecretState::Connected(grant) => Some(grant.scope()), _ => None };
+        NativeLoginSnapshot {attempt_id:self.attempt_id.clone(), phase, remaining_seconds, scope}
     }
 
     /// Cancels only an in-flight login. If native completion already won,

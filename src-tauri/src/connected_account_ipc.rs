@@ -110,7 +110,7 @@ pub async fn desktop_connected_account_v1(
         };
         let mut reply = ConnectedAccountReply::status(phase, snapshot.attempt_id);
         if phase == "pending" { reply.expires_in_seconds = Some(snapshot.remaining_seconds); }
-        if phase == "connected" { reply.scope = Some("chart_sync:read"); }
+        if phase == "connected" { reply.scope = Some(snapshot.scope.ok_or(NATIVE_UNAVAILABLE)?.as_str()); }
         Ok(reply)
     }
     #[cfg(not(feature = "staging-connected-account"))]
