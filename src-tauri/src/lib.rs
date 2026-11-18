@@ -9,6 +9,8 @@ mod archive_vault;
 mod chart_archive;
 // Native PKCE candidate only: deliberately no Tauri command or browser launch.
 mod pkce_login;
+// Bounded loopback listener candidate, intentionally not a registered command.
+mod pkce_loopback;
 mod houses;
 mod return_search;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
