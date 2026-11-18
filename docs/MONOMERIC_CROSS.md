@@ -156,3 +156,26 @@ il comando `calculate_solar_events` e il relativo adattatore, senza
 modificare il WebGL lifecycle della ruota. Nessun cambiamento ad auth, sync,
 privacy, update o asset originali, salvo l'aggiunta read-only e locale alla
 superficie IPC qui documentata.
+
+## Verifica Windows del 18 novembre 2026
+
+Nella copia isolata della PR #359, con astrological-functions #226 al commit
+`3c94873` e dati di test sintetici, i test Node hanno dato **928 superati,
+12 saltati, 0 falliti**. Quattro test della Croce usano ora `fileURLToPath`,
+necessario per risolvere correttamente i percorsi su Windows. La build della
+libreria Charts #150 al commit `8282be2` è riuscita localmente.
+La compilazione Angular del bundle sintetico e le verifiche offline, privacy e
+CSP sono riuscite; è stata inoltre compilata una build Tauri Windows di debug,
+senza installer o release. Non è una prova di visualizzazione WebView2.
+Il tentativo di avviare la copia di prova non ha prodotto una finestra
+identificabile per il suo eseguibile; erano presenti altre istanze Desktop,
+che non costituiscono un collaudo della PR.
+
+`cargo test --locked --offline` su Windows ha riportato **71 test superati**;
+quelli dipendenti dal kernel DE441, non configurato durante questa esecuzione,
+terminano anticipatamente e non dimostrano un calcolo astronomico reale. Il
+provider solare rimane disattivato: questi risultati non attestano un Maestro
+dell'Ora automatico né una validazione indipendente delle effemeridi.
+Sul commit `f98d8af` di Ephemeris #309, il filtro Rust `horizon_events` ha
+eseguito due test con successo e ne ha lasciati due non eseguiti perché
+richiedono `DE441_PATH`. Non è una verifica numerica su eventi reali.

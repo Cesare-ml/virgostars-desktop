@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 
 const bundle = await build({
-  entryPoints:[new URL('../src/app/astro/ephemeris-planetary-hour.ts',import.meta.url).pathname],
+  entryPoints:[fileURLToPath(new URL('../src/app/astro/ephemeris-planetary-hour.ts',import.meta.url))],
   bundle:true,platform:'node',format:'esm',write:false,
 });
 const {resolveEphemerisPlanetaryHour} = await import(

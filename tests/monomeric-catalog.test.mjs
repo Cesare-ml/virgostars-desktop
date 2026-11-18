@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 
 // Bundle the tiny pure TS resolver in memory: tests need neither a browser nor
 // Node-only .ts import syntax that would break Angular's production compiler.
 const bundle = await build({
-  entryPoints: [new URL('../src/app/astro/monomeric-catalog.ts', import.meta.url).pathname],
+  entryPoints: [fileURLToPath(new URL('../src/app/astro/monomeric-catalog.ts', import.meta.url))],
   bundle: true, platform: 'node', format: 'esm', write: false,
 });
 const { monomerPointLabel, resolveMonomers } = await import(
