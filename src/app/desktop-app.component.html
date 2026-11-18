@@ -28,6 +28,7 @@
       </div>
     </div>
   </div>
+  <button *ngIf="updateAvailable && view!=='settings'" type="button" class="update-notice" (click)="openSettings()">{{locale==='it' ? 'Aggiornamento disponibile' : 'Update available'}}</button>
   <div class="workspace" #workspace [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.inspector-narrow]="inspectorTab==='navigate' || inspectorTab==='transits'">
     <nav class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
@@ -368,13 +369,14 @@
           <p class="inspector-hint">{{t('account.unavailable')}}</p>
           <p class="inspector-hint">{{t('account.sync')}}</p>
         </section>
-        <section class="drawer" *ngIf="view==='settings'" [attr.aria-label]="t('tab.settings')">
+        <section class="drawer" [hidden]="view!=='settings'" [attr.aria-label]="t('tab.settings')">
           <header class="sheet-head">
             <h2>{{t('tab.settings')}}</h2>
             <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
           </header>
           <!-- The house system comes first, with no spoiler. -->
           <div class="settings-top">
+            <vs-updates [locale]="locale" [settingsOpen]="view==='settings'" [blocked]="busy || calcBusy || archiveBusy" (available)="updateAvailable=$event"></vs-updates>
             <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
             <label class="setting-line select-line"><span>{{t('language')}}</span><select class="inline-select" [value]="languagePreference" (change)="setLanguage($event)"><option value="auto">{{t('language.auto')}}</option><option value="it">Italiano</option><option value="en">English</option></select></label>
             <label class="setting-line select-line"><span>{{t('settings.theme')}}</span><select class="inline-select" [value]="theme" [disabled]="busy" (change)="setUiTheme($event)"><option value="light">{{t('theme.current.light')}}</option><option value="dark">{{t('theme.current.dark')}}</option></select></label>

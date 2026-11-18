@@ -12,12 +12,16 @@ mod houses;
 mod return_search;
 mod synod_events;
 mod historical_planets;
+mod updater;
+mod update_backup;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
 #[cfg(feature = "virgostars-ephemeris")]
 mod virgostars_provider;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().pubkey(option_env!("VIRGOSTARS_UPDATER_PUBLIC_KEY").unwrap_or("")).build())
+        .manage(updater::UpdateState::default())
         .setup(|_app| {
             // The ephemeris data files are found by the host (environment or ephemeris.json), never by the WebView.
             #[cfg(feature = "virgostars-ephemeris")]
@@ -30,7 +34,7 @@ pub fn run() {
             Ok(())
         })
         .manage(offline_places::PlaceSearchGate::default())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar])
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, updater::check_updates, updater::install_update])
         .run(tauri::generate_context!())
         .expect("failed to launch the synthetic VirgoStars Desktop renderer spike");
 }

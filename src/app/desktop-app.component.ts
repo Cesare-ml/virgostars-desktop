@@ -54,6 +54,7 @@ import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
 import { HistoricalPlanetsComponent } from './historical-planets.component';
+import { UpdatesComponent } from './updates.component';
 import {
   ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
   type ChartSettings
@@ -143,7 +144,7 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, HistoricalPlanetsComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, HistoricalPlanetsComponent, UpdatesComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -202,6 +203,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   partnerChartId: number | null = null;
   houseSystem: HouseSystemId = 'egizia';
   calcBusy = false;
+  updateAvailable = false;
   calcMessage: MessageKey | null = null;
   /** The Functions drawer: groups with something to run first, the rest in one closed list. */
   private readonly menu = functionMenu();

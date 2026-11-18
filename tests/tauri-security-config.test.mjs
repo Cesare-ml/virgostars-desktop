@@ -78,7 +78,7 @@ test('unreviewed top-level Tauri options and changed application identity fail c
   ]) {
     const config = copy(); change(config);
     assert.throws(() => verifyTauriSecurityConfig(config),
-      /unreviewed Tauri root option or application identity/);
+      /unreviewed (?:Tauri root option or application identity|updater configuration)/);
   }
 });
 

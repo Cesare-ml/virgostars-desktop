@@ -44,6 +44,11 @@ const MAX_ZONE_BYTES: usize = 120;
 /// One reader-writer at a time: every change is a read, a change and a rewrite of the sealed file.
 static ARCHIVE_LOCK: Mutex<()> = Mutex::new(());
 
+/// Serialize the installer handoff with archive and local-photo operations.
+pub(crate) fn lock_for_update() -> std::sync::MutexGuard<'static, ()> {
+    ARCHIVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArchiveRequestV1 {
