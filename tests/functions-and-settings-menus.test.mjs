@@ -14,9 +14,9 @@ test('the Functions drawer does not repeat what the left menu already offers', (
   const listed = [...menu.active, ...menu.pending].flatMap(group => group.entries);
   const repeated = ['new-chart', 'session-charts', 'archive', 'natal', 'latitudes', 'synastry', 'real-time', 'transits'];
   for (const id of repeated) assert.ok(!listed.some(entry => entry.id === id), id);
-  // What is left to run is the returns.
+  // The remaining tools include returns, zodiac projections and the optional private Monomeri view.
   assert.deepEqual(listed.filter(entry => entry.status === 'available').map(entry => entry.id).sort(),
-    ['lunar-return', 'solar-return']);
+    ['antiscia', 'contra-antiscia', 'decades', 'decans', 'dodecatemoria', 'lunar-return', 'monomoiria', 'solar-return', 'terms']);
 });
 
 test('settings are not in the Functions drawer, and nothing out of scope is shown anywhere', () => {
@@ -31,10 +31,9 @@ test('settings are not in the Functions drawer, and nothing out of scope is show
   assert.ok(Object.isFrozen(menu) && Object.isFrozen(menu.active) && Object.isFrozen(menu.pending));
 });
 
-test('the settings of the old menu that are not built yet are listed for the Settings drawer, disabled', () => {
+test('implemented settings are no longer listed as planned', () => {
   const pending = pendingSettings();
-  assert.deepEqual(pending.map(entry => entry.id).sort(),
-    ['applications', 'aspect-focus', 'austral-inversion', 'planet-of-year', 'transsaturnians']);
+  assert.deepEqual(pending.map(entry => entry.id).sort(), []);
   assert.ok(pending.every(entry => entry.status === 'planned' && entry.action === undefined));
   const everySetting = FUNCTION_CATALOG.find(group => group.id === SETTINGS_GROUP_ID).entries;
   assert.ok(everySetting.length > pending.length, 'the settings that work are in the drawer as real controls');
@@ -58,7 +57,7 @@ test('every setting has a spoiler of its own, titles aligned to the left', () =>
   assert.match(settings, /<vs-chart-settings /);
   // Aspects and celestial elements are two spoilers of their own, not one.
   const spoilers = [...settingsHtml.matchAll(/<details class="settings-section">\s*<summary>\{\{t\('([a-z.]+)'\)\}\}/g)].map(match => match[1]);
-  assert.deepEqual(spoilers, ['settings.aspects', 'settings.points']);
+  assert.deepEqual(spoilers, ['chartsettings.display', 'settings.aspects', 'settings.points']);
   assert.doesNotMatch(settingsHtml, /settings-group|chartsettings\.title/);
   // No title is pushed to the right.
   assert.match(css, /\.settings-section > summary \{ display:flex; justify-content:flex-start;/);

@@ -62,8 +62,8 @@ test('elemental axis arrows live in their element rows; modalities and aspect ma
   assert.match(css,/padding:98px 9px 75px/);
   assert.match(source,/MAJOR_ASPECTS/);
   assert.match(source,/planetImageUrl\(name:string,retrograde=false\)/);
-  assert.match(source,/simboli-bianchi\/elementi-celesti/);
-  assert.match(source,/simboli-bianchi\/segni/);
+  assert.match(read('src/app/astrological-glyphs.ts'),/simboli-bianchi\/elementi-celesti/);
+  assert.match(read('src/app/astrological-glyphs.ts'),/simboli-bianchi\/segni/);
   assert.match(read('package.json'),/"start:private"/);
 });
 
@@ -96,8 +96,9 @@ test('all planetary marks including both matrix axes use artwork glyphs; element
   assert.match(html,/scope="row" \[attr.title\]="planetLabel\(planet\)"[\s\S]*?ngTemplateOutlet\]="planetMark"/);
   assert.match(html,/let-name let-retrograde="retrograde" let-white="white"/);
   assert.match(html,/\[src\]="planetImageUrl\(name,retrograde\)"/);
-  assert.match(source,/simboli-bianchi\/elementi-celesti/);
-  assert.match(css,/\.asset-on-light \.asset-glyph\.asset-verified \{filter:brightness\(0\);\}/);
+  assert.match(source,/celestialGlyphUrl\(name, retrograde\)/);
+  assert.doesNotMatch(html,/glyph-fallback|planetSymbol|signSymbol/);
+  assert.match(css,/\.asset-on-light \.asset-glyph \{filter:brightness\(0\);\}/);
   assert.match(css,/background:color-mix\(in srgb,var\(--element-color\) 76%,#171820\);color:#fff/);
   assert.match(css,/\.placement-datum \{font-size:12px;color:#fff/);
   assert.match(html,/\[attr.data-element\]="signElement\(item.sign\)"/);

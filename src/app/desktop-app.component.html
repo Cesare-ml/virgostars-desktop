@@ -1,4 +1,20 @@
 <div class="desktop-app" #shell [attr.data-theme]="theme">
+  <aside *ngIf="guideVisible" #guidePanel class="guide-card" role="region" tabindex="-1"
+    aria-labelledby="guide-title" (keydown.escape)="closeGuide()">
+    <div class="guide-head">
+      <span>{{t('guide.label')}} · {{guideStep + 1}} / {{guideSteps.length}}</span>
+      <button type="button" class="guide-close" [attr.aria-label]="t('guide.close')" (click)="closeGuide()">×</button>
+    </div>
+    <div aria-live="polite">
+      <h2 id="guide-title">{{t(guideSteps[guideStep].title)}}</h2>
+      <p>{{t(guideSteps[guideStep].body)}}</p>
+    </div>
+    <div class="guide-actions">
+      <button type="button" class="guide-skip" (click)="closeGuide()">{{t('guide.skip')}}</button>
+      <button type="button" class="guide-back" *ngIf="guideStep > 0" (click)="previousGuideStep()">{{t('guide.back')}}</button>
+      <button type="button" class="guide-next" (click)="nextGuideStep()">{{t(guideStep + 1 === guideSteps.length ? 'guide.finish' : 'guide.next')}}</button>
+    </div>
+  </aside>
   <!-- Erigi elettiva: asks for the name of the chart to save, over everything. -->
   <div class="overlay" *ngIf="electiveOpen" (click)="cancelElective()" (keydown.escape)="cancelElective()">
     <div class="overlay-card" role="dialog" aria-modal="true" [attr.aria-label]="t('nav.elective.title')" (click)="$event.stopPropagation()">
@@ -12,7 +28,7 @@
       </div>
     </div>
   </div>
-  <div class="workspace" #workspace [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.inspector-narrow]="inspectorTab==='navigate'">
+  <div class="workspace" #workspace [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.inspector-narrow]="inspectorTab==='navigate' || inspectorTab==='transits'">
     <nav class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
         <div class="brand" aria-label="VirgoStars">
@@ -48,6 +64,9 @@
         </div>
         <div class="nav-separator"></div>
         <div class="nav-list">
+          <button type="button" class="nav-item" *ngIf="mode==='transits' && transitChartAvailable" [class.selected]="!inspectorCollapsed && inspectorTab==='transits'" [attr.title]="t('transits.navigation')" [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='transits'" (click)="toggleInspectorTab('transits')">
+            <span class="nav-mark" aria-hidden="true">◷</span><span class="nav-label">{{t('transits.navigation')}}</span>
+          </button>
           <button type="button" class="nav-item" [class.selected]="!inspectorCollapsed && inspectorTab==='navigate'" [attr.title]="t('nav.title')"
             [disabled]="!activeChart" [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='navigate'" (click)="toggleInspectorTab('navigate')">
             <span class="nav-mark" aria-hidden="true">◷</span><span class="nav-label">{{t('nav.title')}}</span>
@@ -68,22 +87,33 @@
         </div>
       </div>
       <div class="sidebar-bottom">
-        <div class="sidebar-prefs">
-          <button type="button" class="small-control" [attr.aria-label]="t('language')" [attr.title]="t('language')" (click)="toggleLanguage()">{{locale.toUpperCase()}}</button>
-          <button type="button" class="small-control" [attr.aria-label]="themeToggleLabel" [attr.title]="themeToggleLabel" (click)="toggleTheme()">{{theme === 'light' ? '☾' : '☼'}}</button>
-        </div>
+        <button type="button" class="nav-item" [class.selected]="view==='account'" [attr.title]="t('account.title')" (click)="openAccount()"><span class="nav-mark" aria-hidden="true">◯</span><span class="nav-label">{{t('account.title')}}</span></button>
         <p class="copyright-attribution">© 2026 Cesare-ml (VirgoStars project) · Powered by VirgoStars · https://www.virgostars.it/</p>
       </div>
     </nav>
 
     <main class="chart-panel">
-      <section class="chart-stage" #stage [attr.aria-label]="t('chart')">
+      <section class="chart-stage" #stage [attr.aria-label]="t('chart')"
+        [style.background-color]="view==='chart' && chartPresentation==='wheel' && activeChart ? chartBackground : null"
+        [class.chart-dark]="view==='chart' && chartPresentation==='wheel' && activeChart && (chartSkin==='dark' || chartSkin==='dark-bn')">
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
+        <div class="monomero-overlay monomero-tip" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'"
+          *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel' && monomeriEnabled && !monomero && !busy" role="status">{{t('monomeri.help')}}</div>
+        <div class="monomero-overlay" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'" *ngIf="view==='chart' && mode==='natal' && chartPresentation==='wheel' && !busy && monomero as item" aria-live="polite">
+          <div class="monomero-symbols">
+            <img class="monomero-point" [src]="monomeroGlyphUrl(item.name)" [alt]="planetLabel(item.name)">
+            <div class="monomero-position"><span>{{item.degree}}°</span><img class="monomero-sign" [src]="signGlyphUrl(item.sign)" [alt]="signName(item.sign * 30)"></div>
+          </div>
+          <p>{{item.text}}</p>
+        </div>
 
         <div class="stage-info" *ngIf="view==='chart' && activeChart">
           <h1>{{stageTitle}}</h1>
           <p class="stage-subject" *ngIf="!isSkyActive">{{subjectTitle}}</p>
           <p class="stage-caption">{{subjectCaption}}</p>
+          <div class="year-planet" *ngIf="planetOfYear as planet" [attr.title]="t('chartsettings.year') + ': ' + planetLabel(planet)">
+            <span>{{t('chartsettings.year.short')}}</span><img [src]="glyphUrl(planet)" [alt]="planetLabel(planet)" (error)="glyphMissing($event)"><span hidden>{{planetLabel(planet)}}</span>
+          </div>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
         </div>
@@ -108,6 +138,9 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
             [class.selected]="chartPresentation==='aspects'" [attr.aria-pressed]="chartPresentation==='aspects'"
             (click)="toggleAspects()">{{t('elements.aspectsButton')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
+            [disabled]="!monomeriAvailable || busy" [attr.title]="t(monomeriAvailable ? 'monomeri.help' : 'monomeri.unavailable')"
+            [class.selected]="monomeriEnabled" [attr.aria-pressed]="monomeriEnabled" (click)="toggleMonomeri()">{{t('monomeri.title')}}</button>
           <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
             [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
         </div>
@@ -118,6 +151,9 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && mode==='transits'"
             [disabled]="busy||calcBusy" (click)="showTransits()">{{t('transits.refresh')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
+            [class.selected]="!inspectorCollapsed && inspectorTab==='zodiac'" [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='zodiac'"
+            (click)="toggleInspectorTab('zodiac')">{{t('zodiac.title')}}</button>
           <button type="button" class="toolbar-button sky-live" *ngIf="isSkyActive && mode==='natal'" [class.live]="skyLive"
             [attr.aria-pressed]="skyLive" [attr.title]="t(skyLive ? 'sky.live.running' : 'sky.live.paused')"
             [attr.aria-label]="t(skyLive ? 'sky.live.running' : 'sky.live.paused')" (click)="toggleSkyLive()">
@@ -302,7 +338,8 @@
               <span class="function-count">{{availableIn(group).length}}</span>
             </summary>
             <button type="button" class="data-line function-line" *ngFor="let entry of availableIn(group)"
-              [disabled]="busy || calcBusy" (click)="runFunction(entry)">
+              [disabled]="busy || calcBusy || (entry.action==='monomeri' && !monomeriAvailable)"
+              [attr.title]="entry.action==='monomeri' && !monomeriAvailable ? t('monomeri.unavailable') : null" (click)="runFunction(entry)">
               <span>{{entryLabel(entry)}}</span>
             </button>
             <details class="function-soon" *ngIf="unavailableIn(group).length">
@@ -325,6 +362,12 @@
         </section>
 
         <!-- Settings: a drawer that opens from the left menu. -->
+        <section class="drawer" *ngIf="view==='account'" [attr.aria-label]="t('account.title')">
+          <header><h2>{{t('account.title')}}</h2></header>
+          <p>{{t('noaccount')}}</p>
+          <p class="inspector-hint">{{t('account.unavailable')}}</p>
+          <p class="inspector-hint">{{t('account.sync')}}</p>
+        </section>
         <section class="drawer" *ngIf="view==='settings'" [attr.aria-label]="t('tab.settings')">
           <header class="sheet-head">
             <h2>{{t('tab.settings')}}</h2>
@@ -332,6 +375,15 @@
           </header>
           <!-- The house system comes first, with no spoiler. -->
           <div class="settings-top">
+            <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
+            <label class="setting-line select-line"><span>{{t('language')}}</span><select class="inline-select" [value]="languagePreference" (change)="setLanguage($event)"><option value="auto">{{t('language.auto')}}</option><option value="it">Italiano</option><option value="en">English</option></select></label>
+            <label class="setting-line select-line"><span>{{t('settings.theme')}}</span><select class="inline-select" [value]="theme" [disabled]="busy" (change)="setUiTheme($event)"><option value="light">{{t('theme.current.light')}}</option><option value="dark">{{t('theme.current.dark')}}</option></select></label>
+            <label class="setting-line select-line">
+              <span>{{t('settings.chartSkin')}}</span>
+              <select class="inline-select" [disabled]="busy" (change)="setChartSkin($event)">
+                <option *ngFor="let skin of chartSkins" [value]="skin" [selected]="skin===chartSkin">{{chartSkinLabel(skin)}}</option>
+              </select>
+            </label>
             <ng-container *ngIf="activeChart as chart; else noChartForHouses">
               <label class="setting-line select-line">
                 <span>{{t('houses.system')}}</span>
@@ -416,6 +468,92 @@
           <p class="inspector-hint missing-note" *ngIf="chart.unavailableBodies.length">{{t('bodies.missing')}} {{namesOf(chart.unavailableBodies)}}</p>
         </div>
         <!-- Naviga cielo: move the chart in time and place and watch it change. -->
+        <div class="zodiac-panel" *ngIf="inspectorTab==='zodiac' && activeChart && mode==='natal'">
+          <div class="zodiac-modes" role="group" [attr.aria-label]="t('zodiac.title')">
+            <button type="button" [disabled]="busy" [class.selected]="zodiacMode==='dodecatemoria'" [attr.aria-pressed]="zodiacMode==='dodecatemoria'" (click)="toggleZodiacTool('dodecatemoria')">{{t('zodiac.dodecatemoria')}} <span aria-hidden="true">×13</span></button>
+            <button type="button" [disabled]="busy" [class.selected]="zodiacMode==='antiscia'" [attr.aria-pressed]="zodiacMode==='antiscia'" (click)="toggleZodiacTool('antiscia')">{{t('zodiac.antiscia')}}</button>
+            <button type="button" [disabled]="busy" [class.selected]="zodiacMode==='contra-antiscia'" [attr.aria-pressed]="zodiacMode==='contra-antiscia'" (click)="toggleZodiacTool('contra-antiscia')">{{t('zodiac.contra')}}</button>
+          </div>
+          <ng-container *ngIf="zodiacMode">
+            <div class="zodiac-axis" *ngIf="zodiacMode!=='dodecatemoria'" role="group" [attr.aria-label]="t('zodiac.axis')">
+              <span>{{t('zodiac.axis')}}</span>
+              <button type="button" *ngFor="let axis of zodiacAxes" [disabled]="busy" [class.selected]="zodiacAxis===axis" [attr.aria-pressed]="zodiacAxis===axis" (click)="setZodiacAxis(axis)">{{zodiacAxisLabel(axis)}}</button>
+            </div>
+            <div class="zodiac-points" role="group" [attr.aria-label]="t('zodiac.select')">
+              <button type="button" class="zodiac-all" [disabled]="busy" [class.selected]="zodiacPoint==='tutti'" [attr.aria-pressed]="zodiacPoint==='tutti'" (click)="setZodiacPoint('tutti')">{{t('zodiac.all')}}</button>
+              <button type="button" class="zodiac-glyph" *ngFor="let point of zodiacPoints" [disabled]="busy || !zodiacPointAvailable(point)" [class.selected]="zodiacPoint===point"
+                [attr.aria-pressed]="zodiacPoint===point" [attr.aria-label]="planetLabel(point)" [attr.title]="planetLabel(point)" (click)="setZodiacPoint(point)">
+                <img [src]="glyphUrl(point)" alt="" (error)="glyphMissing($event)"><span hidden>{{planetLabel(point)}}</span>
+              </button>
+            </div>
+          </ng-container>
+        </div>
+        <div class="navigator" *ngIf="inspectorTab==='transits' && mode==='transits' && activeChart && transitNav">
+          <div class="transit-help" *ngIf="transitHelpVisible" role="status">
+            <p>{{t('transits.help')}}</p>
+            <button type="button" class="small-control wide" (click)="dismissTransitHelp()">{{t('transits.help.dismiss')}}</button>
+          </div>
+          <section class="nav-card">
+            <div class="nav-clock" role="group" [attr.aria-label]="t('transits.navigation')">
+              <ng-container *ngFor="let field of transitFields; trackBy: trackNavField">
+                <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
+                <div class="nav-field" [class.wide]="field.key==='year'" [class.time-start]="field.key==='hour'">
+                  <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (pointerdown)="holdTransitField($event, field.key, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitField($event, field.key, 1)"></button>
+                  <span class="nav-value">{{field.text}}</span>
+                  <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (pointerdown)="holdTransitField($event, field.key, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitField($event, field.key, -1)"></button>
+                </div>
+              </ng-container>
+            </div>
+            <p class="nav-place">{{transitNav.current.placeName || activeChart.placeLabel}} · {{transitNav.current.timeZone}}</p>
+          </section>
+          <div class="nav-moves">
+            <button type="button" class="nav-back" (pointerdown)="holdTransitStep($event, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitStep($event, -1)">{{t('nav.back')}}</button>
+            <button type="button" class="nav-forward" (pointerdown)="holdTransitStep($event, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitStep($event, 1)">{{t('nav.forward')}}</button>
+          </div>
+          <div class="step-grid" role="group" [attr.aria-label]="t('nav.step')">
+            <div class="step-row" *ngFor="let row of stepRows">
+              <span class="step-unit">{{stepUnitLabel(row.unit)}}</span>
+              <div class="step-options"><button type="button" *ngFor="let value of row.values" [class.selected]="navStepUnit===row.unit && navStepValue===value" [attr.aria-pressed]="navStepUnit===row.unit && navStepValue===value" (click)="selectStep(row.unit, value)">{{value}}</button></div>
+            </div>
+          </div>
+          <p class="nav-status" role="status" *ngIf="transitStatus">{{t(transitStatus)}}</p>
+          <button type="button" class="small-control wide" (click)="transitNow()">{{t('nav.now')}}</button>
+          <section class="transit-synods" [attr.aria-label]="t('transits.synods')">
+            <h3>{{t('transits.synods')}}</h3>
+            <p>{{t('transits.synods.reference')}}</p>
+            <div class="synod-reference" role="group" [attr.aria-label]="t('transits.synods.reference')">
+              <button type="button" [class.selected]="synodReference==='radix'" [attr.aria-pressed]="synodReference==='radix'" (click)="setSynodReference('radix')">{{t('transits.synods.radix')}}</button>
+              <button type="button" [class.selected]="synodReference==='transit'" [attr.aria-pressed]="synodReference==='transit'" (click)="setSynodReference('transit')">{{t('transits.synods.transit')}}</button>
+            </div>
+            <p class="inspector-hint" *ngIf="synodStatus==='loading'">{{t('transits.synods.loading')}}</p>
+            <p class="inspector-hint" *ngIf="synodStatus==='missing'">{{t('transits.synods.missing')}}</p>
+            <p class="inspector-hint" *ngIf="synodStatus==='invalid'">{{t('transits.synods.invalid')}}</p>
+            <p class="inspector-hint" *ngIf="synodStatus==='unavailable'">{{t('transits.synods.unavailable')}}</p>
+            <ng-container *ngIf="synodStatus==='ready'">
+              <div class="synod-body-label">{{t('transits.synods.body')}}</div>
+              <div class="synod-bodies" role="group" [attr.aria-label]="t('transits.synods.body')">
+                <button type="button" class="synod-body" *ngFor="let record of orderedSynodRecords" [class.selected]="synodSelected===record.body"
+                  [attr.aria-pressed]="synodSelected===record.body" [attr.aria-label]="planetLabel(record.body)" [attr.title]="planetLabel(record.body)" (click)="selectSynod(record.body)">
+                  <img *ngIf="synodHasGlyph(record.body)" [src]="glyphUrl(record.body)" alt="" (error)="glyphMissing($event)">
+                  <span [hidden]="synodHasGlyph(record.body)">{{planetLabel(record.body)}}</span>
+                </button>
+              </div>
+              <div *ngIf="selectedSynod as record">
+                <p>{{t('transits.synods.start')}}: {{synodWhen(record)}}</p>
+                <p *ngIf="record.phase">{{t('transits.synods.phase')}}: {{record.phase}}</p>
+                <p class="inspector-hint" *ngIf="synodChartLoading">{{t('calc.running')}}</p>
+                <p class="inspector-hint" *ngIf="synodChartError">{{t(synodChartError)}}</p>
+                <div class="synod-reference" role="group" [attr.aria-label]="t('transits.synods.display')">
+                  <button type="button" [class.selected]="synodView==='transit'" [attr.aria-pressed]="synodView==='transit'" (click)="setSynodView('transit')">{{t('transits.synods.transit')}}</button>
+                  <button type="button" [disabled]="synodChartLoading || record.startMillis === null || synodChartError" [class.selected]="synodView==='synod'" [attr.aria-pressed]="synodView==='synod'" (click)="setSynodView('synod')">{{t('transits.synods.only')}}</button>
+                  <button type="button" *ngIf="synodReference==='transit'" [disabled]="synodChartLoading || record.startMillis === null || synodChartError" [class.selected]="synodView==='transit-synod'" [attr.aria-pressed]="synodView==='transit-synod'" (click)="setSynodView('transit-synod')">{{t('transits.synods.both')}}</button>
+                </div>
+                <button type="button" class="small-control wide" [disabled]="record.startMillis === null" (click)="navigateToSynod()">{{t('transits.synods.show')}}</button>
+              </div>
+              <p class="inspector-hint">{{t('transits.synods.coverage')}}</p>
+            </ng-container>
+          </section>
+        </div>
         <div class="navigator" *ngIf="inspectorTab==='navigate' && activeChart && nav">
           <!-- Date and time in one quiet card; the arrows of each field fade in on hover. -->
           <section class="nav-card">
@@ -496,7 +634,7 @@
           <div class="data-line static aspect-line" *ngFor="let row of aspectRows">
             <span class="aspect-symbols">
               <span class="aspect-point" [attr.title]="planetLabel(row.from)"><img class="glyph sm" [attr.alt]="planetLabel(row.from)" [src]="glyphUrl(row.from)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.from)}}</span></span>
-              <span class="aspect-sign" [attr.title]="aspectLabel(row.aspect)">{{aspectSymbolOf(row.aspect)}}</span>
+              <span class="aspect-sign" [attr.title]="aspectLabel(row.aspect)">{{aspectSymbolOf(row.aspect)}}<img *ngIf="aspectPlanetOf(row.aspect) as planet" class="glyph phi-glyph" [src]="glyphUrl(planet)" alt=""></span>
               <span class="aspect-point" [attr.title]="planetLabel(row.to)"><img class="glyph sm" [attr.alt]="planetLabel(row.to)" [src]="glyphUrl(row.to)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.to)}}</span></span>
             </span>
             <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
@@ -510,7 +648,7 @@
             <div class="data-line static aspect-line" *ngFor="let row of crossAspectRows">
               <span class="aspect-symbols">
                 <span class="aspect-point" [attr.title]="planetLabel(row.from)"><img class="glyph sm" [attr.alt]="planetLabel(row.from)" [src]="glyphUrl(row.from)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.from)}}</span></span>
-                <span class="aspect-sign" [attr.title]="aspectLabel(row.aspect)">{{aspectSymbolOf(row.aspect)}}</span>
+                <span class="aspect-sign" [attr.title]="aspectLabel(row.aspect)">{{aspectSymbolOf(row.aspect)}}<img *ngIf="aspectPlanetOf(row.aspect) as planet" class="glyph phi-glyph" [src]="glyphUrl(planet)" alt=""></span>
                 <span class="aspect-point" [attr.title]="planetLabel(row.to)"><img class="glyph sm" [attr.alt]="planetLabel(row.to)" [src]="glyphUrl(row.to)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(row.to)}}</span></span>
               </span>
               <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"

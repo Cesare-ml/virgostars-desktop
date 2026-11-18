@@ -31,9 +31,9 @@
           <span class="cell-small-heading">{{t('elements.inHouses')}}</span>
           <div class="placements-line house-line">
             <span class="axis-arrow asc-arrow" *ngIf="model.ascElement===row.id"
-              [attr.title]="'ASC · '+signSymbol(model.ascSign)+' '+elementLabel(row.id)"
+              [attr.title]="'ASC · '+signLabel(model.ascSign)+' '+elementLabel(row.id)"
               [attr.aria-label]="'ASC · '+elementLabel(row.id)">
-              <b>ASC</b> <span class="axis-zodiac">{{signSymbol(model.ascSign)}}</span>
+              <b>ASC</b> <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:model.ascSign,white:true}"></ng-container>
             </span>
             <ul class="element-placements">
               <li *ngFor="let item of row.housePlanets; trackBy:trackPlanet" class="planet-chip"
@@ -72,9 +72,9 @@
               <li class="element-empty" *ngIf="!row.signPlanets.length && model.dsElement!==row.id">—</li>
             </ul>
             <span class="axis-arrow ds-arrow" *ngIf="model.dsElement===row.id"
-              [attr.title]="'DS · '+signSymbol(model.dsSign)+' '+elementLabel(row.id)"
+              [attr.title]="'DS · '+signLabel(model.dsSign)+' '+elementLabel(row.id)"
               [attr.aria-label]="'DS · '+elementLabel(row.id)">
-              <b>DS</b> <span class="axis-zodiac">{{signSymbol(model.dsSign)}}</span>
+              <b>DS</b> <ng-container [ngTemplateOutlet]="signMark" [ngTemplateOutletContext]="{$implicit:model.dsSign,white:true}"></ng-container>
             </span>
           </div>
           <div class="dodeca-line" *ngIf="showDodecatemoria">
@@ -161,15 +161,11 @@
 
 <ng-template #planetMark let-name let-retrograde="retrograde" let-white="white">
   <span class="astro-glyph" [class.asset-on-light]="!white" [class.axis-glyph]="name==='AS'||name==='MC'" aria-hidden="true">
-    <img class="asset-glyph" alt="" [src]="planetImageUrl(name,retrograde)"
-      (load)="imageLoaded($event)" (error)="imageMissing($event)">
-    <span class="glyph-fallback">{{planetSymbol(name)}}</span>
+    <img class="asset-glyph" alt="" [src]="planetImageUrl(name,retrograde)" (error)="imageMissing($event)">
   </span>
 </ng-template>
 <ng-template #signMark let-sign let-white="white">
   <span class="astro-glyph sign-glyph" [class.asset-on-light]="!white" aria-hidden="true">
-    <img class="asset-glyph" alt="" [src]="signImageUrl(sign)"
-      (load)="imageLoaded($event)" (error)="imageMissing($event)">
-    <span class="glyph-fallback">{{signSymbol(sign)}}</span>
+    <img class="asset-glyph" alt="" [src]="signImageUrl(sign)" (error)="imageMissing($event)">
   </span>
 </ng-template>

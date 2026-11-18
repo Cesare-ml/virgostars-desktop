@@ -113,7 +113,7 @@ test('axes never aspect each other and a point never aspects its own opposite', 
   assert.ok(find(rows, 'true Node', 'osc. Apogee', 'congiunzione'), 'different points may still be conjunct');
 });
 
-test('applying and separating follow the daily motions; axes count as fixed', () => {
+test('applying and separating follow daily motions; natal axes have unknown motion', () => {
   // Moon behind the exact trine and faster: closing in.
   assert.equal(find(run([point('Sun', 0, 1), point('Moon', 118, 13)]), 'Sun', 'Moon').applying, true);
   // Moon past the exact trine and faster: moving away.
@@ -126,9 +126,9 @@ test('applying and separating follow the daily motions; axes count as fixed', ()
   // Exact, or no relative motion: not stated.
   assert.equal(find(run([point('Sun', 0, 1), point('Moon', 120, 13)]), 'Sun', 'Moon').applying, null);
   assert.equal(find(run([point('Sun', 0, 1), point('Mars', 91, 1)]), 'Sun', 'Mars').applying, null);
-  // A planet approaching a fixed axis.
+  // A natal axis has no supplied speed, so its direction is unknown.
   const toAxis = run([point('Sun', 97, 1), {name: 'AS', longitude: 100, speed: null, declination: null}]);
-  assert.equal(find(toAxis, 'Sun', 'AS', 'congiunzione').applying, true);
+  assert.equal(find(toAxis, 'Sun', 'AS', 'congiunzione').applying, null);
 });
 
 test('Phi aspects follow the order of the signs', () => {
