@@ -1,5 +1,45 @@
 # Renderer lifecycle — latest request wins
 
+## Chart skins (local integration, 2026-11-18)
+
+The settings drawer selects one of the eight skins in the sibling Charts
+checkout. A fresh desktop profile selects `virgostars`; the selection is a
+separate device-only preference from the interface's light/dark theme. The chart
+stage uses the selected skin's renderer background color to avoid a visible canvas
+rectangle. Changing
+the skin redraws the chart through the existing generation guard, and is blocked
+during PNG export. The latitude renderer still receives the interface light/dark
+asset variant via `temaGrafico`. The Charts package is built from the sibling
+checkout; this is not a published package or a released desktop build. Synthetic
+and owner-approved private artwork remain governed by the existing asset pipeline.
+
+The optional Monomeri control subscribes to natal-point hover only while active.
+It hides the natal aspect lines as soon as it is activated and retains the last point after
+the pointer leaves; moving to a different point changes the selection. Aspects
+return when the control is disabled. After a redraw, the selected point is resolved
+against the current chart and house system, or cleared if absent, so a previous
+degree is never carried over to another chart. It reads the true input longitude,
+not the adjusted glyph position. The corpus is
+private-build-only; see [the asset pipeline](ASSET_PIPELINE.md). PNG export remains
+independent of hover state. Chromium picking was tested with synthetic chart data;
+the desktop WebView2 interaction still needs a native GUI check.
+
+Monomeri also accepts any rendered celestial point and the four external axis
+markers; it does not generate uncalculated lots or other positions. Its center
+overlay is transparent. Desktop opts into suppressing duplicate primary-axis
+glyphs when the corresponding outer marker is enabled. Planet, point and sign
+glyphs throughout the desktop use the approved `astrological-assets` pack.
+
+The small getting-started guide appears until dismissed on a device and can be
+reopened from Settings. The versioned preference stores only its completion flag;
+it makes no account or network request. The guide is a non-modal region with
+navigation, skip and close controls. Monomeri also shows a contextual prompt
+until a point is selected.
+
+Future guide design (not yet implemented): once the interface is more settled,
+dim the rest of the workspace and highlight the specific control or area for each
+step, while maintaining readable instructions and accessible navigation.
+
 **Status:** narrow Angular-side async state protection implemented and unit-tested with Node 22.16.0 and TypeScript 5.8.3. **No Angular production build or WebView2 rendering test has been executed here.**
 
 ## Problem discovered
@@ -39,3 +79,13 @@ This does **not** cancel in-flight asynchronous work. Upstream rendering remains
 7. Reconcile accessibility/UI PR #7 before merging.
 
 No installer, deployment, migration, online account or public release is part of this increment. License remains undecided and GitHub Actions remain disabled.
+
+## Transit interaction (desktop prototype)
+
+The transit inspector navigates an independent calculated sky snapshot; its natal chart remains fixed. Cross-aspect selection is directional from transit to radix and uses desktop-computed aspect facts and current orb settings. The Charts renderer owns pointer picking and renders only those supplied facts, restoring its resources when a scene changes. Natal lines are temporarily grey and translucent in transit mode. The first-use hint stores only a device-local dismissal flag.
+
+The desktop opts into dashed ASC, DS, MC and IC markers for the displayed transit chart, using its selected house system. They participate in transit hover and are omitted when those source axes are unavailable. The synod body selector uses the approved `astrological-assets` glyphs, with textual fallback for missing artwork or unknown bodies.
+
+The synod panel queries the pinned experimental VirgoStars Event Ephemeris Rust reader offline. It displays the latest **recorded** event for each body and a phase only when the reader derives one from recorded thresholds. A calculated chart for the selected recorded instant is shown around the radix, alone or alongside transits; the transit clock can also be moved to that instant. The source snapshot is historical; its hash and all blocks are checked, but this does not establish complete scientific coverage.
+
+For local development, `npm run events:prepare:local` assembles the owner's snapshot from the sibling Event Ephemeris repository into the ignored `.local/event-ephemeris` folder and checks its independently recorded SHA-256. Debug builds discover that staged file automatically. Alternatively, the native host reads `VIRGOSTARS_EVENTS_PATH` and `VIRGOSTARS_EVENTS_SHA256` together; the WebView cannot supply either. No event data are bundled or downloaded by this integration. A release needs an independently approved archive distribution and coverage review.

@@ -39,5 +39,6 @@ test('Angular shell presents native status without treating it as login', () => 
   assert.match(component, /await inspectDesktopRuntime\(\)/);
   assert.match(component, /runtimeStatus: MessageKey = 'runtime.checking'/);
   // The check still runs, but no technical environment caption is shown to the user.
-  assert.doesNotMatch(html, /t\(runtimeStatus\)|t\('noaccount'\)/);
+  assert.doesNotMatch(html, /t\(runtimeStatus\)/);
+  assert.match(html, /t\('account.unavailable'\)/);
 });

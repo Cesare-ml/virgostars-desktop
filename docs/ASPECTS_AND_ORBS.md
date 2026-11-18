@@ -10,7 +10,7 @@ Five entries of the Regolo Alpha Leonis settings menu: **Aspetti**, **Orbite Asp
 - **Aspetti** tab: the aspect table of the active calculated chart, with the distance from exactness and an A/S mark for applying or separating.
 - **Prototype:** in transit and synastry modes, a separate cross-chart table uses the current aspect/point settings. It compares **sky → active chart** for transits and **active chart → second chart** for synastry. The second point supplies the orb, capped by the aspect orb; equal point names and axes may be paired across charts. The tables do not claim parity with the renderer's lines.
 
-Not covered: Focus Aspetti, the applying/separating drawing style of Regolo's "Applicazioni", "Transaturnini se in congiunzione", and the lots.
+The settings now include persistent natal aspect focus, applying/separating highlighting and the Regolo option to show hidden outer planets when conjunct. Focus keeps the last hovered point. The application filter grays out the opposite and indeterminate phases. Lots remain outside the calculated points of this build.
 
 ## Defaults
 
@@ -30,7 +30,7 @@ The table uses the same rule as the Charts renderer, so that it describes the li
 
 Point 3 means that with unequal point orbs the result depends on the order of the pair. That is the renderer's behaviour, reproduced here on purpose and stated in the interface.
 
-**Applying or separating** is derived from the daily motions in longitude; axes are treated as fixed, so a planet near an axis is "applying to" it. It is not stated for exact aspects, for pairs with no relative motion, or for declination aspects (declination motion is not part of the chart data).
+**Applying or separating** is derived from daily motions in longitude. It is not stated for natal axes (their speed is unavailable), exact aspects, pairs with no relative motion, or declination aspects (declination motion is not part of the chart data).
 
 For transit comparisons the natal point is fixed and only the sky point moves; an A/S mark is omitted for a sky axis because its speed is unavailable. Synastry compares two independent snapshots and never assigns an A/S mark. These are prototype presentation rules, not independently validated astrological methods.
 
@@ -41,7 +41,6 @@ Angular arithmetic comes from `astrological-functions`. The pairing rule and the
 Found while reading the built Charts library; not changed here, to be raised upstream:
 
 - **Phi aspects.** The renderer tests "first point plus the angle equals the second" without wrapping at 360°, so it misses a Phi aspect that crosses 0° Aries. The table wraps correctly and can therefore list a Phi aspect the chart does not draw. Both Phi aspects are off by default.
-- **Trans-Saturnians when conjunct.** The renderer reads `settaggi.transaturniniSeCongiunti`, while its settings class defines `transaturnini_se_congiunti`; the option has no effect, so it stays listed as planned.
 
 ## Storage
 

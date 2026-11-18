@@ -4,7 +4,7 @@ import type { UiTheme } from './workspace-state';
 /** Device-only, non-sensitive UI choices. Never extend this to subjects or auth. */
 export interface UiPreferences {
   theme: UiTheme;
-  locale: Locale;
+  locale: Locale | 'auto';
 }
 
 export interface UiPreferencesStorage {
@@ -13,7 +13,14 @@ export interface UiPreferencesStorage {
 }
 
 export const UI_PREFERENCES_KEY = 'virgostars.desktop.ui-preferences.v1';
-export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({theme:'light', locale:'it'});
+export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({theme:'light', locale:'auto'});
+
+/** WebView language follows the device preference; unsupported languages use English. */
+export function resolveLocale(preference: Locale | 'auto', systemLanguage?: string): Locale {
+  if (preference !== 'auto') return preference;
+  const language = systemLanguage ?? (typeof navigator === 'undefined' ? '' : navigator.language);
+  return /^it(?:-|$)/i.test(language) ? 'it' : 'en';
+}
 
 /** Accessing WebView storage may throw (disabled storage, sandbox, private mode). */
 export function browserUiPreferencesStorage(): UiPreferencesStorage | null {
@@ -32,7 +39,7 @@ export function loadUiPreferences(storage: UiPreferencesStorage | null): UiPrefe
     if (record['version'] !== 1) return {...DEFAULT_UI_PREFERENCES};
     return {
       theme: record['theme'] === 'dark' ? 'dark' : 'light',
-      locale: record['locale'] === 'en' ? 'en' : 'it',
+      locale: record['locale'] === 'en' || record['locale'] === 'it' ? record['locale'] : 'auto',
     };
   } catch { return {...DEFAULT_UI_PREFERENCES}; }
 }
@@ -45,7 +52,7 @@ export function saveUiPreferences(storage: UiPreferencesStorage | null, preferen
     // between validation and serialization, or inject unrelated fields.
     const theme = preferences.theme;
     const locale = preferences.locale;
-    if ((theme !== 'light' && theme !== 'dark') || (locale !== 'it' && locale !== 'en')) return false;
+    if ((theme !== 'light' && theme !== 'dark') || (locale !== 'it' && locale !== 'en' && locale !== 'auto')) return false;
     storage.setItem(UI_PREFERENCES_KEY, JSON.stringify({version: 1, theme, locale}));
     return true;
   } catch { return false; }

@@ -10,7 +10,8 @@
  *  - a point is never aspected with its own opposite, and axes never with axes.
  *
  * Angular arithmetic comes from astrological-functions. Whether an aspect is
- * applying is derived from the daily motions; axes count as fixed.
+ * applying is derived from daily motions; natal axes with unknown speed are omitted.
+ * In transit comparisons, the natal chart is treated as a fixed snapshot.
  */
 import {angularSeparation, normalize360, signedAngularDistance} from 'astrological-functions';
 import type {AspectDefinition, AspectKind, ChartSettings} from '../chart-settings';
@@ -139,7 +140,7 @@ export function computeAspects(
           : setting.orb !== null && setting.orb < pointOrb ? setting.orb : pointOrb;
         const orbDeg = Math.abs(measured.deviation);
         if (!(orbDeg < allowed)) continue;
-        const applying = measured.rate === null || measured.rate === 0 || measured.deviation === 0
+        const applying = a.speed === null || b.speed === null || measured.rate === null || measured.rate === 0 || measured.deviation === 0
           ? null : measured.deviation * measured.rate < 0;
         rows.push(Object.freeze({
           aspect: definition.id, kind: definition.kind, from: a.name, to: b.name,

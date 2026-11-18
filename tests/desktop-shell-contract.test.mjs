@@ -22,14 +22,15 @@ test('Tauri references the owned offline Angular build with no privileged IPC ca
   assert.equal(angular.projects.desktop.architect.build.options.browser,'src/main.ts');
   assert.equal(angular.projects.desktop.architect.build.options.assets[0].input,'.local/frontend/assets');
 });
-test('UI shows no technical, account or placeholder captions; the archive and the new chart have their own panels',()=>{
+test('UI has dedicated archive, chart and honest account panels',()=>{
   const html=read('src/app/desktop-app.component.html');
   // Only the demonstration wheel keeps a label, so fictional positions are never mistaken for a calculated chart.
   assert.match(html,/subjectCaption/);
   assert.match(html,/\[attr.title\]="t\('archive'\)" \(click\)="openArchive\(\)"/);
   assert.match(html,/\[attr.title\]="t\('newchart'\)" \(click\)="openNewChart\(\)"/);
   assert.match(html,/class="inspector-body" id="inspector-content"/);
-  for (const removed of ['noaccount','research','lab','footer','footerKey','artworkStatus','runtimeStatus','provenanceLabel']) {
+  assert.match(html, /t\('account.unavailable'\)/);
+  for (const removed of ['research','lab','footer','footerKey','artworkStatus','runtimeStatus','provenanceLabel']) {
     assert.doesNotMatch(html,new RegExp("t\\(['\"]?" + removed + "['\"]?\\)|\\b" + removed + "\\b"),removed);
   }
   assert.doesNotMatch(html,/<footer/);

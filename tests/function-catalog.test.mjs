@@ -31,9 +31,9 @@ test('the catalog is frozen and its summary matches the entries', () => {
 
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
-    'archive', 'aspect-direction', 'aspect-orbs', 'aspects', 'celestial-elements', 'house-system', 'latitudes',
-    'lunar-return', 'natal', 'new-chart', 'planet-info', 'planet-orbs', 'real-time',
-    'session-charts', 'solar-return', 'synastry', 'transits',
+    'antiscia', 'applications', 'archive', 'aspect-direction', 'aspect-focus', 'aspect-orbs', 'aspects', 'austral-inversion', 'celestial-elements', 'contra-antiscia', 'decades', 'decans', 'dodecatemoria', 'house-system', 'latitudes',
+    'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-of-year', 'planet-orbs', 'real-time',
+    'session-charts', 'solar-return', 'synastry', 'terms', 'transits', 'transsaturnians',
   ]);
 });
 
@@ -49,7 +49,7 @@ test('the component dispatches every catalog action and disables the rest', () =
     assert.match(component, new RegExp("case '" + action + "':"), action);
   }
   // Available entries are active buttons; everything else sits in a collapsed, disabled list.
-  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy"/);
+  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy \|\| \(entry.action==='monomeri' && !monomeriAvailable\)"/);
   assert.match(html, /\*ngFor="let entry of unavailableIn\(group\)" disabled/);
 });
 
@@ -65,8 +65,8 @@ test('a calculated chart is never paired with fixture overlays', () => {
   const component = read('src/app/desktop-app.component.ts');
   // No placeholder chart exists any more: overlays only ever come from calculated charts.
   assert.doesNotMatch(component, /makeFictionalTheme|fictionalPlanets|fictionalHouses/);
-  assert.match(component, /const transit = this\.transitChart\?\.render;/);
-  assert.match(component, /const synastry = this\.partnerChart\?\.render;/);
+  assert.match(component, /const transit = this\.displayedTransit\?\.render;/);
+  assert.match(component, /this\.displayChart\(this\.synodChart\)\?\.render : this\.partnerChart\?\.render;/);
   assert.match(component, /const present = AXIS_IDS\.includes\(id\) \|\| id in planets;/);
   assert.match(component, /target\.att = present && setting\.shown;/);
 });
