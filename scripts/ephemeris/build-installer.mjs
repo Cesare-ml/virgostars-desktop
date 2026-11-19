@@ -4,10 +4,15 @@
 import { spawnSync } from 'node:child_process';
 import { RELEASE_CATALOG_SHA256 } from './release-catalog.mjs';
 
+const notices = spawnSync(process.execPath, ['scripts/ephemeris/prepare-release-notices.mjs'], {stdio:'inherit'});
+if (notices.error) throw notices.error;
+if (notices.status !== 0) process.exit(notices.status ?? 1);
+
 const result = spawnSync(process.execPath, [
   'node_modules/@tauri-apps/cli/tauri.js', 'build', '--bundles', 'nsis',
   '--config', '.local/places/tauri-places.conf.json',
   '--config', '.local/ephemeris/tauri-ephemeris.conf.json',
+  '--config', '.local/release-licenses/tauri-license.conf.json',
 ], { stdio: 'inherit', env: { ...process.env, VIRGOSTARS_DE441_CATALOG_SHA256: RELEASE_CATALOG_SHA256 } });
 if (result.error) throw result.error;
 process.exit(result.status ?? 1);

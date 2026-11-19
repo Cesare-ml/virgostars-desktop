@@ -28,6 +28,8 @@ Recorded as the maintainer stated them in the project chat; this repository cann
 - Hosted VirgoStars account, API backend, personal data, credentials and signing keys are not included in the license grant.
 - Standard npm/Rust/Angular/Three.js dependencies retain their own terms. Before distributing binaries, inventory the full resolved dependency tree and preserve all required third-party notices.
 
+The Windows installer notice collection is described in [Release license notices](RELEASE_LICENSE_NOTICES.md); it is a packaging aid and does not by itself establish that the publication review is complete.
+
 ## Open-source distribution controls
 
 1. Verify legal authorship of original files and third-party license compatibility; confirm the whole repository history is safe to expose, not only the current branch.
