@@ -43,7 +43,9 @@ async function slice(input, output, firstYear, lastYear) {
   const fd = openSync(input, 'r');
   const info = describe(fd);
   const first = Math.max(0, Math.floor((jdOfYear(firstYear) - info.start) / info.step));
-  const last = Math.min(info.count - 1, Math.ceil((jdOfYear(lastYear + 1) - info.start) / info.step));
+  // The requested end is exclusive: a record starting at that instant is
+  // outside the interval, and ceil gives the index after the final record.
+  const last = Math.min(info.count - 1, Math.ceil((jdOfYear(lastYear + 1) - info.start) / info.step) - 1);
   if (first > last) throw new Error('empty range');
   const count = last - first + 1;
   const header = record(fd, info.size, 0);

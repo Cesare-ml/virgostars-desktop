@@ -11,6 +11,11 @@ materials and is not thereby approved for public distribution. See
 for verification and limitations. Earlier status statements below are retained
 as historical checkpoints.
 
+The staging slicer treats the requested end as exclusive and does not include
+an additional coefficient record. With the verified JPL source, the ordinary
+staging command reproduces the 111,662,384-byte catalog base exactly; an extra
+record would be rejected by the catalog hash check.
+
 **Status: Locally tested (2026-11-17).** An NSIS installer was built and installed on a Windows 11 machine, started with no environment variables and drew the sky of the moment from the shipped data. It is **not signed** and **not published**.
 
 On 2026-11-18 an updated private NSIS installer was built with the local
