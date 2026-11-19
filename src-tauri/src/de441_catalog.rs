@@ -473,9 +473,11 @@ impl PendingPack {
             }
             Err(_) => return Err("storage_unavailable"),
         };
-        let offset = file.metadata().map_err(|_| "storage_unavailable")?.len();
+        let mut offset = file.metadata().map_err(|_| "storage_unavailable")?.len();
         if offset > pack.bytes {
-            return Err("invalid_partial");
+            // An oversized app-owned partial cannot be resumed safely.
+            file.set_len(0).map_err(|_| "storage_write_failed")?;
+            offset = 0;
         }
         Ok(Self {
             file,
@@ -488,6 +490,13 @@ impl PendingPack {
 
     pub(crate) fn offset(&self) -> u64 {
         self.offset
+    }
+
+    fn restart(&mut self) -> Result<(), &'static str> {
+        self.file.set_len(0).and_then(|_| self.file.seek(SeekFrom::Start(0)).map(|_| ()))
+            .map_err(|_| "storage_write_failed")?;
+        self.offset = 0;
+        Ok(())
     }
 
     pub(crate) fn append(&mut self, offset: u64, chunk: &[u8]) -> Result<u64, &'static str> {
@@ -552,6 +561,11 @@ impl PendingPack {
             return Err("invalid_partial");
         }
         if format!("{:x}", hasher.finalize()) != self.expected_sha256 {
+            // A complete but corrupt app-owned staging file cannot be resumed.
+            // Reset it while holding the operation lock so a later retry starts
+            // from byte zero instead of failing against the same bytes forever.
+            self.restart()?;
+            self.file.sync_all().map_err(|_| "storage_write_failed")?;
             return Err("checksum_mismatch");
         }
         Ok(self.path)
@@ -677,9 +691,16 @@ pub(crate) async fn download_from(
                 || response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
             {
                 // Retry transient service failures without consuming their body.
-            } else if !response_headers_valid(&response, offset, pack.bytes) {
-                return Err("invalid_response");
             } else {
+                if offset > 0 && response.status() == reqwest::StatusCode::OK
+                    && response_headers_valid(&response, 0, pack.bytes) {
+                    // A server may ignore Range. The complete response is safe
+                    // only after replacing, never appending to, the partial file.
+                    pending.restart()?;
+                    progress(0, pack.bytes);
+                } else if !response_headers_valid(&response, offset, pack.bytes) {
+                    return Err("invalid_response");
+                }
                 loop {
                     if cancelled.load(Ordering::Relaxed) {
                         return Err("cancelled");
@@ -870,7 +891,18 @@ mod tests {
         let mut pending = PendingPack::open(dir.path(), &cat, "past").unwrap();
         pending.append(2, b"dd").unwrap();
         assert_eq!(pending.verify().unwrap_err(), "checksum_mismatch");
+        assert_eq!(PendingPack::open(dir.path(), &cat, "past").unwrap().offset(), 0);
         assert!(!dir.path().join("past.eph").exists());
+    }
+
+    #[test]
+    fn oversized_app_partial_is_reset_before_retry() {
+        let mut value = catalog();
+        value["packs"][0]["bytes"] = 4.into();
+        let cat = parse(&value).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(".past.eph.part"), b"oversized").unwrap();
+        assert_eq!(PendingPack::open(dir.path(), &cat, "past").unwrap().offset(), 0);
     }
 
     #[test]
@@ -956,10 +988,11 @@ mod tests {
     }
 
     #[test]
-    fn http_resume_rejects_server_that_ignores_range() {
+    fn http_resume_restarts_when_server_ignores_range() {
         ensure_tls_provider();
         let mut value = catalog();
         value["packs"][0]["bytes"] = 4.into();
+        value["packs"][0]["sha256"] = format!("{:x}", Sha256::digest(b"abcd")).into();
         let cat = parse(&value).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let mut pending = PendingPack::open(dir.path(), &cat, "past").unwrap();
@@ -970,7 +1003,7 @@ mod tests {
         );
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let cancelled = AtomicBool::new(false);
-        let error = tauri::async_runtime::block_on(download_from(
+        let result = tauri::async_runtime::block_on(download_from(
             &client,
             &url,
             &cat,
@@ -979,10 +1012,9 @@ mod tests {
             &cancelled,
             |_, _| {},
         ))
-        .unwrap_err();
-        assert_eq!(error, "invalid_response");
-        worker.join().unwrap();
-        assert_eq!(fs::read(dir.path().join(".past.eph.part")).unwrap(), b"a");
+        .unwrap();
+        assert!(worker.join().unwrap().to_ascii_lowercase().contains("range: bytes=1-"));
+        assert_eq!(fs::read(result).unwrap(), b"abcd");
     }
 
     #[test]
