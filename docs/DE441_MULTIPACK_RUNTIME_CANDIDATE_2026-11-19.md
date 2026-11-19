@@ -1,8 +1,9 @@
 # DE441 multipack Desktop runtime candidate
 
-Status: **experimental local integration**, stacked on the catalog and transport
-draft. This is not a release or a claim of published data. The pinned core is
-the head of Ephemeris PR #652, itself stacked on #651.
+Status: **experimental Desktop integration**, stacked on the catalog and
+transport changes. The pinned core from Ephemeris PR #652 has been integrated
+on Ephemeris main. DE441 data is published separately; this does not make the
+private Desktop installer a public application release.
 
 The installer build compiles the reviewed catalog SHA-256 into the application
 and stages the matching catalog resource with the exact required base. A
@@ -102,5 +103,10 @@ The reviewed catalog selects `de441-desktop-v1.0.0` as the default release
 and reuses five byte-identical 0–999 files already in
 `de441-mobile-v1.0.0`. A per-file release tag remains a single validated
 path component, and hosts and paths remain fixed in the Rust downloader.
-Release URLs must be confirmed live and all remote SHA-256 values checked
-before describing the data as publicly available.
+The [Desktop data release](https://github.com/Cesare-ml/VirgoStars-Ephemeris/releases/tag/de441-desktop-v1.0.0)
+is public. All 145 catalog entries, including five Mobile assets, and the
+catalog itself were checked against GitHub's asset sizes and SHA-256 values
+before publication. The temporary GitHub upload workflow was removed after use.
+An explicitly invoked network test then downloaded the 2201–2400 asset from
+the public Desktop release through the production downloader and verified its
+SHA-256. The same downloader had also verified the 800–999 Mobile asset.
