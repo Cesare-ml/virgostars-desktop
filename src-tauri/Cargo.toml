@@ -17,6 +17,8 @@ virgostars-ephemeris = ["dep:virgostars-ephemeris-core"]
 virgostars-event-ephemeris = ["dep:virgostars-events"]
 # Only for disposable local Windows acceptance builds; never used by release scripts.
 updater-loopback-test = []
+# Disposable debug-only local acceptance; forbidden in release builds.
+de441-loopback-test = ["virgostars-ephemeris"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

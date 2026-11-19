@@ -649,8 +649,19 @@ pub(crate) async fn download_pack(
 ) -> Result<PathBuf, &'static str> {
     let pack = catalog.pack(id).ok_or("unknown_pack")?;
     let _guard = DirectoryLock::acquire(directory)?;
+    #[cfg(not(feature = "de441-loopback-test"))]
     let url = catalog.asset_url(pack);
+    #[cfg(feature = "de441-loopback-test")]
+    let url = format!("http://127.0.0.1:47840/{}", pack.filename);
+    #[cfg(not(feature = "de441-loopback-test"))]
     let client = release_client()?;
+    #[cfg(feature = "de441-loopback-test")]
+    let client = {
+        ensure_tls_provider();
+        reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(120)).read_timeout(Duration::from_secs(30))
+            .build().map_err(|_| "network_unavailable")?
+    };
     download_from(&client, &url, catalog, directory, id, cancelled, progress).await
 }
 

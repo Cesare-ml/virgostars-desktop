@@ -51,7 +51,13 @@ comparisons, not independent scientific validation. Source provenance and
 redistribution rights remain unresolved; no data is published by this work.
 An additional explicitly invoked test plans, downloads a real local adjacent
 package over a test-only localhost endpoint, activates it and removes it. The
-loopback override is compiled only under `cfg(test)`; release code constructs
-its fixed GitHub release URL from the authenticated catalog. The local catalog's
+unit-test loopback override is compiled only under `cfg(test)`. A separate
+`de441-loopback-test` feature is guarded against release compilation and
+requires an isolated application identifier. It selects only the fixed
+`127.0.0.1:47840` endpoint and disables redirects. In that debug-only build,
+the actual wizard downloaded the private 800–999 package, calculated a year
+900 chart, removed the edge pack and rejected that chart afterwards. Normal
+release code constructs its fixed GitHub release URL from the authenticated
+catalog. The local catalog's
 release tag is a placeholder: its packages have not been published, so a
 normal network download cannot succeed until an authorized release exists.

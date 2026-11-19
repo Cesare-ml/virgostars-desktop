@@ -20,6 +20,8 @@ mod de441_operations;
 mod de441_catalog;
 #[cfg(all(feature = "updater-loopback-test", not(debug_assertions)))]
 compile_error!("The loopback acceptance feature is forbidden in release builds");
+#[cfg(all(feature = "de441-loopback-test", not(debug_assertions)))]
+compile_error!("The DE441 loopback acceptance feature is forbidden in release builds");
 mod star_link;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
 #[cfg(feature = "virgostars-ephemeris")]
@@ -34,6 +36,10 @@ pub fn run() {
             #[cfg(feature = "updater-loopback-test")]
             if !_app.config().identifier.starts_with("it.virgostars.desktop.updatertest.") {
                 return Err("loopback acceptance build requires an isolated application identifier".into());
+            }
+            #[cfg(feature = "de441-loopback-test")]
+            if !_app.config().identifier.starts_with("it.virgostars.desktop.de441acceptance") {
+                return Err("DE441 loopback acceptance build requires an isolated application identifier".into());
             }
             // The ephemeris data files are found by the host (environment or ephemeris.json), never by the WebView.
             #[cfg(feature = "virgostars-ephemeris")]
