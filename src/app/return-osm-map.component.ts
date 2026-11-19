@@ -18,7 +18,9 @@ export class ReturnOsmMapComponent implements AfterViewInit, OnDestroy {
   private destroyed = false;
 
   async ngAfterViewInit():Promise<void> {
-    const L = await import('leaflet');
+    const loaded = await import('leaflet');
+    // Angular's CommonJS wrapper can expose Leaflet only as a default export.
+    const L = (loaded as unknown as {default?:typeof Leaflet}).default ?? loaded;
     if (this.destroyed) return;
     const map = this.map = L.map(this.mapElement.nativeElement, {
       center:[41.8992, 12.545], zoom:4, minZoom:2, maxZoom:10,
