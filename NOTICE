@@ -23,4 +23,8 @@ Do not bundle, release or redistribute such materials without separate review.
 The bundled tz-lookup 6.1.25 timezone boundary lookup is by The Dark Sky
 Company and is distributed under CC0-1.0. See third-party/tz-lookup/LICENSE.
 
+Leaflet 1.9.4 is distributed under the BSD 2-Clause License. See
+third-party/leaflet/LICENSE. The optional map displays OpenStreetMap data;
+its attribution and licence are shown on the map.
+
 Contributors retain applicable rights in their own contributions under CPAL.

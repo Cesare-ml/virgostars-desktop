@@ -17,18 +17,21 @@
   <p class="returns-note">{{t('returns.place')}}</p>
   <ng-container *ngIf="kind==='solar'">
     <p class="returns-note">{{t('returns.map.hint')}}</p>
-    <div class="returns-map-controls" *ngIf="mapAvailable">
+    <label class="returns-check"><input type="checkbox" [checked]="onlineMap" (change)="toggleOnlineMap($event)"> {{t('returns.map.online')}}</label>
+    <p class="returns-note">{{t('returns.map.onlinePrivacy')}}</p>
+    <vs-return-osm-map *ngIf="onlineMap" (hovered)="previewCoordinates($event)" (chosen)="selectOnlinePoint($event)"></vs-return-osm-map>
+    <div class="returns-map-controls" *ngIf="!onlineMap && mapAvailable">
       <button type="button" (click)="zoomMap(-1)" [disabled]="mapZoom===1" [attr.aria-label]="t('returns.map.zoomOut')">−</button>
       <span>{{mapZoom}}×</span>
       <button type="button" (click)="zoomMap(1)" [disabled]="mapZoom===4" [attr.aria-label]="t('returns.map.zoomIn')">+</button>
     </div>
-    <div class="returns-map-viewport" *ngIf="mapAvailable">
+    <div class="returns-map-viewport" *ngIf="!onlineMap && mapAvailable">
       <button type="button" class="returns-map" [style.width.%]="mapZoom * 100" [attr.aria-label]="t('returns.map.label')" (click)="selectMapPoint($event)" (mousemove)="previewMapPoint($event)">
         <img src="/assets/img/grafici/light/mappa-mondo-lat-lng-equirectangular1.png" alt="" (error)="mapAvailable=false">
       </button>
     </div>
-    <p class="returns-note" *ngIf="!mapAvailable">{{t('returns.map.unavailable')}}</p>
-    <p class="returns-note" *ngIf="mapAvailable && !previewInstant">{{t('returns.map.searchFirst')}}</p>
+    <p class="returns-note" *ngIf="!onlineMap && !mapAvailable">{{t('returns.map.unavailable')}}</p>
+    <p class="returns-note" *ngIf="(onlineMap || mapAvailable) && !previewInstant">{{t('returns.map.searchFirst')}}</p>
     <p class="returns-message" role="status" *ngIf="previewMessage">{{t(previewMessage)}}</p>
     <div class="returns-preview" *ngIf="preview as p" role="status">
       <strong>{{t('returns.map.preview')}}</strong>

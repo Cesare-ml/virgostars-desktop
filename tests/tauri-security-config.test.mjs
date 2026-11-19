@@ -20,6 +20,14 @@ test('committed production Tauri config meets the offline security gate', () => 
   assert.equal(verifyProductionCsp(original.app.security.csp).directives, 9);
 });
 
+test('only the reviewed optional map hosts and identifiable app user agent are allowed', () => {
+  const config = copy();
+  assert.match(config.app.security.csp, /img-src[^;]*https:\/\/tile\.openstreetmap\.org/);
+  assert.match(config.app.security.csp, /connect-src[^;]*https:\/\/nominatim\.openstreetmap\.org/);
+  config.app.windows[0].userAgent = 'other';
+  assert.throws(() => verifyTauriSecurityConfig(config), /unreviewed native window/);
+});
+
 test('reviewed loopback-only development CSP passes without weakening production', () => {
   assert.equal(verifyDevelopmentCsp(original.app.security.devCsp).directives, 8);
   assert.equal(verifyTauriSecurityConfig(copy()).windows, 1);
@@ -48,7 +56,7 @@ test('production CSP rejects remote origins, eval, data scripts and extra direct
 test('CSP rejects duplicate, missing and empty directives rather than falling back', () => {
   for (const csp of [
     original.app.security.csp + "; script-src 'self'",
-    original.app.security.csp.replace(/connect-src 'self'; ?/, ''),
+    original.app.security.csp.replace(/connect-src [^;]+; ?/, ''),
     '', null, {},
   ]) {
     assert.throws(() => verifyProductionCsp(csp), /TAURI SECURITY CONFIG:/);
