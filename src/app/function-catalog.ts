@@ -16,7 +16,7 @@ export type FunctionAction =
   | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive'
   | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings' | 'monomeri'
   | 'dodecatemoria' | 'antiscia' | 'contra_antiscia' | 'austral' | 'outer_conjunct' | 'planet_year'
-  | 'aspect_focus' | 'applications' | 'decans' | 'decades' | 'terms';
+  | 'aspect_focus' | 'applications' | 'decans' | 'decades' | 'terms' | 'fixed_stars';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -103,7 +103,7 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     available('terms', 'Termini', 'Terms', 'terms'),
     planned('planetary-ascensions', 'Ascendenze', 'Planetary ascensions'),
     planned('radix-synods', 'Sinodi Radix', 'Radix synods'),
-    planned('fixed-stars', 'Stelle Fisse', 'Fixed stars'),
+    available('fixed-stars', 'Stelle Fisse', 'Fixed stars', 'fixed_stars'),
   ]),
   group('moon', 'Luna, stagioni, oraria ed elettiva', 'Moon, seasons, horary and electional', [
     planned('radix-new-moon', 'Novilunio Radix', 'Radix new moon'),

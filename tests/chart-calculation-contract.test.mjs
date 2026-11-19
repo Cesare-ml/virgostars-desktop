@@ -34,6 +34,20 @@ function okResponse() {
 }
 const REQUEST = Object.freeze({utcIso: '2001-02-03T04:05:06Z', latMicro: 44_697_805, lngMicro: 11_805_778});
 
+test('stellar results require explicit opt-in and reject duplicate identities', async () => {
+  const raw = okResponse();
+  raw.fixedStars = [{id: 1, name: 'Test Star', longitudeDeg: 17, latitudeDeg: -39, magnitude: 2,
+    trueAltitudeDeg: 1, azimuthSouthWestDeg: 179, approximate: true, constellation: null, interpretations: {}}];
+  const calls = [];
+  const result = await requestChart({isNative: () => true, invoke: async (...args) => {calls.push(args); return raw;}},
+    {...REQUEST, includeFixedStars: true});
+  assert.equal(result.kind, 'ready');
+  assert.equal(result.fixedStars[0].name, 'Test Star');
+  assert.equal(calls[0][1].request.includeFixedStars, true);
+  raw.fixedStars.push({...raw.fixedStars[0]});
+  assert.throws(() => decodeChartResponse(raw), {message: 'Invalid chart calculation protocol'});
+});
+
 test('a complete native response is copied into detached frozen values', () => {
   const raw = okResponse();
   const decoded = decodeChartResponse(raw);
