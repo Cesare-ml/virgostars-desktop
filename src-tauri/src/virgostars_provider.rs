@@ -838,9 +838,14 @@ mod tests {
             std::fs::hard_link(&source, dest).unwrap_or_else(|_| { std::fs::copy(source, dest).unwrap(); });
         };
         link("de441-v2-desktop-core-1000-2200.eph", &ephemeris.join(BUNDLED_DE441));
-        for name in ["de441-v2-history-00800-00999.eph", "de441-v2-future-02201-02400.eph"] {
-            link(name, &packs.join(name));
-        }
+        // The public catalog reuses the Mobile release's original filename
+        // for 800–999, while the locally generated source uses the v2 name.
+        link(
+            "de441-v2-history-00800-00999.eph",
+            &packs.join("de441-history-0800-0999.eph"),
+        );
+        let future = "de441-v2-future-02201-02400.eph";
+        link(future, &packs.join(future));
         let paths = DataPaths { de441: ephemeris.join(BUNDLED_DE441), usno_directory: None, chiron_spk: None, fixed_star_catalog: None };
         assert!(pinned_manager(&paths, &resources, &data, &"0".repeat(64)).is_none());
         let mut actual = Engine::open(&paths).unwrap();
@@ -886,7 +891,7 @@ mod tests {
         // Sub-samples can cross the boundary even when reception is inside
         // the base. Use its verified physical overlap, not a missing pack.
         drop(actual);
-        std::fs::remove_file(packs.join("de441-v2-history-00800-00999.eph")).unwrap();
+        std::fs::remove_file(packs.join("de441-history-0800-0999.eph")).unwrap();
         let mut base_only = Engine::open(&paths).unwrap();
         let (logical, sampling) = pinned_manager(&paths, &resources, &data, &pin).unwrap();
         base_only.logical_multipack = Some(logical);
