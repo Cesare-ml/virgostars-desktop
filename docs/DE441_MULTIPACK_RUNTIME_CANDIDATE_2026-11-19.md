@@ -13,6 +13,12 @@ The optional files are looked up only under the application local-data folder's
 who explicitly configures another DE441 file retains the single-file provider.
 Without a catalog pin this candidate leaves existing behavior unchanged.
 
+At an installed coverage edge, retarded and finite-difference sub-samples may
+use the already-verified edge file's physical coefficient overlap. Reception
+epochs are independently checked against the original logical installed
+interval. This permits the first instant of year 1000 without requiring the
+800–999 package, without accepting dates outside the installed logical range.
+
 The chart, lunar, fixed-star, Chiron, luminary and modern solar-day paths select
 each DE441 state by its own epoch. The historical chart path uses the provider
 for planets and lunar points. Historical solar-event searches are not exposed
@@ -28,6 +34,7 @@ release its reader before removal on Windows, and revalidate before use.
 
 The ignored local integration test checks a pinned private catalog and the
 adjacent 800–999 and 2201–2400 slices against the full source at 900, 1000,
-2000 and 2201, plus modern apparent positions. These are same-source
+2000 and 2201, plus modern apparent positions. It also checks 1000-01-01 with
+the preceding package absent and rejects a 999 reception epoch. These are same-source
 comparisons, not independent scientific validation. Source provenance and
 redistribution rights remain unresolved; no data is published by this work.

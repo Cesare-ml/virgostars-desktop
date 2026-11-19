@@ -225,6 +225,35 @@ impl Catalog {
         De441PackManager::from_specs(specs).map_err(|_| "invalid_catalog")
     }
 
+    /// Only for sub-samples of an already-authorized reception epoch: use
+    /// the verified edge files' actual coefficient overlap. The caller must
+    /// still check reception epochs against the unmodified logical manager.
+    pub(crate) fn sampling_manager(
+        &self, directory: &Path, bundled_base: &Path, installed: &[String],
+    ) -> Result<De441PackManager, &'static str> {
+        let first = self.packs.iter().position(|p| installed.contains(&p.id)).ok_or("missing_pack")?;
+        let last = self.packs.iter().rposition(|p| installed.contains(&p.id)).ok_or("missing_pack")?;
+        let path = |p: &Pack| if p.required { bundled_base.to_path_buf() } else { directory.join(&p.filename) };
+        let mut starts: Vec<f64> = self.packs.iter().map(|p| p.start_jd_tdb).collect();
+        let mut ends: Vec<f64> = self.packs.iter().map(|p| p.end_jd_tdb).collect();
+        if first > 0 {
+            let (physical, _) = De441::open(path(&self.packs[first])).map_err(|_| "invalid_pack")?.coverage();
+            let boundary = physical.0.max(starts[first - 1]).min(starts[first]);
+            starts[first] = boundary;
+            ends[first - 1] = boundary;
+        }
+        if last + 1 < self.packs.len() {
+            let (_, physical) = De441::open(path(&self.packs[last])).map_err(|_| "invalid_pack")?.coverage();
+            let boundary = physical.0.min(ends[last + 1]).max(ends[last]);
+            ends[last] = boundary;
+            starts[last + 1] = boundary;
+        }
+        let specs = self.packs.iter().enumerate().map(|(i, p)| De441PackSpec::new(
+            p.id.clone(), path(p), JulianDateTdb(starts[i]), JulianDateTdb(ends[i]), p.required,
+        )).collect();
+        De441PackManager::from_specs(specs).map_err(|_| "invalid_catalog")
+    }
+
     /// IDs must refer exclusively to already hash-verified activated files.
     /// The core determines all intervening packages and their download order.
     pub(crate) fn plan_verified(

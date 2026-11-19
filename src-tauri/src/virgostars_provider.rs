@@ -204,6 +204,7 @@ fn load_chiron(path: &Path) -> Option<SmallBodySpk> {
 struct Engine {
     ephemeris: De441<File>,
     multipack: Option<De441PackManager>,
+    logical_multipack: Option<De441PackManager>,
     delta_t: Option<DeltaTTable>,
     chiron: Option<SmallBodySpk>,
     stars:Option<Vec<FixedStarRecord>>,
@@ -214,6 +215,7 @@ impl Engine {
         Some(Self {
             ephemeris: De441::open(&paths.de441).ok()?,
             multipack: None,
+            logical_multipack: None,
             delta_t: paths.usno_directory.as_deref().and_then(load_delta_t),
             chiron: paths.chiron_spk.as_deref().and_then(load_chiron),
             stars: match paths.fixed_star_catalog.as_deref() {
@@ -239,6 +241,7 @@ impl Engine {
     }
 
     fn apparent(&mut self, target: Body, tdb: JulianDateTdb, frame: ApparentFrame) -> Result<[f64; 6], ProviderError> {
+        self.require_logical_coverage(tdb)?;
         if let Some(manager) = self.multipack.as_mut() {
             let fields = experimental_geocentric_apparent_with_provider(manager, target, tdb, frame).map_err(|_| ProviderError)?;
             Ok(six!(fields.fields))
@@ -247,6 +250,14 @@ impl Engine {
             let rows = geocentric_apparent_six_fields_many_with_options(&mut self.ephemeris, &[target], tdb, options).map_err(|_| ProviderError)?;
             Ok(six!(rows.first().ok_or(ProviderError)?.fields))
         }
+    }
+
+    fn require_logical_coverage(&self, tdb: JulianDateTdb) -> Result<(), ProviderError> {
+        if let Some(manager) = &self.logical_multipack {
+            let spec = manager.select_pack(tdb).map_err(|_| ProviderError)?;
+            if !spec.file_path.is_file() { return Err(ProviderError); }
+        }
+        Ok(())
     }
 
     /// Sunrise, sunset and following sunrise bracketing the instant. Sea-level,
@@ -301,7 +312,7 @@ static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
 /// Only an app-build-time digest can authorize the catalog. The catalog itself
 /// supplies neither its trust anchor nor a filesystem location from the UI.
-fn pinned_manager(paths: &DataPaths, resource_folder: &Path, data_folder: &Path, digest: &str) -> Option<De441PackManager> {
+fn pinned_manager(paths: &DataPaths, resource_folder: &Path, data_folder: &Path, digest: &str) -> Option<(De441PackManager, De441PackManager)> {
     if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) { return None; }
     let mut pin = [0u8; 32];
     for (i, byte) in pin.iter_mut().enumerate() { *byte = u8::from_str_radix(&digest[i * 2..i * 2 + 2], 16).ok()?; }
@@ -314,8 +325,10 @@ fn pinned_manager(paths: &DataPaths, resource_folder: &Path, data_folder: &Path,
     let bytes = std::fs::read(catalog_path).ok()?;
     let catalog = crate::de441_catalog::parse_pinned(&bytes, &pin).ok()?;
     let directory = data_folder.join("de441-packs");
-    catalog.installed_verified(&directory, &bundled_base).ok()?;
-    catalog.manager(&directory, &bundled_base).ok()
+    let installed = catalog.installed_verified(&directory, &bundled_base).ok()?;
+    let logical = catalog.manager(&directory, &bundled_base).ok()?;
+    let sampling = catalog.sampling_manager(&directory, &bundled_base, &installed).ok()?;
+    Some((logical, sampling))
 }
 
 /// Called once at startup with the application's data folder (`ephemeris.json` is read from it) and the
@@ -342,7 +355,9 @@ fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
             // Only the bundled base is subject to this catalog. A configured
             // replacement file remains a separate, user-selected provider.
             if paths.de441 == resource.join(BUNDLED_FOLDER).join(BUNDLED_DE441) {
-                engine.multipack = Some(pinned_manager(&paths, resource, CONFIG_FOLDER.get()?, digest)?);
+                let (logical, sampling) = pinned_manager(&paths, resource, CONFIG_FOLDER.get()?, digest)?;
+                engine.logical_multipack = Some(logical);
+                engine.multipack = Some(sampling);
             }
         }
         *guard = Some(engine);
@@ -493,6 +508,12 @@ impl Engine {
         site: &Site,
         solar: Option<SolarSearch>,
     ) -> Result<HistoricalChart, ProviderError> {
+        if self.logical_multipack.is_some() {
+            let civil_epoch = virgostars_ephemeris_core::historical_civil_time::local_to_ut1(civil).map_err(|_| ProviderError)?;
+            let epoch = virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t(
+                civil_epoch.jd_ut1, delta_t_seconds, delta_t_uncertainty_seconds).map_err(|_| ProviderError)?;
+            self.require_logical_coverage(epoch.jd_tdb)?;
+        }
         let result = if let Some(manager) = self.multipack.as_mut() {
             if solar.is_some() { return Err(ProviderError); }
             experimental_snapshot_from_civil_with_provider(manager, civil, delta_t_seconds,
@@ -665,6 +686,7 @@ impl EphemerisProvider for VirgoStarsEphemeris {
         with_engine(|engine| {
             let jd = julian_day_ut(request);
             let tdb = engine.to_tdb(jd)?;
+            engine.require_logical_coverage(tdb)?;
             let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
             let angles = house_angles(jd, tt, request.latitude_deg, request.longitude_deg).map_err(|_| ProviderError)?;
             // Hipparcos I/239 HIP 32349, ICRS J1991.25; radial velocity zero is assumed.
@@ -706,7 +728,7 @@ impl EphemerisProvider for VirgoStarsEphemeris {
         // Without the data there is nothing to say about coverage; the calculation itself reports it.
         with_engine(|engine| {
             let Ok(tdb) = engine.to_tdb(jd_ut) else { return false; };
-            if let Some(manager) = &engine.multipack {
+            if let Some(manager) = &engine.logical_multipack {
                 manager.select_pack(tdb).is_ok_and(|spec| spec.file_path.is_file())
             } else {
                 let (start, end) = engine.ephemeris.coverage();
@@ -757,8 +779,10 @@ mod tests {
         let paths = DataPaths { de441: ephemeris.join(BUNDLED_DE441), usno_directory: None, chiron_spk: None, fixed_star_catalog: None };
         assert!(pinned_manager(&paths, &resources, &data, &"0".repeat(64)).is_none());
         let mut actual = Engine::open(&paths).unwrap();
-        actual.multipack = Some(pinned_manager(&paths, &resources, &data, &pin).unwrap());
-        let mut expected = Engine::open(&DataPaths {de441: full, ..paths}).unwrap();
+        let (logical, sampling) = pinned_manager(&paths, &resources, &data, &pin).unwrap();
+        actual.logical_multipack = Some(logical);
+        actual.multipack = Some(sampling);
+        let mut expected = Engine::open(&DataPaths {de441: full, ..paths.clone()}).unwrap();
         for body in [Body::Sun, Body::Moon, Body::Mercury, Body::PlutoBarycenter] {
             for frame in [ApparentFrame::TrueEclipticOfDate, ApparentFrame::TrueEquatorOfDate] {
                 let tdb = JulianDateTdb(2_451_545.0);
@@ -781,6 +805,29 @@ mod tests {
                 assert_eq!(a.longitude_speed, b.longitude_speed);
             }
         }
+        // Sub-samples can cross the boundary even when reception is inside
+        // the base. Use its verified physical overlap, not a missing pack.
+        drop(actual);
+        std::fs::remove_file(packs.join("de441-v2-history-00800-00999.eph")).unwrap();
+        let mut base_only = Engine::open(&paths).unwrap();
+        let (logical, sampling) = pinned_manager(&paths, &resources, &data, &pin).unwrap();
+        base_only.logical_multipack = Some(logical);
+        base_only.multipack = Some(sampling);
+        let boundary = HistoricalCivilInput {
+            local: CalendarDateTime {year: 1000, month: 1, day: 1, hour: 0, minute: 0, second: 0.0, scale: TimeScale::Ut1},
+            calendar: Calendar::ProlepticGregorian,
+            offset: HistoricalOffset::Supplied {seconds_east: 0.0, source: "test"}, uncertainty_seconds: 0.0,
+        };
+        let a = base_only.historical_chart(boundary, 69.0, 2.0, "synthetic", &site, None).unwrap();
+        let b = expected.historical_chart(boundary, 69.0, 2.0, "synthetic", &site, None).unwrap();
+        for (a, b) in a.chart.bodies.iter().zip(&b.chart.bodies) {
+            assert_eq!(a.id, b.id);
+            assert_eq!(a.longitude_deg, b.longitude_deg);
+            assert_eq!(a.longitude_speed, b.longitude_speed);
+        }
+        let outside = HistoricalCivilInput { local: CalendarDateTime {year: 999, month: 12, day: 31,
+            hour: 12, minute: 0, second: 0.0, scale: TimeScale::Ut1}, ..boundary };
+        assert!(base_only.historical_chart(outside, 69.0, 2.0, "synthetic", &site, None).is_err());
     }
 
     #[test]

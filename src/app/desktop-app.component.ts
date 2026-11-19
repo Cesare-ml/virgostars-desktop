@@ -1994,7 +1994,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   private attachTransitHover(): void {
     this.renderer.setTransitPointHoverListener(value => {
-      if (!value) return;
+      if (!value || (value.ring !== 'natal' && value.ring !== 'transit')) return;
       this.transitFocus = {ring:value.ring, name:value.name};
       this.drawTransitFocus();
     });
