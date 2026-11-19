@@ -14,6 +14,8 @@ CPAL permissions are not a trademark license for the VirgoStars name, visual ide
 
 Recorded as the maintainer stated them in the project chat; this repository cannot verify them and they are not legal advice.
 
+**2026-11-19 update:** the maintainer states that he authored the 360 monomeri texts and holds their redistribution rights. He also identified NASA/JPL as the source of the DE441 slices and approved their publication. These statements do not replace the independent review of other scientific datasets or third-party software notices.
+
 - **Artwork.** The approved artwork pack (the symbol, wheel and texture images listed in `approved-assets.json` with their rights holder and approval evidence) is stated to be fully owned or licensed by the maintainer, **who approves including it in public builds**. This covers redistribution inside a built application; it does not by itself put those files in this repository, and it does not change the pinned manifest.
 - **City catalog.** The maintainer **approves the publication rights of the world-city catalog**. The catalog remains attached to the protected `places-20261112-v2` release; moving it, deciding how a public build obtains it, and any change of repository visibility are separate steps that still need the maintainer's explicit go-ahead (see [Publication checklist](PUBLICATION_CHECKLIST.md)).
 - **Not covered by these decisions:** NASA/JPL kernels (DE441), the USNO ΔT files and the JPL Chiron SPK (none is bundled), fonts and third-party dependencies. Swiss Ephemeris (AGPL-3.0 or commercial; no professional licence is held) no longer exists in this build and must not return to a distributed binary.
