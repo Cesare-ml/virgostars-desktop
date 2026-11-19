@@ -11,8 +11,9 @@ third-party interpretation material; this private installer is not cleared for
 redistribution. Do not describe it as signed, published, or fully validated.
 
 **New proposed base (2026-11-19):** the *staging script's default* has moved to
-**1000–2200 inclusive**, as requested for Desktop. This larger slice has **not
-yet been generated or tested in an installer**. The v2 staging manifest records
+**1000–2200 inclusive**, as requested for Desktop. A private Rust-exported
+base of 111,662,384 bytes has since been generated and compared with its
+local source, but has **not been tested in an installer**. The v2 staging manifest records
 the requested years and the release preflight rejects the previous 1890–2110
 bundle as an insufficient base. An existing private installer does not update
 by itself. Optional downloadable ranges and the public catalog remain future
@@ -22,7 +23,7 @@ work; see [Ephemeris catalog PR #649](https://github.com/Cesare-ml/VirgoStars-Ep
 
 | File (under the install folder) | Content | Size |
 | --- | --- | --- |
-| `ephemeris/de441-slice.eph` | JPL DE441, **last Windows-tested** slice 1890–2110; **next staging default** 1000–2200 | 20.6 MB measured for old build; new size unmeasured |
+| `ephemeris/de441-slice.eph` | JPL DE441, **last installer-tested** slice 1890–2110; **next staging default** 1000–2200 | 20.6 MB old build; 111,662,384 bytes for the private Rust-exported base |
 | `ephemeris/usno/*` | USNO ΔT data and predictions | 45 KB |
 | `ephemeris/chiron.bsp` | JPL small-body SPK for Chiron (1900–2101) | 3.7 MB |
 | `ephemeris/manifest.json` | file names, sizes, SHA-256 of the above | — |
