@@ -29,7 +29,7 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 - [ ] Integrate approved/redistributable assets only after rights review.
 - [ ] Explicitly mark unavailable bodies, houses, time ranges and precision; no silent fallback.
 - [ ] Fixed stars: the ordinary chart can request and search a separately configured catalogue; approximate entries are marked. The local 738-entry catalogue was smoke-tested with real DE441, but is not bundled. The existing experimental stellar ring and contact display remain to be reconciled. See [fixed stars](FIXED_STARS_MVP.md).
-- [ ] Historical chart mode: the form, explicit local-clock/ΔT command, renderer and encrypted archive are connected in this branch. Sampled DE441 and archive migration tests pass locally; GUI click-through and broader date coverage remain unverified. The UTC-based navigator does not yet handle historical dates. See [provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md).
+- [ ] Historical chart mode: **deferred by the owner for MVP 1**. The new-chart toggle is hidden; existing historical archive entries can still be opened and edited. The underlying explicit local-clock/ΔT command, renderer and encrypted archive are retained. A fictional historical chart was calculated, saved and reopened after a restart in an isolated Windows test with DE441 and a test archive key; broader date coverage and a packaged release remain unverified. The UTC-based navigator does not yet handle historical dates. See [provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md).
 - [ ] Optional independent event dataset/index after VirgoStars-Event-Ephemeris becomes valid and distributable.
 
 ## Gate 4 — Production-safe cloud auth and sync (separate backend work required)
