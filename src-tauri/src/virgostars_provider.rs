@@ -310,20 +310,42 @@ static CONFIG_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 static RESOURCE_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
+pub(crate) fn catalog_context() -> Result<(crate::de441_catalog::Catalog, PathBuf, PathBuf), &'static str> {
+    let digest = option_env!("VIRGOSTARS_DE441_CATALOG_SHA256").ok_or("not_configured")?;
+    let resource = RESOURCE_FOLDER.get().ok_or("not_configured")?;
+    let data = CONFIG_FOLDER.get().ok_or("not_configured")?;
+    let paths = data_paths(Some(data), Some(resource), &|name| std::env::var(name).ok()).ok_or("not_configured")?;
+    let base = resource.join(BUNDLED_FOLDER).join(BUNDLED_DE441);
+    if paths.de441 != base { return Err("custom_source"); }
+    let catalog = read_pinned_catalog(resource, digest).ok_or("invalid_catalog")?;
+    Ok((catalog, data.join("de441-packs"), base))
+}
+
+/// Serialize file mutation with calculations and discard cached readers.
+pub(crate) fn without_engine<T>(action: impl FnOnce() -> T) -> T {
+    let mut guard = ENGINE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = None;
+    action()
+}
+
 /// Only an app-build-time digest can authorize the catalog. The catalog itself
 /// supplies neither its trust anchor nor a filesystem location from the UI.
-fn pinned_manager(paths: &DataPaths, resource_folder: &Path, data_folder: &Path, digest: &str) -> Option<(De441PackManager, De441PackManager)> {
+fn read_pinned_catalog(resource_folder: &Path, digest: &str) -> Option<crate::de441_catalog::Catalog> {
     if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) { return None; }
     let mut pin = [0u8; 32];
     for (i, byte) in pin.iter_mut().enumerate() { *byte = u8::from_str_radix(&digest[i * 2..i * 2 + 2], 16).ok()?; }
-    let bundled_base = resource_folder.join(BUNDLED_FOLDER).join(BUNDLED_DE441);
-    // Explicit user-selected full files keep their existing single-file semantics.
-    if paths.de441 != bundled_base { return None; }
     let catalog_path = resource_folder.join(BUNDLED_FOLDER).join("de441-release-catalog-v1.json");
     let metadata = std::fs::symlink_metadata(&catalog_path).ok()?;
     if !metadata.file_type().is_file() || metadata.len() > 512 * 1024 { return None; }
     let bytes = std::fs::read(catalog_path).ok()?;
-    let catalog = crate::de441_catalog::parse_pinned(&bytes, &pin).ok()?;
+    crate::de441_catalog::parse_pinned(&bytes, &pin).ok()
+}
+
+fn pinned_manager(paths: &DataPaths, resource_folder: &Path, data_folder: &Path, digest: &str) -> Option<(De441PackManager, De441PackManager)> {
+    let bundled_base = resource_folder.join(BUNDLED_FOLDER).join(BUNDLED_DE441);
+    // Explicit user-selected full files keep their existing single-file semantics.
+    if paths.de441 != bundled_base { return None; }
+    let catalog = read_pinned_catalog(resource_folder, digest)?;
     let directory = data_folder.join("de441-packs");
     let installed = catalog.installed_verified(&directory, &bundled_base).ok()?;
     let logical = catalog.manager(&directory, &bundled_base).ok()?;

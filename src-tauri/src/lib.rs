@@ -15,6 +15,7 @@ mod historical_planets;
 mod historical_chart;
 mod updater;
 mod update_backup;
+mod de441_operations;
 #[cfg(feature = "virgostars-ephemeris")]
 mod de441_catalog;
 #[cfg(all(feature = "updater-loopback-test", not(debug_assertions)))]
@@ -28,6 +29,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().pubkey(option_env!("VIRGOSTARS_UPDATER_PUBLIC_KEY").unwrap_or("")).build())
         .manage(updater::UpdateState::default())
+        .manage(de441_operations::DownloadState::default())
         .setup(|_app| {
             #[cfg(feature = "updater-loopback-test")]
             if !_app.config().identifier.starts_with("it.virgostars.desktop.updatertest.") {
@@ -44,7 +46,7 @@ pub fn run() {
             Ok(())
         })
         .manage(offline_places::PlaceSearchGate::default())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update, star_link::open_star_page])
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update, star_link::open_star_page, de441_operations::de441_packages])
         .run(tauri::generate_context!())
         .expect("failed to launch the synthetic VirgoStars Desktop renderer spike");
 }

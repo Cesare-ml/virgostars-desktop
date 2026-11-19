@@ -27,10 +27,13 @@ historical-planet sensitivity command still uses the single-file reader. The
 normal UTC path retains its own time-policy bounds: historical dates require
 the explicit historical civil-time and delta-T contract.
 
-The catalog transport is not yet connected to Desktop IPC, settings or a
-first-run wizard. No release catalog digest is configured by default. A future
-installation or removal operation must coordinate with the active engine,
-release its reader before removal on Windows, and revalidate before use.
+The restricted `de441_packages` IPC provides inventory, preview, download,
+cancellation and edge-only removal. URLs and paths remain host-controlled.
+The preview includes all intervening packages and byte count; starting a job
+requires the same plan after revalidation. Settings and a first-run dialog call
+that contract. Installation/removal serialize against the engine and discard
+its cached reader; installed files are revalidated before use. Downloads can
+resume after interruption. No release catalog digest is configured by default.
 
 The ignored local integration test checks a pinned private catalog and the
 adjacent 800–999 and 2201–2400 slices against the full source at 900, 1000,
@@ -38,3 +41,9 @@ adjacent 800–999 and 2201–2400 slices against the full source at 900, 1000,
 the preceding package absent and rejects a 999 reception epoch. These are same-source
 comparisons, not independent scientific validation. Source provenance and
 redistribution rights remain unresolved; no data is published by this work.
+An additional explicitly invoked test plans, downloads a real local adjacent
+package over a test-only localhost endpoint, activates it and removes it. The
+loopback override is compiled only under `cfg(test)`; release code constructs
+its fixed GitHub release URL from the authenticated catalog. The local catalog's
+release tag is a placeholder: its packages have not been published, so a
+normal network download cannot succeed until an authorized release exists.

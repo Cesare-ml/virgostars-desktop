@@ -113,7 +113,7 @@ fn safe_filename(s: &str) -> bool {
     })
 }
 
-fn year_start(year: i32) -> Result<f64, &'static str> {
+pub(crate) fn year_start(year: i32) -> Result<f64, &'static str> {
     CalendarDateTime {
         year,
         month: 1,
@@ -188,6 +188,10 @@ pub(crate) fn parse_pinned(
 }
 
 impl Catalog {
+    pub(crate) fn summaries(&self, installed: &[String]) -> Vec<PackSummary> {
+        self.packs.iter().map(|p| PackSummary { id: p.id.clone(), first_year: p.first_year,
+            last_year: p.last_year, bytes: p.bytes, required: p.required, installed: installed.contains(&p.id) }).collect()
+    }
     /// The catalog cannot supply a host, scheme, path or query component.
     pub(crate) fn asset_url(&self, pack: &Pack) -> String {
         format!(
@@ -419,6 +423,17 @@ impl Catalog {
     }
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PackSummary {
+    id: String,
+    first_year: i32,
+    last_year: i32,
+    bytes: u64,
+    required: bool,
+    installed: bool,
+}
+
 /// A bounded persistent staging file; it is not an installed pack.
 /// Callers hold the directory lock and provide an app-owned directory.
 pub(crate) struct PendingPack {
@@ -600,7 +615,7 @@ fn release_client() -> Result<reqwest::Client, &'static str> {
         .map_err(|_| "network_unavailable")
 }
 
-fn ensure_tls_provider() {
+pub(crate) fn ensure_tls_provider() {
     // A provider previously initialized by the host remains authoritative.
     // Otherwise select the ring provider explicitly for reqwest's
     // rustls-no-provider build.
@@ -625,7 +640,7 @@ pub(crate) async fn download_pack(
     download_from(&client, &url, catalog, directory, id, cancelled, progress).await
 }
 
-async fn download_from(
+pub(crate) async fn download_from(
     client: &reqwest::Client,
     url: &str,
     catalog: &Catalog,
