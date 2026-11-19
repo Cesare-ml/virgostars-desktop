@@ -75,6 +75,8 @@ pub(crate) struct Catalog {
 pub(crate) struct Pack {
     id: String,
     filename: String,
+    #[serde(default)]
+    release_tag: Option<String>,
     first_year: i32,
     last_year: i32,
     start_jd_tdb: f64,
@@ -157,6 +159,7 @@ pub(crate) fn parse_pinned(
     for pack in &catalog.packs {
         if !safe_component(&pack.id, 80)
             || !safe_filename(&pack.filename)
+            || pack.release_tag.as_ref().is_some_and(|tag| !safe_component(tag, 100))
             || !ids.insert(&pack.id)
             || !filenames.insert(pack.filename.to_ascii_lowercase())
             || !digest(&pack.sha256)
@@ -196,7 +199,7 @@ impl Catalog {
     pub(crate) fn asset_url(&self, pack: &Pack) -> String {
         format!(
             "https://github.com/Cesare-ml/VirgoStars-Ephemeris/releases/download/{}/{}",
-            self.release_tag, pack.filename
+            pack.release_tag.as_deref().unwrap_or(&self.release_tag), pack.filename
         )
     }
 
@@ -805,6 +808,33 @@ mod tests {
             "unauthenticated_catalog"
         );
         assert!(parse_pinned(&data, &[0; 32]).is_err());
+    }
+
+    #[test]
+    fn pinned_pack_can_use_a_separately_versioned_github_release() {
+        let mut value = catalog();
+        value["packs"][0]["releaseTag"] = "mobile-v1".into();
+        let cat = parse(&value).unwrap();
+        assert_eq!(cat.asset_url(&cat.packs[0]),
+            "https://github.com/Cesare-ml/VirgoStars-Ephemeris/releases/download/mobile-v1/past.eph");
+        assert_eq!(cat.asset_url(&cat.packs[1]),
+            "https://github.com/Cesare-ml/VirgoStars-Ephemeris/releases/download/data-v1/base.eph");
+        value["packs"][0]["releaseTag"] = "../evil".into();
+        assert!(parse(&value).is_err());
+        value["packs"][0]["releaseTag"] = "mobile?url=evil".into();
+        assert!(parse(&value).is_err());
+    }
+
+    #[test]
+    fn reviewed_release_catalog_satisfies_runtime_validation() {
+        let bytes = include_bytes!("../de441-release-catalog-v1.json");
+        let pin: [u8; 32] = Sha256::digest(bytes).into();
+        let catalog = parse_pinned(bytes, &pin).unwrap();
+        assert_eq!(catalog.packs.len(), 145);
+        assert_eq!(catalog.packs.iter().filter(|pack| pack.required).count(), 1);
+        let reused = catalog.packs.iter().filter(|pack| pack.release_tag.is_some()).collect::<Vec<_>>();
+        assert_eq!(reused.len(), 5);
+        assert!(reused.iter().all(|pack| catalog.asset_url(pack).contains("/de441-mobile-v1.0.0/")));
     }
 
     #[test]

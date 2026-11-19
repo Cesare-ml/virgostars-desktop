@@ -4,7 +4,10 @@ Status: **experimental local integration**, stacked on the catalog and transport
 draft. This is not a release or a claim of published data. The pinned core is
 the head of Ephemeris PR #652, itself stacked on #651.
 
-When `VIRGOSTARS_DE441_CATALOG_SHA256` is set **at compile time**, the installed
+The installer build compiles the reviewed catalog SHA-256 into the application
+and stages the matching catalog resource with the exact required base. A
+different base or catalog causes the installer preflight to fail. For isolated
+development builds, `VIRGOSTARS_DE441_CATALOG_SHA256` can be set **at compile time**; the installed
 resource `ephemeris/de441-release-catalog-v1.json` must match that lowercase
 SHA-256 digest. The base and every installed optional pack are checked against
 the catalog and the installation must be contiguous before the provider opens.
@@ -54,8 +57,7 @@ The ignored local integration test checks a pinned private catalog and the
 adjacent 800–999 and 2201–2400 slices against the full source at 900, 1000,
 2000 and 2201, plus modern apparent positions. It also checks 1000-01-01 with
 the preceding package absent and rejects a 999 reception epoch. These are same-source
-comparisons, not independent scientific validation. Source provenance and
-redistribution rights remain unresolved; no data is published by this work.
+comparisons, not independent scientific validation.
 An additional explicitly invoked test plans, downloads a real local adjacent
 package over a test-only localhost endpoint, activates it and removes it. The
 unit-test loopback override is compiled only under `cfg(test)`. A separate
@@ -65,6 +67,35 @@ requires an isolated application identifier. It selects only the fixed
 the actual wizard downloaded the private 800–999 package, calculated a year
 900 chart, removed the edge pack and rejected that chart afterwards. Normal
 release code constructs its fixed GitHub release URL from the authenticated
-catalog. The local catalog's
-release tag is a placeholder: its packages have not been published, so a
-normal network download cannot succeed until an authorized release exists.
+catalog.
+
+## Distribution and source
+
+The owner authorized release of these DE441 slices and identified the source
+as NASA/JPL. The full local classic binary's SHA-256 is
+`476096486def4e41bfceb29aa27f50784da0bce318902bcf7b88caad058cd4da`;
+its MD5 `4e3b924463d17b68ec9c4a18240300cd` matches the current
+[Astrodienst JPL download listing](https://www.astro.com/swisseph-download/jplfiles/),
+which identifies the renamed source as JPL's
+`Linux/de441/linux_m13000p17000.441`. JPL documents the
+[Linux binary distribution](https://ssd.jpl.nasa.gov/planets/eph_export.html).
+The MD5 corroborates identity but is not an independent cryptographic
+attestation by NASA; the owner's rights assertion is recorded as such.
+The project's CPAL license applies to its source code, not automatically to
+JPL data.
+
+On 2026-11-19 the existing real-file reader test passed using that exact
+source. Its J2000 Earth-relative-to-solar-system-barycenter position was
+independently compared with the JPL Horizons API, target 399, center 500@0,
+geometric ICRF frame, JD 2451545.0 TDB, in km. Horizons identified DE441
+for both bodies and reported [-27566740.48281145, 132361381.1535491,
+57418653.28625385], matching the reader's recorded reference within
+0.000001 km per coordinate. This single vector does not validate all bodies,
+epochs, velocities, frames, corrections, or historical chart models.
+
+The reviewed catalog selects `de441-desktop-v1.0.0` as the default release
+and reuses five byte-identical 0–999 files already in
+`de441-mobile-v1.0.0`. A per-file release tag remains a single validated
+path component, and hosts and paths remain fixed in the Rust downloader.
+Release URLs must be confirmed live and all remote SHA-256 values checked
+before describing the data as publicly available.
