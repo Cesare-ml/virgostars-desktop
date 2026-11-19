@@ -422,25 +422,57 @@ fn select_historical_usno(
 pub(crate) fn historical_planet(
     request: &crate::historical_planets::HistoricalPlanetRequest,
 ) -> Option<Result<crate::historical_planets::HistoricalPlanetResult, ()>> {
-    with_engine(|engine| {
+    with_engine(|engine| engine.historical_planet(request))
+}
+
+impl Engine {
+    fn historical_planet(&mut self, request: &crate::historical_planets::HistoricalPlanetRequest)
+        -> Result<crate::historical_planets::HistoricalPlanetResult, ()> {
         let body = PLANETS.iter().find(|(name, _)| *name == request.body).map(|(_, body)| *body).ok_or(())?;
-        let output = virgostars_ephemeris_core::historical_rate_candidate::historical_three_rate_candidate(
-            &mut engine.ephemeris, body, request.jd_ut1, request.delta_t_seconds,
-            request.uncertainty_seconds, &request.delta_t_source,
-        ).map_err(|_| ())?;
+        let output = if self.multipack.is_some() {
+            use virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t;
+            use virgostars_ephemeris_core::historical_rate_candidate::HistoricalThreeRateCandidate;
+            let source = request.delta_t_source.trim();
+            if source.is_empty() || request.delta_t_source.len() > 200 { return Err(()); }
+            let epoch = ut1_to_tdb_with_explicit_delta_t(request.jd_ut1, request.delta_t_seconds, request.uncertainty_seconds).map_err(|_| ())?;
+            self.require_logical_coverage(epoch.jd_tdb).map_err(|_| ())?;
+            let rates = virgostars_ephemeris_core::apparent_ecliptic_of_date::experimental_three_rate_with_provider(
+                self.multipack.as_mut().ok_or(())?, body, epoch.jd_tdb).map_err(|_| ())?;
+            HistoricalThreeRateCandidate {epoch, rates, delta_t_source: source.to_owned()}
+        } else {
+            virgostars_ephemeris_core::historical_rate_candidate::historical_three_rate_candidate(
+                &mut self.ephemeris, body, request.jd_ut1, request.delta_t_seconds,
+                request.uncertainty_seconds, &request.delta_t_source).map_err(|_| ())?
+        };
         let fields = output.rates.base;
         let sensitivity = if request.include_scenarios {
             use crate::historical_planets::{HistoricalSensitivity, HistoricalSensitivitySample};
             use virgostars_ephemeris_core::historical_delta_t_scenarios::{historical_delta_t_scenarios, ScenarioFrame};
-            let samples = historical_delta_t_scenarios(&mut engine.ephemeris, body, request.jd_ut1,
-                request.delta_t_seconds, request.uncertainty_seconds, ScenarioFrame::DirectObliquity).map_err(|_| ())?;
-            // A source/frame mismatch must never silently produce misleading samples.
-            if samples.nominal.fields != fields { return Err(()); }
-            let convert = |sample: virgostars_ephemeris_core::historical_delta_t_scenarios::HistoricalScenario| HistoricalSensitivitySample {
-                delta_t_seconds: sample.epoch.delta_t_seconds, longitude_deg: sample.fields.longitude_deg,
-                latitude_deg: sample.fields.latitude_deg,
-            };
-            Some(HistoricalSensitivity { lower: convert(samples.lower), upper: convert(samples.upper) })
+            if self.multipack.is_some() {
+                use virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_delta_t_scenarios;
+                let epochs = ut1_to_tdb_delta_t_scenarios(request.jd_ut1, request.delta_t_seconds, request.uncertainty_seconds).map_err(|_| ())?;
+                for epoch in [epochs.lower, epochs.nominal, epochs.upper] { self.require_logical_coverage(epoch.jd_tdb).map_err(|_| ())?; }
+                let manager = self.multipack.as_mut().ok_or(())?;
+                let mut sample = |epoch| virgostars_ephemeris_core::apparent_ecliptic_of_date::experimental_three_rate_with_provider(manager, body, epoch)
+                    .map(|candidate| candidate.base).map_err(|_| ());
+                let lower = sample(epochs.lower.jd_tdb)?;
+                let nominal = sample(epochs.nominal.jd_tdb)?;
+                let upper = sample(epochs.upper.jd_tdb)?;
+                if nominal != fields { return Err(()); }
+                Some(HistoricalSensitivity {
+                    lower: HistoricalSensitivitySample {delta_t_seconds:epochs.lower.delta_t_seconds, longitude_deg:lower.longitude_deg, latitude_deg:lower.latitude_deg},
+                    upper: HistoricalSensitivitySample {delta_t_seconds:epochs.upper.delta_t_seconds, longitude_deg:upper.longitude_deg, latitude_deg:upper.latitude_deg},
+                })
+            } else {
+                let samples = historical_delta_t_scenarios(&mut self.ephemeris, body, request.jd_ut1,
+                    request.delta_t_seconds, request.uncertainty_seconds, ScenarioFrame::DirectObliquity).map_err(|_| ())?;
+                if samples.nominal.fields != fields { return Err(()); }
+                let convert = |sample: virgostars_ephemeris_core::historical_delta_t_scenarios::HistoricalScenario| HistoricalSensitivitySample {
+                    delta_t_seconds: sample.epoch.delta_t_seconds, longitude_deg: sample.fields.longitude_deg,
+                    latitude_deg: sample.fields.latitude_deg,
+                };
+                Some(HistoricalSensitivity { lower: convert(samples.lower), upper: convert(samples.upper) })
+            }
         } else { None };
         Ok(crate::historical_planets::HistoricalPlanetResult {
             body: request.body.clone(), jd_ut1: output.epoch.jd_ut1, jd_tt: output.epoch.jd_tt,
@@ -455,7 +487,7 @@ pub(crate) fn historical_planet(
             radial_correction_applied: output.rates.radial_correction_applied,
             sensitivity,
         })
-    })
+    }
 }
 
 /// Julian day (UT) of a validated proleptic-Gregorian instant (Meeus, chapter 7).
@@ -826,6 +858,19 @@ mod tests {
                 assert_eq!(a.longitude_deg, b.longitude_deg);
                 assert_eq!(a.longitude_speed, b.longitude_speed);
             }
+            let request: crate::historical_planets::HistoricalPlanetRequest = serde_json::from_value(serde_json::json!({
+                "protocolVersion":1, "body":"Mars", "jdUt1":a.chart.julian_day_ut,
+                "deltaTSeconds":69.0, "uncertaintySeconds":2.0, "deltaTSource":"synthetic", "includeScenarios":true
+            })).unwrap();
+            let a = actual.historical_planet(&request).unwrap();
+            let b = expected.historical_planet(&request).unwrap();
+            assert_eq!(a.longitude_deg,b.longitude_deg);
+            assert_eq!(a.latitude_deg,b.latitude_deg);
+            assert_eq!(a.longitude_speed_deg_per_tdb_day,b.longitude_speed_deg_per_tdb_day);
+            assert_eq!(a.radial_speed_au_per_tdb_day,b.radial_speed_au_per_tdb_day);
+            let a=a.sensitivity.unwrap();let b=b.sensitivity.unwrap();
+            assert_eq!(a.lower.longitude_deg,b.lower.longitude_deg);
+            assert_eq!(a.upper.latitude_deg,b.upper.latitude_deg);
         }
         // Sub-samples can cross the boundary even when reception is inside
         // the base. Use its verified physical overlap, not a missing pack.

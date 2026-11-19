@@ -21,9 +21,10 @@ interval. This permits the first instant of year 1000 without requiring the
 
 The chart, lunar, fixed-star, Chiron, luminary and modern solar-day paths select
 each DE441 state by its own epoch. The historical chart path uses the provider
-for planets and lunar points. Historical solar-event searches are not exposed
-by the provider-backed snapshot and fail if explicitly requested; the separate
-historical-planet sensitivity command still uses the single-file reader. The
+for planets and lunar points. The historical-planet diagnostic and its
+explicit delta-T sensitivity samples also use the provider. Historical
+solar-event searches are not exposed by the provider-backed snapshot and fail
+if explicitly requested. The
 normal UTC path retains its own time-policy bounds: historical dates require
 the explicit historical civil-time and delta-T contract.
 
