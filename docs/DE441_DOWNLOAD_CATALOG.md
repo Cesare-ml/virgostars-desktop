@@ -32,6 +32,11 @@ and a loopback server to download and activate the five packs from 800–999
 back to 0–199 in order; it rejected removal of an interior pack and removed
 the earliest pack. The catalog pin used by that test is a fixture, not a
 production trust anchor. No remote release is contacted by the tests.
+An additional local test compared geometric Earth-relative positions and
+velocities for ten bodies immediately before, at, and after all 144 internal
+boundaries: 4,320 states matched the same full source exactly. This is not
+independent JPL validation, nor does it establish that Desktop's apparent
+and historical pipelines support the entire catalog.
 
 An isolated staging primitive saves bounded chunks, reopens a partial file,
 enforces offsets and size, and hashes the complete file. A separate candidate

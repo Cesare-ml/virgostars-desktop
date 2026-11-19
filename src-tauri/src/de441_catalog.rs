@@ -1355,4 +1355,58 @@ mod tests {
             .unwrap();
         assert_eq!(cat.installed_verified(dir.path(), &base).unwrap().len(), 5);
     }
+
+    #[test]
+    #[ignore = "requires the full DE441 source and all privately generated slices"]
+    fn all_package_boundaries_match_full_source_geometric_states() {
+        use virgostars_ephemeris_core::de441::Body;
+        let catalog_path = std::env::var_os("DE441_DESKTOP_TEST_CATALOG").expect("catalog path");
+        let directory =
+            PathBuf::from(std::env::var_os("DE441_DESKTOP_TEST_PACKS").expect("pack directory"));
+        let original_path = std::env::var_os("DE441_SOURCE_PATH").expect("source path");
+        let raw = fs::read(catalog_path).unwrap();
+        let hash = Sha256::digest(&raw);
+        assert_eq!(
+            format!("{:x}", hash),
+            "381f203035d62538c1418ce816ebebb082a5e7e0562994800badcc64d0b50eae"
+        );
+        let cat = parse_pinned(&raw, &hash.into()).unwrap();
+        let base = directory.join("de441-v2-desktop-core-1000-2200.eph");
+        let mut manager = cat.manager(&directory, &base).unwrap();
+        let mut original = De441::open(original_path).unwrap();
+        let bodies = [
+            Body::Sun,
+            Body::Moon,
+            Body::Mercury,
+            Body::Venus,
+            Body::MarsBarycenter,
+            Body::JupiterBarycenter,
+            Body::SaturnBarycenter,
+            Body::UranusBarycenter,
+            Body::NeptuneBarycenter,
+            Body::PlutoBarycenter,
+        ];
+        let mut count = 0;
+        for pack in cat.packs.iter().skip(1) {
+            for offset in [-1.0 / 86400.0, 0.0, 1.0 / 86400.0] {
+                let epoch = JulianDateTdb(pack.start_jd_tdb + offset);
+                for body in bodies {
+                    let actual = manager.state(body, Body::Earth, epoch).unwrap();
+                    let expected = original.state(body, Body::Earth, epoch).unwrap();
+                    assert_eq!(
+                        actual.position_km, expected.position_km,
+                        "epoch={} body={body:?}",
+                        epoch.0
+                    );
+                    assert_eq!(
+                        actual.velocity_km_per_day, expected.velocity_km_per_day,
+                        "epoch={} body={body:?}",
+                        epoch.0
+                    );
+                    count += 1;
+                }
+            }
+        }
+        assert_eq!(count, 144 * 3 * 10);
+    }
 }
