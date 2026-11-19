@@ -20,3 +20,11 @@ filenames/tags, altered boundaries, missing base and malformed hashes.
 No external data or network access is required. A secure transfer manager,
 atomic activation, recovery and integration with the Rust multipack engine
 remain necessary before any UI claims the packs can be installed or used.
+
+An isolated staging primitive can save bounded chunks, reopen an interrupted
+partial file, enforce offsets and size, and hash the entire file before
+returning its staging path. It never activates a package. It assumes a
+serialized caller and an app-owned directory; it does not yet enforce
+concurrency, free-space checks, HTTP range/redirect rules, or protect the
+verified file from subsequent changes. An activation layer must address
+these concerns and verify contiguity before treating any file as installed.
