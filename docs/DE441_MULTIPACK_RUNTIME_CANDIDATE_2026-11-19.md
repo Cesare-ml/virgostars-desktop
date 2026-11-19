@@ -80,7 +80,12 @@ which identifies the renamed source as JPL's
 `Linux/de441/linux_m13000p17000.441`. JPL documents the
 [Linux binary distribution](https://ssd.jpl.nasa.gov/planets/eph_export.html).
 The MD5 corroborates identity but is not an independent cryptographic
-attestation by NASA; the owner's rights assertion is recorded as such.
+attestation by NASA. On 2026-11-19 the binary downloaded directly from
+[NASA/JPL](https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de441/linux_m13000p17000.441)
+also matched the local SHA-256 in a
+[GitHub-hosted run](https://github.com/Cesare-ml/VirgoStars-Ephemeris/actions/runs/44599499075).
+That confirms byte identity with the JPL download but is not a NASA-signed
+checksum; the owner's rights assertion is recorded as such.
 The project's CPAL license applies to its source code, not automatically to
 JPL data.
 
