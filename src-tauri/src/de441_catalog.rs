@@ -204,6 +204,10 @@ impl Catalog {
         self.packs.iter().find(|pack| pack.id == id)
     }
 
+    pub(crate) fn pack_size(&self, id: &str) -> Option<u64> {
+        self.pack(id).map(|pack| pack.bytes)
+    }
+
     pub(crate) fn manager(
         &self,
         directory: &Path,

@@ -122,38 +122,45 @@ fn handle(state: &DownloadState, request: PackageRequest) -> PackageReply {
                 if approved.len() > 256 || *approved != planned || planned_bytes != bytes { return reply(state, "stale_plan"); }
             } else { return result; }
             if planned.is_empty() { return result; }
+            let Some(queued) = planned.iter().map(|id| catalog.pack_size(id).map(|size| (id.clone(), size))).collect::<Option<Vec<_>>>() else {
+                return reply(state, "invalid_catalog");
+            };
             let shared = Arc::clone(&state.0);
             let cancelled = {
                 let mut job = shared.lock().unwrap_or_else(|p| p.into_inner());
                 if job.busy { drop(job); return reply(state, "busy"); }
-                job.busy = true; job.downloaded = 0; job.total = 0; job.current = None; job.outcome = None;
+                job.busy = true; job.downloaded = 0; job.total = bytes; job.current = None; job.outcome = None;
                 job.cancelled = Arc::new(AtomicBool::new(false));
                 Arc::clone(&job.cancelled)
             };
             tauri::async_runtime::spawn(async move {
                 let mut outcome = "completed";
-                for id in planned {
+                let mut completed = 0u64;
+                for (id, size) in queued {
                     if cancelled.load(Ordering::Relaxed) { outcome = "cancelled"; break; }
-                    { let mut job = shared.lock().unwrap_or_else(|p| p.into_inner()); job.current = Some(id.clone()); job.downloaded = 0; job.total = 0; }
+                    { let mut job = shared.lock().unwrap_or_else(|p| p.into_inner()); job.current = Some(id.clone()); job.downloaded = completed; }
                     let progress_state = Arc::clone(&shared);
-                    let progress = move |n, total| {
-                        let mut job = progress_state.lock().unwrap_or_else(|p| p.into_inner()); job.downloaded = n; job.total = total;
+                    let progress = move |n, _| {
+                        let mut job = progress_state.lock().unwrap_or_else(|p| p.into_inner());
+                        job.downloaded = completed.saturating_add(n).min(bytes);
                     };
                     #[cfg(test)]
                     let downloaded = if let Some(url) = TEST_DOWNLOAD_URL.get() {
                         crate::de441_catalog::ensure_tls_provider();
-                        crate::de441_catalog::download_from(&reqwest::Client::new(), url, &catalog, &directory, &id, &cancelled, progress).await
+                        let local_url = format!("{url}/{id}");
+                        crate::de441_catalog::download_from(&reqwest::Client::new(), &local_url, &catalog, &directory, &id, &cancelled, progress).await
                     } else { download_pack(&catalog, &directory, &id, &cancelled, progress).await };
                     #[cfg(not(test))]
                     let downloaded = download_pack(&catalog, &directory, &id, &cancelled, progress).await;
                     if let Err(error) = downloaded { outcome = error; break; }
                     if cancelled.load(Ordering::Relaxed) { outcome = "cancelled"; break; }
                     if let Err(error) = without_engine(|| catalog.activate_next(&directory, &base, &id)) { outcome = error; break; }
+                    completed = completed.saturating_add(size);
                 }
                 let mut job = shared.lock().unwrap_or_else(|p| p.into_inner());
                 job.busy = false; job.current = None; job.outcome = Some(outcome);
             });
-            result.status = "started"; result.busy = true; result
+            result.status = "started"; result.busy = true; result.downloaded = 0; result.total = bytes; result
         }
     }
 }
@@ -202,64 +209,72 @@ mod tests {
         link("de441-v2-desktop-core-1000-2200.eph", &ephemeris.join("de441-slice.eph"));
         crate::virgostars_provider::configure(data, Some(resources));
         let state = DownloadState::default();
-        let plan = handle(&state, PackageRequest::Plan {first_year:800, last_year:999});
+        let plan = handle(&state, PackageRequest::Plan {first_year:600, last_year:999});
         assert_eq!(plan.status, "ok");
-        assert_eq!(plan.planned, vec!["history-00800-00999"]);
+        assert_eq!(plan.planned, vec!["history-00800-00999", "history-00600-00799"]);
         assert!(plan.planned_bytes > 0);
-        let stale = handle(&state, PackageRequest::Start {first_year:800, last_year:999, planned:Vec::new(), planned_bytes:0});
+        let stale = handle(&state, PackageRequest::Start {first_year:600, last_year:999, planned:Vec::new(), planned_bytes:0});
         assert_eq!(stale.status, "stale_plan");
         assert!(!stale.busy);
         use std::io::{Read, Write};
-        let source = root.join("de441-private-complete/de441-v2-history-00800-00999.eph");
+        let sources = root.join("de441-private-complete");
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/pack", listener.local_addr().unwrap());
         TEST_DOWNLOAD_URL.set(url).unwrap();
         let server = std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-            let (mut stream, _) = loop {
-                match listener.accept() {
-                    Ok(value) => break value,
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < deadline =>
-                        std::thread::sleep(std::time::Duration::from_millis(20)),
-                    Err(e) => panic!("local listener: {e}"),
-                }
-            };
-            stream.set_nonblocking(false).unwrap();
-            stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
-            let mut request = [0u8; 4096];
-            let read = stream.read(&mut request).unwrap();
-            assert!(std::str::from_utf8(&request[..read]).unwrap().starts_with("GET /pack "));
-            let mut file = std::fs::File::open(source).unwrap();
-            let bytes = file.metadata().unwrap().len();
-            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {bytes}\r\nConnection: close\r\n\r\n").unwrap();
-            std::io::copy(&mut file, &mut stream).unwrap();
+            for id in ["history-00800-00999", "history-00600-00799"] {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+                let (mut stream, _) = loop {
+                    match listener.accept() {
+                        Ok(value) => break value,
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < deadline =>
+                            std::thread::sleep(std::time::Duration::from_millis(20)),
+                        Err(e) => panic!("local listener: {e}"),
+                    }
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                let mut request = [0u8; 4096];
+                let read = stream.read(&mut request).unwrap();
+                assert!(std::str::from_utf8(&request[..read]).unwrap().starts_with(&format!("GET /pack/{id} ")));
+                let mut file = std::fs::File::open(sources.join(format!("de441-v2-{id}.eph"))).unwrap();
+                let bytes = file.metadata().unwrap().len();
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {bytes}\r\nConnection: close\r\n\r\n").unwrap();
+                std::io::copy(&mut file, &mut stream).unwrap();
+            }
         });
-        let id = "history-00800-00999";
-        let started = handle(&state, PackageRequest::Start {first_year:800, last_year:999, planned:plan.planned, planned_bytes:plan.planned_bytes});
+        let started = handle(&state, PackageRequest::Start {first_year:600, last_year:999, planned:plan.planned, planned_bytes:plan.planned_bytes});
         assert_eq!(started.status, "started");
-        for _ in 0..300 {
+        assert_eq!(started.total, plan.planned_bytes);
+        for _ in 0..600 {
             if !reply(&state, "ok").busy { break; }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
         let completed = reply(&state, "ok");
         assert!(!completed.busy, "local download timed out");
         assert_eq!(completed.outcome, Some("completed"), "local download failed");
+        assert_eq!(completed.downloaded, plan.planned_bytes);
+        assert_eq!(completed.total, plan.planned_bytes);
         server.join().unwrap();
         assert!(packs.join("de441-v2-history-00800-00999.eph").exists());
-        let chart_request = || serde_json::from_value(serde_json::json!({
+        assert!(packs.join("de441-v2-history-00600-00799.eph").exists());
+        let chart_request = |year| serde_json::from_value(serde_json::json!({
             "protocolVersion":1, "latMicro":41900000, "lngMicro":12500000,
-            "civil":{"year":900,"month":3,"day":20,"hour":12,"minute":0,"second":0,
+            "civil":{"year":year,"month":3,"day":20,"hour":12,"minute":0,"second":0,
                 "calendar":"gregorian","offset":{"kind":"supplied","secondsEast":0,"source":"test"},"uncertaintySeconds":0},
             "deltaT":{"kind":"supplied","seconds":69,"uncertaintySeconds":2,"source":"test"}
         })).unwrap();
-        let before = serde_json::to_value(crate::historical_chart::calculate_historical_chart(chart_request())).unwrap();
+        let before = serde_json::to_value(crate::historical_chart::calculate_historical_chart(chart_request(700))).unwrap();
         assert_eq!(before["status"], "ok");
-        let removed = handle(&state, PackageRequest::Remove {id:id.into()});
+        let removed = handle(&state, PackageRequest::Remove {id:"history-00600-00799".into()});
         assert_eq!(removed.status, "ok");
-        assert!(!packs.join("de441-v2-history-00800-00999.eph").exists());
+        assert!(!packs.join("de441-v2-history-00600-00799.eph").exists());
+        assert!(packs.join("de441-v2-history-00800-00999.eph").exists());
         assert!(ephemeris.join("de441-slice.eph").exists());
-        let after = serde_json::to_value(crate::historical_chart::calculate_historical_chart(chart_request())).unwrap();
+        let after = serde_json::to_value(crate::historical_chart::calculate_historical_chart(chart_request(700))).unwrap();
         assert_eq!(after["status"], "ephemeris_out_of_range");
+        let still_available = serde_json::to_value(crate::historical_chart::calculate_historical_chart(chart_request(900))).unwrap();
+        assert_eq!(still_available["status"], "ok");
     }
 }

@@ -32,7 +32,11 @@ The restricted `de441_packages` IPC provides inventory, preview, download,
 cancellation and edge-only removal. URLs and paths remain host-controlled.
 The preview includes all intervening packages and byte count; starting a job
 requires the same plan after revalidation. Settings and a first-run dialog call
-that contract. Installation/removal serialize against the engine and discard
+that contract. Both use a two-ended timeline whose stops map to catalog
+boundaries, without manual year entry; “Install everything” first shows the
+same coverage and size confirmation. User-facing dates use BCE/CE rather than
+astronomical year numbering, and progress represents the whole approved
+download, not just the current file. Installation/removal serialize against the engine and discard
 its cached reader; installed files are revalidated before use. Downloads can
 resume after interruption. No release catalog digest is configured by default.
 
