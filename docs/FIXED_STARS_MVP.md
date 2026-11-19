@@ -1,5 +1,10 @@
 # Fixed stars in Desktop — MVP integration
 
+**Historical checkpoint:** this document records the earlier list-only MVP.
+The subsequently integrated experimental ring and interpretation display are
+documented in [FIXED_STARS.md](FIXED_STARS.md); the earlier list interface
+described below is not the current merged interface.
+
 **Status: prototype under review.** Desktop can request fixed-star positions for
 the current ordinary chart and presents a searchable list of computed apparent
 longitudes. It requests the catalogue only when the user opens the panel; a

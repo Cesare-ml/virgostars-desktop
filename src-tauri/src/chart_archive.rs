@@ -167,7 +167,6 @@ fn valid_zone(zone: &str) -> bool {
 
 fn valid_record(chart: &ChartRecordV1) -> bool {
     let instant_and_place = ChartRequestV1 {
-        include_fixed_stars: false,
         protocol_version: chart_calculation::PROTOCOL_VERSION,
         utc_iso: chart.utc_iso.clone(),
         lat_micro: chart.lat_micro,
