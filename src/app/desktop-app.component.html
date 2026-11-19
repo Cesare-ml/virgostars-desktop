@@ -92,8 +92,8 @@
 
     <main class="chart-panel">
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')"
-        [style.background-color]="view==='chart' && chartPresentation==='wheel' && activeChart ? chartBackground : null"
-        [class.chart-dark]="view==='chart' && chartPresentation==='wheel' && activeChart && (chartSkin==='dark' || chartSkin==='dark-bn')">
+        [style.background-color]="(view==='chart' || view==='settings') && chartPresentation==='wheel' && activeChart ? chartBackground : null"
+        [class.chart-dark]="(view==='chart' || view==='settings') && chartPresentation==='wheel' && activeChart && (chartSkin==='dark' || chartSkin==='dark-bn')">
         <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
         <div class="monomero-overlay monomero-tip" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'"
           *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel' && monomeriEnabled && !monomero && !busy" role="status">{{t('monomeri.help')}}</div>
@@ -312,13 +312,6 @@
               <h2>{{t('archive.title')}}</h2>
               <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
             </header>
-            <div class="archive-intro">
-              <span class="archive-count">{{savedCharts.length}}</span>
-              <div>
-                <strong>{{t('archive.intro.title')}}</strong>
-                <p>{{t('archive.intro.subtitle')}}</p>
-              </div>
-            </div>
             <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
             <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
             <p class="calc-status" role="status" *ngIf="photoStatus">{{t(photoStatus)}}</p>
@@ -355,21 +348,10 @@
                 <button type="button" class="small-control" [disabled]="calcBusy || busy"
                   [attr.aria-label]="t('session.remove')" [attr.title]="t('session.remove')" (click)="removeChart(chart.id)">×</button>
               </div>
-              <label class="setting-line select-line" *ngIf="activeChart && sessionCharts.length > 1">
-                <span>{{t('session.partner')}}</span>
-                <select class="inline-select" [disabled]="calcBusy || busy" (change)="setPartner($event)">
-                  <option value="0" [selected]="partnerChartId===null">{{t('session.none')}}</option>
-                  <ng-container *ngFor="let chart of sessionCharts; trackBy:trackChart">
-                    <option *ngIf="chart.id!==activeChartId" [value]="chart.id" [selected]="chart.id===partnerChartId">{{chartName(chart)}}</option>
-                  </ng-container>
-                </select>
-              </label>
             </ng-container>
 
             <div class="archive-list-head" *ngIf="!editingChart">
               <h3 class="panel-title">{{t('archive.saved.title')}} <span class="archive-heading-count">{{savedCharts.length}}</span></h3>
-              <button type="button" class="archive-photo-toggle" [attr.aria-pressed]="showArchivePhotos"
-                (click)="toggleArchivePhotos()">{{t(showArchivePhotos ? 'archive.photos.hide' : 'archive.photos.show')}}</button>
             </div>
             <input type="search" class="archive-search" autocomplete="off" spellcheck="false" maxlength="80"
               *ngIf="!editingChart && savedCharts.length" [attr.placeholder]="t('archive.search')" [attr.aria-label]="t('archive.search')"
@@ -377,12 +359,12 @@
             <p class="archive-privacy" *ngIf="!editingChart">{{t('archive.photos.private')}}</p>
             <p class="inspector-hint" *ngIf="!editingChart && !savedCharts.length">{{t('archive.empty')}}</p>
             <p class="inspector-hint" *ngIf="!editingChart && savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
-            <div class="archive-grid" *ngIf="!editingChart">
+            <div class="archive-grid" [class.archive-list]="!showArchivePhotos" *ngIf="!editingChart">
               <article class="archive-card" *ngFor="let saved of shownSavedCharts; trackBy:trackSaved">
                 <div class="archive-card-main">
-                  <div class="archive-portrait" [class.has-photo]="showArchivePhotos && photoUrls[saved.id]">
+                  <div class="archive-portrait" *ngIf="showArchivePhotos" [class.has-photo]="photoUrls[saved.id]">
                     <img *ngIf="showArchivePhotos && photoUrls[saved.id]" [src]="photoUrls[saved.id]" [alt]="t('archive.photo.alt')">
-                    <span *ngIf="!showArchivePhotos || !photoUrls[saved.id]" aria-hidden="true">✧</span>
+                    <span *ngIf="!photoUrls[saved.id]" aria-hidden="true">✧</span>
                   </div>
                   <button type="button" class="archive-card-open" [disabled]="calcBusy || busy"
                     (click)="openSavedChart(saved)" [attr.title]="t('archive.open')">
@@ -455,22 +437,6 @@
               [attr.title]="entry.action==='monomeri' && !monomeriAvailable ? t('monomeri.unavailable') : null" (click)="runFunction(entry)">
               <span>{{entryLabel(entry)}}</span>
             </button>
-            <details class="function-soon" *ngIf="unavailableIn(group).length">
-              <summary>{{t('functions.soon')}} ({{unavailableIn(group).length}})</summary>
-              <button type="button" class="data-line function-line" *ngFor="let entry of unavailableIn(group)" disabled>
-                <span>{{entryLabel(entry)}}</span>
-                <span class="function-status" [attr.data-status]="entry.status">{{statusLabel(entry.status)}}</span>
-              </button>
-            </details>
-          </details>
-          <details class="function-group" *ngIf="pendingCatalog.length">
-            <summary><span>{{t('functions.soon')}}</span></summary>
-            <section *ngFor="let group of pendingCatalog">
-              <h3 class="panel-title">{{entryLabel(group)}}</h3>
-              <button type="button" class="data-line function-line" *ngFor="let entry of unavailableIn(group)" disabled>
-                <span>{{entryLabel(entry)}}</span>
-              </button>
-            </section>
           </details>
         </section>
 
@@ -481,17 +447,25 @@
           <p class="inspector-hint">{{t('account.unavailable')}}</p>
           <p class="inspector-hint">{{t('account.sync')}}</p>
         </section>
-        <section class="drawer" [hidden]="view!=='settings'" [attr.aria-label]="t('tab.settings')">
+        <section class="drawer" [hidden]="view!=='settings'" [class.settings-panel]="true" [attr.aria-label]="t('tab.settings')">
           <header class="sheet-head">
             <h2>{{t('tab.settings')}}</h2>
             <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
           </header>
+          <div class="settings-tabs" role="group" [attr.aria-label]="t('tab.settings')">
+            <button type="button" [class.active]="settingsCategory==='chart'" (click)="settingsCategory='chart'">{{locale==='it' ? 'Grafico' : 'Chart'}}</button>
+            <button type="button" [class.active]="settingsCategory==='app'" (click)="settingsCategory='app'">{{locale==='it' ? 'Applicazione' : 'Application'}}</button>
+          </div>
           <!-- The house system comes first, with no spoiler. -->
           <div class="settings-top">
+            <div [hidden]="settingsCategory!=='app'">
             <vs-updates [locale]="locale" [settingsOpen]="view==='settings'" [blocked]="busy || calcBusy || archiveBusy" (available)="updateAvailable=$event"></vs-updates>
             <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
+            <label class="settings-check"><input type="checkbox" [checked]="showArchivePhotos" (change)="toggleArchivePhotos()"><span>{{t('archive.photos.show')}}</span></label>
             <label class="setting-line select-line"><span>{{t('language')}}</span><select class="inline-select" [value]="languagePreference" (change)="setLanguage($event)"><option value="auto">{{t('language.auto')}}</option><option value="it">Italiano</option><option value="en">English</option></select></label>
             <label class="setting-line select-line"><span>{{t('settings.theme')}}</span><select class="inline-select" [value]="theme" [disabled]="busy" (change)="setUiTheme($event)"><option value="light">{{t('theme.current.light')}}</option><option value="dark">{{t('theme.current.dark')}}</option></select></label>
+            </div>
+            <div [hidden]="settingsCategory!=='chart'">
             <label class="setting-line select-line">
               <span>{{t('settings.chartSkin')}}</span>
               <select class="inline-select" [disabled]="busy" (change)="setChartSkin($event)">
@@ -508,8 +482,9 @@
               <p class="inspector-hint missing-note" *ngIf="chart.unavailableHouseSystems.length">{{t('houses.missing')}} {{systemsOf(chart.unavailableHouseSystems)}}</p>
             </ng-container>
             <ng-template #noChartForHouses><p class="inspector-hint">{{t('houses.system')}}: {{t('inspector.nochart')}}</p></ng-template>
+            </div>
           </div>
-          <details class="settings-section" open>
+          <details class="settings-section" [hidden]="settingsCategory!=='app'" open>
             <summary>{{t('startup.title')}}</summary>
             <div class="startup-options" role="radiogroup" [attr.aria-label]="t('startup.title')">
               <label class="settings-check">
@@ -530,7 +505,7 @@
             </div>
           </details>
           <!-- Aspects and celestial elements are two spoilers of their own, written by the component. -->
-          <vs-chart-settings [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
+          <vs-chart-settings [hidden]="settingsCategory!=='chart'" [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
             (settingsChange)="onChartSettingsChanged($event)"></vs-chart-settings>
           <details class="settings-section" *ngIf="pendingSettingEntries.length">
             <summary>{{t('functions.soon')}}</summary>

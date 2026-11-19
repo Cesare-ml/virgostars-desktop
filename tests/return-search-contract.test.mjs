@@ -4,8 +4,15 @@ import {
   decodeReturnResponse, requestReturns, validReturnRequest,
 } from '../src/app/native/return-search-contract.ts';
 import {
-  formatReturnInstant, parseReturnYear, returnChartName, returnMapCoordinates, suggestReturnTimeZone, validTimeZone,
+  formatReturnInstant, nextReturnAfter, parseReturnYear, returnChartName, returnMapCoordinates, suggestReturnTimeZone, validTimeZone,
 } from '../src/app/returns-form.ts';
+
+test('next solar return excludes elapsed instants and chooses the first future instant', () => {
+  const now=Date.parse('2026-06-01T00:00:00Z');
+  const list=[{utcIso:'2026-12-01T00:00:00Z'}, {utcIso:'2026-02-01T00:00:00Z'}, {utcIso:'2026-07-01T00:00:00Z'}];
+  assert.equal(nextReturnAfter(list,now)?.utcIso,'2026-07-01T00:00:00Z');
+  assert.equal(nextReturnAfter(list,Date.parse('2027-01-01T00:00:00Z')),null);
+});
 
 test('solar return map maps the equirectangular image to geographic coordinates', () => {
   assert.deepEqual(returnMapCoordinates(0.5, 0.5), {latMicro:0, lngMicro:0});

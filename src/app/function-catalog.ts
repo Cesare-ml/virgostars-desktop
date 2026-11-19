@@ -73,7 +73,7 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     available('solar-return', 'Rivoluzione Solare', 'Solar return', 'solar_return'),
     available('lunar-return', 'Rivoluzione Lunare', 'Lunar return', 'lunar_return'),
     planned('return-map', 'Mappa delle rivoluzioni', 'Return relocation map'),
-    available('directions', 'Direzioni', 'Directions', 'directions'),
+    planned('directions', 'Direzioni', 'Directions'),
   ]),
   group('settings', 'Impostazioni del tema', 'Chart settings', [
     available('house-system', 'Domificazione', 'House system', 'house_system'),
@@ -152,7 +152,7 @@ export function functionMenu(catalog: readonly FunctionGroup[] = FUNCTION_CATALO
   const groups = catalog
     .filter(item => item.id !== SETTINGS_GROUP_ID)
     .map(item => group(item.id, item.it, item.en,
-      item.entries.filter(entry => entry.status !== 'excluded' && !(entry.action && IN_LEFT_MENU.has(entry.action)))))
+      item.entries.filter(entry => entry.status === 'available' && !(entry.action && IN_LEFT_MENU.has(entry.action)))))
     .filter(item => item.entries.length > 0);
   return Object.freeze({
     active: Object.freeze(groups.filter(item => item.entries.some(entry => entry.status === 'available'))),

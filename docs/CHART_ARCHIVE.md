@@ -11,6 +11,8 @@ File: `charts-v2.vsarchive` (encrypted; see [Encrypted archive](ENCRYPTED_ARCHIV
 ## Encrypted at rest
 
 Optional portrait attachments are separate from the chart records: photos and paths never enter the chart DTO or future sync payload. See [Private chart photos](PRIVATE_CHART_PHOTOS.md) for encrypted offline-only storage, UI controls, limits and manual validation.
+Photo visibility is off by default and controlled in application settings; with
+photos hidden the archive uses compact single-row entries without placeholders.
 
 Since 2026-11-17 the archive is a single file encrypted and authenticated as a whole, with a random key kept by the operating system's credential store ([Encrypted archive](ENCRYPTED_ARCHIVE.md)). The first prototype's plain file (`charts-v1.sqlite3`) is migrated once and then kept until the user deletes it from the archive panel. Encryption protects the file at rest only; there is no recovery key, so a lost credential means a lost archive. The design has not had a separate security review.
 

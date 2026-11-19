@@ -5,7 +5,7 @@
 The reviewed production and development CSPs additionally allow image loads
 from `https://tile.openstreetmap.org` and fetches from
 `https://nominatim.openstreetmap.org`; no other remote sources are allowed.
-The map is disabled until a user enables it. The app identifies itself with a
+The map loads when the user opens the solar return view. The app identifies itself with a
 fixed WebView user agent and discloses that viewing sends IP/area and a click
 sends coordinates. No geocoding occurs on pointer movement. This is a private
 single-device prototype: the public Nominatim aggregate rate limit and runtime

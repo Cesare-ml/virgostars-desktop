@@ -16,7 +16,9 @@ test('the Functions drawer does not repeat what the left menu already offers', (
   for (const id of repeated) assert.ok(!listed.some(entry => entry.id === id), id);
   // The remaining tools include returns, zodiac projections and the optional private Monomeri view.
   assert.deepEqual(listed.filter(entry => entry.status === 'available').map(entry => entry.id).sort(),
-    ['abu-mashar', 'antiscia', 'arabic-parts', 'contra-antiscia', 'custom-parts', 'decades', 'decans', 'directions', 'dodecatemoria', 'fixed-stars', 'lunar-return', 'monomoiria', 'solar-return', 'terms']);
+    ['abu-mashar', 'antiscia', 'arabic-parts', 'contra-antiscia', 'custom-parts', 'decades', 'decans', 'dodecatemoria', 'fixed-stars', 'lunar-return', 'monomoiria', 'solar-return', 'terms']);
+  assert.ok(listed.every(entry => entry.status==='available'));
+  assert.equal(menu.pending.length,0);
 });
 
 test('settings are not in the Functions drawer, and nothing out of scope is shown anywhere', () => {

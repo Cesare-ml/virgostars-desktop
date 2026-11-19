@@ -48,6 +48,10 @@ For a **private local build**, the explicit build environment switch
 `.local/ephemeris/fixed-stars.json` into the executable. Without that switch a
 normal build never embeds it. This is not permission to redistribute third-party
 interpretations and no public release is implied.
+The local `tauri:dev`, `build:local` and `build:installer` entry points now
+automatically select this switch when the separately supplied local catalogue
+exists and passes the bounded metadata check. Public synthetic build paths do
+not embed the private file; runtime validation still applies.
 To include an approved catalogue in an ephemeris installer, pass it as the
 sixth argument to `scripts/ephemeris/prepare-data-bundle.mjs` after the two
 year arguments. The staging manifest then includes its SHA-256 and the Tauri

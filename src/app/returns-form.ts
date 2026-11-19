@@ -6,6 +6,17 @@ import tzlookup from './vendor/tz-lookup.cjs';
 
 export type ReturnKind = 'solar' | 'lunar';
 
+/** Earliest available return at or after the requested time, independent of response order. */
+export function nextReturnAfter<T extends {utcIso:string}>(instants:readonly T[], now:number):T | null {
+  if (!Number.isFinite(now)) return null;
+  let best:T | null = null, bestTime = Infinity;
+  for (const instant of instants) {
+    const time = Date.parse(instant.utcIso);
+    if (Number.isFinite(time) && time >= now && time < bestTime) { best=instant; bestTime=time; }
+  }
+  return best;
+}
+
 /** Approximate 2019 geographical boundaries, for an editable user suggestion. */
 export function suggestReturnTimeZone(latMicro:number, lngMicro:number): string | null {
   if (!Number.isSafeInteger(latMicro) || !Number.isSafeInteger(lngMicro) ||

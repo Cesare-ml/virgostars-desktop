@@ -1,4 +1,20 @@
 :host { display:block; }
+.solar-map { position:fixed; inset:0; z-index:100; display:flex; flex-direction:column; min-height:0; background:var(--vs-surface); color:var(--vs-text); }
+.solar-header { flex:none; padding:8px 14px; background:var(--vs-surface); box-shadow:0 3px 12px rgba(0,0,0,.14); z-index:2; }
+.solar-title { display:flex; align-items:center; gap:12px; }
+.solar-title h3 { margin:0; font-size:16px; }.solar-title strong { color:var(--vs-text-secondary); font-size:12px; }
+.solar-title .returns-close { margin-left:auto; }
+.solar-header .returns-form { gap:10px; align-items:center; padding:5px 0; font-size:12px; }
+.solar-header .field { flex-direction:row; align-items:center; gap:6px; }.solar-header .field input { width:68px; height:30px; }
+.solar-header .returns-primary { height:30px; }
+.solar-map-canvas { flex:1; min-height:0; }
+.solar-footer { flex:none; display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--vs-surface); }
+.solar-footer .returns-close { width:auto; padding:0 12px; }.solar-footer vs-offline-city-picker { width:min(330px,36vw); }
+.solar-footer ::ng-deep .city-picker { position:relative; padding:0; border:0; }
+.solar-footer ::ng-deep .city-results { position:absolute; bottom:100%; left:0; right:0; z-index:4; box-shadow:0 -4px 20px rgba(0,0,0,.18); }
+.solar-footer ::ng-deep .city-status, .solar-footer ::ng-deep .city-selected { margin:2px 0 0; }
+.solar-place { display:flex; flex-direction:column; gap:2px; font-size:12px; min-width:180px; }.solar-place span { color:var(--vs-text-secondary); }
+.solar-privacy { position:absolute; right:8px; bottom:72px; z-index:500; max-width:260px; margin:0; padding:5px; font-size:10px; background:var(--vs-surface); color:var(--vs-text-secondary); opacity:.85; }
 .returns-panel { display:flex; flex-direction:column; gap:10px; padding:12px; margin-bottom:16px;
   background:var(--vs-surface-muted); border:1px solid var(--vs-border); border-radius:10px; }
 .returns-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }

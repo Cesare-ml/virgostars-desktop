@@ -13,7 +13,7 @@ import {addExtraHouses} from './astro/extra-houses';
 import type {ReturnInstantV1, ReturnSearchResult} from './native/return-search-contract';
 import {cleanChartName, parseDegreesMicro, type NewChartInput} from './new-chart-form';
 import {
-  formatReturnInstant, parseReturnYear, returnChartName, returnMapCoordinates, suggestReturnTimeZone, validTimeZone,
+  formatReturnInstant, nextReturnAfter, parseReturnYear, returnChartName, suggestReturnTimeZone, validTimeZone,
   type ReturnKind, type ReturnRadix,
 } from './returns-form';
 import {translate, type Locale, type MessageKey} from './translations';
@@ -69,9 +69,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   timeZoneSuggested = false;
   placeName = '';
   city: OfflinePlaceV1 | null = null;
-  mapAvailable = true;
-  mapZoom = 1;
-  onlineMap = false;
+  mapCenter:ReturnMapPoint = {latMicro:41_899_200,lngMicro:12_545_000};
+  hoverPoint:ReturnMapPoint | null = null;
   previewInstant: string | null = null;
   preview: {latMicro:number; lngMicro:number; ascendant:number; mc:number; ds:number; ic:number; cusps:readonly number[];
     planets:readonly {name:string; longitude:number; glyphUrl:string}[]} | null = null;
@@ -93,8 +92,12 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
       this.timeZoneSuggested = false;
       this.placeName = this.radix.placeName;
       this.city = null;
+      this.mapCenter = {latMicro:this.radix.latMicro,lngMicro:this.radix.lngMicro};
     }
-    if (radixChanged || changes['kind']) this.clearResults();
+    if (radixChanged || changes['kind']) {
+      this.clearResults();
+      if (this.kind === 'solar') void this.searchNextSolarReturn();
+    }
     else if (changes['houseSystem']) this.invalidatePreview();
   }
 
@@ -140,29 +143,6 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
 
   toggleWithRadix(event: Event): void { this.withRadix = (event.target as HTMLInputElement).checked; }
 
-  zoomMap(direction: -1 | 1): void {
-    this.mapZoom = Math.min(4, Math.max(1, this.mapZoom * (direction === 1 ? 2 : 0.5)));
-    this.invalidatePreview();
-  }
-
-  toggleOnlineMap(event:Event):void {
-    this.onlineMap = (event.target as HTMLInputElement).checked;
-    this.selectionTicket++;
-    this.geocodeAbort?.abort();
-    this.invalidatePreview();
-  }
-
-  selectMapPoint(event: MouseEvent): void {
-    const bounds = (event.currentTarget as HTMLElement).querySelector('img')?.getBoundingClientRect();
-    if (!bounds || !bounds.width || !bounds.height || event.detail === 0) return;
-    const coordinates = returnMapCoordinates((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
-    if (!coordinates) return;
-    this.geocodeAbort?.abort();
-    this.selectionTicket++;
-    this.applyMapPoint(coordinates);
-    this.castSelectedReturn();
-  }
-
   async selectOnlinePoint(coordinates:ReturnMapPoint):Promise<void> {
     this.geocodeAbort?.abort();
     const ticket = ++this.selectionTicket;
@@ -171,10 +151,11 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     const timer = setTimeout(() => abort.abort(), 4000);
     const place = await this.geocoder.lookup(coordinates.latMicro, coordinates.lngMicro, abort.signal);
     clearTimeout(timer);
-    if (this.destroyed || ticket !== this.selectionTicket || !this.onlineMap) return;
+    if (this.destroyed || ticket !== this.selectionTicket) return;
     this.placeName = place;
+    if (!place) this.message = 'returns.map.noPlace';
     this.cd.markForCheck();
-    this.castSelectedReturn();
+    if (place) this.castSelectedReturn();
   }
 
   private applyMapPoint(coordinates:ReturnMapPoint):void {
@@ -188,7 +169,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.message = null;
     this.cd.markForCheck();
   }
-  private castSelectedReturn():void {
+  castSelectedReturn():void {
     const selected = this.instants.find(instant => instant.utcIso === this.previewInstant);
     if (selected && this.timeZone) this.cast(selected);
   }
@@ -208,16 +189,14 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.previewInstant = instant.utcIso;
     this.cd.markForCheck();
   }
-  previewMapPoint(event: MouseEvent): void {
-    const bounds = (event.currentTarget as HTMLElement).querySelector('img')?.getBoundingClientRect();
-    if (!bounds || !bounds.width || !bounds.height) return;
-    const coordinates = returnMapCoordinates((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
-    if (!coordinates) return;
-    this.previewCoordinates(coordinates);
-  }
   previewCoordinates(coordinates:ReturnMapPoint):void {
     if (!this.previewInstant || this.destroyed) return;
-    this.invalidatePreview();
+    this.hoverPoint = coordinates;
+    this.previewTicket++;
+    if (this.previewTimer !== null) clearTimeout(this.previewTimer);
+    this.previewTimer = null;
+    this.pendingPreview = null;
+    this.previewMessage = null;
     const request = {ticket:this.previewTicket, utcIso:this.previewInstant, ...coordinates};
     this.previewTimer = setTimeout(() => {
       this.previewTimer = null;
@@ -267,6 +246,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.timeZone = place.timeZone || suggestReturnTimeZone(place.latMicro, place.lngMicro) || '';
     this.timeZoneSuggested = !place.timeZone && this.timeZone !== '';
     this.placeName = place.name;
+    this.mapCenter = {latMicro:place.latMicro,lngMicro:place.lngMicro};
+    if (this.kind === 'solar') this.previewCoordinates(this.mapCenter);
     this.message = null;
     this.cd.markForCheck();
   }
@@ -303,7 +284,27 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.instants = result.kind === 'ready' ? result.instants : [];
     this.previewInstant = this.instants[0]?.utcIso ?? null;
     this.message = result.kind === 'ready' ? null : SEARCH_FAILURES[result.kind];
+    if (this.kind === 'solar' && this.previewInstant) this.previewCoordinates(this.mapCenter);
     this.cd.markForCheck();
+  }
+
+  /** Search the current and next UTC year; do not choose an already elapsed return. */
+  private async searchNextSolarReturn():Promise<void> {
+    const ticket = ++this.searchTicket, now = Date.now(), year = new Date(now).getUTCFullYear();
+    this.searching = true;
+    for (const candidate of [year,year+1]) {
+      if (candidate>2400) break;
+      const result = await findReturns({body:'Sun',targetLongitudeDeg:this.radix.sunLongitude,year:candidate});
+      if (this.destroyed || ticket!==this.searchTicket) return;
+      if (result.kind !== 'ready') { this.searching=false; this.message=SEARCH_FAILURES[result.kind]; this.cd.markForCheck(); return; }
+      const next = nextReturnAfter(result.instants,now);
+      if (next) {
+        this.year=String(candidate); this.instants=result.instants; this.previewInstant=next.utcIso;
+        this.searching=false; this.searched=true; this.message=null;
+        this.previewCoordinates(this.mapCenter); this.cd.markForCheck(); return;
+      }
+    }
+    this.searching=false; this.searched=true; this.message=null; this.cd.markForCheck();
   }
 
   /** Cast the chart of one return at the chosen place. */

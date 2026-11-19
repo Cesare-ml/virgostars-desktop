@@ -30,7 +30,7 @@ test('native build entrypoints retain their original offline bundle and Tauri ga
   for (const name of TAURI_ENTRYPOINTS.filter(name => name !== 'tauri:dev')) {
     assert.match(scripts[name], /npm run build:ui(?::private)? && npm run prepare:icon && tauri build/, name);
   }
-  assert.match(scripts['tauri:dev'], /verify-tauri-security-config\.mjs && npm run prepare:icon && tauri dev$/);
+  assert.match(scripts['tauri:dev'], /verify-tauri-security-config\.mjs && npm run prepare:icon && node scripts\/run-tauri-with-local-stars\.mjs dev$/);
 });
 
 test('city-catalog builds verify the version before starting a fetch or resource bundling', () => {

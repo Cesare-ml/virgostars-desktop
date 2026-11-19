@@ -300,6 +300,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private photoIds: readonly string[] = [];
   photoUrls: Record<string, string> = {};
   showArchivePhotos = readPhotoVisibility(this.uiPreferencesStorage);
+  settingsCategory: 'chart' | 'app' = 'chart';
   photoBusyId: string | null = null;
   pendingPhotoDeleteId: string | null = null;
   photoStatus: MessageKey | null = null;
@@ -1817,6 +1818,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     await this.onChartRequested(request.input);
     const cast = this.activeChart;
     const radix = this.sessionCharts.find(chart => chart.id === request.radixChartId);
+    if (!this.destroyed && cast && cast.id !== request.radixChartId && cast.utcIso === request.input.utcIso && this.calcMessage === 'calc.ready') {
+      this.closeReturns();
+      this.closeSheet();
+    }
     // Pair with the radix only if this very return is now on screen.
     if (this.destroyed || !request.withRadix || !radix || !cast || cast.id === radix.id ||
         cast.utcIso !== request.input.utcIso || this.calcMessage !== 'calc.ready') {

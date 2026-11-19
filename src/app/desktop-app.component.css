@@ -267,6 +267,15 @@
 .archive-sheet .archive-search { margin:16px 0 8px; height:44px; padding-inline:15px; border-radius:12px; }
 .archive-privacy { margin:8px 0 18px; font-size:11.5px; line-height:1.5; color:var(--vs-text-secondary); }
 .archive-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:stretch; }
+.archive-grid.archive-list { grid-template-columns:minmax(0,1fr); gap:6px; }
+.archive-list .archive-card { flex-direction:row; align-items:center; gap:12px; padding:10px 12px; }
+.archive-list .archive-card-main { flex:1; }
+.archive-list .archive-card-actions { margin:0; padding:0; border:0; justify-content:flex-end; }
+.settings-panel { left:auto; right:0; width:min(360px,48%); border-left:1px solid var(--vs-border); box-shadow:-8px 0 24px rgba(24,18,42,.08); }
+.chart-stage:has(.settings-panel:not([hidden])) .chart-canvas { width:min(calc(100% - min(360px,48%)), calc(100vh - 24px)) !important; height:auto !important; margin-right:min(360px,48%); }
+.settings-tabs { display:flex; gap:6px; padding:4px; margin-bottom:14px; background:var(--vs-surface-muted); border-radius:12px; }
+.settings-tabs button { flex:1; border:0; border-radius:9px; padding:9px; background:transparent; color:var(--vs-text-secondary); font-weight:650; }
+.settings-tabs button.active { color:var(--vs-accent); background:var(--vs-surface); box-shadow:0 2px 8px rgba(24,18,42,.1); }
 .archive-card { min-width:0; display:flex; flex-direction:column; justify-content:space-between;
   border:1px solid var(--vs-border); background:var(--vs-surface); border-radius:17px; padding:15px;
   box-shadow:0 5px 18px rgba(34,23,72,.035); transition:border-color .15s ease,box-shadow .15s ease; }

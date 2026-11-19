@@ -31,7 +31,7 @@ test('the catalog is frozen and its summary matches the entries', () => {
 
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
-    'abu-mashar', 'antiscia', 'applications', 'arabic-parts', 'archive', 'aspect-direction', 'aspect-focus', 'aspect-orbs', 'aspects', 'austral-inversion', 'celestial-elements', 'contra-antiscia', 'custom-parts', 'decades', 'decans', 'deflective-synastry', 'directions', 'dodecatemoria', 'fixed-stars', 'house-system', 'kleros', 'latitudes',
+    'abu-mashar', 'antiscia', 'applications', 'arabic-parts', 'archive', 'aspect-direction', 'aspect-focus', 'aspect-orbs', 'aspects', 'austral-inversion', 'celestial-elements', 'contra-antiscia', 'custom-parts', 'decades', 'decans', 'deflective-synastry', 'dodecatemoria', 'fixed-stars', 'house-system', 'kleros', 'latitudes',
     'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-of-year', 'planet-orbs', 'real-time',
     'session-charts', 'solar-return', 'swap-charts', 'synastry', 'synastry-transits', 'terms', 'transits', 'transsaturnians',
   ]);
@@ -50,7 +50,7 @@ test('the component dispatches every catalog action and disables the rest', () =
   }
   // Available entries are active buttons; everything else sits in a collapsed, disabled list.
   assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy \|\| \(entry.action==='monomeri' && !monomeriAvailable\) \|\| \(entry.action==='directions' && !directionsSupported\)"/);
-  assert.match(html, /\*ngFor="let entry of unavailableIn\(group\)" disabled/);
+  assert.doesNotMatch(html, /\*ngFor="let entry of unavailableIn\(group\)"/);
 });
 
 test('calculated exports are never named like fixture exports', () => {

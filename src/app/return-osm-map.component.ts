@@ -1,4 +1,4 @@
-import {AfterViewInit, Component, ElementRef, EventEmitter, NgZone, OnDestroy, Output, ViewChild, inject} from '@angular/core';
+import {AfterViewInit, Component, ElementRef, EventEmitter, Input, NgZone, OnChanges, OnDestroy, Output, ViewChild, inject} from '@angular/core';
 import type * as Leaflet from 'leaflet';
 
 export type ReturnMapPoint = Readonly<{latMicro:number; lngMicro:number}>;
@@ -7,10 +7,11 @@ export type ReturnMapPoint = Readonly<{latMicro:number; lngMicro:number}>;
 @Component({
   selector:'vs-return-osm-map', standalone:true,
   template:'<div #map class="return-osm-map" role="application" aria-label="OpenStreetMap"></div>',
-  styles:['.return-osm-map { height:360px; width:100%; background:#e4e7e9; }'],
+  styles:[':host { display:block; width:100%; height:100%; min-height:0 } .return-osm-map { height:100%; width:100%; background:#e4e7e9; }'],
 })
-export class ReturnOsmMapComponent implements AfterViewInit, OnDestroy {
+export class ReturnOsmMapComponent implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChild('map', {static:true}) mapElement!:ElementRef<HTMLElement>;
+  @Input() center:ReturnMapPoint = {latMicro:41_899_200,lngMicro:12_545_000};
   @Output() readonly hovered = new EventEmitter<ReturnMapPoint>();
   @Output() readonly chosen = new EventEmitter<ReturnMapPoint>();
   private readonly zone = inject(NgZone);
@@ -23,7 +24,7 @@ export class ReturnOsmMapComponent implements AfterViewInit, OnDestroy {
     const L = (loaded as unknown as {default?:typeof Leaflet}).default ?? loaded;
     if (this.destroyed) return;
     const map = this.map = L.map(this.mapElement.nativeElement, {
-      center:[41.8992, 12.545], zoom:4, minZoom:2, maxZoom:10,
+      center:[this.center.latMicro/1e6, this.center.lngMicro/1e6], zoom:4, minZoom:2, maxZoom:10,
     });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom:10, noWrap:true,
@@ -36,5 +37,6 @@ export class ReturnOsmMapComponent implements AfterViewInit, OnDestroy {
     map.on('mousemove', e => this.zone.run(() => this.hovered.emit(point(e))));
     map.on('click', e => this.zone.run(() => this.chosen.emit(point(e))));
   }
+  ngOnChanges():void { if (this.map) this.map.setView([this.center.latMicro/1e6,this.center.lngMicro/1e6],this.map.getZoom()); }
   ngOnDestroy():void { this.destroyed = true; this.map?.remove(); }
 }
