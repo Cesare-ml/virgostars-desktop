@@ -55,6 +55,8 @@ const resources = {
   '../LICENSE':'licenses/VIRGOSTARS-LICENSE.txt', '../NOTICE':'licenses/VIRGOSTARS-NOTICE.txt',
   '../third-party/tz-lookup/LICENSE':'licenses/tz-lookup-LICENSE.txt',
   '../third-party/leaflet/LICENSE':'licenses/leaflet-LICENSE.txt',
+  '../node_modules/three/LICENSE':'licenses/three-LICENSE.txt',
+  '../node_modules/tslib/LICENSE.txt':'licenses/tslib-LICENSE.txt',
   '../dist/desktop/3rdpartylicenses.txt':'licenses/frontend-notices.txt',
   '../.local/release-licenses/cargo-notices.txt':'licenses/cargo-notices.txt',
   '../.local/release-licenses/gsap-notice.txt':'licenses/gsap-notice.txt',
