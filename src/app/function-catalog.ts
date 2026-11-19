@@ -15,7 +15,9 @@ export type FunctionAction =
   | 'new_chart' | 'session_charts' | 'now_chart' | 'mode_natal' | 'mode_transits'
   | 'mode_synastry' | 'mode_latitude' | 'house_system' | 'planet_info' | 'archive'
   | 'solar_return' | 'lunar_return' | 'aspect_table' | 'chart_settings' | 'monomeri'
-  | 'dodecatemoria' | 'antiscia' | 'contra_antiscia';
+  | 'dodecatemoria' | 'antiscia' | 'contra_antiscia' | 'austral' | 'outer_conjunct' | 'planet_year'
+  | 'aspect_focus' | 'applications' | 'decans' | 'decades' | 'terms' | 'synastry_transits' | 'directions' | 'synastry_swap' | 'synastry_deflection' | 'kleroi'
+  | 'arabic_parts' | 'arabic_abu' | 'arabic_custom' | 'fixed_stars';
 
 export type FunctionEntry = Readonly<{
   id: string;
@@ -65,13 +67,13 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
   ]),
   group('comparison', 'Confronti e previsioni', 'Comparison and forecasting', [
     available('synastry', 'Sinastrie', 'Synastry', 'mode_synastry'),
-    planned('swap-charts', 'Inverti Temi', 'Swap charts'),
-    planned('synastry-transits', 'Mostra Transiti in sinastria', 'Transits over synastry'),
-    planned('deflective-synastry', 'Sinastria Deflettiva', 'Deflective synastry'),
+    available('swap-charts', 'Inverti Temi', 'Swap charts', 'synastry_swap'),
+    available('synastry-transits', 'Mostra Transiti in sinastria', 'Transits over synastry', 'synastry_transits'),
+    available('deflective-synastry', 'Sinastria Deflettiva', 'Deflective synastry', 'synastry_deflection'),
     available('solar-return', 'Rivoluzione Solare', 'Solar return', 'solar_return'),
     available('lunar-return', 'Rivoluzione Lunare', 'Lunar return', 'lunar_return'),
     planned('return-map', 'Mappa delle rivoluzioni', 'Return relocation map'),
-    planned('directions', 'Direzioni', 'Directions'),
+    available('directions', 'Direzioni', 'Directions', 'directions'),
   ]),
   group('settings', 'Impostazioni del tema', 'Chart settings', [
     available('house-system', 'Domificazione', 'House system', 'house_system'),
@@ -81,28 +83,28 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
     available('aspect-direction', 'Aspetti Verso', 'Aspect direction', 'chart_settings'),
     available('planet-orbs', 'Orbite Pianeti', 'Planet orbs', 'chart_settings'),
     available('aspect-orbs', 'Orbite Aspetti', 'Aspect orbs', 'chart_settings'),
-    planned('aspect-focus', 'Focus Aspetti', 'Aspect focus'),
-    planned('applications', 'Applicazioni (appl./disappl.)', 'Applying and separating'),
-    planned('transsaturnians', 'Transaturnini se in congiunzione', 'Trans-Saturnians when conjunct'),
-    planned('austral-inversion', 'Inversione Australe', 'Austral inversion'),
-    planned('planet-of-year', "Pianeta dell'anno", 'Planet of the year'),
+    available('aspect-focus', 'Focus Aspetti', 'Aspect focus', 'aspect_focus'),
+    available('applications', 'Applicazioni (appl./disappl.)', 'Applying and separating', 'applications'),
+    available('transsaturnians', 'Transaturnini se in congiunzione', 'Trans-Saturnians when conjunct', 'outer_conjunct'),
+    available('austral-inversion', 'Inversione Australe', 'Austral inversion', 'austral'),
+    available('planet-of-year', "Pianeta dell'anno", 'Planet of the year', 'planet_year'),
   ]),
   group('traditional', 'Astrologia tradizionale', 'Traditional astrology', [
     available('dodecatemoria', 'Dodecatemori', 'Dodecatemoria', 'dodecatemoria'),
     available('antiscia', 'Antisci', 'Antiscia', 'antiscia'),
     available('contra-antiscia', 'Contrantisci', 'Contra-antiscia', 'contra_antiscia'),
-    planned('arabic-parts', 'Parti Arabe (Essenziali)', 'Arabic parts (essential)'),
-    planned('abu-mashar', "Parti Arabe (Abu Ma'shar)", "Arabic parts (Abu Ma'shar)"),
-    planned('custom-parts', 'Parti Arabe (Crea)', 'Arabic parts (custom formula)'),
-    planned('kleros', 'Kleros (4 Kleros, 5 Planetarie)', 'Kleros (4 Kleroi, 5 planetary)'),
+    available('arabic-parts', 'Parti Arabe (Essenziali)', 'Arabic parts (essential)', 'arabic_parts'),
+    available('abu-mashar', "Parti Arabe (Abu Ma'shar)", "Arabic parts (Abu Ma'shar)", 'arabic_abu'),
+    available('custom-parts', 'Parti Arabe (Crea)', 'Arabic parts (custom formula)', 'arabic_custom'),
+    available('kleros', 'Kleros (4 Kleros, 5 Planetarie)', 'Kleros (4 Kleroi, 5 planetary)', 'kleroi'),
     planned('lots-view', 'Estrapola e Visualizza Sorti', 'Extract and show lots'),
     available('monomoiria', 'Monomeri', 'Monomoiria', 'monomeri'),
-    planned('decades', 'Decadi', 'Decades'),
-    planned('decans', 'Decani', 'Decans'),
-    planned('terms', 'Termini', 'Terms'),
+    available('decades', 'Decadi', 'Decades', 'decades'),
+    available('decans', 'Decani', 'Decans', 'decans'),
+    available('terms', 'Termini', 'Terms', 'terms'),
     planned('planetary-ascensions', 'Ascendenze', 'Planetary ascensions'),
     planned('radix-synods', 'Sinodi Radix', 'Radix synods'),
-    planned('fixed-stars', 'Stelle Fisse', 'Fixed stars'),
+    available('fixed-stars', 'Stelle Fisse (catalogo sperimentale)', 'Fixed stars (experimental catalog)', 'fixed_stars'),
   ]),
   group('moon', 'Luna, stagioni, oraria ed elettiva', 'Moon, seasons, horary and electional', [
     planned('radix-new-moon', 'Novilunio Radix', 'Radix new moon'),
@@ -133,6 +135,7 @@ export const FUNCTION_CATALOG: readonly FunctionGroup[] = Object.freeze([
 const IN_LEFT_MENU: ReadonlySet<FunctionAction> = new Set<FunctionAction>([
   'new_chart', 'session_charts', 'archive', 'now_chart',
   'mode_natal', 'mode_transits', 'mode_synastry', 'mode_latitude',
+  'synastry_transits', 'synastry_swap', 'synastry_deflection', 'kleroi', // Contextual chart controls.
 ]);
 /** The group whose entries are settings; they are shown in the Settings drawer, not here. */
 export const SETTINGS_GROUP_ID = 'settings';

@@ -104,6 +104,14 @@
 .chart-stage.chart-dark .status-message { color:#ddd; }
 .stage-info .calc-status { margin-top:6px; }
 .stage-tools { position:absolute; top:12px; right:14px; display:flex; align-items:center; gap:10px; z-index:3; }
+.arabic-panel { position:absolute; right:14px; top:55px; z-index:4; display:grid; gap:8px; padding:12px;
+  max-width:min(360px,80%); background:var(--vs-surface); color:var(--vs-text); border:1px solid var(--vs-border); border-radius:8px; }
+.arabic-panel label { display:grid; gap:3px; font-size:12px; }
+.arabic-panel select { max-width:100%; }
+.gauquelin-panel { position:absolute; z-index:4; top:55px; left:14px; max-height:60%; overflow:auto;
+  padding:12px; background:var(--vs-surface); color:var(--vs-text); border:1px solid var(--vs-border); border-radius:8px; font-size:12px; }
+.star-panel { position:absolute; z-index:4; bottom:55px; right:14px; display:grid; gap:5px; max-width:300px; max-height:55%; overflow:auto;
+  padding:10px; background:var(--vs-surface); color:var(--vs-text); border:1px solid var(--vs-border); border-radius:8px; font-size:12px; }
 .device-clock { display:flex; flex-direction:column; align-items:flex-end; min-width:0; text-align:right; }
 .device-clock-reading { color:var(--vs-text-secondary); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .clock-compact { display:none; }
@@ -286,6 +294,10 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
   background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:8px; }
 .session-chart { display:flex; align-items:center; gap:6px; border-bottom:1px solid var(--vs-border); }
 .session-chart.active { background:var(--vs-surface-muted); box-shadow:inset 3px 0 0 var(--vs-accent); }
+.synastry-picker { position:absolute; z-index:7; top:12px; bottom:12px; left:12px; width:min(360px, calc(100% - 24px)); overflow:auto; padding:16px; background:var(--vs-bg); border:1px solid var(--vs-border); box-shadow:0 4px 24px #0003; }
+.synastry-choice { width:100%; border-bottom:1px solid var(--vs-border); }
+.synastry-controls { position:absolute; z-index:5; left:12px; bottom:58px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; max-width:calc(100% - 24px); padding:8px; background:var(--vs-bg); border:1px solid var(--vs-border); }
+.direction-panel { padding:12px; margin-bottom:16px; background:var(--vs-surface-muted); border:1px solid var(--vs-border); border-radius:8px; }
 .session-open { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; padding:9px 8px; text-align:left;
   background:transparent; border:0; color:var(--vs-text); font-size:12px; }
 .session-open strong { font-size:13px; overflow-wrap:anywhere; }
@@ -358,3 +370,7 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .zodiac-glyph img { width:24px; height:24px; object-fit:contain; }
 .zodiac-glyph span { font-size:.6rem; }
 .desktop-app[data-theme="light"] .zodiac-glyph:not(.selected) img { filter:brightness(0); }
+.year-planet { display:flex; gap:5px; align-items:center; margin-top:5px; font-size:11px; color:var(--vs-text-secondary); }
+.year-planet img { width:24px; height:20px; object-fit:contain; }
+.chart-stage:not(.chart-dark) .year-planet img { filter:brightness(0); }
+.chart-stage.chart-dark .year-planet { color:#ddd; }

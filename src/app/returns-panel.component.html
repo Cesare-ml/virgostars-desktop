@@ -15,6 +15,30 @@
   </form>
 
   <p class="returns-note">{{t('returns.place')}}</p>
+  <ng-container *ngIf="kind==='solar'">
+    <p class="returns-note">{{t('returns.map.hint')}}</p>
+    <div class="returns-map-controls" *ngIf="mapAvailable">
+      <button type="button" (click)="zoomMap(-1)" [disabled]="mapZoom===1" [attr.aria-label]="t('returns.map.zoomOut')">−</button>
+      <span>{{mapZoom}}×</span>
+      <button type="button" (click)="zoomMap(1)" [disabled]="mapZoom===4" [attr.aria-label]="t('returns.map.zoomIn')">+</button>
+    </div>
+    <div class="returns-map-viewport" *ngIf="mapAvailable">
+      <button type="button" class="returns-map" [style.width.%]="mapZoom * 100" [attr.aria-label]="t('returns.map.label')" (click)="selectMapPoint($event)" (mousemove)="previewMapPoint($event)">
+        <img src="/assets/img/grafici/light/mappa-mondo-lat-lng-equirectangular1.png" alt="" (error)="mapAvailable=false">
+      </button>
+    </div>
+    <p class="returns-note" *ngIf="!mapAvailable">{{t('returns.map.unavailable')}}</p>
+    <p class="returns-note" *ngIf="mapAvailable && !previewInstant">{{t('returns.map.searchFirst')}}</p>
+    <p class="returns-message" role="status" *ngIf="previewMessage">{{t(previewMessage)}}</p>
+    <div class="returns-preview" *ngIf="preview as p" role="status">
+      <strong>{{t('returns.map.preview')}}</strong>
+      <vs-solar-return-strip *ngIf="previewStrip as strip" [data]="strip" [label]="t('returns.map.preview')"
+        [radixLabel]="t('returns.map.radix')" [returnLabel]="t('returns.map.return')" [planetsLabel]="t('returns.map.planets')" [signsLabel]="t('returns.map.signs')"></vs-solar-return-strip>
+      <span>{{p.latMicro / 1000000 | number:'1.2-2'}}°, {{p.lngMicro / 1000000 | number:'1.2-2'}}°</span>
+      <span>ASC {{previewLongitude(p.ascendant)}} · MC {{previewLongitude(p.mc)}}</span>
+      <span>{{t('returns.map.cusps')}}: <span *ngFor="let cusp of p.cusps; let i=index">{{i+1}} {{previewLongitude(cusp)}}{{i<11 ? ' · ' : ''}}</span></span>
+    </div>
+  </ng-container>
   <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false"
     (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
   <div class="field-row">
@@ -31,6 +55,7 @@
     <span>{{t('form.zone')}}</span>
     <input type="text" autocomplete="off" spellcheck="false" maxlength="120" [value]="timeZone" (input)="set('timeZone', $event)">
   </label>
+  <p class="returns-note" *ngIf="timeZoneSuggested">{{t('returns.map.zoneSuggested')}}</p>
   <label class="returns-check">
     <input type="checkbox" [checked]="withRadix" (change)="toggleWithRadix($event)">
     <span>{{t('returns.withRadix')}}</span>
@@ -41,6 +66,7 @@
   <div class="returns-list" *ngIf="instants.length" role="list" [attr.aria-label]="t('returns.found')">
     <p class="returns-note">{{t('returns.found')}} {{instants.length}}</p>
     <div class="returns-row" role="listitem" *ngFor="let instant of instants; trackBy:trackInstant">
+      <input *ngIf="kind==='solar'" type="radio" name="return-preview" [checked]="previewInstant===instant.utcIso" [attr.aria-label]="t('returns.map.preview') + ' ' + whenLabel(instant)" (change)="setPreviewInstant(instant)">
       <span class="returns-when">{{whenLabel(instant)}}</span>
       <button type="button" class="returns-cast" [disabled]="busy" (click)="cast(instant)">{{t('returns.cast')}}</button>
     </div>

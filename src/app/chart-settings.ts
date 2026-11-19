@@ -44,6 +44,14 @@ export type AspectSetting = {active: boolean; orb: number | null};
 export type PointSetting = {shown: boolean; orb: number; aspects: boolean};
 export type ChartSettings = {
   showAspects: boolean;
+  australInversion: boolean;
+  outerWhenConjunct: boolean;
+  planetOfYear: boolean;
+  focusAspects: boolean;
+  applicationMode: 'off' | 'applying' | 'separating';
+  showDecans: boolean;
+  showDecades: boolean;
+  showTerms: boolean;
   aspects: Record<AspectId, AspectSetting>;
   points: Record<PointId, PointSetting>;
 };
@@ -66,7 +74,8 @@ export function defaultChartSettings(): ChartSettings {
   for (const id of POINT_IDS) {
     points[id] = {shown: !HIDDEN_BY_DEFAULT.includes(id), orb: DEFAULT_POINT_ORB, aspects: !NO_ASPECTS_BY_DEFAULT.includes(id)};
   }
-  return {showAspects: true, aspects, points};
+  return {showAspects: true, australInversion:false, outerWhenConjunct:false, planetOfYear:false,
+    focusAspects:false, applicationMode:'off', showDecans:false, showDecades:false, showTerms:false, aspects, points};
 }
 
 function record(x: unknown): Record<string, unknown> | null {
@@ -88,6 +97,10 @@ export function sanitizeChartSettings(raw: unknown): ChartSettings {
   const source = record(raw);
   if (!source) return settings;
   if (typeof source['showAspects'] === 'boolean') settings.showAspects = source['showAspects'];
+  for (const key of ['australInversion','outerWhenConjunct','planetOfYear','focusAspects','showDecans','showDecades','showTerms'] as const) {
+    if (Object.hasOwn(source,key) && typeof source[key] === 'boolean') settings[key] = source[key];
+  }
+  if (Object.hasOwn(source,'applicationMode') && (source['applicationMode'] === 'off' || source['applicationMode'] === 'applying' || source['applicationMode'] === 'separating')) settings.applicationMode = source['applicationMode'];
   const aspects = record(source['aspects']);
   const points = record(source['points']);
   for (const {id} of ASPECT_DEFINITIONS) {

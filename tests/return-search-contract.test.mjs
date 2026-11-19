@@ -4,8 +4,25 @@ import {
   decodeReturnResponse, requestReturns, validReturnRequest,
 } from '../src/app/native/return-search-contract.ts';
 import {
-  formatReturnInstant, parseReturnYear, returnChartName, validTimeZone,
+  formatReturnInstant, parseReturnYear, returnChartName, returnMapCoordinates, suggestReturnTimeZone, validTimeZone,
 } from '../src/app/returns-form.ts';
+
+test('solar return map maps the equirectangular image to geographic coordinates', () => {
+  assert.deepEqual(returnMapCoordinates(0.5, 0.5), {latMicro:0, lngMicro:0});
+  assert.deepEqual(returnMapCoordinates(0, 0), {latMicro:90_000_000, lngMicro:-180_000_000});
+  assert.deepEqual(returnMapCoordinates(1, 1), {latMicro:-90_000_000, lngMicro:180_000_000});
+  assert.deepEqual(returnMapCoordinates(0.75, 0.25), {latMicro:45_000_000, lngMicro:90_000_000});
+  for (const [x,y] of [[-0.01,0], [1.01,0], [0,NaN], [Infinity,0]]) assert.equal(returnMapCoordinates(x,y), null);
+});
+
+test('offline map proposes editable IANA zones and rejects invalid coordinates', () => {
+  assert.equal(suggestReturnTimeZone(41_900_000, 12_500_000), 'Europe/Rome');
+  assert.equal(suggestReturnTimeZone(40_710_000, -74_000_000), 'America/New_York');
+  assert.equal(suggestReturnTimeZone(35_680_000, 139_700_000), 'Asia/Tokyo');
+  for (const [lat,lng] of [[90_000_001,0], [0,180_000_001], [NaN,0], [0,0.5]]) {
+    assert.equal(suggestReturnTimeZone(lat,lng), null);
+  }
+});
 
 const J2000 = 2451545.0;
 // Fictional evenly spaced instants; not an ephemeris.

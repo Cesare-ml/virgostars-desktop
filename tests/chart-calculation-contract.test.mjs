@@ -34,6 +34,35 @@ function okResponse() {
 }
 const REQUEST = Object.freeze({utcIso: '2001-02-03T04:05:06Z', latMicro: 44_697_805, lngMicro: 11_805_778});
 
+test('optional solar events bracket the chart instant and reject contradictory native data', async () => {
+  const raw = okResponse();
+  raw.solarDay = {sunriseJdUt:2451544.7, sunsetJdUt:2451545.1, nextSunriseJdUt:2451545.7};
+  assert.deepEqual(decodeChartResponse(raw).solarDay, raw.solarDay);
+  const calls = [];
+  const result = await requestChart({isNative:()=>true, invoke:async (...args)=>{calls.push(args); return raw;}}, {...REQUEST, includeSolarEvents:true});
+  assert.equal(result.kind, 'ready');
+  assert.equal(calls[0][1].request.includeSolarEvents, true);
+  raw.solarDay.sunsetJdUt = 2451545.8;
+  assert.throws(() => decodeChartResponse(raw), {message:'Invalid chart calculation protocol'});
+});
+
+test('star facts and previous new moon are bounded and explicitly requested', async () => {
+  const raw = okResponse();
+  raw.previousNewMoonLongitudeDeg = 359.9;
+  raw.fixedStars = [{id:102,name:'Sirius',longitudeDeg:17,latitudeDeg:-39,magnitude:-1.44,
+    trueAltitudeDeg:1,azimuthSouthWestDeg:179}];
+  const calls=[];
+  const result=await requestChart({isNative:()=>true,invoke:async (...args)=>{calls.push(args);return raw;}},
+    {...REQUEST,includeFixedStars:true,includePreviousNewMoon:true});
+  assert.equal(result.kind,'ready');
+  assert.equal(result.fixedStars[0].name,'Sirius');
+  assert.equal(result.previousNewMoonLongitudeDeg,359.9);
+  assert.equal(calls[0][1].request.includeFixedStars,true);
+  assert.equal(calls[0][1].request.includePreviousNewMoon,true);
+  raw.fixedStars.push({...raw.fixedStars[0]});
+  assert.throws(()=>decodeChartResponse(raw), {message:'Invalid chart calculation protocol'});
+});
+
 test('a complete native response is copied into detached frozen values', () => {
   const raw = okResponse();
   const decoded = decodeChartResponse(raw);

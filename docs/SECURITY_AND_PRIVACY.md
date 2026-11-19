@@ -2,6 +2,15 @@
 
 Status: **DESIGN / required gates**. User birth data can be sensitive personal information.
 
+The fixed-star detail link adds a narrow native `open_star_page` command. The
+WebView supplies only an integer star ID in the range 1–1,000,000; the host
+constructs the fixed `https://virgostars.it/stella/<id>/stella` URL and delegates
+opening it to the system browser. It accepts no arbitrary URL, path, program or
+birth data. The browser contacts VirgoStars when the user chooses the link.
+Native errors are surfaced; no opener plugin or broad URL capability is
+exposed to the WebView. Rust `open` 5.4.5 is an MIT-licensed third-party
+dependency and remains subject to the distribution notice audit.
+
 ## Assets and trust zones
 - Device: application binary, local birth-data DB, queued edits, downloaded assets/kernels, device keys.
 - Webview: Angular/Three.js presentation logic. Treat rendered external/user text as untrusted and restrict IPC capabilities.

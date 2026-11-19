@@ -144,6 +144,9 @@ fn valid_record(chart: &ChartRecordV1) -> bool {
         utc_iso: chart.utc_iso.clone(),
         lat_micro: chart.lat_micro,
         lng_micro: chart.lng_micro,
+        include_solar_events: false,
+        include_previous_new_moon: false,
+        include_fixed_stars: false,
     };
     valid_id(&chart.id)
         && valid_text(&chart.name, MAX_NAME_CHARS)

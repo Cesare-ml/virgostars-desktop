@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   UI_PREFERENCES_KEY, DEFAULT_UI_PREFERENCES, browserUiPreferencesStorage,
-  loadUiPreferences, saveUiPreferences
+  loadUiPreferences, resolveLocale, saveUiPreferences
 } from '../src/app/ui-preferences.ts';
 
 const fakeStorage = (initial = null) => {
@@ -14,9 +14,12 @@ const fakeStorage = (initial = null) => {
   };
 };
 
-test('fresh guest sessions default to light mode and Italian without network or login',()=>{
+test('fresh sessions use system language with English fallback',()=>{
   assert.deepEqual(loadUiPreferences(null),DEFAULT_UI_PREFERENCES);
-  assert.deepEqual(loadUiPreferences(fakeStorage()),{theme:'light',locale:'it'});
+  assert.deepEqual(loadUiPreferences(fakeStorage()),{theme:'light',locale:'auto'});
+  assert.equal(resolveLocale('auto','it-IT'),'it');
+  assert.equal(resolveLocale('auto','de-DE'),'en');
+  assert.equal(resolveLocale('it','en-US'),'it');
   assert.equal(browserUiPreferencesStorage(),null); // Node has no WebView
 });
 
@@ -38,7 +41,7 @@ test('unknown, malformed and excessively long contents fail closed to defaults',
 
 test('valid preferences survive one corrupt field; no arbitrary string is exposed to Angular',()=>{
   const state={version:1,theme:'dark',locale:'<script>alert(1)</script>'};
-  assert.deepEqual(loadUiPreferences(fakeStorage(JSON.stringify(state))),{theme:'dark',locale:'it'});
+  assert.deepEqual(loadUiPreferences(fakeStorage(JSON.stringify(state))),{theme:'dark',locale:'auto'});
   assert.deepEqual(loadUiPreferences(fakeStorage(JSON.stringify({version:1,theme:false,locale:'en'}))),
     {theme:'light',locale:'en'});
 });

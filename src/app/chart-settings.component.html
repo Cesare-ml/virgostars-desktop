@@ -2,6 +2,21 @@
   <p class="settings-problem" role="alert" *ngIf="invalidOrb">{{t('chartsettings.orb.invalid')}}</p>
 
   <details class="settings-section">
+    <summary>{{t('chartsettings.display')}}</summary>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.australInversion" [disabled]="disabled" (change)="setDisplayOption('australInversion',$event)"><span>{{t('chartsettings.austral')}}</span></label>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.outerWhenConjunct" [disabled]="disabled" (change)="setDisplayOption('outerWhenConjunct',$event)"><span>{{t('chartsettings.outer')}}</span></label>
+    <p class="settings-note">{{t('chartsettings.outer.note')}}</p>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.planetOfYear" [disabled]="disabled" (change)="setDisplayOption('planetOfYear',$event)"><span>{{t('chartsettings.year')}}</span></label>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.focusAspects" [disabled]="disabled" (change)="setDisplayOption('focusAspects',$event)"><span>{{t('chartsettings.focus')}}</span></label>
+    <p class="settings-note">{{t('chartsettings.focus.note')}}</p>
+    <label>{{t('chartsettings.applications')}} <select [value]="settings.applicationMode" [disabled]="disabled" (change)="setApplicationMode($event)"><option value="off">{{t('chartsettings.applications.off')}}</option><option value="applying">{{t('chartsettings.applications.applying')}}</option><option value="separating">{{t('chartsettings.applications.separating')}}</option></select></label>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.showDecans" [disabled]="disabled" (change)="setDisplayOption('showDecans',$event)"><span>{{t('chartsettings.decans')}}</span></label>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.showDecades" [disabled]="disabled" (change)="setDisplayOption('showDecades',$event)"><span>{{t('chartsettings.decades')}}</span></label>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.showTerms" [disabled]="disabled" (change)="setDisplayOption('showTerms',$event)"><span>{{t('chartsettings.terms')}}</span></label>
+    <p class="settings-note">{{t('chartsettings.terms.note')}}</p>
+  </details>
+
+  <details class="settings-section">
     <summary>{{t('settings.aspects')}}</summary>
     <label class="settings-check">
       <input type="checkbox" [checked]="settings.showAspects" [disabled]="disabled" (change)="setShowAspects($event)">

@@ -16,7 +16,7 @@
 //! `houses.rs`. The planets Mars to Pluto are the planetary **system barycenters**, as the core
 //! documents; lunar nodes and apogees are the core's mathematical points; Chiron needs its SPK.
 use crate::chart_calculation::{
-    BodyPositionV1, ChartSnapshotV1, EphemerisProvider, HouseSystemV1, Luminary, ProviderError, ProviderInfoV1,
+    BodyPositionV1, ChartSnapshotV1, EphemerisProvider, FixedStarV1, HouseSystemV1, HouseAngleContextV1, Luminary, ProviderError, ProviderInfoV1, SolarDayV1,
     ValidatedRequest,
 };
 use crate::houses::{self, HouseAngles};
@@ -33,6 +33,9 @@ use virgostars_ephemeris_core::civil_apparent::{jd_ut_to_tdb_with_policy, jd_ut_
 use virgostars_ephemeris_core::de441::{Body, De441, JulianDateTdb};
 use virgostars_ephemeris_core::delta_t_table::DeltaTTable;
 use virgostars_ephemeris_core::house_angles::house_angles;
+use virgostars_ephemeris_core::fixed_star::{calculate_star_with_solar_deflection, FixedStarCatalogEntry, StellarSolarDeflection};
+use virgostars_ephemeris_core::horizon::{ecliptic_to_equatorial, equatorial_to_horizontal};
+use virgostars_ephemeris_core::rise_transit::{find_event, Atmosphere, Disc, Event, Limb, Request, Site, SkyPosition};
 use virgostars_ephemeris_core::lunar_points::{lunar_point, LunarPoint};
 use virgostars_ephemeris_core::spk_type21::SmallBodySpk;
 
@@ -70,6 +73,7 @@ struct DataPaths {
     de441: PathBuf,
     usno_directory: Option<PathBuf>,
     chiron_spk: Option<PathBuf>,
+    fixed_star_catalog: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -78,6 +82,7 @@ struct FileConfig {
     de441: Option<String>,
     usno_directory: Option<String>,
     chiron_spk: Option<String>,
+    fixed_star_catalog: Option<String>,
 }
 
 fn read_config(folder: &Path) -> Option<FileConfig> {
@@ -91,6 +96,7 @@ const BUNDLED_FOLDER: &str = "ephemeris";
 const BUNDLED_DE441: &str = "de441-slice.eph";
 const BUNDLED_USNO: &str = "usno";
 const BUNDLED_CHIRON: &str = "chiron.bsp";
+const BUNDLED_STARS: &str = "fixed-stars.json";
 
 /// Per item: environment variable, then `ephemeris.json`, then the files shipped with the installer.
 /// `None` when no DE441 location is known at all.
@@ -107,7 +113,64 @@ fn data_paths(
     };
     let usno = env("VIRGOSTARS_USNO_DIR").or(file.usno_directory).map(PathBuf::from).or_else(|| shipped(BUNDLED_USNO));
     let chiron = env("VIRGOSTARS_CHIRON_SPK").or(file.chiron_spk).map(PathBuf::from).or_else(|| shipped(BUNDLED_CHIRON));
-    Some(DataPaths { de441, usno_directory: usno, chiron_spk: chiron })
+    let stars = env("VIRGOSTARS_FIXED_STARS").or(file.fixed_star_catalog).map(PathBuf::from).or_else(|| shipped(BUNDLED_STARS));
+    Some(DataPaths { de441, usno_directory: usno, chiron_spk: chiron, fixed_star_catalog:stars })
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FixedStarRecord {
+    id:u32, name:String, magnitude:Option<f64>, epoch_tdb_jd:f64, ra_deg:Option<f64>, dec_deg:Option<f64>,
+    pm_ra_mas_year:Option<f64>, pm_dec_mas_year:Option<f64>, parallax_mas:Option<f64>, radial_velocity_km_s:Option<f64>,
+    approximate_ecliptic:Option<ApproximateEcliptic>,
+    constellation:Option<String>,
+    #[serde(default)] interpretations:std::collections::BTreeMap<String,String>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+struct ApproximateEcliptic {longitude_deg:f64, latitude_deg:f64}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FixedStarCatalog { schema:String, provenance:String, stars:Vec<FixedStarRecord> }
+
+fn load_star_catalog(path:&Path) -> Option<Vec<FixedStarRecord>> {
+    const MAX: u64 = 8 * 1024 * 1024;
+    let file = File::open(path).ok()?;
+    if file.metadata().ok()?.len() > MAX { return None; }
+    let mut text=String::new(); file.take(MAX + 1).read_to_string(&mut text).ok()?;
+    parse_star_catalog(&text)
+}
+
+fn parse_star_catalog(text:&str) -> Option<Vec<FixedStarRecord>> {
+    let catalog:FixedStarCatalog=serde_json::from_str(text).ok()?;
+    if catalog.schema != "virgostars-desktop-stars/1" || catalog.provenance.trim().is_empty() ||
+        catalog.provenance.len() > 500 || catalog.stars.is_empty() || catalog.stars.len() > 2048 { return None; }
+    let mut ids=std::collections::HashSet::new();
+    for s in &catalog.stars {
+        if s.id == 0 || s.id > 1_000_000 || !ids.insert(s.id) || s.name.is_empty() || s.name.len() > 80 ||
+            !s.name.chars().all(|c| c.is_alphanumeric() || " .'-".contains(c)) ||
+            s.constellation.as_ref().is_some_and(|name| name.len() > 160 || name.chars().any(char::is_control)) ||
+            !s.epoch_tdb_jd.is_finite() || s.magnitude.is_some_and(|v| !v.is_finite() || !(-10.0..=20.0).contains(&v)) ||
+            !valid_star_coordinates(s) ||
+            s.interpretations.len() > 32 || s.interpretations.iter().any(|(k,v)| k.is_empty() || k.len()>80 || v.len()>8192 || v.chars().any(|c| c == '\0')) { return None; }
+    }
+    Some(catalog.stars)
+}
+
+fn valid_star_coordinates(s:&FixedStarRecord) -> bool {
+    if let Some(p) = &s.approximate_ecliptic {
+        return (p.longitude_deg.is_finite() && (0.0..360.0).contains(&p.longitude_deg) &&
+            p.latitude_deg.is_finite() && p.latitude_deg.abs() < 90.0) &&
+            [s.ra_deg,s.dec_deg,s.pm_ra_mas_year,s.pm_dec_mas_year,s.parallax_mas,s.radial_velocity_km_s].iter().all(Option::is_none);
+    }
+    match (s.ra_deg,s.dec_deg,s.pm_ra_mas_year,s.pm_dec_mas_year,s.parallax_mas,s.radial_velocity_km_s) {
+        (Some(ra),Some(dec),Some(pmra),Some(pmdec),Some(parallax),Some(rv)) =>
+            [ra,dec,pmra,pmdec,parallax,rv].iter().all(|x| x.is_finite()) && (0.0..360.0).contains(&ra) &&
+            dec.abs() < 90.0 && (0.001..=10000.0).contains(&parallax) && rv.abs() < 299_792.458,
+        _ => false,
+    }
 }
 
 fn load_delta_t(directory: &Path) -> Option<DeltaTTable> {
@@ -127,6 +190,7 @@ struct Engine {
     ephemeris: De441<File>,
     delta_t: Option<DeltaTTable>,
     chiron: Option<SmallBodySpk>,
+    stars:Option<Vec<FixedStarRecord>>,
 }
 
 impl Engine {
@@ -135,6 +199,15 @@ impl Engine {
             ephemeris: De441::open(&paths.de441).ok()?,
             delta_t: paths.usno_directory.as_deref().and_then(load_delta_t),
             chiron: paths.chiron_spk.as_deref().and_then(load_chiron),
+            stars: match paths.fixed_star_catalog.as_deref() {
+                Some(path) => Some(load_star_catalog(path).unwrap_or_default()),
+                None => {
+                    let embedded = include_bytes!(concat!(env!("OUT_DIR"), "/vs-star-catalog.json"));
+                    if embedded.is_empty() { None } else {
+                        Some(std::str::from_utf8(embedded).ok().and_then(parse_star_catalog).unwrap_or_default())
+                    }
+                }
+            },
         })
     }
 
@@ -146,6 +219,40 @@ impl Engine {
         }
         .map(|(tdb, _source)| tdb)
         .map_err(|_| ProviderError)
+    }
+
+    /// Sunrise, sunset and following sunrise bracketing the instant. Sea-level,
+    /// standard atmosphere, apparent solar upper limb, topocentric; UT1≈UTC.
+    fn solar_day(&mut self, input: &ValidatedRequest) -> Result<Option<SolarDayV1>, ProviderError> {
+        let target = julian_day_ut(input);
+        let site = Site { latitude_deg: input.latitude_deg, longitude_deg_east: input.longitude_deg, height_m: 0.0 };
+        let atmosphere = Atmosphere { pressure_hpa: 1013.25, temperature_c: 15.0 };
+        let mut find = |start: f64, event: Event| -> Result<Option<f64>, ProviderError> {
+            let request = Request { event, disc: Disc::Radius { km: 695_700.0, limb: Limb::Upper },
+                refraction: true, topocentric: true, fixed_centre_altitude_deg: None, search_days: 2.1 };
+            find_event(|ut| -> Result<SkyPosition, ProviderError> {
+                let tdb = self.to_tdb(ut)?;
+                let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
+                let options = ApparentOptions { frame: ApparentFrame::TrueEquatorOfDate, ..ApparentOptions::default() };
+                let positions = geocentric_apparent_six_fields_many_with_options(&mut self.ephemeris, &[Body::Sun], tdb, options)
+                    .map_err(|_| ProviderError)?;
+                let fields = &positions.first().ok_or(ProviderError)?.fields;
+                Ok(SkyPosition { tt_jd:tt, right_ascension_deg:fields.longitude_deg,
+                    declination_deg:fields.latitude_deg, distance_au:fields.distance_au })
+            }, &site, &atmosphere, &request, start).map_err(|_| ProviderError)
+        };
+        let Some(mut rise) = find(target - 2.0, Event::Rise)? else { return Ok(None); };
+        if rise > target { return Ok(None); }
+        let Some(mut next) = find(rise + 1e-7, Event::Rise)? else { return Ok(None); };
+        while next <= target {
+            rise = next;
+            let Some(later) = find(rise + 1e-7, Event::Rise)? else { return Ok(None); };
+            if later <= rise { return Ok(None); }
+            next = later;
+        }
+        let Some(set) = find(rise + 1e-7, Event::Set)? else { return Ok(None); };
+        if !(rise <= target && target < next && rise < set && set < next) { return Ok(None); }
+        Ok(Some(SolarDayV1 { sunrise_jd_ut:rise, sunset_jd_ut:set, next_sunrise_jd_ut:next }))
     }
 }
 
@@ -299,7 +406,9 @@ impl Engine {
                 None => unavailable_house_systems.push(id),
             }
         }
-        Ok(ChartSnapshotV1 { julian_day_ut: jd_ut, bodies, houses: systems, unavailable_bodies, unavailable_house_systems })
+        Ok(ChartSnapshotV1 { julian_day_ut: jd_ut,
+            house_angle_context: Some(HouseAngleContextV1 {tt_julian_day:tt, true_obliquity_deg:angles.true_obliquity_deg}),
+            bodies, houses: systems, unavailable_bodies, unavailable_house_systems })
     }
 
     fn luminary(&mut self, body: Luminary, jd_ut: f64) -> Result<f64, ProviderError> {
@@ -322,6 +431,56 @@ impl EphemerisProvider for VirgoStarsEphemeris {
         ProviderInfoV1 { id: "virgostars_ephemeris", engine_version: ENGINE_VERSION.to_string() }
     }
 
+    fn solar_day(&self, request: &ValidatedRequest) -> Result<Option<SolarDayV1>, ProviderError> {
+        with_engine(|engine| engine.solar_day(request)).ok_or(ProviderError)?
+    }
+
+    fn previous_new_moon_longitude(&self, request: &ValidatedRequest) -> Result<Option<f64>, ProviderError> {
+        with_engine(|engine| {
+            let instant = crate::return_search::previous_conjunction(|t| {
+                let moon = engine.luminary(Luminary::Moon, t)?;
+                let sun = engine.luminary(Luminary::Sun, t)?;
+                Ok(moon - sun)
+            }, julian_day_ut(request))?;
+            instant.map(|t| engine.luminary(Luminary::Moon, t)).transpose()
+        }).ok_or(ProviderError)?
+    }
+
+    fn fixed_stars(&self, request: &ValidatedRequest) -> Result<Option<Vec<FixedStarV1>>, ProviderError> {
+        with_engine(|engine| {
+            let jd = julian_day_ut(request);
+            let tdb = engine.to_tdb(jd)?;
+            let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
+            let angles = house_angles(jd, tt, request.latitude_deg, request.longitude_deg).map_err(|_| ProviderError)?;
+            // Hipparcos I/239 HIP 32349, ICRS J1991.25; radial velocity zero is assumed.
+            let sirius = FixedStarRecord {id:102, name:"Sirius".into(), magnitude:Some(-1.44), epoch_tdb_jd:2_448_349.0625,
+                ra_deg:Some(101.28854105), dec_deg:Some(-16.71314306), pm_ra_mas_year:Some(-546.01), pm_dec_mas_year:Some(-1223.08),
+                parallax_mas:Some(379.21), radial_velocity_km_s:Some(0.0), approximate_ecliptic:None, constellation:Some("Canis Major".into()), interpretations:Default::default()};
+            let catalog = engine.stars.clone().unwrap_or_else(|| vec![sirius]);
+            if catalog.is_empty() { return Ok(None); }
+            let mut output = Vec::with_capacity(catalog.len());
+            for entry in catalog {
+                let approximate = entry.approximate_ecliptic.is_some();
+                let (ra,dec,pmra,pmdec,parallax,rv) = if let Some(p) = &entry.approximate_ecliptic {
+                    let Ok((ra,dec)) = ecliptic_to_equatorial(entry.epoch_tdb_jd,p.longitude_deg,p.latitude_deg) else {continue;};
+                    // Distance and motion unavailable in the source: an explicitly approximate distant fixed direction.
+                    (ra,dec,0.0,0.0,0.001,0.0)
+                } else { (entry.ra_deg.unwrap(),entry.dec_deg.unwrap(),entry.pm_ra_mas_year.unwrap(),entry.pm_dec_mas_year.unwrap(),
+                    entry.parallax_mas.unwrap(),entry.radial_velocity_km_s.unwrap()) };
+                let source = FixedStarCatalogEntry { epoch_tdb:JulianDateTdb(entry.epoch_tdb_jd), right_ascension_deg:ra,
+                    declination_deg:dec, proper_motion_ra_cos_dec_mas_per_year:pmra,
+                    proper_motion_dec_mas_per_year:pmdec, parallax_mas:parallax, radial_velocity_km_per_second:rv };
+                let Ok(star) = calculate_star_with_solar_deflection(&mut engine.ephemeris, source, tt, tdb, StellarSolarDeflection::PointMass) else { continue; };
+                let Ok((ra, dec)) = ecliptic_to_equatorial(tt, star.longitude_deg, star.latitude_deg) else { continue; };
+                let Ok(horizontal) = equatorial_to_horizontal(ra, dec, angles.armc_deg, request.latitude_deg) else { continue; };
+                output.push(FixedStarV1 {id:entry.id, name:entry.name, longitude_deg:star.longitude_deg,
+                    latitude_deg:star.latitude_deg, magnitude:entry.magnitude, true_altitude_deg:horizontal.true_altitude_deg, approximate,
+                    azimuth_south_west_deg:(horizontal.azimuth_north_east_deg + 180.0).rem_euclid(360.0), constellation:entry.constellation, interpretations:entry.interpretations});
+            }
+            Ok(Some(output))
+        }).ok_or(ProviderError)?
+    }
+
     fn covers(&self, request: &ValidatedRequest) -> bool {
         let jd_ut = julian_day_ut(request);
         // Without the data there is nothing to say about coverage; the calculation itself reports it.
@@ -340,6 +499,65 @@ impl EphemerisProvider for VirgoStarsEphemeris {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn star_catalog_checks_provenance_identity_and_bounded_text() {
+        let path = std::env::temp_dir().join(format!("vs-star-test-{}-{}.json", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let valid = r#"{"schema":"virgostars-desktop-stars/1","provenance":"synthetic test only","stars":[{"id":1,"name":"Test Star","magnitude":2.0,"epochTdbJd":2451545.0,"raDeg":40.0,"decDeg":20.0,"pmRaMasYear":1.0,"pmDecMasYear":1.0,"parallaxMas":10.0,"radialVelocityKmS":0.0,"interpretations":{"Sun":"Synthetic"}}]}"#;
+        std::fs::write(&path, valid).unwrap();
+        assert_eq!(load_star_catalog(&path).unwrap().len(), 1);
+        std::fs::write(&path, valid.replace("synthetic test only", "")).unwrap();
+        assert!(load_star_catalog(&path).is_none());
+        std::fs::write(&path, valid.replace("\"parallaxMas\":10.0", "\"parallaxMas\":-1.0")).unwrap();
+        assert!(load_star_catalog(&path).is_none());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn local_private_star_catalog_if_present_meets_provider_contract() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.local/ephemeris/fixed-stars.json");
+        if !path.exists() { return; }
+        let stars = load_star_catalog(&path).expect("the owner-supplied catalogue must validate");
+        assert!(!stars.is_empty());
+    }
+
+    #[test]
+    fn local_catalog_with_real_ephemeris_calculates_star_positions_when_available() {
+        if std::env::var_os("VIRGOSTARS_DE441_PATH").is_none() || std::env::var_os("VIRGOSTARS_FIXED_STARS").is_none() { return; }
+        let results = VirgoStarsEphemeris.fixed_stars(&request(2000,1,1,12.0)).unwrap().unwrap();
+        assert!(results.len() > 700, "most input stars should be calculable");
+        let sirius = results.iter().find(|star| star.id == 102).expect("Sirius");
+        assert!((103.0..106.0).contains(&sirius.longitude_deg));
+        assert!(!sirius.approximate && !sirius.interpretations.is_empty());
+        assert!(results.iter().any(|star| star.approximate));
+        assert!(results.iter().all(|star| star.longitude_deg.is_finite() && star.true_altitude_deg.abs() <= 90.0));
+    }
+
+    #[test]
+    fn previous_new_moon_uses_real_luminaries_when_available() {
+        if std::env::var_os("VIRGOSTARS_DE441_PATH").is_none() { return; }
+        let longitude = VirgoStarsEphemeris.previous_new_moon_longitude(&request(2000,2,1,12.0)).unwrap().unwrap();
+        // The January 2000 conjunction is in Capricorn; this broad range is a
+        // smoke check rather than an independent precision reference.
+        assert!((270.0..300.0).contains(&longitude));
+    }
+
+    #[test]
+    fn solar_day_brackets_rome_equinox_and_handles_polar_day_when_available() {
+        if std::env::var_os("VIRGOSTARS_DE441_PATH").is_none() { return; }
+        let noon = request(2000, 3, 20, 12.0);
+        let midnight = julian_day_ut(&request(2000, 3, 20, 0.0));
+        let events = VirgoStarsEphemeris.solar_day(&noon).unwrap().expect("Rome has sunrise and sunset");
+        let hours = |jd: f64| (jd - midnight) * 24.0;
+        // Broad plausibility windows, not independent precision references.
+        assert!((4.0..7.0).contains(&hours(events.sunrise_jd_ut)));
+        assert!((16.0..19.0).contains(&hours(events.sunset_jd_ut)));
+        assert!((27.0..31.0).contains(&hours(events.next_sunrise_jd_ut)));
+        let polar = ValidatedRequest { year: 2000, month: 6, day: 21, hour: 12.0,
+            latitude_deg: 80.0, longitude_deg: 0.0 };
+        assert!(VirgoStarsEphemeris.solar_day(&polar).unwrap().is_none());
+    }
 
     fn request(year: i32, month: u32, day: u32, hour: f64) -> ValidatedRequest {
         ValidatedRequest { year, month, day, hour, latitude_deg: 41.8928, longitude_deg: 12.4837 }
@@ -489,7 +707,7 @@ mod tests {
     #[test]
     fn test_without_the_data_files_there_is_no_provider() {
         // A path that does not exist never opens, and a failed open is not remembered.
-        let missing = DataPaths { de441: PathBuf::from("Z:/does/not/exist/de441.eph"), usno_directory: None, chiron_spk: None };
+        let missing = DataPaths { de441: PathBuf::from("Z:/does/not/exist/de441.eph"), usno_directory: None, chiron_spk: None, fixed_star_catalog:None };
         assert!(Engine::open(&missing).is_none());
     }
 }

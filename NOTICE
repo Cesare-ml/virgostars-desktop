@@ -20,4 +20,7 @@ obtained scientific data or astronomy kernels, commercially sourced location
 data or databases, credentials, user records, or hosted VirgoStars services.
 Do not bundle, release or redistribute such materials without separate review.
 
+The bundled tz-lookup 6.1.25 timezone boundary lookup is by The Dark Sky
+Company and is distributed under CC0-1.0. See third-party/tz-lookup/LICENSE.
+
 Contributors retain applicable rights in their own contributions under CPAL.

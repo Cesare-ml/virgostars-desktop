@@ -2,7 +2,7 @@
 export type ChartMode = 'natal' | 'transits' | 'synastry' | 'latitude';
 export type UiTheme = 'light' | 'dark';
 /** What the centre of the window shows over the chart: nothing, the new-chart form or the archive. */
-export type WorkspaceView = 'chart' | 'new' | 'archive' | 'functions' | 'settings';
+export type WorkspaceView = 'chart' | 'new' | 'archive' | 'functions' | 'settings' | 'account';
 export type InspectorTab = 'planets' | 'aspects' | 'navigate' | 'transits' | 'zodiac';
 export type Locale = 'it' | 'en';
 
@@ -41,4 +41,10 @@ export function navigationLabel(mode: ChartMode): string {
 }
 export function safeMode(input: string): ChartMode | null {
   return CHART_MODES.includes(input as ChartMode) ? input as ChartMode : null;
+}
+
+/** A comparison may only use systems computed for both charts, preserving radix order. */
+export function commonHouseSystems<T extends string>(radix: readonly T[], partner: readonly T[]): T[] {
+  const supported = new Set(partner);
+  return radix.filter(system => supported.has(system));
 }

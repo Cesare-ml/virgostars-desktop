@@ -26,14 +26,14 @@ test('the catalog is frozen and its summary matches the entries', () => {
   const summary = summarizeCatalog();
   assert.equal(summary.available + summary.planned + summary.excluded, entries.length);
   assert.equal(summary.available, entries.filter(entry => entry.status === 'available').length);
-  assert.ok(summary.planned > summary.available, 'most of the menu is still to be built');
+  assert.ok(summary.planned > 0, 'unfinished features remain visible as planned');
 });
 
 test('the functions that work today are exactly the reviewed set', () => {
   assert.deepEqual(entries.filter(entry => entry.status === 'available').map(entry => entry.id).sort(), [
-    'antiscia', 'archive', 'aspect-direction', 'aspect-orbs', 'aspects', 'celestial-elements', 'contra-antiscia', 'dodecatemoria', 'house-system', 'latitudes',
-    'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-orbs', 'real-time',
-    'session-charts', 'solar-return', 'synastry', 'transits',
+    'abu-mashar', 'antiscia', 'applications', 'arabic-parts', 'archive', 'aspect-direction', 'aspect-focus', 'aspect-orbs', 'aspects', 'austral-inversion', 'celestial-elements', 'contra-antiscia', 'custom-parts', 'decades', 'decans', 'deflective-synastry', 'directions', 'dodecatemoria', 'fixed-stars', 'house-system', 'kleros', 'latitudes',
+    'lunar-return', 'monomoiria', 'natal', 'new-chart', 'planet-info', 'planet-of-year', 'planet-orbs', 'real-time',
+    'session-charts', 'solar-return', 'swap-charts', 'synastry', 'synastry-transits', 'terms', 'transits', 'transsaturnians',
   ]);
 });
 
@@ -49,7 +49,7 @@ test('the component dispatches every catalog action and disables the rest', () =
     assert.match(component, new RegExp("case '" + action + "':"), action);
   }
   // Available entries are active buttons; everything else sits in a collapsed, disabled list.
-  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy \|\| \(entry.action==='monomeri' && !monomeriAvailable\)"/);
+  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy \|\| \(entry.action==='monomeri' && !monomeriAvailable\) \|\| \(entry.action==='directions' && !directionsSupported\)"/);
   assert.match(html, /\*ngFor="let entry of unavailableIn\(group\)" disabled/);
 });
 
@@ -65,8 +65,8 @@ test('a calculated chart is never paired with fixture overlays', () => {
   const component = read('src/app/desktop-app.component.ts');
   // No placeholder chart exists any more: overlays only ever come from calculated charts.
   assert.doesNotMatch(component, /makeFictionalTheme|fictionalPlanets|fictionalHouses/);
-  assert.match(component, /const transit = this\.displayedTransit\?\.render;/);
-  assert.match(component, /this\.synodChart\?\.render : this\.partnerChart\?\.render;/);
+  assert.match(component, /const transit = this\.mode === 'synastry' \? this\.displayChart\(this\.synastryTransitChart\)\?\.render : this\.displayedTransit\?\.render;/);
+  assert.match(component, /this\.displayChart\(this\.synodChart\)\?\.render : this\.partnerChart\?\.render;/);
   assert.match(component, /const present = AXIS_IDS\.includes\(id\) \|\| id in planets;/);
   assert.match(component, /target\.att = present && setting\.shown;/);
 });

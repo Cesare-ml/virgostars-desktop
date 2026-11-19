@@ -34,6 +34,8 @@ Saving the same id again updates the row in place and keeps its creation time, s
 
 ## Interface
 
+- In synastry, a compact side picker lists session and saved charts while leaving the active radix visible. Saved inputs are recalculated before selection; a calculation failure leaves the current comparison intact. The second chart can be changed or swapped with the radix. Only house systems available in both charts can be selected in synastry. An optional outer ring shows the current sky calculated at the radix location and labels its instant; switch it off and on to refresh. The aspect table still compares the two charts. Deflection controls require Vehlow and renderer capability version 1; until a compatible renderer is installed they remain disabled. The ordinary cross-aspect table is hidden while deflection is active. This is an unreleased prototype without WebView2 visual acceptance.
+
 - The sidebar **Archivio** button opens the archive as its own panel over the chart: charts open in this session (with a Save button for unsaved ones and the partner choice for synastry), the saved charts with a search box, **Open** (recalculates) and delete with an explicit confirmation step. It is separate from the new-chart panel.
 - The sidebar **Nuovo tema** button opens the new-chart panel. Its checkbox **Save the chart in the local archive** is on by default: the typed inputs are written to the archive first, so a chart is kept even if the calculation then fails or no provider is built in. Untick it to keep a chart in memory only.
 - The chart toolbar shows **Save chart** for an active chart that is not yet in the archive.

@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chartSide, CHART_MODES, safeMode, navigationLabel } from '../src/app/workspace-state.ts';
+import { chartSide, CHART_MODES, safeMode, navigationLabel, commonHouseSystems } from '../src/app/workspace-state.ts';
 import { STRINGS, translate } from '../src/app/translations.ts';
+
+test('synastry offers only house systems available for both calculated charts', () => {
+  const radix = ['egizia', 'placido', 'koch'];
+  const partner = ['koch', 'egizia', 'porfirio'];
+  assert.deepEqual(commonHouseSystems(radix, partner), ['egizia', 'koch']);
+  assert.deepEqual(commonHouseSystems(radix, ['porfirio']), []);
+  assert.deepEqual(commonHouseSystems([], partner), []);
+  assert.deepEqual(radix, ['egizia', 'placido', 'koch']);
+  assert.deepEqual(partner, ['koch', 'egizia', 'porfirio']);
+});
 
 test('chart is bounded by BOTH usable viewport dimensions, including safe padding',()=>{
   for(const [width,height,pad] of [[1400,800,24],[540,900,24],[1280,720,36],[300,200,12]]) {

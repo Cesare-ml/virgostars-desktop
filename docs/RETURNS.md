@@ -7,7 +7,13 @@
 - **Rivoluzione Solare:** the instants of one UTC calendar year at which the Sun is back at the radix Sun's ecliptic longitude.
 - **Rivoluzione Lunare:** the same for the Moon; a year holds 13 or 14 returns.
 - For any listed instant, **Erigi tema** casts a chart at the chosen place. The place defaults to the radix place and can be changed with the offline city picker or by typing coordinates (relocation).
+- In private-artwork builds, an offline equirectangular world map also lets the user select coordinates. The map offers 1×, 2× and 4× zoom and scrollbars; coordinates are derived from the full image even when it is scrolled. After a return is found, hovering over the map previews its ASC, MC and cusps with the selected house system using the native provider; the latest preview wins and provider failures are reported. Map clicks suggest an editable IANA timezone using the same tz-lookup 6.1.25 library as the website; its geographic boundaries are approximate and dated 2019, so the interface asks the user to check them. Editing coordinates clears the previous zone instead of retaining a stale value. Synthetic public builds do not include this private image and show a message instead. Keyboard users can enter coordinates directly. The site's complete graphic preview is not yet included.
 - **Sinastria con Radix** (on by default) shows the cast return with the radix chart around it.
+
+A local Windows/WebView2 smoke test selected map points, observed the suggested
+zones `America/New_York` and `Europe/Istanbul`, searched a solar return and
+displayed its ASC, MC and cusp preview. This is not exhaustive geographic or
+numerical validation of the approximate timezone boundaries.
 
 The return chart is an ordinary session chart named `RS <year> <radix name>` or `RL <UTC date> <radix name>`; it can be saved to the [archive](CHART_ARCHIVE.md) like any other.
 
@@ -16,7 +22,7 @@ The return chart is an ordinary session chart named `RS <year> <radix name>` or 
 - Tropical zodiac, apparent geocentric longitude, no precession correction. Sidereal or precession-corrected returns are not offered.
 - The year is a **UTC calendar year**, 1 January 00:00 inclusive to the next 1 January exclusive. A solar year normally holds one return; because a tropical year is about 365.2422 days, a year can hold two (one in early January, one in late December) or none. All are listed; none is hidden or invented.
 - The radix is the chart that was active when the panel opened and stays fixed until the panel is closed, so several returns can be cast from one list.
-- Not included: the relocation map of the earlier Regolo program ("Cerca nella mappa"), swapping inner and outer chart, and returns of other bodies.
+- Not included: the complete graphical chart preview on the relocation map, and returns of other bodies. A return shown in synastry can use the workspace's swap control to exchange the two charts.
 
 **Difference from Regolo Alpha Leonis:** Regolo looked for the solar return nearest to the birthday in the requested year and stopped iterating within about 40 seconds of the exact instant. Here every return inside the UTC year is found and refined to under a millisecond of the provider's own longitude. Results can therefore differ from Regolo's by some seconds, and by which return is chosen for births in the first or last days of a year.
 

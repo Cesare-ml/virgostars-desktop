@@ -15,6 +15,33 @@ const MILLIS_PER_DAY: f64 = 86_400_000.0;
 /// Stop bisecting below a tenth of a millisecond.
 const TIME_TOLERANCE_DAYS: f64 = 1e-9;
 
+/// Search backward for the most recent direct zero crossing of Moon−Sun.
+/// The supplied positions own all astronomy; 35 days covers a synodic month.
+pub(crate) fn previous_conjunction(mut elongation: impl FnMut(f64) -> Result<f64, ProviderError>, end:f64) -> Result<Option<f64>, ProviderError> {
+    let read = |f: &mut dyn FnMut(f64) -> Result<f64, ProviderError>, t| -> Result<f64,ProviderError> {
+        let v = f(t)?;
+        if !v.is_finite() { return Err(ProviderError); }
+        Ok((v + 180.0).rem_euclid(360.0) - 180.0)
+    };
+    let mut newer = end;
+    let mut newer_angle = read(&mut elongation, newer)?;
+    if newer_angle.abs() < 1e-9 { return Ok(Some(newer)); }
+    for _ in 0..140 {
+        let older = newer - 0.25;
+        let older_angle = read(&mut elongation, older)?;
+        if older_angle <= 0.0 && newer_angle >= 0.0 && newer_angle - older_angle < 180.0 {
+            let (mut lo, mut hi) = (older, newer);
+            while hi - lo > TIME_TOLERANCE_DAYS {
+                let middle = (lo + hi) / 2.0;
+                if read(&mut elongation, middle)? < 0.0 { lo = middle; } else { hi = middle; }
+            }
+            return Ok(Some((lo + hi) / 2.0));
+        }
+        newer = older; newer_angle = older_angle;
+    }
+    Ok(None)
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReturnRequestV1 {
@@ -173,6 +200,13 @@ pub fn find_returns(request: ReturnRequestV1) -> ReturnResponseV1 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn previous_lunation_crossing_ignores_opposition_wrap() {
+        let event = super::previous_conjunction(|t| Ok((t - 10.0) * 12.0), 30.0).unwrap().unwrap();
+        assert!((event - 10.0).abs() < 1e-7);
+        assert_eq!(super::previous_conjunction(|_| Ok(40.0), 30.0).unwrap(), None);
+        assert!(super::previous_conjunction(|_| Ok(f64::NAN), 30.0).is_err());
+    }
     use super::*;
     use crate::chart_calculation::{ChartSnapshotV1, ValidatedRequest};
 

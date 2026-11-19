@@ -2,6 +2,14 @@
 
 **Status: Locally tested (2026-11-17).** An NSIS installer was built and installed on a Windows 11 machine, started with no environment variables and drew the sky of the moment from the shipped data. It is **not signed** and **not published**.
 
+On 2026-11-18 an updated private NSIS installer was built with the local
+738-star catalogue embedded in the executable and the previously staged 1890–2110
+ephemeris files rechecked against their manifest. The corresponding executable
+was smoke-tested locally, but this new installer has not been installed or
+independently inspected. The embedded catalogue includes owner-supplied
+third-party interpretation material; this private installer is not cleared for
+redistribution. Do not describe it as signed, published, or fully validated.
+
 ## What the installer carries
 
 | File (under the install folder) | Content | Size |
