@@ -1,5 +1,16 @@
 # Ephemeris data bundle and Windows installer
 
+**Update, 2026-11-19:** a private, unsigned installer with the 1000–2200
+base and multipack runtime has since been built and tested locally. The
+Desktop data release is published separately. The build now stages the
+reviewed DE441 catalog, checks its pinned SHA-256 and the exact base hash, and
+embeds the pin at compile time. A larger or otherwise different local base
+does not satisfy this release catalog. The installer contains other private
+materials and is not thereby approved for public distribution. See
+[the runtime candidate](DE441_MULTIPACK_RUNTIME_CANDIDATE_2026-11-19.md)
+for verification and limitations. Earlier status statements below are retained
+as historical checkpoints.
+
 **Status: Locally tested (2026-11-17).** An NSIS installer was built and installed on a Windows 11 machine, started with no environment variables and drew the sky of the moment from the shipped data. It is **not signed** and **not published**.
 
 On 2026-11-18 an updated private NSIS installer was built with the local

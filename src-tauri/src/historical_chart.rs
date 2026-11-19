@@ -230,6 +230,12 @@ fn calculate(request: HistoricalChartRequest) -> HistoricalChartResponse {
     {
         return failure("invalid_request");
     }
+    match crate::virgostars_provider::historical_epoch_covered(epoch.jd_ut1, delta, uncertainty) {
+        None => return failure("provider_unavailable"),
+        Some(Err(())) => return failure("calculation_failed"),
+        Some(Ok(false)) => return failure("ephemeris_out_of_range"),
+        Some(Ok(true)) => {}
+    }
     let site = Site {
         latitude_deg: f64::from(request.lat_micro) / 1e6,
         longitude_deg_east: f64::from(request.lng_micro) / 1e6,

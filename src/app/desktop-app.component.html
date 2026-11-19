@@ -1,4 +1,5 @@
 <div class="desktop-app" #shell [attr.data-theme]="theme">
+  <vs-de441-packages [locale]="locale"></vs-de441-packages>
   <aside *ngIf="guideVisible" #guidePanel class="guide-card" role="region" tabindex="-1"
     aria-labelledby="guide-title" (keydown.escape)="closeGuide()">
     <div class="guide-head">
@@ -489,6 +490,7 @@
           <!-- The house system comes first, with no spoiler. -->
           <div class="settings-top">
             <vs-updates [locale]="locale" [settingsOpen]="view==='settings'" [blocked]="busy || calcBusy || archiveBusy" (available)="updateAvailable=$event"></vs-updates>
+            <vs-de441-packages [locale]="locale" [settingsOpen]="view==='settings'" [wizardEnabled]="false"></vs-de441-packages>
             <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
             <label class="setting-line select-line"><span>{{t('language')}}</span><select class="inline-select" [value]="languagePreference" (change)="setLanguage($event)"><option value="auto">{{t('language.auto')}}</option><option value="it">Italiano</option><option value="en">English</option></select></label>
             <label class="setting-line select-line"><span>{{t('settings.theme')}}</span><select class="inline-select" [value]="theme" [disabled]="busy" (change)="setUiTheme($event)"><option value="light">{{t('theme.current.light')}}</option><option value="dark">{{t('theme.current.dark')}}</option></select></label>

@@ -75,6 +75,8 @@ pub(crate) struct Catalog {
 pub(crate) struct Pack {
     id: String,
     filename: String,
+    #[serde(default)]
+    release_tag: Option<String>,
     first_year: i32,
     last_year: i32,
     start_jd_tdb: f64,
@@ -113,7 +115,7 @@ fn safe_filename(s: &str) -> bool {
     })
 }
 
-fn year_start(year: i32) -> Result<f64, &'static str> {
+pub(crate) fn year_start(year: i32) -> Result<f64, &'static str> {
     CalendarDateTime {
         year,
         month: 1,
@@ -157,6 +159,7 @@ pub(crate) fn parse_pinned(
     for pack in &catalog.packs {
         if !safe_component(&pack.id, 80)
             || !safe_filename(&pack.filename)
+            || pack.release_tag.as_ref().is_some_and(|tag| !safe_component(tag, 100))
             || !ids.insert(&pack.id)
             || !filenames.insert(pack.filename.to_ascii_lowercase())
             || !digest(&pack.sha256)
@@ -188,11 +191,15 @@ pub(crate) fn parse_pinned(
 }
 
 impl Catalog {
+    pub(crate) fn summaries(&self, installed: &[String]) -> Vec<PackSummary> {
+        self.packs.iter().map(|p| PackSummary { id: p.id.clone(), first_year: p.first_year,
+            last_year: p.last_year, bytes: p.bytes, required: p.required, installed: installed.contains(&p.id) }).collect()
+    }
     /// The catalog cannot supply a host, scheme, path or query component.
     pub(crate) fn asset_url(&self, pack: &Pack) -> String {
         format!(
             "https://github.com/Cesare-ml/VirgoStars-Ephemeris/releases/download/{}/{}",
-            self.release_tag, pack.filename
+            pack.release_tag.as_deref().unwrap_or(&self.release_tag), pack.filename
         )
     }
 
@@ -200,7 +207,11 @@ impl Catalog {
         self.packs.iter().find(|pack| pack.id == id)
     }
 
-    fn manager(
+    pub(crate) fn pack_size(&self, id: &str) -> Option<u64> {
+        self.pack(id).map(|pack| pack.bytes)
+    }
+
+    pub(crate) fn manager(
         &self,
         directory: &Path,
         bundled_base: &Path,
@@ -222,6 +233,35 @@ impl Catalog {
                 )
             })
             .collect();
+        De441PackManager::from_specs(specs).map_err(|_| "invalid_catalog")
+    }
+
+    /// Only for sub-samples of an already-authorized reception epoch: use
+    /// the verified edge files' actual coefficient overlap. The caller must
+    /// still check reception epochs against the unmodified logical manager.
+    pub(crate) fn sampling_manager(
+        &self, directory: &Path, bundled_base: &Path, installed: &[String],
+    ) -> Result<De441PackManager, &'static str> {
+        let first = self.packs.iter().position(|p| installed.contains(&p.id)).ok_or("missing_pack")?;
+        let last = self.packs.iter().rposition(|p| installed.contains(&p.id)).ok_or("missing_pack")?;
+        let path = |p: &Pack| if p.required { bundled_base.to_path_buf() } else { directory.join(&p.filename) };
+        let mut starts: Vec<f64> = self.packs.iter().map(|p| p.start_jd_tdb).collect();
+        let mut ends: Vec<f64> = self.packs.iter().map(|p| p.end_jd_tdb).collect();
+        if first > 0 {
+            let (physical, _) = De441::open(path(&self.packs[first])).map_err(|_| "invalid_pack")?.coverage();
+            let boundary = physical.0.max(starts[first - 1]).min(starts[first]);
+            starts[first] = boundary;
+            ends[first - 1] = boundary;
+        }
+        if last + 1 < self.packs.len() {
+            let (_, physical) = De441::open(path(&self.packs[last])).map_err(|_| "invalid_pack")?.coverage();
+            let boundary = physical.0.min(ends[last + 1]).max(ends[last]);
+            ends[last] = boundary;
+            starts[last + 1] = boundary;
+        }
+        let specs = self.packs.iter().enumerate().map(|(i, p)| De441PackSpec::new(
+            p.id.clone(), path(p), JulianDateTdb(starts[i]), JulianDateTdb(ends[i]), p.required,
+        )).collect();
         De441PackManager::from_specs(specs).map_err(|_| "invalid_catalog")
     }
 
@@ -286,7 +326,7 @@ impl Catalog {
 
     /// Verify every present file before using its ID for planning. A present
     /// but damaged optional pack fails closed rather than being skipped.
-    fn installed_verified(
+    pub(crate) fn installed_verified(
         &self,
         directory: &Path,
         base_path: &Path,
@@ -390,6 +430,17 @@ impl Catalog {
     }
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PackSummary {
+    id: String,
+    first_year: i32,
+    last_year: i32,
+    bytes: u64,
+    required: bool,
+    installed: bool,
+}
+
 /// A bounded persistent staging file; it is not an installed pack.
 /// Callers hold the directory lock and provide an app-owned directory.
 pub(crate) struct PendingPack {
@@ -429,9 +480,11 @@ impl PendingPack {
             }
             Err(_) => return Err("storage_unavailable"),
         };
-        let offset = file.metadata().map_err(|_| "storage_unavailable")?.len();
+        let mut offset = file.metadata().map_err(|_| "storage_unavailable")?.len();
         if offset > pack.bytes {
-            return Err("invalid_partial");
+            // An oversized app-owned partial cannot be resumed safely.
+            file.set_len(0).map_err(|_| "storage_write_failed")?;
+            offset = 0;
         }
         Ok(Self {
             file,
@@ -444,6 +497,13 @@ impl PendingPack {
 
     pub(crate) fn offset(&self) -> u64 {
         self.offset
+    }
+
+    fn restart(&mut self) -> Result<(), &'static str> {
+        self.file.set_len(0).and_then(|_| self.file.seek(SeekFrom::Start(0)).map(|_| ()))
+            .map_err(|_| "storage_write_failed")?;
+        self.offset = 0;
+        Ok(())
     }
 
     pub(crate) fn append(&mut self, offset: u64, chunk: &[u8]) -> Result<u64, &'static str> {
@@ -508,6 +568,11 @@ impl PendingPack {
             return Err("invalid_partial");
         }
         if format!("{:x}", hasher.finalize()) != self.expected_sha256 {
+            // A complete but corrupt app-owned staging file cannot be resumed.
+            // Reset it while holding the operation lock so a later retry starts
+            // from byte zero instead of failing against the same bytes forever.
+            self.restart()?;
+            self.file.sync_all().map_err(|_| "storage_write_failed")?;
             return Err("checksum_mismatch");
         }
         Ok(self.path)
@@ -571,7 +636,7 @@ fn release_client() -> Result<reqwest::Client, &'static str> {
         .map_err(|_| "network_unavailable")
 }
 
-fn ensure_tls_provider() {
+pub(crate) fn ensure_tls_provider() {
     // A provider previously initialized by the host remains authoritative.
     // Otherwise select the ring provider explicitly for reqwest's
     // rustls-no-provider build.
@@ -591,12 +656,23 @@ pub(crate) async fn download_pack(
 ) -> Result<PathBuf, &'static str> {
     let pack = catalog.pack(id).ok_or("unknown_pack")?;
     let _guard = DirectoryLock::acquire(directory)?;
+    #[cfg(not(feature = "de441-loopback-test"))]
     let url = catalog.asset_url(pack);
+    #[cfg(feature = "de441-loopback-test")]
+    let url = format!("http://127.0.0.1:47840/{}", pack.filename);
+    #[cfg(not(feature = "de441-loopback-test"))]
     let client = release_client()?;
+    #[cfg(feature = "de441-loopback-test")]
+    let client = {
+        ensure_tls_provider();
+        reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(120)).read_timeout(Duration::from_secs(30))
+            .build().map_err(|_| "network_unavailable")?
+    };
     download_from(&client, &url, catalog, directory, id, cancelled, progress).await
 }
 
-async fn download_from(
+pub(crate) async fn download_from(
     client: &reqwest::Client,
     url: &str,
     catalog: &Catalog,
@@ -633,9 +709,16 @@ async fn download_from(
                 || response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
             {
                 // Retry transient service failures without consuming their body.
-            } else if !response_headers_valid(&response, offset, pack.bytes) {
-                return Err("invalid_response");
             } else {
+                if offset > 0 && response.status() == reqwest::StatusCode::OK
+                    && response_headers_valid(&response, 0, pack.bytes) {
+                    // A server may ignore Range. The complete response is safe
+                    // only after replacing, never appending to, the partial file.
+                    pending.restart()?;
+                    progress(0, pack.bytes);
+                } else if !response_headers_valid(&response, offset, pack.bytes) {
+                    return Err("invalid_response");
+                }
                 loop {
                     if cancelled.load(Ordering::Relaxed) {
                         return Err("cancelled");
@@ -725,6 +808,49 @@ mod tests {
             "unauthenticated_catalog"
         );
         assert!(parse_pinned(&data, &[0; 32]).is_err());
+    }
+
+    #[test]
+    fn pinned_pack_can_use_a_separately_versioned_github_release() {
+        let mut value = catalog();
+        value["packs"][0]["releaseTag"] = "mobile-v1".into();
+        let cat = parse(&value).unwrap();
+        assert_eq!(cat.asset_url(&cat.packs[0]),
+            "https://github.com/Cesare-ml/VirgoStars-Ephemeris/releases/download/mobile-v1/past.eph");
+        assert_eq!(cat.asset_url(&cat.packs[1]),
+            "https://github.com/Cesare-ml/VirgoStars-Ephemeris/releases/download/data-v1/base.eph");
+        value["packs"][0]["releaseTag"] = "../evil".into();
+        assert!(parse(&value).is_err());
+        value["packs"][0]["releaseTag"] = "mobile?url=evil".into();
+        assert!(parse(&value).is_err());
+    }
+
+    #[test]
+    fn reviewed_release_catalog_satisfies_runtime_validation() {
+        let bytes = include_bytes!("../de441-release-catalog-v1.json");
+        let pin: [u8; 32] = Sha256::digest(bytes).into();
+        let catalog = parse_pinned(bytes, &pin).unwrap();
+        assert_eq!(catalog.packs.len(), 145);
+        assert_eq!(catalog.packs.iter().filter(|pack| pack.required).count(), 1);
+        let reused = catalog.packs.iter().filter(|pack| pack.release_tag.is_some()).collect::<Vec<_>>();
+        assert_eq!(reused.len(), 5);
+        assert!(reused.iter().all(|pack| catalog.asset_url(pack).contains("/de441-mobile-v1.0.0/")));
+    }
+
+    #[test]
+    #[ignore = "contacts a public GitHub release and downloads a real DE441 asset"]
+    fn public_github_asset_downloads_and_verifies() {
+        let bytes = include_bytes!("../de441-release-catalog-v1.json");
+        let pin: [u8; 32] = Sha256::digest(bytes).into();
+        let catalog = parse_pinned(bytes, &pin).unwrap();
+        let id = std::env::var("DE441_PUBLIC_TEST_PACK")
+            .unwrap_or_else(|_| "history-00800-00999".to_owned());
+        let expected_size = catalog.pack_size(&id).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = tauri::async_runtime::block_on(download_pack(
+            &catalog, dir.path(), &id, &AtomicBool::new(false), |_, _| {},
+        )).unwrap();
+        assert_eq!(fs::metadata(path).unwrap().len(), expected_size);
     }
 
     #[test]
@@ -826,7 +952,18 @@ mod tests {
         let mut pending = PendingPack::open(dir.path(), &cat, "past").unwrap();
         pending.append(2, b"dd").unwrap();
         assert_eq!(pending.verify().unwrap_err(), "checksum_mismatch");
+        assert_eq!(PendingPack::open(dir.path(), &cat, "past").unwrap().offset(), 0);
         assert!(!dir.path().join("past.eph").exists());
+    }
+
+    #[test]
+    fn oversized_app_partial_is_reset_before_retry() {
+        let mut value = catalog();
+        value["packs"][0]["bytes"] = 4.into();
+        let cat = parse(&value).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(".past.eph.part"), b"oversized").unwrap();
+        assert_eq!(PendingPack::open(dir.path(), &cat, "past").unwrap().offset(), 0);
     }
 
     #[test]
@@ -912,10 +1049,11 @@ mod tests {
     }
 
     #[test]
-    fn http_resume_rejects_server_that_ignores_range() {
+    fn http_resume_restarts_when_server_ignores_range() {
         ensure_tls_provider();
         let mut value = catalog();
         value["packs"][0]["bytes"] = 4.into();
+        value["packs"][0]["sha256"] = format!("{:x}", Sha256::digest(b"abcd")).into();
         let cat = parse(&value).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let mut pending = PendingPack::open(dir.path(), &cat, "past").unwrap();
@@ -926,7 +1064,7 @@ mod tests {
         );
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let cancelled = AtomicBool::new(false);
-        let error = tauri::async_runtime::block_on(download_from(
+        let result = tauri::async_runtime::block_on(download_from(
             &client,
             &url,
             &cat,
@@ -935,10 +1073,9 @@ mod tests {
             &cancelled,
             |_, _| {},
         ))
-        .unwrap_err();
-        assert_eq!(error, "invalid_response");
-        worker.join().unwrap();
-        assert_eq!(fs::read(dir.path().join(".past.eph.part")).unwrap(), b"a");
+        .unwrap();
+        assert!(worker.join().unwrap().to_ascii_lowercase().contains("range: bytes=1-"));
+        assert_eq!(fs::read(result).unwrap(), b"abcd");
     }
 
     #[test]

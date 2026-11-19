@@ -27,24 +27,25 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use virgostars_ephemeris_core::apparent_ecliptic_of_date::{
     geocentric_apparent_six_fields_many_with_options, small_body_apparent_six_fields, tdb_to_tt_jd, ApparentFrame,
-    ApparentOptions,
+    ApparentOptions, experimental_geocentric_apparent_with_provider, experimental_small_body_apparent_with_provider,
 };
 use virgostars_ephemeris_core::civil_apparent::{jd_ut_to_tdb_with_policy, jd_ut_to_tdb_with_table};
 use virgostars_ephemeris_core::de441::{Body, De441, JulianDateTdb};
+use virgostars_ephemeris_core::de441_pack_manager::De441PackManager;
 use virgostars_ephemeris_core::delta_t_table::DeltaTTable;
 use virgostars_ephemeris_core::house_angles::house_angles;
-use virgostars_ephemeris_core::fixed_star::{calculate_star_with_solar_deflection, FixedStarCatalogEntry, StellarSolarDeflection};
+use virgostars_ephemeris_core::fixed_star::{calculate_star_with_provider, calculate_star_with_solar_deflection, FixedStarCatalogEntry, StellarSolarDeflection};
 use virgostars_ephemeris_core::horizon::{ecliptic_to_equatorial, equatorial_to_horizontal};
 use virgostars_ephemeris_core::rise_transit::{find_event, Atmosphere, Disc, Event, Limb, Request, Site, SkyPosition};
-use virgostars_ephemeris_core::lunar_points::{lunar_point, LunarPoint};
+use virgostars_ephemeris_core::lunar_points::{lunar_point, lunar_point_with_provider, LunarPoint};
 use virgostars_ephemeris_core::spk_type21::SmallBodySpk;
 use virgostars_ephemeris_core::historical_civil_time::{HistoricalCivilEpoch, HistoricalCivilInput};
 use virgostars_ephemeris_core::explicit_delta_t::ExplicitDeltaTEpoch;
-use virgostars_ephemeris_core::mvp_snapshot::{experimental_snapshot_from_civil, SolarSearch};
+use virgostars_ephemeris_core::mvp_snapshot::{experimental_snapshot_from_civil, experimental_snapshot_from_civil_with_provider, SolarSearch};
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-8e4b44f";
+pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-38befb2";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
@@ -69,6 +70,15 @@ const LUNAR_POINTS: [(&str, LunarPoint); 4] = [
     ("osc. Apogee", LunarPoint::OsculatingApogee),
 ];
 const HOUSE_SYSTEMS: [&str; 5] = ["egizia", "placido", "koch", "regio-montano", "porfirio"];
+
+macro_rules! six {
+    ($fields:expr) => {{
+        let fields = &$fields;
+        [fields.longitude_deg, fields.latitude_deg, fields.distance_au,
+            fields.longitude_speed_deg_per_tdb_day, fields.latitude_speed_deg_per_tdb_day,
+            fields.distance_speed_au_per_tdb_day]
+    }};
+}
 
 /// Where the data files are. Absolute paths chosen by the user; they never cross IPC.
 #[derive(Debug, Clone, PartialEq)]
@@ -193,6 +203,8 @@ fn load_chiron(path: &Path) -> Option<SmallBodySpk> {
 
 struct Engine {
     ephemeris: De441<File>,
+    multipack: Option<De441PackManager>,
+    logical_multipack: Option<De441PackManager>,
     delta_t: Option<DeltaTTable>,
     chiron: Option<SmallBodySpk>,
     stars:Option<Vec<FixedStarRecord>>,
@@ -202,6 +214,8 @@ impl Engine {
     fn open(paths: &DataPaths) -> Option<Self> {
         Some(Self {
             ephemeris: De441::open(&paths.de441).ok()?,
+            multipack: None,
+            logical_multipack: None,
             delta_t: paths.usno_directory.as_deref().and_then(load_delta_t),
             chiron: paths.chiron_spk.as_deref().and_then(load_chiron),
             stars: match paths.fixed_star_catalog.as_deref() {
@@ -226,6 +240,35 @@ impl Engine {
         .map_err(|_| ProviderError)
     }
 
+    fn apparent(&mut self, target: Body, tdb: JulianDateTdb, frame: ApparentFrame) -> Result<[f64; 6], ProviderError> {
+        self.require_logical_coverage(tdb)?;
+        if let Some(manager) = self.multipack.as_mut() {
+            let fields = experimental_geocentric_apparent_with_provider(manager, target, tdb, frame).map_err(|_| ProviderError)?;
+            Ok(six!(fields.fields))
+        } else {
+            let options = ApparentOptions { frame, ..ApparentOptions::default() };
+            let rows = geocentric_apparent_six_fields_many_with_options(&mut self.ephemeris, &[target], tdb, options).map_err(|_| ProviderError)?;
+            Ok(six!(rows.first().ok_or(ProviderError)?.fields))
+        }
+    }
+
+    fn require_logical_coverage(&self, tdb: JulianDateTdb) -> Result<(), ProviderError> {
+        if let Some(manager) = &self.logical_multipack {
+            let spec = manager.select_pack(tdb).map_err(|_| ProviderError)?;
+            if !spec.file_path.is_file() { return Err(ProviderError); }
+        }
+        Ok(())
+    }
+
+    fn covers_tdb(&self, tdb: JulianDateTdb) -> bool {
+        if let Some(manager) = &self.logical_multipack {
+            manager.select_pack(tdb).is_ok_and(|spec| spec.file_path.is_file())
+        } else {
+            let (start, end) = self.ephemeris.coverage();
+            start.0 <= tdb.0 && tdb.0 <= end.0
+        }
+    }
+
     /// Sunrise, sunset and following sunrise bracketing the instant. Sea-level,
     /// standard atmosphere, apparent solar upper limb, topocentric; UT1≈UTC.
     fn solar_day(&mut self, input: &ValidatedRequest) -> Result<Option<SolarDayV1>, ProviderError> {
@@ -238,12 +281,9 @@ impl Engine {
             find_event(|ut| -> Result<SkyPosition, ProviderError> {
                 let tdb = self.to_tdb(ut)?;
                 let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
-                let options = ApparentOptions { frame: ApparentFrame::TrueEquatorOfDate, ..ApparentOptions::default() };
-                let positions = geocentric_apparent_six_fields_many_with_options(&mut self.ephemeris, &[Body::Sun], tdb, options)
-                    .map_err(|_| ProviderError)?;
-                let fields = &positions.first().ok_or(ProviderError)?.fields;
-                Ok(SkyPosition { tt_jd:tt, right_ascension_deg:fields.longitude_deg,
-                    declination_deg:fields.latitude_deg, distance_au:fields.distance_au })
+                let fields = self.apparent(Body::Sun, tdb, ApparentFrame::TrueEquatorOfDate)?;
+                Ok(SkyPosition { tt_jd:tt, right_ascension_deg:fields[0],
+                    declination_deg:fields[1], distance_au:fields[2] })
             }, &site, &atmosphere, &request, start).map_err(|_| ProviderError)
         };
         let Some(mut rise) = find(target - 2.0, Event::Rise)? else { return Ok(None); };
@@ -275,9 +315,59 @@ pub(crate) fn historical_chart(
         delta_t_uncertainty_seconds, delta_t_source, site, solar))
 }
 
+pub(crate) fn historical_epoch_covered(jd_ut1:f64, delta:f64, uncertainty:f64) -> Option<Result<bool, ()>> {
+    with_engine(|engine| {
+        let epoch = virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t(jd_ut1, delta, uncertainty).map_err(|_| ())?;
+        Ok(engine.covers_tdb(epoch.jd_tdb))
+    })
+}
+
 static CONFIG_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 static RESOURCE_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
+
+pub(crate) fn catalog_context() -> Result<(crate::de441_catalog::Catalog, PathBuf, PathBuf), &'static str> {
+    let digest = option_env!("VIRGOSTARS_DE441_CATALOG_SHA256").ok_or("not_configured")?;
+    let resource = RESOURCE_FOLDER.get().ok_or("not_configured")?;
+    let data = CONFIG_FOLDER.get().ok_or("not_configured")?;
+    let paths = data_paths(Some(data), Some(resource), &|name| std::env::var(name).ok()).ok_or("not_configured")?;
+    let base = resource.join(BUNDLED_FOLDER).join(BUNDLED_DE441);
+    if paths.de441 != base { return Err("custom_source"); }
+    let catalog = read_pinned_catalog(resource, digest).ok_or("invalid_catalog")?;
+    Ok((catalog, data.join("de441-packs"), base))
+}
+
+/// Serialize file mutation with calculations and discard cached readers.
+pub(crate) fn without_engine<T>(action: impl FnOnce() -> T) -> T {
+    let mut guard = ENGINE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = None;
+    action()
+}
+
+/// Only an app-build-time digest can authorize the catalog. The catalog itself
+/// supplies neither its trust anchor nor a filesystem location from the UI.
+fn read_pinned_catalog(resource_folder: &Path, digest: &str) -> Option<crate::de441_catalog::Catalog> {
+    if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) { return None; }
+    let mut pin = [0u8; 32];
+    for (i, byte) in pin.iter_mut().enumerate() { *byte = u8::from_str_radix(&digest[i * 2..i * 2 + 2], 16).ok()?; }
+    let catalog_path = resource_folder.join(BUNDLED_FOLDER).join("de441-release-catalog-v1.json");
+    let metadata = std::fs::symlink_metadata(&catalog_path).ok()?;
+    if !metadata.file_type().is_file() || metadata.len() > 512 * 1024 { return None; }
+    let bytes = std::fs::read(catalog_path).ok()?;
+    crate::de441_catalog::parse_pinned(&bytes, &pin).ok()
+}
+
+fn pinned_manager(paths: &DataPaths, resource_folder: &Path, data_folder: &Path, digest: &str) -> Option<(De441PackManager, De441PackManager)> {
+    let bundled_base = resource_folder.join(BUNDLED_FOLDER).join(BUNDLED_DE441);
+    // Explicit user-selected full files keep their existing single-file semantics.
+    if paths.de441 != bundled_base { return None; }
+    let catalog = read_pinned_catalog(resource_folder, digest)?;
+    let directory = data_folder.join("de441-packs");
+    let installed = catalog.installed_verified(&directory, &bundled_base).ok()?;
+    let logical = catalog.manager(&directory, &bundled_base).ok()?;
+    let sampling = catalog.sampling_manager(&directory, &bundled_base, &installed).ok()?;
+    Some((logical, sampling))
+}
 
 /// Called once at startup with the application's data folder (`ephemeris.json` is read from it) and the
 /// resource folder of the installed application (the shipped data files are looked for there).
@@ -297,7 +387,18 @@ fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
             RESOURCE_FOLDER.get().map(PathBuf::as_path),
             &|name| std::env::var(name).ok(),
         )?;
-        *guard = Engine::open(&paths);
+        let mut engine = Engine::open(&paths)?;
+        if let Some(digest) = option_env!("VIRGOSTARS_DE441_CATALOG_SHA256") {
+            let resource = RESOURCE_FOLDER.get()?;
+            // Only the bundled base is subject to this catalog. A configured
+            // replacement file remains a separate, user-selected provider.
+            if paths.de441 == resource.join(BUNDLED_FOLDER).join(BUNDLED_DE441) {
+                let (logical, sampling) = pinned_manager(&paths, resource, CONFIG_FOLDER.get()?, digest)?;
+                engine.logical_multipack = Some(logical);
+                engine.multipack = Some(sampling);
+            }
+        }
+        *guard = Some(engine);
     }
     guard.as_mut().map(action)
 }
@@ -337,25 +438,57 @@ fn select_historical_usno(
 pub(crate) fn historical_planet(
     request: &crate::historical_planets::HistoricalPlanetRequest,
 ) -> Option<Result<crate::historical_planets::HistoricalPlanetResult, ()>> {
-    with_engine(|engine| {
+    with_engine(|engine| engine.historical_planet(request))
+}
+
+impl Engine {
+    fn historical_planet(&mut self, request: &crate::historical_planets::HistoricalPlanetRequest)
+        -> Result<crate::historical_planets::HistoricalPlanetResult, ()> {
         let body = PLANETS.iter().find(|(name, _)| *name == request.body).map(|(_, body)| *body).ok_or(())?;
-        let output = virgostars_ephemeris_core::historical_rate_candidate::historical_three_rate_candidate(
-            &mut engine.ephemeris, body, request.jd_ut1, request.delta_t_seconds,
-            request.uncertainty_seconds, &request.delta_t_source,
-        ).map_err(|_| ())?;
+        let output = if self.multipack.is_some() {
+            use virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t;
+            use virgostars_ephemeris_core::historical_rate_candidate::HistoricalThreeRateCandidate;
+            let source = request.delta_t_source.trim();
+            if source.is_empty() || request.delta_t_source.len() > 200 { return Err(()); }
+            let epoch = ut1_to_tdb_with_explicit_delta_t(request.jd_ut1, request.delta_t_seconds, request.uncertainty_seconds).map_err(|_| ())?;
+            self.require_logical_coverage(epoch.jd_tdb).map_err(|_| ())?;
+            let rates = virgostars_ephemeris_core::apparent_ecliptic_of_date::experimental_three_rate_with_provider(
+                self.multipack.as_mut().ok_or(())?, body, epoch.jd_tdb).map_err(|_| ())?;
+            HistoricalThreeRateCandidate {epoch, rates, delta_t_source: source.to_owned()}
+        } else {
+            virgostars_ephemeris_core::historical_rate_candidate::historical_three_rate_candidate(
+                &mut self.ephemeris, body, request.jd_ut1, request.delta_t_seconds,
+                request.uncertainty_seconds, &request.delta_t_source).map_err(|_| ())?
+        };
         let fields = output.rates.base;
         let sensitivity = if request.include_scenarios {
             use crate::historical_planets::{HistoricalSensitivity, HistoricalSensitivitySample};
             use virgostars_ephemeris_core::historical_delta_t_scenarios::{historical_delta_t_scenarios, ScenarioFrame};
-            let samples = historical_delta_t_scenarios(&mut engine.ephemeris, body, request.jd_ut1,
-                request.delta_t_seconds, request.uncertainty_seconds, ScenarioFrame::DirectObliquity).map_err(|_| ())?;
-            // A source/frame mismatch must never silently produce misleading samples.
-            if samples.nominal.fields != fields { return Err(()); }
-            let convert = |sample: virgostars_ephemeris_core::historical_delta_t_scenarios::HistoricalScenario| HistoricalSensitivitySample {
-                delta_t_seconds: sample.epoch.delta_t_seconds, longitude_deg: sample.fields.longitude_deg,
-                latitude_deg: sample.fields.latitude_deg,
-            };
-            Some(HistoricalSensitivity { lower: convert(samples.lower), upper: convert(samples.upper) })
+            if self.multipack.is_some() {
+                use virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_delta_t_scenarios;
+                let epochs = ut1_to_tdb_delta_t_scenarios(request.jd_ut1, request.delta_t_seconds, request.uncertainty_seconds).map_err(|_| ())?;
+                for epoch in [epochs.lower, epochs.nominal, epochs.upper] { self.require_logical_coverage(epoch.jd_tdb).map_err(|_| ())?; }
+                let manager = self.multipack.as_mut().ok_or(())?;
+                let mut sample = |epoch| virgostars_ephemeris_core::apparent_ecliptic_of_date::experimental_three_rate_with_provider(manager, body, epoch)
+                    .map(|candidate| candidate.base).map_err(|_| ());
+                let lower = sample(epochs.lower.jd_tdb)?;
+                let nominal = sample(epochs.nominal.jd_tdb)?;
+                let upper = sample(epochs.upper.jd_tdb)?;
+                if nominal != fields { return Err(()); }
+                Some(HistoricalSensitivity {
+                    lower: HistoricalSensitivitySample {delta_t_seconds:epochs.lower.delta_t_seconds, longitude_deg:lower.longitude_deg, latitude_deg:lower.latitude_deg},
+                    upper: HistoricalSensitivitySample {delta_t_seconds:epochs.upper.delta_t_seconds, longitude_deg:upper.longitude_deg, latitude_deg:upper.latitude_deg},
+                })
+            } else {
+                let samples = historical_delta_t_scenarios(&mut self.ephemeris, body, request.jd_ut1,
+                    request.delta_t_seconds, request.uncertainty_seconds, ScenarioFrame::DirectObliquity).map_err(|_| ())?;
+                if samples.nominal.fields != fields { return Err(()); }
+                let convert = |sample: virgostars_ephemeris_core::historical_delta_t_scenarios::HistoricalScenario| HistoricalSensitivitySample {
+                    delta_t_seconds: sample.epoch.delta_t_seconds, longitude_deg: sample.fields.longitude_deg,
+                    latitude_deg: sample.fields.latitude_deg,
+                };
+                Some(HistoricalSensitivity { lower: convert(samples.lower), upper: convert(samples.upper) })
+            }
         } else { None };
         Ok(crate::historical_planets::HistoricalPlanetResult {
             body: request.body.clone(), jd_ut1: output.epoch.jd_ut1, jd_tt: output.epoch.jd_tt,
@@ -370,7 +503,7 @@ pub(crate) fn historical_planet(
             radial_correction_applied: output.rates.radial_correction_applied,
             sensitivity,
         })
-    })
+    }
 }
 
 /// Julian day (UT) of a validated proleptic-Gregorian instant (Meeus, chapter 7).
@@ -445,9 +578,20 @@ impl Engine {
         site: &Site,
         solar: Option<SolarSearch>,
     ) -> Result<HistoricalChart, ProviderError> {
-        let result = experimental_snapshot_from_civil(&mut self.ephemeris, civil,
-            delta_t_seconds, delta_t_uncertainty_seconds, delta_t_source, site, solar)
-            .map_err(|_| ProviderError)?;
+        if self.logical_multipack.is_some() {
+            let civil_epoch = virgostars_ephemeris_core::historical_civil_time::local_to_ut1(civil).map_err(|_| ProviderError)?;
+            let epoch = virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t(
+                civil_epoch.jd_ut1, delta_t_seconds, delta_t_uncertainty_seconds).map_err(|_| ProviderError)?;
+            self.require_logical_coverage(epoch.jd_tdb)?;
+        }
+        let result = if let Some(manager) = self.multipack.as_mut() {
+            if solar.is_some() { return Err(ProviderError); }
+            experimental_snapshot_from_civil_with_provider(manager, civil, delta_t_seconds,
+                delta_t_uncertainty_seconds, delta_t_source, site).map_err(|_| ProviderError)?
+        } else {
+            experimental_snapshot_from_civil(&mut self.ephemeris, civil,
+                delta_t_seconds, delta_t_uncertainty_seconds, delta_t_source, site, solar).map_err(|_| ProviderError)?
+        };
         let snapshot = result.snapshot;
         let mut bodies = Vec::with_capacity(PLANETS.len() + LUNAR_POINTS.len());
         for planet in &snapshot.planets.positions {
@@ -495,21 +639,6 @@ impl Engine {
     }
 }
 
-/// The six fields of an apparent state (the core's field struct is not exported, so a macro).
-macro_rules! six {
-    ($fields:expr) => {{
-        let fields = &$fields;
-        [
-            fields.longitude_deg,
-            fields.latitude_deg,
-            fields.distance_au,
-            fields.longitude_speed_deg_per_tdb_day,
-            fields.latitude_speed_deg_per_tdb_day,
-            fields.distance_speed_au_per_tdb_day,
-        ]
-    }};
-}
-
 impl Engine {
     fn chart(&mut self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
         let jd_ut = julian_day_ut(request);
@@ -517,20 +646,16 @@ impl Engine {
         let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
         let ecliptic_options = ApparentOptions::default();
         let equatorial_options = ApparentOptions { frame: ApparentFrame::TrueEquatorOfDate, ..ApparentOptions::default() };
-        let targets: Vec<Body> = PLANETS.iter().map(|(_, body)| *body).collect();
-        let ecliptic = geocentric_apparent_six_fields_many_with_options(&mut self.ephemeris, &targets, tdb, ecliptic_options)
-            .map_err(|_| ProviderError)?;
-        let equatorial =
-            geocentric_apparent_six_fields_many_with_options(&mut self.ephemeris, &targets, tdb, equatorial_options)
-                .map_err(|_| ProviderError)?;
         let mut bodies = Vec::with_capacity(PLANETS.len() + LUNAR_POINTS.len() + 1);
-        for (((id, _), ecl), equ) in PLANETS.iter().zip(&ecliptic).zip(&equatorial) {
-            bodies.push(position(id, six!(ecl.fields), [equ.fields.longitude_deg, equ.fields.latitude_deg]));
+        for (id, target) in PLANETS {
+            let ecl = self.apparent(target, tdb, ApparentFrame::TrueEclipticOfDate)?;
+            let equ = self.apparent(target, tdb, ApparentFrame::TrueEquatorOfDate)?;
+            bodies.push(position(id, ecl, [equ[0], equ[1]]));
         }
         let mut unavailable_bodies = Vec::new();
         for (id, point) in LUNAR_POINTS {
-            let ecl = lunar_point(Some(&mut self.ephemeris), point, ApparentFrame::TrueEclipticOfDate, tdb.0);
-            let equ = lunar_point(Some(&mut self.ephemeris), point, ApparentFrame::TrueEquatorOfDate, tdb.0);
+            let ecl = if let Some(manager) = self.multipack.as_mut() { lunar_point_with_provider(manager, point, ApparentFrame::TrueEclipticOfDate, tdb.0) } else { lunar_point(Some(&mut self.ephemeris), point, ApparentFrame::TrueEclipticOfDate, tdb.0) };
+            let equ = if let Some(manager) = self.multipack.as_mut() { lunar_point_with_provider(manager, point, ApparentFrame::TrueEquatorOfDate, tdb.0) } else { lunar_point(Some(&mut self.ephemeris), point, ApparentFrame::TrueEquatorOfDate, tdb.0) };
             match (ecl, equ) {
                 (Ok(ecl), Ok(equ)) => bodies.push(position(
                     id,
@@ -549,9 +674,15 @@ impl Engine {
         }
         // Chiron only with its own kernel; without it, or outside its coverage, it is reported missing.
         let chiron = self.chiron.as_ref().and_then(|spk| {
-            let ecl = small_body_apparent_six_fields(&mut self.ephemeris, spk, tdb, ecliptic_options).ok()?;
-            let equ = small_body_apparent_six_fields(&mut self.ephemeris, spk, tdb, equatorial_options).ok()?;
-            Some(position("Chiron", six!(ecl.fields), [equ.fields.longitude_deg, equ.fields.latitude_deg]))
+            if let Some(manager) = self.multipack.as_mut() {
+                let ecl = experimental_small_body_apparent_with_provider(manager, spk, tdb, ecliptic_options).ok()?;
+                let equ = experimental_small_body_apparent_with_provider(manager, spk, tdb, equatorial_options).ok()?;
+                Some(position("Chiron", six!(ecl.fields), [equ.fields.longitude_deg, equ.fields.latitude_deg]))
+            } else {
+                let ecl = small_body_apparent_six_fields(&mut self.ephemeris, spk, tdb, ecliptic_options).ok()?;
+                let equ = small_body_apparent_six_fields(&mut self.ephemeris, spk, tdb, equatorial_options).ok()?;
+                Some(position("Chiron", six!(ecl.fields), [equ.fields.longitude_deg, equ.fields.latitude_deg]))
+            }
         });
         match chiron {
             Some(position) => bodies.push(position),
@@ -594,9 +725,7 @@ impl Engine {
             Luminary::Sun => Body::Sun,
             Luminary::Moon => Body::Moon,
         };
-        let rows = geocentric_apparent_six_fields_many_with_options(&mut self.ephemeris, &[target], tdb, ApparentOptions::default())
-            .map_err(|_| ProviderError)?;
-        let longitude = rows.first().ok_or(ProviderError)?.fields.longitude_deg;
+        let longitude = self.apparent(target, tdb, ApparentFrame::TrueEclipticOfDate)?[0];
         longitude.is_finite().then(|| longitude.rem_euclid(360.0)).ok_or(ProviderError)
     }
 }
@@ -627,6 +756,7 @@ impl EphemerisProvider for VirgoStarsEphemeris {
         with_engine(|engine| {
             let jd = julian_day_ut(request);
             let tdb = engine.to_tdb(jd)?;
+            engine.require_logical_coverage(tdb)?;
             let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
             let angles = house_angles(jd, tt, request.latitude_deg, request.longitude_deg).map_err(|_| ProviderError)?;
             // Hipparcos I/239 HIP 32349, ICRS J1991.25; radial velocity zero is assumed.
@@ -647,7 +777,12 @@ impl EphemerisProvider for VirgoStarsEphemeris {
                 let source = FixedStarCatalogEntry { epoch_tdb:JulianDateTdb(entry.epoch_tdb_jd), right_ascension_deg:ra,
                     declination_deg:dec, proper_motion_ra_cos_dec_mas_per_year:pmra,
                     proper_motion_dec_mas_per_year:pmdec, parallax_mas:parallax, radial_velocity_km_per_second:rv };
-                let Ok(star) = calculate_star_with_solar_deflection(&mut engine.ephemeris, source, tt, tdb, StellarSolarDeflection::PointMass) else { continue; };
+                let star = if let Some(manager) = engine.multipack.as_mut() {
+                    calculate_star_with_provider(manager, source, tt, tdb, StellarSolarDeflection::PointMass)
+                } else {
+                    calculate_star_with_solar_deflection(&mut engine.ephemeris, source, tt, tdb, StellarSolarDeflection::PointMass)
+                };
+                let Ok(star) = star else { continue; };
                 let Ok((ra, dec)) = ecliptic_to_equatorial(tt, star.longitude_deg, star.latitude_deg) else { continue; };
                 let Ok(horizontal) = equatorial_to_horizontal(ra, dec, angles.armc_deg, request.latitude_deg) else { continue; };
                 output.push(FixedStarV1 {id:entry.id, name:entry.name, longitude_deg:star.longitude_deg,
@@ -661,7 +796,10 @@ impl EphemerisProvider for VirgoStarsEphemeris {
     fn covers(&self, request: &ValidatedRequest) -> bool {
         let jd_ut = julian_day_ut(request);
         // Without the data there is nothing to say about coverage; the calculation itself reports it.
-        with_engine(|engine| engine.to_tdb(jd_ut).is_ok()).unwrap_or(true)
+        with_engine(|engine| {
+            let Ok(tdb) = engine.to_tdb(jd_ut) else { return false; };
+            engine.covers_tdb(tdb)
+        }).unwrap_or(true)
     }
 
     fn chart(&self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError> {
@@ -676,6 +814,99 @@ impl EphemerisProvider for VirgoStarsEphemeris {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires private DE441 source, release catalog and generated slices"]
+    fn authenticated_local_multipack_matches_full_source_in_desktop_provider() {
+        use sha2::{Digest, Sha256};
+        use virgostars_ephemeris_core::calendar::{Calendar, CalendarDateTime, TimeScale};
+        use virgostars_ephemeris_core::historical_civil_time::HistoricalOffset;
+        let root = PathBuf::from(std::env::var_os("DE441_PRIVATE_ROOT").expect("private local root"));
+        let full = PathBuf::from(std::env::var_os("VIRGOSTARS_DE441_PATH").expect("full source"));
+        let temp = tempfile::tempdir().unwrap();
+        let resources = temp.path().join("resources");
+        let ephemeris = resources.join("ephemeris");
+        let data = temp.path().join("data");
+        let packs = data.join("de441-packs");
+        std::fs::create_dir_all(&ephemeris).unwrap();
+        std::fs::create_dir_all(&packs).unwrap();
+        let catalog = std::fs::read(root.join("de441-private-catalog/de441-release-catalog-v1.json")).unwrap();
+        std::fs::write(ephemeris.join("de441-release-catalog-v1.json"), &catalog).unwrap();
+        let pin = format!("{:x}", Sha256::digest(&catalog));
+        let link = |source: &str, dest: &Path| {
+            let source = root.join("de441-private-complete").join(source);
+            std::fs::hard_link(&source, dest).unwrap_or_else(|_| { std::fs::copy(source, dest).unwrap(); });
+        };
+        link("de441-v2-desktop-core-1000-2200.eph", &ephemeris.join(BUNDLED_DE441));
+        for name in ["de441-v2-history-00800-00999.eph", "de441-v2-future-02201-02400.eph"] {
+            link(name, &packs.join(name));
+        }
+        let paths = DataPaths { de441: ephemeris.join(BUNDLED_DE441), usno_directory: None, chiron_spk: None, fixed_star_catalog: None };
+        assert!(pinned_manager(&paths, &resources, &data, &"0".repeat(64)).is_none());
+        let mut actual = Engine::open(&paths).unwrap();
+        let (logical, sampling) = pinned_manager(&paths, &resources, &data, &pin).unwrap();
+        actual.logical_multipack = Some(logical);
+        actual.multipack = Some(sampling);
+        let mut expected = Engine::open(&DataPaths {de441: full, ..paths.clone()}).unwrap();
+        for body in [Body::Sun, Body::Moon, Body::Mercury, Body::PlutoBarycenter] {
+            for frame in [ApparentFrame::TrueEclipticOfDate, ApparentFrame::TrueEquatorOfDate] {
+                let tdb = JulianDateTdb(2_451_545.0);
+                assert_eq!(actual.apparent(body, tdb, frame).unwrap(), expected.apparent(body, tdb, frame).unwrap());
+            }
+        }
+        let site = Site {latitude_deg: 41.9, longitude_deg_east: 12.5, height_m: 0.0};
+        for year in [900, 1000, 2000, 2201] {
+            let civil = HistoricalCivilInput {
+                local: CalendarDateTime {year, month: 3, day: 20, hour: 1, minute: 0, second: 0.0, scale: TimeScale::Ut1},
+                calendar: Calendar::ProlepticGregorian,
+                offset: HistoricalOffset::Supplied {seconds_east: 0.0, source: "test"}, uncertainty_seconds: 0.0,
+            };
+            let a = actual.historical_chart(civil, 69.0, 2.0, "synthetic", &site, None).unwrap();
+            let b = expected.historical_chart(civil, 69.0, 2.0, "synthetic", &site, None).unwrap();
+            assert_eq!(a.chart.bodies.len(), 14);
+            for (a, b) in a.chart.bodies.iter().zip(&b.chart.bodies) {
+                assert_eq!(a.id, b.id);
+                assert_eq!(a.longitude_deg, b.longitude_deg);
+                assert_eq!(a.longitude_speed, b.longitude_speed);
+            }
+            let request: crate::historical_planets::HistoricalPlanetRequest = serde_json::from_value(serde_json::json!({
+                "protocolVersion":1, "body":"Mars", "jdUt1":a.chart.julian_day_ut,
+                "deltaTSeconds":69.0, "uncertaintySeconds":2.0, "deltaTSource":"synthetic", "includeScenarios":true
+            })).unwrap();
+            let a = actual.historical_planet(&request).unwrap();
+            let b = expected.historical_planet(&request).unwrap();
+            assert_eq!(a.longitude_deg,b.longitude_deg);
+            assert_eq!(a.latitude_deg,b.latitude_deg);
+            assert_eq!(a.longitude_speed_deg_per_tdb_day,b.longitude_speed_deg_per_tdb_day);
+            assert_eq!(a.radial_speed_au_per_tdb_day,b.radial_speed_au_per_tdb_day);
+            let a=a.sensitivity.unwrap();let b=b.sensitivity.unwrap();
+            assert_eq!(a.lower.longitude_deg,b.lower.longitude_deg);
+            assert_eq!(a.upper.latitude_deg,b.upper.latitude_deg);
+        }
+        // Sub-samples can cross the boundary even when reception is inside
+        // the base. Use its verified physical overlap, not a missing pack.
+        drop(actual);
+        std::fs::remove_file(packs.join("de441-v2-history-00800-00999.eph")).unwrap();
+        let mut base_only = Engine::open(&paths).unwrap();
+        let (logical, sampling) = pinned_manager(&paths, &resources, &data, &pin).unwrap();
+        base_only.logical_multipack = Some(logical);
+        base_only.multipack = Some(sampling);
+        let boundary = HistoricalCivilInput {
+            local: CalendarDateTime {year: 1000, month: 1, day: 1, hour: 0, minute: 0, second: 0.0, scale: TimeScale::Ut1},
+            calendar: Calendar::ProlepticGregorian,
+            offset: HistoricalOffset::Supplied {seconds_east: 0.0, source: "test"}, uncertainty_seconds: 0.0,
+        };
+        let a = base_only.historical_chart(boundary, 69.0, 2.0, "synthetic", &site, None).unwrap();
+        let b = expected.historical_chart(boundary, 69.0, 2.0, "synthetic", &site, None).unwrap();
+        for (a, b) in a.chart.bodies.iter().zip(&b.chart.bodies) {
+            assert_eq!(a.id, b.id);
+            assert_eq!(a.longitude_deg, b.longitude_deg);
+            assert_eq!(a.longitude_speed, b.longitude_speed);
+        }
+        let outside = HistoricalCivilInput { local: CalendarDateTime {year: 999, month: 12, day: 31,
+            hour: 12, minute: 0, second: 0.0, scale: TimeScale::Ut1}, ..boundary };
+        assert!(base_only.historical_chart(outside, 69.0, 2.0, "synthetic", &site, None).is_err());
+    }
 
     #[test]
     fn stellar_catalog_rejects_duplicate_and_invalid_sources() {

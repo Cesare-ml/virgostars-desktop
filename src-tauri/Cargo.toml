@@ -17,6 +17,8 @@ virgostars-ephemeris = ["dep:virgostars-ephemeris-core"]
 virgostars-event-ephemeris = ["dep:virgostars-events"]
 # Only for disposable local Windows acceptance builds; never used by release scripts.
 updater-loopback-test = []
+# Disposable debug-only local acceptance; forbidden in release builds.
+de441-loopback-test = ["virgostars-ephemeris"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -31,7 +33,7 @@ getrandom = "0.3"
 open = { version = "=5.4.5", features = ["shellexecute-on-windows"] }
 keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
 # Pinned to one reviewed commit of the Ephemeris repository; never a floating branch.
-virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "8e4b44f56a2e425e3427ffdc09e68d80fe9f31b2", optional = true }
+virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "85a29e886b6e7a4d89eb7859b8a0821f0570fa34", optional = true }
 virgostars-events = { package = "virgostars-event-ephemeris", git = "https://github.com/Cesare-ml/VirgoStars-Event-Ephemeris", rev = "f78a3b65d771dfd14e0028b3c767397be7fb93d7", optional = true }
 serde_json = "1"
 tauri-plugin-updater = "=2.14.1"
