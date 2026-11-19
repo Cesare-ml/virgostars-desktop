@@ -139,10 +139,26 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!monomeriAvailable || busy" [attr.title]="t(monomeriAvailable ? 'monomeri.help' : 'monomeri.unavailable')"
             [class.selected]="monomeriEnabled" [attr.aria-pressed]="monomeriEnabled" (click)="toggleMonomeri()">{{t('monomeri.title')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal'"
+            [class.selected]="fixedStarsOpen" [attr.aria-pressed]="fixedStarsOpen" (click)="toggleFixedStars()">{{t('stars.title')}}</button>
           <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
             [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
         </div>
 
+        <section class="fixed-stars-panel" *ngIf="view==='chart' && fixedStarsOpen && mode==='natal'" [attr.aria-label]="t('stars.title')">
+          <strong>{{t('stars.title')}}</strong>
+          <small *ngIf="fixedStarsBusy" role="status">{{t('stars.loading')}}</small>
+          <small *ngIf="fixedStarsError" role="alert">{{t('stars.unavailable')}}</small>
+          <ng-container *ngIf="fixedStarsCount">
+            <small>{{t('stars.count')}} {{fixedStarsCount}}</small>
+            <small *ngIf="fixedStarsSample">{{t('stars.sample')}}</small>
+            <label><span>{{t('stars.search')}}</span><input type="search" [value]="fixedStarsQuery" (input)="fixedStarsQuery=$any($event.target).value"></label>
+            <small *ngIf="fixedStarsCount > 100">{{t('stars.first100')}}</small>
+            <div class="fixed-stars-list">
+              <div *ngFor="let star of fixedStars"><span>{{star.name}}</span><span>{{longitudeText(star.longitudeDeg)}} <small *ngIf="star.approximate" [attr.title]="t('stars.approximate')">≈</small></span></div>
+            </div>
+          </ng-container>
+        </section>
         <div class="chart-toolbar chart-toolbar-left" role="toolbar" [attr.aria-label]="t('chart')">
           <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
           <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>

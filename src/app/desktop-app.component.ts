@@ -36,7 +36,7 @@ import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
 import { calculateHistoricalChart } from './native/historical-chart';
-import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
+import type { ChartCalculationResult, ChartProviderV1, FixedStarV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
   availableHouseSystems, buildTemaRenderData, formatLatitudeDms, formatLongitudeDms,
   formatSpeed, houseDisplay, planetRows, type HouseDisplay, type PlanetRow, type TemaRenderData
@@ -161,6 +161,51 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private initialized = false;
   private destroyed = false;
+  fixedStarsOpen = false;
+  fixedStarsBusy = false;
+  fixedStarsError = false;
+  fixedStarsQuery = '';
+  private fixedStarsTicket = 0;
+  private fixedStarsResult: {key: string; stars: readonly FixedStarV1[]} | null = null;
+
+  private starChartKey(chart: SessionChart): string { return `${chart.utcIso}|${chart.latMicro}|${chart.lngMicro}`; }
+  get fixedStars(): readonly FixedStarV1[] {
+    const chart = this.activeChart;
+    if (!chart || this.fixedStarsResult?.key !== this.starChartKey(chart)) return [];
+    const query = this.fixedStarsQuery.trim().toLocaleLowerCase();
+    return this.fixedStarsResult.stars.filter(star => star.name.toLocaleLowerCase().includes(query)).slice(0, 100);
+  }
+  get fixedStarsCount(): number {
+    const chart = this.activeChart;
+    return chart && this.fixedStarsResult?.key === this.starChartKey(chart) ? this.fixedStarsResult.stars.length : 0;
+  }
+  get fixedStarsSample(): boolean {
+    const chart = this.activeChart;
+    const stars = chart && this.fixedStarsResult?.key === this.starChartKey(chart) ? this.fixedStarsResult.stars : [];
+    return stars.length === 1 && stars[0].id === 102 && stars[0].name === 'Sirius' && Object.keys(stars[0].interpretations).length === 0;
+  }
+  async toggleFixedStars(): Promise<void> {
+    this.fixedStarsOpen = !this.fixedStarsOpen;
+    if (!this.fixedStarsOpen) { ++this.fixedStarsTicket; this.fixedStarsBusy = false; }
+    else await this.loadFixedStars();
+    this.cd.markForCheck();
+  }
+  private async loadFixedStars(): Promise<void> {
+    const chart = this.activeChart;
+    const ticket = ++this.fixedStarsTicket;
+    this.fixedStarsResult = null;
+    this.fixedStarsError = false;
+    if (!chart || chart.historical || !chart.utcIso) { this.fixedStarsError = true; this.fixedStarsBusy = false; return; }
+    const key = this.starChartKey(chart);
+    this.fixedStarsBusy = true;
+    this.cd.markForCheck();
+    const result = await calculateChart({utcIso: chart.utcIso, latMicro: chart.latMicro, lngMicro: chart.lngMicro, includeFixedStars: true});
+    if (this.destroyed || !this.fixedStarsOpen || ticket !== this.fixedStarsTicket || !this.activeChart || this.starChartKey(this.activeChart) !== key) return;
+    this.fixedStarsBusy = false;
+    if (result.kind !== 'ready' || !result.fixedStars?.length) this.fixedStarsError = true;
+    else this.fixedStarsResult = {key, stars: result.fixedStars};
+    this.cd.markForCheck();
+  }
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
@@ -565,6 +610,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.natalAspectFocus = null;
     this.zodiacPoint = 'tutti';
     this.activeChartId = chart ? chart.id : null;
+    if (this.fixedStarsOpen) void this.loadFixedStars();
     this.transitChart = null;
     this.rowsCache = null;
     if (chart) this.useAvailableHouseSystem(chart);
@@ -784,6 +830,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.navShown = point;
       // Same identity, new data: the partner, the returns and the navigator keep pointing at it.
       this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id} : item);
+      if (this.fixedStarsOpen) void this.loadFixedStars();
       this.rowsCache = null;
       this.aspectCache = null;
       this.matrixAspectCache = null;
@@ -1400,6 +1447,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   runFunction(entry: FunctionEntry): void {
     switch (entry.action) {
       case 'archive': this.openArchive(); break;
+      case 'fixed_stars': this.closeSheet(); void this.toggleFixedStars(); break;
       case 'solar_return': this.openReturns('solar'); break;
       case 'aspect_table': this.closeSheet(); this.openInspector('aspects'); break;
       case 'chart_settings': this.openSettings(); break;
@@ -1565,6 +1613,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    ++this.fixedStarsTicket;
     this.cancelTransitNavigation();
     this.releasePhotoUrls();
     if (this.skyTimer !== null) clearInterval(this.skyTimer);

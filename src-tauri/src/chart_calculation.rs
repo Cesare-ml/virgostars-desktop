@@ -25,6 +25,9 @@ pub struct ChartRequestV1 {
     pub utc_iso: String,
     pub lat_micro: i32,
     pub lng_micro: i32,
+    /// Explicit opt-in: stellar positions can be costly for large catalogues.
+    #[serde(default)]
+    pub include_fixed_stars: bool,
 }
 
 /// A request that passed every range check. Providers never see raw input.
@@ -93,6 +96,16 @@ pub struct ChartResponseV1 {
     pub status: &'static str,
     pub provider: Option<ProviderInfoV1>,
     pub chart: Option<ChartSnapshotV1>,
+    pub fixed_stars: Option<Vec<FixedStarV1>>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FixedStarV1 {
+    pub id: u32, pub name: String, pub longitude_deg: f64, pub latitude_deg: f64,
+    pub magnitude: Option<f64>, pub true_altitude_deg: f64, pub azimuth_south_west_deg: f64,
+    pub approximate: bool, pub constellation: Option<String>,
+    pub interpretations: std::collections::BTreeMap<String, String>,
 }
 
 /// Deliberately opaque: provider diagnostics may echo paths or inputs.
@@ -114,6 +127,7 @@ pub trait EphemerisProvider: Send + Sync {
         true
     }
     fn chart(&self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError>;
+    fn fixed_stars(&self, _request: &ValidatedRequest) -> Result<Option<Vec<FixedStarV1>>, ProviderError> { Ok(None) }
     /// Apparent geocentric ecliptic longitude of a luminary, degrees in `[0, 360)`.
     /// Providers that cannot answer keep this default and searches report a failure.
     fn luminary_longitude(&self, _body: Luminary, _julian_day_ut: f64) -> Result<f64, ProviderError> {
@@ -190,7 +204,7 @@ pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
 }
 
 fn failure(status: &'static str) -> ChartResponseV1 {
-    ChartResponseV1 { protocol_version: PROTOCOL_VERSION, status, provider: None, chart: None }
+    ChartResponseV1 { protocol_version: PROTOCOL_VERSION, status, provider: None, chart: None, fixed_stars: None }
 }
 
 /// Pure decision logic, separated from Tauri so it can be unit tested.
@@ -210,6 +224,7 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
             status: "ok",
             provider: Some(provider.info()),
             chart: Some(chart),
+            fixed_stars: if request.include_fixed_stars { provider.fixed_stars(&valid).ok().flatten() } else { None },
         },
         Err(ProviderError) => failure("calculation_failed"),
     }
@@ -237,6 +252,7 @@ mod tests {
 
     fn request(utc_iso: &str) -> ChartRequestV1 {
         ChartRequestV1 {
+            include_fixed_stars: false,
             protocol_version: 1,
             utc_iso: utc_iso.to_string(),
             lat_micro: 44_697_805,

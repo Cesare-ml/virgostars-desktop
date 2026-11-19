@@ -46,17 +46,18 @@ export type ChartSnapshotV1 = Readonly<{
 
 export type ChartProviderV1 = Readonly<{id: string; engineVersion: string}>;
 
-export type ChartRequestV1 = Readonly<{utcIso: string; latMicro: number; lngMicro: number}>;
+export type FixedStarV1 = Readonly<{id:number; name:string; longitudeDeg:number; latitudeDeg:number; magnitude:number | null; trueAltitudeDeg:number; azimuthSouthWestDeg:number; approximate:boolean; constellation:string | null; interpretations:Readonly<Record<string,string>>}>;
+export type ChartRequestV1 = Readonly<{utcIso: string; latMicro: number; lngMicro: number; includeFixedStars?: boolean}>;
 
 export type ChartCalculationResult =
-  | Readonly<{kind: 'ready'; provider: ChartProviderV1; chart: ChartSnapshotV1}>
+  | Readonly<{kind: 'ready'; provider: ChartProviderV1; chart: ChartSnapshotV1; fixedStars?: readonly FixedStarV1[] | null}>
   | Readonly<{kind: 'not_native' | 'provider_unavailable' | 'invalid_request' | 'out_of_range' | 'calculation_failed' | 'unavailable'}>;
 
 export interface ChartCalculationTransport {
   isNative(): boolean;
   invoke(
     command: 'calculate_chart',
-    args: {request: {protocolVersion: 1; utcIso: string; latMicro: number; lngMicro: number}},
+    args: {request: {protocolVersion: 1; utcIso: string; latMicro: number; lngMicro: number; includeFixedStars?: boolean}},
   ): Promise<unknown>;
 }
 
@@ -140,7 +141,7 @@ function decodeHouseSystem(raw: unknown, seen: Set<string>): ChartHouseSystemV1 
 }
 
 type DecodedResponse =
-  | Readonly<{status: 'ok'; provider: ChartProviderV1; chart: ChartSnapshotV1}>
+  | Readonly<{status: 'ok'; provider: ChartProviderV1; chart: ChartSnapshotV1; fixedStars?: readonly FixedStarV1[] | null}>
   | Readonly<{status: 'provider_unavailable' | 'invalid_request' | 'out_of_range' | 'calculation_failed'}>;
 
 /** Detached, frozen values from one native response; throws a generic error otherwise. */
@@ -178,8 +179,43 @@ export function decodeChartResponse(raw: unknown, historical = false): DecodedRe
         unavailableBodies.includes('Sun') || unavailableBodies.includes('Moon')) {
       throw new Error(PROTOCOL_ERROR);
     }
+    const starsDescriptor = Object.getOwnPropertyDescriptor(raw, 'fixedStars');
+    const starsRaw = starsDescriptor ? field(raw, 'fixedStars') : null;
+    let fixedStars: readonly FixedStarV1[] | null = null;
+    if (starsRaw !== null) {
+      const ids = new Set<number>();
+      fixedStars = Object.freeze(denseArray(starsRaw, 2048).map(star => {
+        if (!plainObject(star)) throw new Error(PROTOCOL_ERROR);
+        const id = finite(field(star, 'id'), 1, 1000000), name = field(star, 'name');
+        if (!Number.isSafeInteger(id) || ids.has(id) || typeof name !== 'string' || !/^[\p{L}\p{N} .'-]{1,80}$/u.test(name)) throw new Error(PROTOCOL_ERROR);
+        ids.add(id);
+        const interpretations:Record<string,string> = Object.create(null);
+        const interpretationDescriptor = Object.getOwnPropertyDescriptor(star, 'interpretations');
+        if (interpretationDescriptor) {
+          const source = field(star, 'interpretations');
+          if (!plainObject(source) || Reflect.ownKeys(source).length > 32) throw new Error(PROTOCOL_ERROR);
+          for (const key of Reflect.ownKeys(source)) {
+            if (typeof key !== 'string' || !key || key.length > 80) throw new Error(PROTOCOL_ERROR);
+            const value = field(source,key);
+            if (typeof value !== 'string' || value.length > 8192 || value.includes('\0')) throw new Error(PROTOCOL_ERROR);
+            interpretations[key] = value;
+          }
+        }
+        const magnitudeRaw = field(star, 'magnitude');
+        const approximateDescriptor = Object.getOwnPropertyDescriptor(star, 'approximate');
+        const approximate = approximateDescriptor ? field(star, 'approximate') : false;
+        if (typeof approximate !== 'boolean') throw new Error(PROTOCOL_ERROR);
+        const constellationRaw = Object.getOwnPropertyDescriptor(star, 'constellation') ? field(star,'constellation') : null;
+        if (constellationRaw !== null && (typeof constellationRaw !== 'string' || constellationRaw.length > 160 || /[\x00-\x1f\x7f]/.test(constellationRaw))) throw new Error(PROTOCOL_ERROR);
+        return Object.freeze({id, name, longitudeDeg:circle(field(star, 'longitudeDeg')),
+          latitudeDeg:finite(field(star, 'latitudeDeg'), -90, 90), magnitude:magnitudeRaw === null ? null : finite(magnitudeRaw, -10, 20), approximate,
+          trueAltitudeDeg:finite(field(star, 'trueAltitudeDeg'), -90, 90), azimuthSouthWestDeg:circle(field(star, 'azimuthSouthWestDeg')),
+          constellation:constellationRaw as string | null, interpretations:Object.freeze(interpretations)});
+      }));
+    }
     return Object.freeze({
       status: 'ok',
+      ...(starsDescriptor ? {fixedStars} : {}),
       provider: Object.freeze({id: providerId, engineVersion}),
       chart: Object.freeze({
         // Calendar years 1900 to 2033 (JD about 2 415 020 to 2 463 965), with some margin.
@@ -199,7 +235,8 @@ export function decodeChartResponse(raw: unknown, historical = false): DecodedRe
 export function validChartRequest(request: ChartRequestV1): boolean {
   return typeof request?.utcIso === 'string' && UTC_PATTERN.test(request.utcIso) &&
     Number.isSafeInteger(request.latMicro) && Math.abs(request.latMicro) <= 90_000_000 &&
-    Number.isSafeInteger(request.lngMicro) && Math.abs(request.lngMicro) <= 180_000_000;
+    Number.isSafeInteger(request.lngMicro) && Math.abs(request.lngMicro) <= 180_000_000 &&
+    (request.includeFixedStars === undefined || typeof request.includeFixedStars === 'boolean');
 }
 
 /**
@@ -214,11 +251,13 @@ export async function requestChart(
   try {
     if (!transport.isNative()) return {kind: 'not_native'};
     const raw = await transport.invoke('calculate_chart', {
-      request: {protocolVersion: 1, utcIso: request.utcIso, latMicro: request.latMicro, lngMicro: request.lngMicro},
+      request: {protocolVersion: 1, utcIso: request.utcIso, latMicro: request.latMicro, lngMicro: request.lngMicro,
+        ...(request.includeFixedStars ? {includeFixedStars:true} : {})},
     });
     const decoded = decodeChartResponse(raw);
     return decoded.status === 'ok'
-      ? {kind: 'ready', provider: decoded.provider, chart: decoded.chart}
+      ? {kind: 'ready', provider: decoded.provider, chart: decoded.chart,
+          ...(Object.hasOwn(decoded, 'fixedStars') ? {fixedStars: decoded.fixedStars} : {})}
       : {kind: decoded.status};
   } catch {
     return {kind: 'unavailable'};
