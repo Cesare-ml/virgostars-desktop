@@ -719,7 +719,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private async computeChart(input: NewChartInput, archiveId: string | null = null, kind: 'chart' | 'sky' = 'chart'): Promise<SessionChart | MessageKey> {
     const result = input.historical ? await calculateHistoricalChart(input.historical) :
       await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
-    if (result.kind !== 'ready') return result.kind === 'time_source_out_of_range' ? 'calc.historicalRange' : CALCULATION_FAILURES[result.kind];
+    if (result.kind !== 'ready') return result.kind === 'time_source_out_of_range' ? 'calc.historicalRange' : result.kind === 'ephemeris_out_of_range' ? 'calc.ephemerisRange' : CALCULATION_FAILURES[result.kind];
     const displayTime = input.historical ? this.chartWhen(input) : input.utcIso;
     const data = buildTemaRenderData(result.chart, displayTime);
     if (!data) return 'calc.nohouses';

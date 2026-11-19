@@ -247,9 +247,19 @@ mod tests {
         assert_eq!(completed.outcome, Some("completed"), "local download failed");
         server.join().unwrap();
         assert!(packs.join("de441-v2-history-00800-00999.eph").exists());
+        let chart_request = || serde_json::from_value(serde_json::json!({
+            "protocolVersion":1, "latMicro":41900000, "lngMicro":12500000,
+            "civil":{"year":900,"month":3,"day":20,"hour":12,"minute":0,"second":0,
+                "calendar":"gregorian","offset":{"kind":"supplied","secondsEast":0,"source":"test"},"uncertaintySeconds":0},
+            "deltaT":{"kind":"supplied","seconds":69,"uncertaintySeconds":2,"source":"test"}
+        })).unwrap();
+        let before = serde_json::to_value(crate::historical_chart::calculate_historical_chart(chart_request())).unwrap();
+        assert_eq!(before["status"], "ok");
         let removed = handle(&state, PackageRequest::Remove {id:id.into()});
         assert_eq!(removed.status, "ok");
         assert!(!packs.join("de441-v2-history-00800-00999.eph").exists());
         assert!(ephemeris.join("de441-slice.eph").exists());
+        let after = serde_json::to_value(crate::historical_chart::calculate_historical_chart(chart_request())).unwrap();
+        assert_eq!(after["status"], "ephemeris_out_of_range");
     }
 }

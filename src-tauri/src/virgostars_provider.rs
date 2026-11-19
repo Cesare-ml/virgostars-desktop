@@ -260,6 +260,15 @@ impl Engine {
         Ok(())
     }
 
+    fn covers_tdb(&self, tdb: JulianDateTdb) -> bool {
+        if let Some(manager) = &self.logical_multipack {
+            manager.select_pack(tdb).is_ok_and(|spec| spec.file_path.is_file())
+        } else {
+            let (start, end) = self.ephemeris.coverage();
+            start.0 <= tdb.0 && tdb.0 <= end.0
+        }
+    }
+
     /// Sunrise, sunset and following sunrise bracketing the instant. Sea-level,
     /// standard atmosphere, apparent solar upper limb, topocentric; UT1≈UTC.
     fn solar_day(&mut self, input: &ValidatedRequest) -> Result<Option<SolarDayV1>, ProviderError> {
@@ -304,6 +313,13 @@ pub(crate) fn historical_chart(
 ) -> Option<Result<HistoricalChart, ProviderError>> {
     with_engine(|engine| engine.historical_chart(civil, delta_t_seconds,
         delta_t_uncertainty_seconds, delta_t_source, site, solar))
+}
+
+pub(crate) fn historical_epoch_covered(jd_ut1:f64, delta:f64, uncertainty:f64) -> Option<Result<bool, ()>> {
+    with_engine(|engine| {
+        let epoch = virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t(jd_ut1, delta, uncertainty).map_err(|_| ())?;
+        Ok(engine.covers_tdb(epoch.jd_tdb))
+    })
 }
 
 static CONFIG_FOLDER: OnceLock<PathBuf> = OnceLock::new();
@@ -782,12 +798,7 @@ impl EphemerisProvider for VirgoStarsEphemeris {
         // Without the data there is nothing to say about coverage; the calculation itself reports it.
         with_engine(|engine| {
             let Ok(tdb) = engine.to_tdb(jd_ut) else { return false; };
-            if let Some(manager) = &engine.logical_multipack {
-                manager.select_pack(tdb).is_ok_and(|spec| spec.file_path.is_file())
-            } else {
-                let (start, end) = engine.ephemeris.coverage();
-                start.0 <= tdb.0 && tdb.0 <= end.0
-            }
+            engine.covers_tdb(tdb)
         }).unwrap_or(true)
     }
 

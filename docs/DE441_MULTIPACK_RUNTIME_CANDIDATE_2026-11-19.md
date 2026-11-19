@@ -42,6 +42,9 @@ contract is limited to −12999–3999, and the core's experimental lunar mean
 point correction and long-term orientation have their own numerical guards.
 Do not widen those scientific model guards merely because kernel data exists.
 The UI distinguishes installed data coverage from the complete chart limit.
+Historical requests outside installed DE441 coverage return a dedicated status
+that directs users to the package settings, distinct from delta-T policy and
+general calculation errors.
 
 The ignored local integration test checks a pinned private catalog and the
 adjacent 800–999 and 2201–2400 slices against the full source at 900, 1000,

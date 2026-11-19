@@ -43,6 +43,10 @@ test('historical native response carries the same UT1 and keeps model points dis
   const mismatched=raw(); mismatched.time.offsetSecondsEast=0;
   assert.equal((await requestHistoricalChart({isNative:()=>true,invoke:async()=>mismatched},request,decodeChartResponse)).kind,'unavailable');
 });
+test('missing installed ephemeris coverage remains distinct from other calculation failures',()=>{
+  const result=decodeHistoricalChart({protocolVersion:1,status:'ephemeris_out_of_range'},decodeChartResponse);
+  assert.equal(result.kind,'ephemeris_out_of_range');
+});
 test('archive round-trips historical input without synthesizing UTC', async () => {
   const record=historicRecord();
   const saved={...record,createdAtMs:1,updatedAtMs:2};
