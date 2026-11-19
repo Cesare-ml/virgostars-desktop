@@ -31,13 +31,15 @@ pub struct ConnectedAccountReply {
     expires_in_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    persistent: Option<bool>,
 }
 
 impl ConnectedAccountReply {
-    fn disabled() -> Self { Self { protocol_version: 1, status: "disabled", attempt_id: None, expires_in_seconds: None, scope: None } }
+    fn disabled() -> Self { Self { protocol_version: 1, status: "disabled", attempt_id: None, expires_in_seconds: None, scope: None, persistent: None } }
     #[cfg(feature = "staging-connected-account")]
     fn status(status: &'static str, attempt_id: String) -> Self {
-        Self { protocol_version: 1, status, attempt_id: Some(attempt_id), expires_in_seconds: None, scope: None }
+        Self { protocol_version: 1, status, attempt_id: Some(attempt_id), expires_in_seconds: None, scope: None, persistent: None }
     }
 }
 
@@ -293,10 +295,13 @@ fn valid_request(value: &Value) -> bool {
     }
     match obj.get("operation").and_then(Value::as_str) {
         Some("start") => obj.len() == 2 && obj.contains_key("protocolVersion") && obj.contains_key("operation"),
+        Some("restore") => obj.len() == 2 && obj.contains_key("protocolVersion") && obj.contains_key("operation"),
         Some("status" | "cancel" | "disconnect") => {
             obj.len() == 3 && obj.contains_key("protocolVersion") && obj.contains_key("operation") &&
                 obj.get("attemptId").and_then(Value::as_str).is_some_and(valid_attempt_id)
         }
+        Some("signout") => obj.len() == 3 && obj.contains_key("protocolVersion") && obj.contains_key("operation") &&
+            obj.get("attemptId").and_then(Value::as_str).is_some_and(valid_attempt_id),
         _ => false,
     }
 }
@@ -320,6 +325,21 @@ pub async fn desktop_connected_account_v1(
             return Ok(ConnectedAccountReply::disabled());
         }
         let operation = request["operation"].as_str().ok_or(NATIVE_UNAVAILABLE)?;
+        if operation == "restore" {
+            #[cfg(feature = "persistent-connected-account")]
+            {
+                let app = _app.clone();
+                let id = tauri::async_runtime::spawn_blocking(move || {
+                    app.state::<NativeLoginRegistry>().restore(crate::pkce_reqwest_https::StagingReqwestHttps, token)
+                }).await.map_err(|_|NATIVE_UNAVAILABLE)?.map_err(|_|NATIVE_UNAVAILABLE)?;
+                return match id {
+                    Some(id) => { let mut reply=ConnectedAccountReply::status("pending",id); reply.expires_in_seconds=Some(60); Ok(reply) },
+                    None => Ok(ConnectedAccountReply {protocol_version:1,status:"idle",attempt_id:None,expires_in_seconds:None,scope:None,persistent:None}),
+                };
+            }
+            #[cfg(not(feature = "persistent-connected-account"))]
+            { return Ok(ConnectedAccountReply::disabled()); }
+        }
         if operation == "start" {
             let app = _app.clone();
             let id = tauri::async_runtime::spawn_blocking(move || {
@@ -333,6 +353,21 @@ pub async fn desktop_connected_account_v1(
             return Ok(reply);
         }
         let attempt_id = request["attemptId"].as_str().ok_or(NATIVE_UNAVAILABLE)?;
+        if operation == "signout" {
+            let app = _app.clone();
+            let id = attempt_id.to_owned();
+            let result = tauri::async_runtime::spawn_blocking(move || {
+                let registry = app.state::<NativeLoginRegistry>();
+                #[cfg(feature = "persistent-connected-account")]
+                let revoked = registry.revoke(&id, &crate::pkce_reqwest_https::StagingReqwestHttps, token).is_ok();
+                #[cfg(not(feature = "persistent-connected-account"))]
+                let revoked = true;
+                let disconnected = revoked && registry.disconnect(&id);
+                revoked && disconnected
+            }).await.map_err(|_|NATIVE_UNAVAILABLE)?;
+            if !result { return Err(NATIVE_UNAVAILABLE); }
+            return Ok(ConnectedAccountReply::status("disconnected",attempt_id.to_owned()));
+        }
         if operation == "cancel" {
             if !_registry.cancel(attempt_id) { return Err(NATIVE_UNAVAILABLE); }
             return Ok(ConnectedAccountReply::status("cancelled", attempt_id.to_owned()));
@@ -341,17 +376,25 @@ pub async fn desktop_connected_account_v1(
             if !_registry.disconnect(attempt_id) { return Err(NATIVE_UNAVAILABLE); }
             return Ok(ConnectedAccountReply::status("disconnected", attempt_id.to_owned()));
         }
-        let NativeRegistrySnapshot::Active(snapshot) = _registry.snapshot() else { return Err(NATIVE_UNAVAILABLE); };
+        let app = _app.clone();
+        let snapshot = tauri::async_runtime::spawn_blocking(move || app.state::<NativeLoginRegistry>().snapshot())
+            .await.map_err(|_|NATIVE_UNAVAILABLE)?;
+        let NativeRegistrySnapshot::Active(snapshot) = snapshot else { return Err(NATIVE_UNAVAILABLE); };
         if snapshot.attempt_id != attempt_id { return Err(NATIVE_UNAVAILABLE); }
         let phase = match snapshot.phase {
             NativeLoginPhase::Pending => "pending", NativeLoginPhase::Connected => "connected",
             NativeLoginPhase::Denied => "denied", NativeLoginPhase::Expired => "expired",
             NativeLoginPhase::Cancelled => "cancelled", NativeLoginPhase::Disconnected => "disconnected",
             NativeLoginPhase::Failed => "failed",
+            NativeLoginPhase::Offline => "offline",
         };
         let mut reply = ConnectedAccountReply::status(phase, snapshot.attempt_id);
         if phase == "pending" { reply.expires_in_seconds = Some(snapshot.remaining_seconds); }
-        if phase == "connected" { reply.scope = Some(snapshot.scope.ok_or(NATIVE_UNAVAILABLE)?.as_str()); }
+        if phase == "connected" {
+            reply.scope = Some(snapshot.scope.ok_or(NATIVE_UNAVAILABLE)?.as_str());
+            #[cfg(feature = "persistent-connected-account")]
+            { reply.persistent = Some(snapshot.persistent); }
+        }
         Ok(reply)
     }
     #[cfg(not(feature = "staging-connected-account"))]
@@ -368,12 +411,16 @@ mod tests {
     #[test]
     fn only_exact_data_only_v1_operations_are_accepted() {
         assert!(valid_request(&json!({"protocolVersion":1,"operation":"start"})));
+        assert!(valid_request(&json!({"protocolVersion":1,"operation":"restore"})));
         assert!(valid_request(&json!({"protocolVersion":1,"operation":"status","attemptId":UUID})));
         assert!(valid_request(&json!({"protocolVersion":1,"operation":"cancel","attemptId":UUID})));
         assert!(valid_request(&json!({"protocolVersion":1,"operation":"disconnect","attemptId":UUID})));
+        assert!(valid_request(&json!({"protocolVersion":1,"operation":"signout","attemptId":UUID})));
         for invalid in [
             json!({"protocolVersion":2,"operation":"start"}),
             json!({"protocolVersion":1,"operation":"start","attemptId":null}),
+            json!({"protocolVersion":1,"operation":"restore","attemptId":UUID}),
+            json!({"protocolVersion":1,"operation":"signout"}),
             json!({"protocolVersion":1,"operation":"start","redirectUri":"http://127.0.0.1"}),
             json!({"protocolVersion":1,"operation":"status"}),
             json!({"protocolVersion":1,"operation":"status","attemptId":null}),

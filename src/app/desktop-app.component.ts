@@ -21,6 +21,9 @@ type DemoPlanet = 'Sun' | 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'S
 import { translate, type Locale, type MessageKey } from './translations';
 import { inspectDesktopRuntime } from './native/runtime';
 import { connectedAccount } from './native/connected-account';
+import { clearGuestMode, hasChosenGuestMode, rememberGuestMode } from './welcome-preference';
+import { BRAND_WORDMARK } from './brand-wordmark';
+import { searchArchive } from './archive-search';
 import { ConnectedAccountState, type AccountViewStatus } from './native/connected-account-state';
 import { groupConflicts } from './native/group-conflicts';
 import type { GroupConflict } from './native/group-conflicts-contract';
@@ -169,9 +172,9 @@ const MODE_KEYS: Record<ChartMode,MessageKey> = {
   natal:'mode.natal',transits:'mode.transits',synastry:'mode.synastry',latitude:'mode.latitude',
 };
 const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
-  idle:'account.idle', starting:'account.starting', pending:'account.pending', connected:'account.connected',
-  canceling:'account.canceling', expired:'account.expired', denied:'account.denied',
-  failed:'account.failed', unavailable:'account.unavailable',
+  idle:'account.idle', restoring:'account.restoring', starting:'account.starting', pending:'account.pending', connected:'account.connected',
+  canceling:'account.canceling', expired:'account.expired', offline:'account.offline', denied:'account.denied',
+  failed:'account.failed', unavailable:'account.unavailable', signout_failed:'account.signoutFailed',
 };
 
 @Component({
@@ -182,6 +185,7 @@ const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
   styleUrls:['./desktop-app.component.css']
 })
 export class DesktopAppComponent implements AfterViewInit, OnDestroy {
+  readonly brandWordmark = BRAND_WORDMARK;
   @ViewChild('shell', {static:true}) readonly shell!: ElementRef<HTMLElement>;
   @ViewChild('workspace', {static:true}) readonly workspace!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
@@ -205,6 +209,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   syncGroupBusy = false;
   syncMessage: MessageKey | null = null;
   syncGroupDrafts: Record<string,string> = {};
+  readonly groupsFeatureVisible = false;
+  syncedVisibleLimit = 24;
   associationCandidate: {local:SavedChartV1; remote:SyncedChart} | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncGeneration = 0;
@@ -213,8 +219,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private syncContext = '';
 
   private onAccountChange(): void {
+    if (this.account.status === 'connected' && hasChosenGuestMode(this.uiPreferencesStorage)) {
+      clearGuestMode(this.uiPreferencesStorage);
+    }
+    if ((this.account.status === 'connected' || this.account.hasRestorableSession) && this.welcomeVisible) {
+      this.welcomeVisible = false;
+      if (this.guideVisible) this.focusGuide();
+    }
     const attempt = this.account.connectedAttemptId;
-    const offline = !attempt && !['starting','pending','canceling'].includes(this.account.status);
+    const offline = !attempt && (this.account.hasRestorableSession || !['restoring','starting','pending','canceling'].includes(this.account.status));
     const context = attempt ? 'online:' + attempt : offline ? 'offline' : 'transition';
     if (context === this.syncContext) return;
     if (this.syncTimer !== null) clearTimeout(this.syncTimer);
@@ -442,6 +455,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private exporting = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
+  welcomeLoading = true;
+  welcomeVisible = !hasChosenGuestMode(this.uiPreferencesStorage);
+  private welcomeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  continueAsGuest(): void {
+    rememberGuestMode(this.uiPreferencesStorage);
+    this.welcomeVisible = false;
+    if (this.account.status === 'restoring' || this.account.status === 'starting' || this.account.status === 'pending') void this.account.cancel();
+    if (this.guideVisible) this.focusGuide();
+  }
 
   readonly modes = CHART_MODES;
 
@@ -463,7 +486,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   showDodecatemoria = false;
   kleroiEnabled = false;
   arabicPartsOpen = false;
-  gauquelinOpen = false;
   fixedStarsEnabled = false;
   fixedStarsBusy = false;
   fixedStarsError = false;
@@ -486,7 +508,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   zodiacPoint: string = 'tutti';
   readonly zodiacPoints = TRADITIONAL_POINTS;
   readonly zodiacAxes: readonly ZodiacProjectionAxis[] = ['Cardinale','Fissa','Mutevole'];
-  showTransaturnians = false;
+  showTransaturnians = true;
   inspectorTab: InspectorTab = 'planets';
   /** Centre panel over the chart: the new-chart form and the archive each have their own. */
   view: WorkspaceView = 'chart';
@@ -808,8 +830,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   get selectedFixedStar(): ReturnType<DesktopAppComponent['fixedStarAt']> { return this.fixedStarAt(this.fixedStarSelected); }
   private fixedStarAt(id:number | null) { return this.fixedStarContacts.find(item => item.star.id === id) ?? null; }
-  get fixedStarCatalogSize(): number { return this.fixedStarsResult?.stars.length ?? 0; }
-  get fixedStarApproximateCount(): number { return this.fixedStarsResult?.stars.filter(star=>star.approximate).length ?? 0; }
   get fixedStarCatalogIsSample(): boolean {
     return this.fixedStarsResult?.stars.length === 1 && this.fixedStarsResult.stars[0].id === 102 &&
       Object.keys(this.fixedStarsResult.stars[0].interpretations).length === 0;
@@ -871,6 +891,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   get isSkyActive(): boolean { return this.activeChart?.kind === 'sky'; }
   get stageTitle(): string {
+    if (this.solarContextActive && this.mode === 'natal') return this.t('returns.solar');
     if (this.isSkyActive && this.mode === 'natal') return this.t(this.navDirty ? 'sky.navigated' : 'sky.title');
     return this.modeLabel(this.mode);
   }
@@ -1881,10 +1902,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
   }
   get visibleSavedCharts(): readonly SavedChartV1[] {
-    const query = this.archiveQuery.trim().toLocaleLowerCase();
-    if (!query) return this.savedCharts;
-    return this.savedCharts.filter(chart => (chart.name + ' ' + chart.placeName + ' ' + chart.groups.join(' ')).toLocaleLowerCase().includes(query));
+    return searchArchive(this.savedCharts, this.archiveQuery);
   }
+  get visibleSyncedCharts(): readonly SyncedChart[] { return searchArchive(this.syncedCharts, this.archiveQuery); }
+  get shownSyncedCharts(): readonly SyncedChart[] { return this.visibleSyncedCharts.slice(0, this.syncedVisibleLimit); }
+  showMoreSyncedCharts(): void { this.syncedVisibleLimit += 24; }
   setGroupDraft(id: string, event: Event): void {
     this.groupDrafts = {...this.groupDrafts, [id]: (event.target as HTMLInputElement).value.slice(0, 160)};
   }
@@ -1918,6 +1940,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setArchiveQuery(event: Event): void {
     this.archiveQuery = (event.target as HTMLInputElement).value.slice(0, 80);
     this.archiveVisibleLimit = 24;
+    this.syncedVisibleLimit = 24;
     this.releasePhotoUrls();
     if (this.showArchivePhotos) void this.loadVisiblePhotos();
     this.cd.markForCheck();
@@ -2107,9 +2130,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (radix) this.showChart(radix);
   }
   closeSynastry(): void {
-    if (this.returnTool === 'solar') { this.closeSolarReturn(); return; }
     this.synastryPickerOpen = false;
-    this.setMode('natal');
+    if (this.solarContextActive && this.activeChartId !== this.solarReturnChartId && this.solarReturnChartId !== null) {
+      this.activateChart(this.solarReturnChartId);
+    } else this.setMode('natal');
+  }
+  get solarContextActive(): boolean {
+    return this.returnTool === 'solar' && this.solarReturnChartId !== null &&
+      (this.activeChartId === this.solarReturnChartId ||
+        (this.mode === 'synastry' && this.partnerChartId === this.solarReturnChartId));
+  }
+  toggleSolarSynastry(): void {
+    if (!this.solarContextActive || !this.returnRadix || this.busy || this.calcBusy) return;
+    if (this.mode === 'synastry') this.closeSynastry();
+    else this.selectSynastryChart(this.returnRadix.chartId);
   }
   async onReturnChartRequested(request: ReturnChartRequest): Promise<void> {
     await this.onChartRequested(request.input);
@@ -2125,7 +2159,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.closeSheet();
     }
     // Pair with the radix only if this very return is now on screen.
-    if (this.destroyed || !request.withRadix || !radix || !cast || cast.id === radix.id ||
+    if (this.destroyed || this.returnTool === 'solar' || !request.withRadix || !radix || !cast || cast.id === radix.id ||
         cast.utcIso !== request.input.utcIso || this.calcMessage !== 'calc.ready') {
       return;
     }
@@ -2250,9 +2284,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     document.documentElement.lang = this.locale;
     this.onAccountChange();
+    void this.account.restore();
     // Inspect applied WebView CSS after Angular's initial view check.
     queueMicrotask(() => this.checkStyles());
-    if (this.guideVisible) this.focusGuide();
+    this.welcomeTimer = setTimeout(() => {
+      this.welcomeLoading = false;
+      this.welcomeTimer = null;
+      if (!this.welcomeVisible && this.guideVisible) this.focusGuide();
+      this.cd.markForCheck();
+    }, 1500);
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     this.skyTimer = setInterval(() => { void this.skyTick(); }, SKY_REFRESH_MS);
@@ -2343,6 +2383,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.syncTimer = null;
     ++this.syncGeneration;
     ++this.syncListGeneration;
+    if (this.welcomeTimer !== null) clearTimeout(this.welcomeTimer);
     this.account.dispose();
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
@@ -2546,6 +2587,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     options.mostraDirezioneMotoMC = true;
     options.mostraAssiTransiti = this.mode === 'transits';
     options.mostraAssiSinastria = this.mode === 'synastry';
+    options.latitudiniDistanzaCamera = 3.25;
     options.temaGrafico = this.theme;
     const active = this.activeChart;
     options.settaggi.transaturnini_se_congiunti = this.chartSettings.outerWhenConjunct;

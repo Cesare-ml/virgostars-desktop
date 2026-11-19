@@ -31,6 +31,9 @@ pub enum TokenExchangeError {
 /// These properties are NOT provided by this trait automatically; a future
 /// concrete transport needs an independent review and integration tests.
 pub trait TokenHttpTransport {
+    /// Advisory connectivity check only; a successful check does not make a
+    /// later token request safe to retry after an uncertain outcome.
+    fn reachable(&self, _endpoint: &Url) -> bool { true }
     fn post_form(
         &self,
         endpoint: &Url,
@@ -61,10 +64,16 @@ struct TokenSuccessResponse {
     access_token: String,
     expires_in: u64,
     scope: String,
+    #[cfg(feature = "persistent-connected-account")]
+    refresh_token: Option<String>,
 }
 
 impl Drop for TokenSuccessResponse {
-    fn drop(&mut self) { self.access_token.zeroize(); }
+    fn drop(&mut self) {
+        self.access_token.zeroize();
+        #[cfg(feature = "persistent-connected-account")]
+        if let Some(value) = self.refresh_token.as_mut() { value.zeroize(); }
+    }
 }
 
 /// Native host-only short-lived access token; no Serialize, Debug or Clone.
@@ -75,6 +84,8 @@ pub struct NativeAccessGrant {
     expires_at: Instant,
     profile_ref: Option<String>,
     token_endpoint: Option<Url>,
+    #[cfg(feature = "persistent-connected-account")]
+    refresh_credential: Option<crate::refresh_credential_store::Credential>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,6 +103,10 @@ impl TokenScope {
 
 impl NativeAccessGrant {
     pub fn scope(&self) -> TokenScope { self.scope }
+    #[cfg(feature = "persistent-connected-account")]
+    pub(crate) fn take_refresh_credential(&mut self) -> Option<crate::refresh_credential_store::Credential> {
+        self.refresh_credential.take()
+    }
     pub fn remaining_seconds(&self, now: Instant) -> u64 {
         self.expires_at.saturating_duration_since(now).as_secs()
     }
@@ -107,18 +122,22 @@ impl NativeAccessGrant {
     pub(crate) fn matches_token_endpoint(&self, endpoint: &Url) -> bool {
         self.token_endpoint.as_ref() == Some(endpoint)
     }
+    #[cfg(feature = "persistent-connected-account")]
+    pub(crate) fn bind_token_endpoint(&mut self, endpoint: &Url) { self.token_endpoint = Some(endpoint.clone()); }
     /// A bounded native worker can own a short-lived copy without holding the
     /// session mutex over network I/O. Both copies are zeroized on drop.
     pub(crate) fn copy_for_worker(&self, now: Instant) -> Option<Self> {
         if self.remaining_seconds(now) == 0 || self.profile_ref.is_none() { return None; }
         Some(Self {access_token:Zeroizing::new(self.access_token.to_string()), scope:self.scope,
-            expires_at:self.expires_at, profile_ref:self.profile_ref.clone(),token_endpoint:self.token_endpoint.clone()})
+            expires_at:self.expires_at, profile_ref:self.profile_ref.clone(),token_endpoint:self.token_endpoint.clone(),
+            #[cfg(feature = "persistent-connected-account")] refresh_credential:None})
     }
     #[cfg(test)]
     pub(crate) fn synthetic_for_test(scope: TokenScope, profile: &str) -> Self {
         Self {access_token:Zeroizing::new("synthetic.test.token".into()),scope,
             expires_at:Instant::now() + Duration::from_secs(60), profile_ref:Some(profile.into()),
-            token_endpoint:Url::parse("https://staging.virgostars.it/chart-sync/v1/token").ok()}
+            token_endpoint:Url::parse("https://staging.virgostars.it/chart-sync/v1/token").ok(),
+            #[cfg(feature = "persistent-connected-account")] refresh_credential:None}
     }
 }
 
@@ -153,7 +172,7 @@ fn plausible_bearer(value: &str) -> bool {
         part.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'))
 }
 
-fn parse_response(response: TokenHttpResponse, now: Instant) -> Result<NativeAccessGrant, TokenExchangeError> {
+pub(crate) fn parse_response(response: TokenHttpResponse, now: Instant) -> Result<NativeAccessGrant, TokenExchangeError> {
     // This zeroizes the raw bearer-token JSON; token value is separately
     // moved into a zeroizing string on the success path.
     let bytes = Zeroizing::new(response.body);
@@ -182,12 +201,16 @@ fn parse_response(response: TokenHttpResponse, now: Instant) -> Result<NativeAcc
     };
     let expires_at = now.checked_add(Duration::from_secs(expires))
         .ok_or(TokenExchangeError::InvalidResponse)?;
-    Ok(NativeAccessGrant { access_token: raw_token, scope, expires_at, profile_ref: None, token_endpoint:None })
+    #[cfg(feature = "persistent-connected-account")]
+    let refresh_credential = parsed.refresh_token.take().map(crate::refresh_credential_store::Credential::ready)
+        .transpose().map_err(|_|TokenExchangeError::InvalidResponse)?;
+    Ok(NativeAccessGrant { access_token: raw_token, scope, expires_at, profile_ref: None, token_endpoint:None,
+        #[cfg(feature = "persistent-connected-account")] refresh_credential })
 }
 
-/// Consumes the one-time callback. A denial never contacts the network. No
-/// retries of the same authorization code are performed here: a timeout or
-/// uncertain server response requires a new PKCE attempt.
+/// Consumes the one-time callback. A denial never contacts the network.
+/// Only a definite HTTP 400/413 can fall back to the older temporary-session
+/// contract; a timeout or uncertain response always requires a new attempt.
 pub fn exchange_approved_code<T: TokenHttpTransport>(
     transport: &T,
     staging_token_url: &str,
@@ -210,10 +233,23 @@ pub fn exchange_approved_code<T: TokenHttpTransport>(
         .append_pair("redirect_uri", bound_redirect_uri)
         .append_pair("code", &code)
         .append_pair("code_verifier", &code_verifier);
+    #[cfg(feature = "persistent-connected-account")]
+    serializer.append_pair("persistent", "true");
     let body = Zeroizing::new(serializer.finish());
     if body.len() > MAX_FORM_BYTES { return Err(TokenExchangeError::InvalidCode); }
     let response = transport.post_form(&endpoint, &body, HTTP_TIMEOUT, MAX_RESPONSE_BYTES)
         .map_err(|_| TokenExchangeError::TransportUnavailable)?;
+    #[cfg(feature = "persistent-connected-account")]
+    let response = if matches!(response.status, 400 | 413) {
+        let mut fallback = form_urlencoded::Serializer::new(String::new());
+        fallback.append_pair("grant_type", "authorization_code")
+            .append_pair("client_id", "virgostars-desktop")
+            .append_pair("redirect_uri", bound_redirect_uri)
+            .append_pair("code", &code).append_pair("code_verifier", &code_verifier);
+        let fallback = Zeroizing::new(fallback.finish());
+        transport.post_form(&endpoint, &fallback, HTTP_TIMEOUT, MAX_RESPONSE_BYTES)
+            .map_err(|_|TokenExchangeError::TransportUnavailable)?
+    } else { response };
     let mut grant = parse_response(response, now)?;
     grant.token_endpoint = Some(endpoint);
     Ok(grant)
@@ -232,12 +268,14 @@ mod tests {
             assert_eq!(timeout, Duration::from_secs(10));
             assert_eq!(max, 8192);
             let fields: Vec<_> = form_urlencoded::parse(body.as_bytes()).collect();
-            assert_eq!(fields.len(), 5);
+            assert_eq!(fields.len(), if cfg!(feature = "persistent-connected-account") { 6 } else { 5 });
             assert_eq!(fields[0].1, "authorization_code");
             assert_eq!(fields[1].1, "virgostars-desktop");
             assert_eq!(fields[2].1, "http://127.0.0.1:49152/virgostars/oauth/callback");
             assert_eq!(fields[3].1.len(), 43);
             assert_eq!(fields[4].1.len(), 43);
+            #[cfg(feature = "persistent-connected-account")]
+            assert_eq!((&*fields[5].0, &*fields[5].1), ("persistent", "true"));
             Ok(TokenHttpResponse {status:self.status, content_type:self.content_type.to_owned(), body:self.response.clone()})
         }
     }
@@ -256,6 +294,33 @@ mod tests {
 
     fn fake() -> FakeTransport {
         FakeTransport {calls:Cell::new(0),response:response(),status:200,content_type:"application/json"}
+    }
+
+    #[cfg(feature = "persistent-connected-account")]
+    #[test]
+    fn old_backend_falls_back_only_after_a_definite_rejection() {
+        struct Legacy { calls: Cell<usize>, network_fails: bool, rejection:u16 }
+        impl TokenHttpTransport for Legacy {
+            fn post_form(&self, _: &Url, body: &str, _: Duration, _: usize) -> Result<TokenHttpResponse, ()> {
+                let n=self.calls.get(); self.calls.set(n+1);
+                let pairs:Vec<_>=form_urlencoded::parse(body.as_bytes()).collect();
+                assert_eq!(pairs.len(),if n==0 {6} else {5});
+                if self.network_fails { return Err(()); }
+                if n==0 { return Ok(TokenHttpResponse {status:self.rejection,content_type:String::new(),body:Vec::new()}); }
+                let jwt=format!("{}.{}.{}","A".repeat(43),"B".repeat(43),"C".repeat(100));
+                Ok(TokenHttpResponse {status:200,content_type:"application/json".into(),
+                    body:format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read"}}"#).into_bytes()})
+            }
+        }
+        for rejection in [400,413] {
+            let legacy=Legacy {calls:Cell::new(0),network_fails:false,rejection};
+            let mut grant=exchange_approved_code(&legacy,TOKEN,REDIRECT,approved(),Instant::now()).unwrap();
+            assert!(grant.take_refresh_credential().is_none());
+            assert_eq!(legacy.calls.get(),2);
+        }
+        let uncertain=Legacy {calls:Cell::new(0),network_fails:true,rejection:400};
+        assert!(matches!(exchange_approved_code(&uncertain,TOKEN,REDIRECT,approved(),Instant::now()),Err(TokenExchangeError::TransportUnavailable)));
+        assert_eq!(uncertain.calls.get(),1);
     }
 
     const REDIRECT: &str = "http://127.0.0.1:49152/virgostars/oauth/callback";

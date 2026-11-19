@@ -71,6 +71,12 @@ time as unknown; the older archive command cannot overwrite or delete those rows
 
 ## Interface
 
+The archive searches both local and synchronized website charts by name or
+place. Website charts use compact responsive cards and are displayed in batches
+of 24. Group controls are temporarily hidden; existing group data and pending
+sync state remain in the archive. Local-to-website actions are grouped in an
+expandable area so they do not squeeze chart details in narrow windows.
+
 - In synastry, a compact side picker lists session and saved charts while leaving the active radix visible. Saved inputs are recalculated before selection; a calculation failure leaves the current comparison intact. The second chart can be changed or swapped with the radix. Only house systems available in both charts can be selected in synastry. An optional outer ring shows the current sky calculated at the radix location and labels its instant; switch it off and on to refresh. The aspect table still compares the two charts. Deflection controls require Vehlow and renderer capability version 1; until a compatible renderer is installed they remain disabled. The ordinary cross-aspect table is hidden while deflection is active. This is an unreleased prototype without WebView2 visual acceptance.
 
 - The sidebar **Archivio** button opens the archive as its own panel over the chart: charts open in this session (with a Save button for unsaved ones and the partner choice for synastry), the saved charts with a search box, **Open** (recalculates) and delete with an explicit confirmation step. It is separate from the new-chart panel.

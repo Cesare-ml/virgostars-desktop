@@ -38,5 +38,7 @@ test('access token response fails closed, is bounded and never escapes as serial
   assert.match(exchange, /expires == 0 \|\| expires > MAX_ACCESS_SECONDS/);
   assert.match(exchange, /"chart_sync:read" => TokenScope::Read/);
   assert.doesNotMatch(exchange, /"chart_sync:read chart_sync:notes"\s*=>/);
-  assert.doesNotMatch(exchange, /refresh_token|Authorization: Bearer|println!|eprintln!|tracing::|log::/);
+  assert.match(exchange, /#\[cfg\(feature = "persistent-connected-account"\)\]\s*refresh_token: Option<String>/);
+  assert.match(exchange, /self\.refresh_token\.as_mut\(\).*zeroize\(\)/);
+  assert.doesNotMatch(exchange, /Authorization: Bearer|println!|eprintln!|tracing::|log::/);
 });

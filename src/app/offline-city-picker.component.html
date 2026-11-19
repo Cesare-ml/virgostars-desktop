@@ -20,7 +20,7 @@
     (input)="onInput($event)"
     (keydown)="onKeydown($event)"
   >
-  <p class="city-status" role="status" aria-live="polite">{{message}}</p>
+  <p class="city-status" role="status" aria-live="polite" *ngIf="!hideSelectedStatus || !state.selected">{{message}}</p>
   <div class="city-results" id="offline-city-options" role="listbox" [attr.aria-label]="t('city.results.label')" *ngIf="state.results.length">
     <button type="button" class="city-option" role="option"
       *ngFor="let city of state.results; let i=index; trackBy:trackCity"
@@ -36,7 +36,7 @@
       </span>
     </button>
   </div>
-  <p class="city-selected" *ngIf="state.selected">
+  <p class="city-selected" *ngIf="state.selected && !hideSelectedStatus">
     {{t('city.selected')}}: <strong>{{state.selected.name}}</strong>
   </p>
 </section>

@@ -69,6 +69,39 @@ impl NativeLoginRegistry {
         Self { inner: Mutex::new(RegistryState { closed: false, slot: Slot::Idle }), sync_busy: AtomicBool::new(false) }
     }
 
+    #[cfg(feature = "persistent-connected-account")]
+    pub fn restore<T: TokenHttpTransport + Send + 'static>(&self, transport: T, endpoint: &str)
+        -> Result<Option<String>, NativeRegistryError> {
+        let reservation = Arc::new(AtomicBool::new(false));
+        {
+            let mut state = self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+            if state.closed { return Err(NativeRegistryError::Closed); }
+            if !matches!(&state.slot, Slot::Idle) { return Err(NativeRegistryError::Busy); }
+            state.slot = Slot::Starting(Arc::clone(&reservation));
+        }
+        let candidate = NativeLoginSession::restore(transport,endpoint);
+        let mut state = self.inner.lock().map_err(|_|NativeRegistryError::Unavailable)?;
+        let matches = matches!(&state.slot, Slot::Starting(current) if Arc::ptr_eq(current,&reservation));
+        if state.closed || reservation.load(Ordering::SeqCst) || !matches {
+            if matches { state.slot = Slot::Idle; }
+            return Err(NativeRegistryError::Closed);
+        }
+        match candidate {
+            Ok(Some(session)) => { let id = session.attempt_id().to_owned(); state.slot = Slot::Active(session); Ok(Some(id)) },
+            Ok(None) => { state.slot = Slot::Idle; Ok(None) },
+            Err(error) => { state.slot = Slot::Idle; Err(NativeRegistryError::Start(error)) },
+        }
+    }
+
+    #[cfg(feature = "persistent-connected-account")]
+    pub fn revoke<T: TokenHttpTransport>(&self, expected_attempt_id: &str, transport: &T, endpoint: &str) -> Result<(), ()> {
+        let state = self.inner.lock().map_err(|_|())?;
+        if state.closed { return Err(()); }
+        let Slot::Active(session) = &state.slot else { return Err(()); };
+        if session.attempt_id() != expected_attempt_id { return Err(()); }
+        session.revoke(transport,endpoint)
+    }
+
     /// Must be invoked by a bounded native owner, never on Angular/UI or an
     /// async executor. The reservation is installed without holding the mutex
     /// during the (possibly blocking) system-browser launch.

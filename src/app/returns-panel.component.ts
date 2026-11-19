@@ -49,9 +49,14 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   @Input({required: true}) radix!: ReturnRadix;
   @Input() busy = false;
   @Input() mapOpen = false;
+  @Input() showControls = false;
+  @Input() comparing = false;
   @Input() houseSystem: HouseSystemId = 'egizia';
   @Output() readonly chartRequested = new EventEmitter<ReturnChartRequest>();
   @Output() readonly closed = new EventEmitter<void>();
+  @Output() readonly mapRequested = new EventEmitter<void>();
+  @Output() readonly comparisonRequested = new EventEmitter<void>();
+  @Output() readonly returnClosed = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);
   private searchTicket = 0;
   private destroyed = false;
@@ -77,13 +82,14 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   preview: {latMicro:number; lngMicro:number; ascendant:number; mc:number; ds:number; ic:number; cusps:readonly number[];
     planets:readonly {name:string; longitude:number; glyphUrl:string}[]} | null = null;
   previewMessage: MessageKey | null = null;
-  withRadix = true;
+  withRadix = false;
   searching = false;
   searched = false;
   message: MessageKey | null = null;
   instants: readonly ReturnInstantV1[] = [];
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['kind']) this.withRadix = this.kind === 'lunar';
     const radixChanged = changes['radix'] &&
       (changes['radix'].previousValue as ReturnRadix | undefined)?.chartId !== this.radix.chartId;
     if (radixChanged) {
@@ -155,6 +161,14 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
 
   toggleWithRadix(event: Event): void { this.withRadix = (event.target as HTMLInputElement).checked; }
 
+  stepYear(delta:number):void {
+    const year = parseReturnYear(this.year);
+    if (year === null || year + delta < 1600 || year + delta > 2400 || this.searching) return;
+    this.year = String(year + delta);
+    this.clearResults();
+    void this.search();
+  }
+
   async selectOnlinePoint(coordinates:ReturnMapPoint):Promise<void> {
     this.geocodeAbort?.abort();
     const ticket = ++this.selectionTicket;
@@ -183,7 +197,10 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   }
   castSelectedReturn():void {
     const selected = this.instants.find(instant => instant.utcIso === this.previewInstant);
-    if (selected && this.timeZone) this.cast(selected);
+    if (selected) {
+      if (this.busy) this.pendingAutomaticInstant = selected;
+      else this.cast(selected);
+    }
   }
 
   private invalidatePreview(): void {
@@ -255,12 +272,13 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.city = place;
     this.latitude = (place.latMicro / 1e6).toFixed(6);
     this.longitude = (place.lngMicro / 1e6).toFixed(6);
-    this.timeZone = place.timeZone || suggestReturnTimeZone(place.latMicro, place.lngMicro) || '';
-    this.timeZoneSuggested = !place.timeZone && this.timeZone !== '';
+    const cityTimeZone = place.timeZone && validTimeZone(place.timeZone) ? place.timeZone : '';
+    this.timeZone = cityTimeZone || suggestReturnTimeZone(place.latMicro, place.lngMicro) || '';
+    this.timeZoneSuggested = !cityTimeZone && this.timeZone !== '';
     this.placeName = place.name;
     this.mapCenter = {latMicro:place.latMicro,lngMicro:place.lngMicro};
-    if (this.kind === 'solar') this.previewCoordinates(this.mapCenter);
     this.message = null;
+    if (this.kind === 'solar') { this.previewCoordinates(this.mapCenter); this.castSelectedReturn(); }
     this.cd.markForCheck();
   }
 
@@ -297,6 +315,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.previewInstant = this.instants[0]?.utcIso ?? null;
     this.message = result.kind === 'ready' ? null : SEARCH_FAILURES[result.kind];
     if (this.kind === 'solar' && this.previewInstant) this.previewCoordinates(this.mapCenter);
+    if (this.kind === 'solar' && this.previewInstant) this.castSelectedReturn();
     this.cd.markForCheck();
   }
 

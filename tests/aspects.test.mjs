@@ -88,13 +88,24 @@ test('only active aspects between points that take part in aspects are listed', 
   const points = [point('Sun', 0), point('Moon', 150), point('Uranus', 120)];
   const defaults = run(points);
   assert.equal(find(defaults, 'Sun', 'Moon'), undefined, 'quincunx is off by default');
-  assert.equal(find(defaults, 'Sun', 'Uranus'), undefined, 'Uranus is not aspected by default');
+  assert.ok(find(defaults, 'Sun', 'Uranus', 'trigono'), 'visible Uranus is aspected by default');
   const enabled = run(points, s => { s.aspects.quinconce.active = true; s.points.Uranus.aspects = true; });
   // Default quincunx orb is 2 degrees and caps the 6 degrees of the Moon.
   assert.equal(find(enabled, 'Sun', 'Moon', 'quinconce').allowedOrbDeg, 2);
   assert.ok(find(enabled, 'Sun', 'Uranus', 'trigono'));
   // Without the Sun, its trine with Uranus goes and Moon-Uranus (30 degrees) is not an active aspect.
   assert.equal(run(points, s => { s.points.Sun.aspects = false; s.points.Uranus.aspects = true; }).length, 0);
+});
+
+test('visible outer planets, node and Black Moon participate in wheel and cross-chart aspects', () => {
+  const settings = defaultChartSettings();
+  const points = [point('Sun',0), point('Uranus',120), point('Neptune',120), point('Pluto',120),
+    point('true Node',120), point('osc. Apogee',120)];
+  const rows = computeAspects(points,settings,ASPECT_DEFINITIONS);
+  for (const name of ['Uranus','Neptune','Pluto','true Node','osc. Apogee']) {
+    assert.ok(find(rows,'Sun',name,'trigono'), name);
+    assert.ok(find(computeCrossAspects([point(name,120)],[point('Sun',0)],settings,ASPECT_DEFINITIONS,'transits'),name,'Sun','trigono'), name);
+  }
 });
 
 test('axes never aspect each other and a point never aspects its own opposite', () => {
@@ -185,9 +196,9 @@ test('dedicated aspect matrix includes Black Moon, North Node and axes; outer pl
     'Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','osc. Apogee','true Node','AS','MC',
   ]);
   assert.equal(matrixPointOrder(true).length,14);
-  assert.equal(settings.points.Uranus.aspects,false);
-  assert.equal(settings.points.Neptune.aspects,false);
-  assert.equal(settings.points.Pluto.aspects,false);
+  assert.equal(settings.points.Uranus.aspects,true);
+  assert.equal(settings.points.Neptune.aspects,true);
+  assert.equal(settings.points.Pluto.aspects,true);
   const rows=computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS);
   assert.ok(find(rows,'Sun','osc. Apogee','trigono'));
   assert.ok(find(rows,'Sun','true Node','opposizione'));
@@ -201,8 +212,8 @@ test('dedicated aspect matrix includes Black Moon, North Node and axes; outer pl
   assert.ok(find(withOuter,'Sun','Uranus','trigono'));
   assert.ok(find(withOuter,'Sun','Neptune','opposizione'));
   assert.ok(find(withOuter,'Sun','Pluto','sestile'));
-  assert.equal(find(computeAspects(aspectPoints(data,settings.points),settings,ASPECT_DEFINITIONS),'Sun','Uranus'),undefined);
-  assert.equal(settings.points.Uranus.aspects,false,'matrix calculation may not mutate chart settings');
+  assert.ok(find(computeAspects(aspectPoints(data,settings.points),settings,ASPECT_DEFINITIONS),'Sun','Uranus'));
+  assert.equal(settings.points.Uranus.aspects,true,'matrix calculation may not mutate chart settings');
   settings.points.Uranus.orb=0;
   assert.equal(find(computePlanetMatrixAspects(data,settings,ASPECT_DEFINITIONS,true),'Sun','Uranus'),undefined);
   settings.aspects.sestile.active=false;

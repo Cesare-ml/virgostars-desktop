@@ -1,4 +1,24 @@
 :host { display:block; }
+.solar-controls { display:grid; gap:10px; padding:4px 2px 14px; margin-bottom:8px; border-bottom:1px solid var(--vs-border); color:var(--vs-text); }
+.solar-controls-head { display:flex; align-items:center; gap:9px; }
+.solar-controls-icon { display:grid; place-items:center; flex:none; width:32px; height:32px; border-radius:10px; color:var(--vs-accent); background:var(--vs-surface-muted); font-size:22px; }
+.solar-controls-head div { min-width:0; flex:1; display:grid; gap:2px; }
+.solar-controls-head strong { font-size:13px; }.solar-controls-head small { color:var(--vs-text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.solar-controls-close { flex:none; border:0; background:transparent; color:var(--vs-text-secondary); font-size:21px; }
+.solar-year { display:grid; grid-template-columns:1fr auto; gap:6px; align-items:end; }
+.solar-year label { grid-column:1 / -1; color:var(--vs-text-secondary); font-size:11px; font-weight:700; }
+.solar-year-row { min-width:0; display:flex; overflow:hidden; border:1px solid var(--vs-border); border-radius:8px; }
+.solar-year-row input { min-width:0; width:100%; height:32px; padding:0; border:0; color:var(--vs-text); background:var(--vs-surface); text-align:center; font-variant-numeric:tabular-nums; }
+.solar-year-row button { flex:0 0 26px; border:0; background:var(--vs-surface-muted); color:var(--vs-text); font-size:18px; }
+.solar-apply,.solar-action { min-height:34px; padding:6px 9px; border:1px solid var(--vs-border); border-radius:8px; background:var(--vs-surface); color:var(--vs-text); font-size:12px; font-weight:600; cursor:pointer; }
+.solar-apply { background:var(--vs-accent); border-color:var(--vs-accent); color:var(--vs-accent-contrast); }
+.solar-action { text-align:left; }.solar-action:hover,.solar-action[aria-pressed=true] { background:var(--vs-surface-muted); color:var(--vs-accent); }
+.solar-action:disabled,.solar-apply:disabled { opacity:.5; }
+.solar-current-place { display:grid; gap:3px; padding:9px; border-radius:9px; background:var(--vs-surface-muted); overflow-wrap:anywhere; }
+.solar-current-place span,.solar-current-place small,.solar-zone span { color:var(--vs-text-secondary); font-size:11px; }.solar-current-place strong { font-size:12px; }
+.solar-zone { display:grid; gap:4px; }.solar-zone input { width:100%; box-sizing:border-box; min-width:0; height:32px; padding:0 8px; border:1px solid var(--vs-border); border-radius:8px; color:var(--vs-text); background:var(--vs-surface); font-size:12px; }
+.solar-zone-note { color:var(--vs-text-secondary); line-height:1.35; }
+.solar-controls ::ng-deep .city-picker { padding:0; border:0; }.solar-controls ::ng-deep .city-status { margin:4px 0 0; }
 .solar-map { position:fixed; inset:0; z-index:100; display:flex; flex-direction:column; min-height:0; background:var(--vs-surface); color:var(--vs-text); }
 .solar-header { flex:none; padding:8px 14px; background:var(--vs-surface); box-shadow:0 3px 12px rgba(0,0,0,.14); z-index:2; }
 .solar-title { display:flex; align-items:center; gap:12px; }
@@ -13,6 +33,7 @@
 .solar-footer ::ng-deep .city-picker { position:relative; padding:0; border:0; }
 .solar-footer ::ng-deep .city-results { position:absolute; bottom:100%; left:0; right:0; z-index:4; box-shadow:0 -4px 20px rgba(0,0,0,.18); }
 .solar-footer ::ng-deep .city-status, .solar-footer ::ng-deep .city-selected { margin:2px 0 0; }
+.solar-footer input { min-width:0; max-width:180px; padding:5px 7px; border:1px solid var(--vs-border); border-radius:6px; color:var(--vs-text); background:var(--vs-surface); }
 .solar-place { display:flex; flex-direction:column; gap:2px; font-size:12px; min-width:180px; }.solar-place span { color:var(--vs-text-secondary); }
 .solar-privacy { position:absolute; right:8px; bottom:72px; z-index:500; max-width:260px; margin:0; padding:5px; font-size:10px; background:var(--vs-surface); color:var(--vs-text-secondary); opacity:.85; }
 .returns-panel { display:flex; flex-direction:column; gap:10px; padding:12px; margin-bottom:16px;

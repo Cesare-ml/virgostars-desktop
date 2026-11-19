@@ -29,6 +29,7 @@ const REVIEWED_CONFIG = {
             index: 'src/index.html',
             styles: ['src/styles.css'],
             tsConfig: 'tsconfig.app.json',
+            preserveSymlinks: true,
             outputPath: 'dist/desktop',
             assets: [{ glob: '**/*', input: '.local/frontend/assets', output: 'assets' }],
             optimization: {

@@ -13,7 +13,8 @@ The preference stores only a mode and the identity of a saved chart, on this dev
 
 ## Structure
 
-- **Chart first.** No top bar, header or footer. The wheel is as tall as the window (99 % at 1360×880, 98.9 % at 1280×720 and 1100×700, 99.3 % at 1920×1080). Zoom, fit, refresh, save and PNG export float over the empty corners; the title and the chart's date and place sit in the top corners. The device clock is not displayed in the chart toolbar.
+- The left menu uses the supplied SVG navigation icons; they remain visible in the collapsed navigation and are decorative to screen readers.
+- **Chart first.** The chart controls occupy a compact scrollable column to the right of the wheel, leaving its full height available. The wheel uses the available stage with a small safety margin. The latitude renderer uses a slightly wider camera framing so its contents fit. Gauquelin sectors are temporarily hidden. The device clock is not displayed in the chart toolbar. Fixed stars are turned on and off with the same button; the selected star's card displays its available details and link.
 - **Left menu** (folds to an icon rail by itself when the centre column would be narrower than the window is tall, until the user decides): *Nuovo tema*, *Archivio*; *Cielo del momento* and the four chart modes; *Info pianeti*, *Aspetti*; *Funzioni*, *Impostazioni*; language and light/dark; the licence attribution.
 - **New chart** and **Archive** are two separate panels over the chart ([Chart archive](CHART_ARCHIVE.md)).
 - **Right panel**, no tab strip: the left menu (or the *Info pianeti* button on the chart) chooses what it shows, and its title says which.

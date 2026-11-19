@@ -10,7 +10,7 @@ VirgoStars Desktop is an offline-first workstation in development. It combines a
 
 ## What works today
 
-- Desktop-owned Angular UI with responsive navigation, light/dark modes and Italian/English labels. Language follows the WebView's system language by default (English fallback); language and theme overrides are in Settings. The account panel currently reports that login and sync are unavailable.
+- Desktop-owned Angular UI with responsive navigation, light/dark modes and Italian/English labels. Language follows the WebView's system language by default (English fallback); language and theme overrides are in Settings. The welcome screen offers account access and remembers the choice to work locally. Local owner builds enable connected-account and persistent-session features; the backend has been enabled, while the Desktop build still needs end-to-end verification with a real account ([details](docs/OFFLINE_AUTH_AND_SYNC.md)).
 - Integration adapter for the independently developed [Astrological Charts](https://github.com/Cesare-ml/astrological-charts) renderer, using locally generated synthetic assets.
 - Prototype Tauri/Rust runtime and an experimental offline location picker.
 - Synthetic-only build checks, unit tests, and read-only prerequisite diagnostics.

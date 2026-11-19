@@ -9,15 +9,17 @@
  */
 export type ConnectedAccountOperation =
   | Readonly<{ operation: 'start' }>
+  | Readonly<{ operation: 'restore' }>
   | Readonly<{ operation: 'status'; attemptId: string }>
   | Readonly<{ operation: 'cancel'; attemptId: string }>
-  | Readonly<{ operation: 'disconnect'; attemptId: string }>;
+  | Readonly<{ operation: 'disconnect'; attemptId: string }>
+  | Readonly<{ operation: 'signout'; attemptId: string }>;
 
 export type ConnectedAccountResult =
-  | Readonly<{ kind: 'disabled' | 'not_native' | 'native_unavailable' }>
+  | Readonly<{ kind: 'disabled' | 'not_native' | 'native_unavailable' | 'idle' }>
   | Readonly<{ kind: 'pending'; attemptId: string; expiresInSeconds: number }>
-  | Readonly<{ kind: 'connected'; attemptId: string; scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | 'chart_sync:read chart_sync:charts:write' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:write' }>
-  | Readonly<{ kind: 'denied' | 'expired' | 'cancelled' | 'disconnected' | 'failed'; attemptId: string }>;
+  | Readonly<{ kind: 'connected'; attemptId: string; scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | 'chart_sync:read chart_sync:charts:write' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:write'; persistent?: boolean }>
+  | Readonly<{ kind: 'denied' | 'expired' | 'offline' | 'cancelled' | 'disconnected' | 'failed'; attemptId: string }>;
 
 export interface ConnectedAccountTransport {
   isNative(): boolean;
@@ -63,11 +65,14 @@ export function decodeConnectedAccountResponse(
   if (status === 'disabled' && exactKeys(raw, ['protocolVersion', 'status'])) {
     return Object.freeze({kind: 'disabled'});
   }
+  if (status === 'idle' && operation.operation === 'restore' && exactKeys(raw, ['protocolVersion', 'status'])) {
+    return Object.freeze({kind:'idle'});
+  }
   const attemptId = ownData(raw, 'attemptId');
   if (typeof attemptId !== 'string' || !ID.test(attemptId) ||
-      (operation.operation !== 'start' && attemptId !== operation.attemptId)) throw new Error(ERROR);
+      (operation.operation !== 'start' && operation.operation !== 'restore' && attemptId !== operation.attemptId)) throw new Error(ERROR);
 
-  if (status === 'pending' && (operation.operation === 'start' || operation.operation === 'status') &&
+  if (status === 'pending' && (operation.operation === 'start' || operation.operation === 'restore' || operation.operation === 'status') &&
       exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'expiresInSeconds'])) {
     const seconds = ownData(raw, 'expiresInSeconds');
     if (typeof seconds === 'number' && Number.isSafeInteger(seconds) && seconds >= 1 && seconds <= 600) {
@@ -75,15 +80,19 @@ export function decodeConnectedAccountResponse(
     }
   }
   if (status === 'connected' && operation.operation === 'status' &&
-      exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'scope'])) {
+      (exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'scope']) ||
+       exactKeys(raw, ['protocolVersion', 'status', 'attemptId', 'scope', 'persistent']))) {
     const scope = ownData(raw, 'scope');
+    const hasPersistence = Object.hasOwn(raw,'persistent');
+    const persistence = hasPersistence ? ownData(raw,'persistent') : undefined;
+    if (hasPersistence && typeof persistence !== 'boolean') throw new Error(ERROR);
     if (scope === 'chart_sync:read' || scope === 'chart_sync:read chart_sync:groups:write' || scope === 'chart_sync:read chart_sync:charts:write' || scope === 'chart_sync:read chart_sync:groups:write chart_sync:charts:write') {
-      return Object.freeze({kind: 'connected', attemptId, scope});
+      return Object.freeze({kind: 'connected', attemptId, scope, ...(typeof persistence === 'boolean' ? {persistent:persistence} : {})});
     }
   }
-  if (status === 'denied' || status === 'expired' || status === 'cancelled' || status === 'disconnected' || status === 'failed') {
+  if (status === 'denied' || status === 'expired' || status === 'offline' || status === 'cancelled' || status === 'disconnected' || status === 'failed') {
     const allowed = status === 'cancelled' ? (operation.operation === 'cancel' || operation.operation === 'status')
-      : status === 'disconnected' ? (operation.operation === 'disconnect' || operation.operation === 'status') : operation.operation === 'status';
+      : status === 'disconnected' ? (operation.operation === 'disconnect' || operation.operation === 'signout' || operation.operation === 'status') : operation.operation === 'status';
     if (allowed && exactKeys(raw, ['protocolVersion', 'status', 'attemptId'])) {
       return Object.freeze({kind: status, attemptId});
     }
@@ -104,13 +113,13 @@ export async function requestConnectedAccount(
   if (options.enabled !== true) return {kind: 'disabled'};
   try {
     if (!transport.isNative()) return {kind: 'not_native'};
-    if (operation.operation !== 'start' &&
+    if (operation.operation !== 'start' && operation.operation !== 'restore' &&
         (typeof operation.attemptId !== 'string' || !ID.test(operation.attemptId))) return {kind: 'native_unavailable'};
-    if (operation.operation !== 'start' && operation.operation !== 'status' && operation.operation !== 'cancel' && operation.operation !== 'disconnect') {
+    if (operation.operation !== 'start' && operation.operation !== 'restore' && operation.operation !== 'status' && operation.operation !== 'cancel' && operation.operation !== 'disconnect' && operation.operation !== 'signout') {
       return {kind: 'native_unavailable'};
     }
-    const request = operation.operation === 'start'
-      ? {protocolVersion: 1 as const, operation: 'start'}
+    const request = operation.operation === 'start' || operation.operation === 'restore'
+      ? {protocolVersion: 1 as const, operation: operation.operation}
       : {protocolVersion: 1 as const, operation: operation.operation, attemptId: operation.attemptId};
     const raw = await transport.invoke('desktop_connected_account_v1', {request});
     return decodeConnectedAccountResponse(raw, operation);

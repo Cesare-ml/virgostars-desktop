@@ -8,11 +8,29 @@ const pending = {protocolVersion: 1, status: 'pending', attemptId: ATTEMPT, expi
 const connected = {protocolVersion: 1, status: 'connected', attemptId: ATTEMPT, scope: 'chart_sync:read'};
 const native = response => ({isNative: () => true, invoke: async () => response});
 
+test('restore and signout exchange only public status, never credentials', async () => {
+  const calls=[];
+  const transport={isNative:()=>true,invoke:async (_,args)=>{
+    calls.push(args.request);
+    if (args.request.operation==='restore') return {protocolVersion:1,status:'idle'};
+    return {protocolVersion:1,status:'disconnected',attemptId:ATTEMPT};
+  }};
+  assert.deepEqual(await requestConnectedAccount(transport,{operation:'restore'},{enabled:true}),{kind:'idle'});
+  assert.deepEqual(await requestConnectedAccount(transport,{operation:'signout',attemptId:ATTEMPT},{enabled:true}),
+    {kind:'disconnected',attemptId:ATTEMPT});
+  assert.deepEqual(calls,[{protocolVersion:1,operation:'restore'},{protocolVersion:1,operation:'signout',attemptId:ATTEMPT}]);
+  assert.equal(decodeConnectedAccountResponse({protocolVersion:1,status:'offline',attemptId:ATTEMPT},
+    {operation:'status',attemptId:ATTEMPT}).kind,'offline');
+  assert.throws(()=>decodeConnectedAccountResponse({protocolVersion:1,status:'idle',token:'secret'}, {operation:'restore'}));
+});
+
 test('v1 connected schema and decoder agree on fields and backend scope', () => {
   const schema = JSON.parse(readFileSync(new URL('../contracts/connected-account-status.v1.schema.json', import.meta.url), 'utf8'));
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual(Object.keys(connected).sort(), [...schema.required].sort());
-  assert.deepEqual(Object.keys(schema.properties).sort(), [...schema.required].sort());
+  assert.deepEqual(Object.keys(schema.properties).sort(), [...schema.required, 'persistent'].sort());
+  assert.equal(decodeConnectedAccountResponse({...connected,persistent:true}, {operation:'status',attemptId:ATTEMPT}).persistent,true);
+  assert.throws(()=>decodeConnectedAccountResponse({...connected,persistent:'yes'}, {operation:'status',attemptId:ATTEMPT}));
   assert.ok(schema.properties.scope.enum.includes(connected.scope));
   assert.match(connected.attemptId, new RegExp(schema.properties.attemptId.pattern));
   assert.equal(schema.properties.protocolVersion.const, connected.protocolVersion);

@@ -46,6 +46,7 @@ test('configuration structure and dev server cannot silently expand', () => {
     c => { c.projects.desktop.architect.serve.options.host = '0.0.0.0'; },
     c => { c.projects.desktop.architect.build.defaultConfiguration = 'private-artwork'; },
     c => { c.projects.desktop.architect.build.options.subresourceIntegrity = true; },
+    c => { c.projects.desktop.architect.build.options.preserveSymlinks = false; },
   ]) { const c = copy(); change(c); invalid(c); }
   invalid(null); invalid({}); invalid([]);
 });

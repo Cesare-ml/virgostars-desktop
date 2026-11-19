@@ -10,7 +10,7 @@ const memory = (initial = {}) => {
   return {data, getItem: key => data[key] ?? null, setItem: (key, value) => { data[key] = value; }};
 };
 
-test('defaults are the ones Regolo starts with', () => {
+test('defaults include aspects for visible outer planets and points', () => {
   const settings = defaultChartSettings();
   assert.equal(settings.showAspects, true);
   const active = ASPECT_DEFINITIONS.filter(({id}) => settings.aspects[id].active).map(({id}) => id);
@@ -19,8 +19,7 @@ test('defaults are the ones Regolo starts with', () => {
   assert.deepEqual([settings.aspects.quintile.orb, settings.aspects.semiquadrato.orb, settings.aspects.quinconce.orb], [3, 3, 2]);
   for (const id of POINT_IDS) assert.equal(settings.points[id].orb, 6, id);
   assert.deepEqual(settings.points.Sun, {shown: true, orb: 6, aspects: true});
-  // Trans-Saturnians and Chiron are drawn but not aspected; mean points are hidden.
-  for (const id of ['Uranus', 'Neptune', 'Pluto', 'Chiron']) assert.deepEqual(settings.points[id], {shown: true, orb: 6, aspects: false}, id);
+  for (const id of ['Uranus', 'Neptune', 'Pluto', 'Chiron']) assert.deepEqual(settings.points[id], {shown: true, orb: 6, aspects: true}, id);
   for (const id of ['mean Node', 'mean Apogee']) assert.deepEqual(settings.points[id], {shown: false, orb: 6, aspects: false}, id);
   for (const id of ['true Node', 'osc. Apogee', 'AS', 'MC']) assert.deepEqual(settings.points[id], {shown: true, orb: 6, aspects: true}, id);
 });
@@ -96,12 +95,27 @@ test('unknown versions, damaged text and failing storage use defaults without th
   const defaults = defaultChartSettings();
   assert.deepEqual(loadChartSettings(null), defaults);
   assert.deepEqual(loadChartSettings(memory({[CHART_SETTINGS_KEY]: '{not json'})), defaults);
-  assert.deepEqual(loadChartSettings(memory({[CHART_SETTINGS_KEY]: JSON.stringify({version: 2, settings: {showAspects: false}})})), defaults);
+  assert.deepEqual(loadChartSettings(memory({[CHART_SETTINGS_KEY]: JSON.stringify({version: 99, settings: {showAspects: false}})})), defaults);
   assert.deepEqual(loadChartSettings(memory({[CHART_SETTINGS_KEY]: 'x'.repeat(9000)})), defaults);
   const throwing = {getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('quota'); }};
   assert.deepEqual(loadChartSettings(throwing), defaults);
   assert.equal(saveChartSettings(throwing, defaults), false);
   assert.equal(saveChartSettings(null, defaults), false);
+});
+
+test('old four-planet defaults upgrade once while mixed choices remain unchanged', () => {
+  const legacy = defaultChartSettings();
+  for (const id of ['Uranus','Neptune','Pluto','Chiron']) legacy.points[id].aspects = false;
+  const storage = memory({[CHART_SETTINGS_KEY]:JSON.stringify({version:1,settings:legacy})});
+  const upgraded = loadChartSettings(storage);
+  for (const id of ['Uranus','Neptune','Pluto','Chiron']) assert.equal(upgraded.points[id].aspects,true);
+  assert.equal(JSON.parse(storage.data[CHART_SETTINGS_KEY]).version,2);
+  upgraded.points.Uranus.aspects = false;
+  saveChartSettings(storage,upgraded);
+  assert.equal(loadChartSettings(storage).points.Uranus.aspects,false);
+  legacy.points.Uranus.aspects = true;
+  const customized = loadChartSettings(memory({[CHART_SETTINGS_KEY]:JSON.stringify({version:1,settings:legacy})}));
+  assert.equal(customized.points.Neptune.aspects,false);
 });
 
 test('typed orbs accept one decimal with point or comma; empty means none', () => {

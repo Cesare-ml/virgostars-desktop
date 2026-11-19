@@ -45,7 +45,7 @@ export class ElementsViewComponent implements OnChanges {
   @Input() aspects: readonly AspectRow[] = [];
   @Input() presentation: 'elements'|'aspects' = 'elements';
   @Input() showDodecatemoria = false;
-  @Input() showTransaturnians = false;
+  @Input() showTransaturnians = true;
   @Output() readonly toggleDodecatemoria = new EventEmitter<void>();
   @Output() readonly toggleTransaturnians = new EventEmitter<void>();
 

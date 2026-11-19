@@ -14,6 +14,11 @@ mod pkce_loopback;
 mod system_browser;
 // Native-only, transport-injected staging token exchange; not an IPC command.
 mod pkce_token_exchange;
+// Isolated secure-storage primitive; not yet wired to the live login flow.
+mod refresh_credential_store;
+mod refresh_cycle;
+#[cfg(feature = "persistent-connected-account")]
+mod persistent_transport;
 // Compiled for native tests; not connected to an IPC command or login flow.
 mod pkce_reqwest_https;
 // Native-only staging login flow coordinator; intentionally not Tauri IPC.

@@ -5,6 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {existsSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {withLocalOwnerFeatures} from './local-owner-features.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const catalog = join(root,'.local','ephemeris','fixed-stars.json');
 const env = {...process.env};
@@ -21,17 +22,7 @@ if (existsSync(catalog)) {
 }
 // Local owner builds explicitly include the reviewed production account bridge.
 // The public synthetic build retains the default-disabled native feature.
-const args = process.argv.slice(2);
-const featureIndex = args.indexOf('--features');
-const featureAssignment = args.findIndex(arg => arg.startsWith('--features='));
-if (featureIndex >= 0) {
-  if (!args[featureIndex + 1]) throw new Error('Missing value for --features');
-  args[featureIndex + 1] += ',production-connected-account';
-} else if (featureAssignment >= 0) {
-  args[featureAssignment] += ',production-connected-account';
-} else {
-  args.push('--features', 'production-connected-account');
-}
+const args = withLocalOwnerFeatures(process.argv.slice(2));
 const result=spawnSync(process.execPath,[join(root,'node_modules','@tauri-apps','cli','tauri.js'),...args],{cwd:root,env,stdio:'inherit'});
 if (result.error) throw result.error;
 process.exitCode=result.status ?? 1;

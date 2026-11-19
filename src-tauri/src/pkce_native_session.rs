@@ -20,6 +20,7 @@ pub enum NativeLoginPhase {
     Denied,
     Cancelled,
     Expired,
+    Offline,
     Disconnected,
 }
 
@@ -31,6 +32,7 @@ pub struct NativeLoginSnapshot {
     pub phase: NativeLoginPhase,
     pub remaining_seconds: u64,
     pub scope: Option<TokenScope>,
+    pub persistent: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +48,7 @@ enum SecretState {
     Denied,
     Cancelled,
     Expired,
+    Offline,
     Disconnected,
 }
 
@@ -56,13 +59,18 @@ pub struct NativeLoginSession {
     cancellation: LoginCancelHandle,
     state: Arc<Mutex<SecretState>>,
     deadline: Instant,
+    #[cfg(feature = "persistent-connected-account")]
+    owns_credential: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl NativeLoginSession {
+    #[cfg(feature = "persistent-connected-account")]
+    pub(crate) fn attempt_id(&self) -> &str { &self.attempt_id }
     #[cfg(test)]
     pub(crate) fn synthetic_connected_for_test(attempt_id: &str, grant: NativeAccessGrant) -> Self {
         Self {attempt_id:attempt_id.into(),cancellation:LoginCancelHandle::synthetic_for_test(),
-            state:Arc::new(Mutex::new(SecretState::Connected(grant))),deadline:Instant::now()+Duration::from_secs(60)}
+            state:Arc::new(Mutex::new(SecretState::Connected(grant))),deadline:Instant::now()+Duration::from_secs(60),
+            #[cfg(feature = "persistent-connected-account")] owns_credential:Arc::new(std::sync::atomic::AtomicBool::new(false))}
     }
     /// `start` opens the already allowlisted consent page and immediately
     /// schedules a dedicated Rust worker. Do not invoke on an async executor;
@@ -78,6 +86,14 @@ impl NativeLoginSession {
         B: SystemBrowserOpener,
         T: TokenHttpTransport + Send + 'static,
     {
+        #[cfg(all(feature = "persistent-connected-account", not(test)))]
+        {
+            use crate::refresh_credential_store::RefreshCredentialStore;
+            if crate::refresh_credential_store::OsRefreshCredentialStore.load()
+                .map_err(|_|NativeSessionStartError::WorkerUnavailable)?.is_some() {
+                return Err(NativeSessionStartError::WorkerUnavailable);
+            }
+        }
         if max_wait.is_zero() || max_wait > Duration::from_secs(600) {
             return Err(NativeSessionStartError::WorkerUnavailable);
         }
@@ -92,6 +108,12 @@ impl NativeLoginSession {
         let state = Arc::new(Mutex::new(SecretState::Pending));
         let state_for_worker = Arc::clone(&state);
         let cancel_if_spawn_fails = cancellation.clone();
+        #[cfg(feature = "persistent-connected-account")]
+        let owns_credential = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        #[cfg(feature = "persistent-connected-account")]
+        let owns_for_worker = Arc::clone(&owns_credential);
+        #[cfg(feature = "persistent-connected-account")]
+        let endpoint_for_worker = token_endpoint.to_owned();
 
         // No JoinHandle is retained on the UI: dropping it detaches the
         // bounded worker. Shared state and the cancel handle remain owned by
@@ -99,15 +121,36 @@ impl NativeLoginSession {
         thread::Builder::new()
             .name("virgostars-staging-pkce".to_owned())
             .spawn(move || {
-                let outcome = attempt.wait_and_exchange(&transport, deadline.saturating_duration_since(Instant::now()));
+                let mut outcome = Some(attempt.wait_and_exchange(&transport, deadline.saturating_duration_since(Instant::now())));
                 if let Ok(mut current) = state_for_worker.lock() {
                     // Explicit disconnect/drop wins even when the backend
                     // response arrives after the native owner has gone away.
                     if matches!(*current, SecretState::Pending) {
                         *current = if Instant::now() >= deadline {
                             SecretState::Expired
-                        } else { match outcome {
-                            Ok(grant) => SecretState::Connected(grant),
+                        } else { match outcome.take().expect("one login outcome") {
+                            Ok(grant) => {
+                                #[cfg(feature = "persistent-connected-account")]
+                                {
+                                    use crate::refresh_credential_store::RefreshCredentialStore;
+                                    let mut grant = grant;
+                                    match grant.take_refresh_credential() {
+                                        Some(credential) if crate::refresh_credential_store::OsRefreshCredentialStore.store(&credential).is_ok() => {
+                                            owns_for_worker.store(true, std::sync::atomic::Ordering::SeqCst);
+                                            SecretState::Connected(grant)
+                                        },
+                                        Some(credential) => {
+                                            if let Ok(http) = crate::persistent_transport::PersistentTransport::new(&transport, &endpoint_for_worker) {
+                                                let _ = http.revoke_unstored(&credential);
+                                            }
+                                            SecretState::Failed
+                                        },
+                                        None => SecretState::Connected(grant),
+                                    }
+                                }
+                                #[cfg(not(feature = "persistent-connected-account"))]
+                                { SecretState::Connected(grant) }
+                            },
                             Err(StagingLoginError::Cancelled) => SecretState::Cancelled,
                             Err(StagingLoginError::Listener(LoopbackError::Expired)) => SecretState::Expired,
                             Err(StagingLoginError::TokenExchange(TokenExchangeError::Denied)) => SecretState::Denied,
@@ -115,28 +158,131 @@ impl NativeLoginSession {
                         }};
                     }
                 }
+                #[cfg(feature = "persistent-connected-account")]
+                if let Some(Ok(mut grant)) = outcome {
+                    if let Some(credential) = grant.take_refresh_credential() {
+                        if let Ok(http) = crate::persistent_transport::PersistentTransport::new(&transport, &endpoint_for_worker) {
+                            let _ = http.revoke_unstored(&credential);
+                        }
+                    }
+                }
                 // Expiry must clear the token even if the WebView is frozen
                 // or never asks for another status snapshot.
-                loop {
-                    let Ok(mut current) = state_for_worker.lock() else { break; };
-                    match &*current {
-                        SecretState::Connected(grant) if grant.remaining_seconds(Instant::now()) == 0 => {
-                            *current = SecretState::Expired;
-                            break;
-                        }
-                        SecretState::Connected(_) => {},
-                        _ => break,
-                    }
-                    drop(current);
-                    thread::sleep(Duration::from_millis(250));
-                }
+                #[cfg(feature = "persistent-connected-account")]
+                if owns_for_worker.load(std::sync::atomic::Ordering::SeqCst) {
+                    Self::persistent_loop(&state_for_worker, &transport, &endpoint_for_worker);
+                } else { Self::ephemeral_loop(&state_for_worker); }
+                #[cfg(not(feature = "persistent-connected-account"))]
+                Self::ephemeral_loop(&state_for_worker);
             })
             .map_err(|_| {
                 cancel_if_spawn_fails.cancel();
                 NativeSessionStartError::WorkerUnavailable
             })?;
 
-        Ok(Self {attempt_id, cancellation, state, deadline})
+        Ok(Self {attempt_id, cancellation, state, deadline,
+            #[cfg(feature = "persistent-connected-account")] owns_credential})
+    }
+
+    fn ephemeral_loop(state: &Arc<Mutex<SecretState>>) {
+        loop {
+            let Ok(mut current) = state.lock() else { break; };
+            match &*current {
+                SecretState::Connected(grant) if grant.remaining_seconds(Instant::now()) == 0 => {
+                    *current = SecretState::Expired; break;
+                }
+                SecretState::Connected(_) => {},
+                _ => break,
+            }
+            drop(current);
+            thread::sleep(Duration::from_millis(250));
+        }
+    }
+
+    #[cfg(feature = "persistent-connected-account")]
+    fn persistent_loop<T: TokenHttpTransport>(state: &Arc<Mutex<SecretState>>, transport: &T, endpoint: &str) {
+        use crate::refresh_credential_store::OsRefreshCredentialStore;
+        loop {
+            let Ok(mut current) = state.lock() else { break; };
+            let SecretState::Connected(grant) = &*current else { break; };
+            if grant.remaining_seconds(Instant::now()) > 60 {
+                drop(current);
+                thread::sleep(Duration::from_secs(1));
+                continue;
+            }
+            let expected_profile = grant.profile_ref().map(str::to_owned);
+            let Ok(http) = crate::persistent_transport::PersistentTransport::new(transport, endpoint) else {
+                *current = SecretState::Failed; break;
+            };
+            let rotated = crate::refresh_cycle::refresh_once(&OsRefreshCredentialStore, &http);
+            if matches!(&rotated,Err(crate::refresh_cycle::RefreshError::Offline)) {
+                *current = SecretState::Offline; break;
+            }
+            let refreshed = rotated.ok().and_then(|mut next| {
+                    let profile = transport.verify_grant(&http.endpoint, &next).ok()?;
+                    if Some(profile.as_str()) != expected_profile.as_deref() { return None; }
+                    next.bind_profile(profile).ok()?;
+                    Some(next)
+                });
+            match refreshed { Some(next) => *current = SecretState::Connected(next),
+                None => { *current = SecretState::Expired; break; } }
+        }
+    }
+
+    /// Restores only an OS-stored credential. No browser or identity is taken
+    /// from the WebView. An uncertain prior rotation is never replayed.
+    #[cfg(feature = "persistent-connected-account")]
+    pub fn restore<T: TokenHttpTransport + Send + 'static>(transport: T, endpoint: &str) -> Result<Option<Self>, NativeSessionStartError> {
+        use crate::refresh_credential_store::{OsRefreshCredentialStore, RefreshCredentialStore};
+        let stored = OsRefreshCredentialStore.load().map_err(|_|NativeSessionStartError::WorkerUnavailable)?;
+        let Some(stored) = stored else { return Ok(None); };
+        if stored.revoke_pending() {
+            let http = crate::persistent_transport::PersistentTransport::new(&transport, endpoint)
+                .map_err(|_|NativeSessionStartError::WorkerUnavailable)?;
+            http.revoke(&OsRefreshCredentialStore).map_err(|_|NativeSessionStartError::WorkerUnavailable)?;
+            return Ok(None);
+        }
+        let attempt_id = crate::pkce_login::random_uuid_v4().map_err(|_|NativeSessionStartError::WorkerUnavailable)?;
+        let cancellation = LoginCancelHandle::for_restore();
+        let worker_cancel = cancellation.clone();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let state = Arc::new(Mutex::new(SecretState::Pending));
+        let worker_state = Arc::clone(&state);
+        let endpoint = endpoint.to_owned();
+        thread::Builder::new().name("virgostars-restore".into()).spawn(move || {
+            let Ok(mut current) = worker_state.lock() else { return; };
+            if worker_cancel.is_cancelled() { *current = SecretState::Cancelled; return; }
+            let Ok(http) = crate::persistent_transport::PersistentTransport::new(&transport, &endpoint) else {
+                *current = SecretState::Failed; return;
+            };
+            let rotated = crate::refresh_cycle::refresh_once(&OsRefreshCredentialStore, &http);
+            if matches!(&rotated,Err(crate::refresh_cycle::RefreshError::Offline)) {
+                *current = SecretState::Offline; return;
+            }
+            let result = rotated.ok().and_then(|mut grant| {
+                let profile = transport.verify_grant(&http.endpoint, &grant).ok()?;
+                grant.bind_profile(profile).ok()?;
+                Some(grant)
+            });
+            if worker_cancel.is_cancelled() { *current = SecretState::Cancelled; return; }
+            match result {
+                Some(grant) if worker_cancel.finish_success() => *current = SecretState::Connected(grant),
+                _ => { *current = SecretState::Expired; return; }
+            }
+            drop(current);
+            Self::persistent_loop(&worker_state, &transport, &endpoint);
+        }).map_err(|_|NativeSessionStartError::WorkerUnavailable)?;
+        Ok(Some(Self {attempt_id, cancellation, state, deadline,
+            owns_credential:Arc::new(std::sync::atomic::AtomicBool::new(true))}))
+    }
+
+    #[cfg(feature = "persistent-connected-account")]
+    pub fn revoke<T: TokenHttpTransport>(&self, transport: &T, endpoint: &str) -> Result<(), ()> {
+        let mut current = self.state.lock().map_err(|_|())?;
+        *current = SecretState::Disconnected;
+        if !self.owns_credential.load(std::sync::atomic::Ordering::SeqCst) { return Ok(()); }
+        crate::persistent_transport::PersistentTransport::new(transport, endpoint)?
+            .revoke(&crate::refresh_credential_store::OsRefreshCredentialStore)
     }
 
     pub fn snapshot(&self) -> NativeLoginSnapshot {
@@ -148,6 +294,7 @@ impl NativeLoginSession {
                 phase: NativeLoginPhase::Failed,
                 remaining_seconds: 0,
                 scope: None,
+                persistent: false,
             },
         };
         let (phase, remaining_seconds) = match &*state {
@@ -176,10 +323,15 @@ impl NativeLoginSession {
             SecretState::Denied => (NativeLoginPhase::Denied, 0),
             SecretState::Cancelled => (NativeLoginPhase::Cancelled, 0),
             SecretState::Expired => (NativeLoginPhase::Expired, 0),
+            SecretState::Offline => (NativeLoginPhase::Offline, 0),
             SecretState::Disconnected => (NativeLoginPhase::Disconnected, 0),
         };
         let scope = match &*state { SecretState::Connected(grant) => Some(grant.scope()), _ => None };
-        NativeLoginSnapshot {attempt_id:self.attempt_id.clone(), phase, remaining_seconds, scope}
+        #[cfg(feature = "persistent-connected-account")]
+        let persistent = phase == NativeLoginPhase::Connected && self.owns_credential.load(std::sync::atomic::Ordering::SeqCst);
+        #[cfg(not(feature = "persistent-connected-account"))]
+        let persistent = false;
+        NativeLoginSnapshot {attempt_id:self.attempt_id.clone(), phase, remaining_seconds, scope, persistent}
     }
 
     pub(crate) fn copy_active_grant(&self) -> Option<NativeAccessGrant> {
@@ -302,6 +454,49 @@ mod tests {
             });
             Ok(())
         }
+    }
+
+    #[cfg(feature = "persistent-connected-account")]
+    #[test]
+    fn persistent_login_reopens_and_explicit_signout_clears_the_credential() {
+        use crate::refresh_credential_store::{OsRefreshCredentialStore, RefreshCredentialStore};
+        let store=OsRefreshCredentialStore;
+        store.delete().unwrap();
+        struct PersistentFake;
+        impl TokenHttpTransport for PersistentFake {
+            fn post_form(&self, _: &Url, body:&str, _:Duration, _:usize) -> Result<TokenHttpResponse,()> {
+                let pairs:Vec<_>=url::form_urlencoded::parse(body.as_bytes()).collect();
+                let operation=pairs.iter().find(|(key,_)|key=="grant_type").ok_or(())?.1.as_ref();
+                let body=if operation=="revoke" {r#"{"status":"revoked"}"#.to_owned()} else {
+                    let refresh=if operation=="authorization_code" {"a".repeat(43)} else {"b".repeat(43)};
+                    let jwt=format!("{}.{}.{}","a".repeat(43),"b".repeat(43),"c".repeat(100));
+                    format!(r#"{{"token_type":"Bearer","access_token":"{jwt}","expires_in":900,"scope":"chart_sync:read","refresh_token":"{refresh}"}}"#)
+                };
+                Ok(TokenHttpResponse {status:200,content_type:"application/json".into(),body:body.into_bytes()})
+            }
+            fn verify_grant(&self,_:&Url,_:&NativeAccessGrant)->Result<String,()> {
+                Ok("44444444-4444-4444-8444-444444444444".into())
+            }
+        }
+        fn await_connected(session:&NativeLoginSession) {
+            let limit=Instant::now()+Duration::from_secs(3);
+            loop {
+                let phase=session.snapshot().phase;
+                if phase==NativeLoginPhase::Connected {break;}
+                assert_eq!(phase,NativeLoginPhase::Pending);
+                assert!(Instant::now()<limit);
+                thread::sleep(Duration::from_millis(10));
+            }
+        }
+        let first=NativeLoginSession::start(&CallbackBrowser,PersistentFake,CONSENT,TOKEN,Duration::from_secs(3)).unwrap();
+        await_connected(&first);
+        assert!(store.load().unwrap().is_some());
+        drop(first);
+        assert!(store.load().unwrap().is_some());
+        let restored=NativeLoginSession::restore(PersistentFake,TOKEN).unwrap().unwrap();
+        await_connected(&restored);
+        restored.revoke(&PersistentFake,TOKEN).unwrap();
+        assert!(store.load().unwrap().is_none());
     }
 
     #[test]

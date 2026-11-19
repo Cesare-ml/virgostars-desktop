@@ -47,6 +47,8 @@ const LOGIN_COMPLETED: u8 = 2;
 pub struct LoginCancelHandle { state: Arc<AtomicU8> }
 
 impl LoginCancelHandle {
+    #[cfg(feature = "persistent-connected-account")]
+    pub(crate) fn for_restore() -> Self { Self {state:Arc::new(AtomicU8::new(LOGIN_ACTIVE))} }
     #[cfg(test)]
     pub(crate) fn synthetic_for_test() -> Self { Self {state:Arc::new(AtomicU8::new(LOGIN_ACTIVE))} }
     /// Cancellation wins only if no native success has been committed yet.

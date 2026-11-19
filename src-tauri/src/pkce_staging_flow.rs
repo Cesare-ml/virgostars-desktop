@@ -12,6 +12,15 @@ use crate::pkce_token_exchange::{
 use std::time::{Duration, Instant};
 use url::Url;
 
+#[cfg(feature = "persistent-connected-account")]
+fn revoke_discarded<T: TokenHttpTransport>(transport: &T, endpoint: &Url, grant: &mut NativeAccessGrant) {
+    if let Some(credential) = grant.take_refresh_credential() {
+        if let Ok(http) = crate::persistent_transport::PersistentTransport::new(transport, endpoint.as_str()) {
+            let _ = http.revoke_unstored(&credential);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StagingLoginError {
     InvalidEndpoint,
@@ -75,16 +84,36 @@ impl StagingLoginAttempt {
             result,
             Instant::now(),
         ).map_err(StagingLoginError::TokenExchange)?;
-        if self.cancellation.is_cancelled() { return Err(StagingLoginError::Cancelled); }
-        let profile_ref = transport.verify_grant(&self.token_endpoint, &grant)
-            .map_err(|_| StagingLoginError::TokenExchange(TokenExchangeError::Rejected))?;
-        grant.bind_profile(profile_ref).map_err(|_| StagingLoginError::TokenExchange(TokenExchangeError::Rejected))?;
+        if self.cancellation.is_cancelled() {
+            #[cfg(feature = "persistent-connected-account")]
+            revoke_discarded(transport, &self.token_endpoint, &mut grant);
+            return Err(StagingLoginError::Cancelled);
+        }
+        let profile_ref = match transport.verify_grant(&self.token_endpoint, &grant) {
+            Ok(profile) => profile,
+            Err(_) => {
+                #[cfg(feature = "persistent-connected-account")]
+                revoke_discarded(transport, &self.token_endpoint, &mut grant);
+                return Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected));
+            }
+        };
+        if grant.bind_profile(profile_ref).is_err() {
+            #[cfg(feature = "persistent-connected-account")]
+            revoke_discarded(transport, &self.token_endpoint, &mut grant);
+            return Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected));
+        }
         if grant.remaining_seconds(Instant::now()) == 0 {
+            #[cfg(feature = "persistent-connected-account")]
+            revoke_discarded(transport, &self.token_endpoint, &mut grant);
             return Err(StagingLoginError::TokenExchange(TokenExchangeError::Rejected));
         }
         // Atomic finalization: if cancellation wins the race, the token is
         // dropped/zeroized. If completion wins, later cancellation is inert.
-        if !self.cancellation.finish_success() { return Err(StagingLoginError::Cancelled); }
+        if !self.cancellation.finish_success() {
+            #[cfg(feature = "persistent-connected-account")]
+            revoke_discarded(transport, &self.token_endpoint, &mut grant);
+            return Err(StagingLoginError::Cancelled);
+        }
         Ok(grant)
     }
 }

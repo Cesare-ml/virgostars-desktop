@@ -1,3 +1,19 @@
+<section *ngIf="kind==='solar' && showControls && !mapOpen" class="solar-controls" [attr.aria-label]="t(titleKey)">
+  <header class="solar-controls-head"><span class="solar-controls-icon" aria-hidden="true">☼</span><div><strong>{{t(titleKey)}}</strong><small *ngIf="radix.name">{{radix.name}}</small></div>
+    <button type="button" class="solar-controls-close" [attr.aria-label]="t('returns.close')" (click)="returnClosed.emit()">×</button></header>
+  <form class="solar-year" (submit)="$event.preventDefault(); search()">
+    <label for="solar-year-input">{{t('returns.year')}}</label>
+    <div class="solar-year-row"><button type="button" [disabled]="searching || busy" [attr.aria-label]="locale==='it' ? 'Anno precedente' : 'Previous year'" (click)="stepYear(-1)">‹</button>
+      <input id="solar-year-input" type="text" inputmode="numeric" maxlength="4" [value]="year" (input)="set('year', $event)">
+      <button type="button" [disabled]="searching || busy" [attr.aria-label]="locale==='it' ? 'Anno successivo' : 'Next year'" (click)="stepYear(1)">›</button></div>
+    <button type="submit" class="solar-apply" [disabled]="searching || busy">{{t(searching ? 'returns.searching' : 'returns.search')}}</button>
+  </form>
+  <div class="solar-current-place"><span>{{locale==='it' ? 'Luogo della rivoluzione' : 'Return location'}}</span><strong>{{placeName || '—'}}</strong><small>{{timeZone}}</small></div>
+  <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false" [hideSelectedStatus]="true" (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
+  <button type="button" class="solar-action" [disabled]="busy || !previewInstant || !placeName.trim()" (click)="castSelectedReturn()">{{t('returns.cast')}}</button>
+  <button type="button" class="solar-action" [disabled]="busy" [attr.aria-pressed]="comparing" (click)="comparisonRequested.emit()">{{t('returns.withRadix')}}</button>
+  <p class="returns-message" role="status" *ngIf="message">{{t(message)}}</p>
+</section>
 <section *ngIf="kind==='solar' && mapOpen" class="solar-map" [attr.aria-label]="t(titleKey)">
   <header class="solar-header">
     <div class="solar-title"><h3>{{t(titleKey)}}</h3><strong>{{radix.name || t('session.unnamed')}}</strong>
@@ -6,17 +22,16 @@
       <label class="field narrow"><span>{{t('returns.year')}}</span><input type="text" inputmode="numeric" maxlength="4" required [value]="year" (input)="set('year', $event)"></label>
       <button type="submit" class="returns-primary" [disabled]="searching">{{t(searching ? 'returns.searching' : 'returns.search')}}</button>
       <span *ngIf="previewInstant">{{previewInstant | date:'medium':'UTC'}}</span>
-      <label class="returns-check"><input type="checkbox" [checked]="withRadix" (change)="toggleWithRadix($event)">{{t('returns.withRadix')}}</label>
     </form>
     <vs-solar-return-strip *ngIf="previewStrip as strip" [data]="strip" [label]="t('returns.map.preview')"
       [radixLabel]="t('returns.map.radix')" [returnLabel]="t('returns.map.return')" [planetsLabel]="t('returns.map.planets')" [signsLabel]="t('returns.map.signs')"></vs-solar-return-strip>
     <p class="returns-message" role="status" *ngIf="previewMessage || message">{{t(previewMessage || message!)}}</p>
   </header>
-  <div class="solar-map-canvas"><vs-return-osm-map [center]="mapCenter" (hovered)="previewCoordinates($event)" (chosen)="selectOnlinePoint($event)"></vs-return-osm-map></div>
+  <div class="solar-map-canvas"><vs-return-osm-map [locale]="locale" [center]="mapCenter" (hovered)="previewCoordinates($event)" (chosen)="selectOnlinePoint($event)"></vs-return-osm-map></div>
   <footer class="solar-footer">
     <button type="button" class="returns-close" (click)="closed.emit()">{{locale==='it' ? 'Indietro' : 'Back'}}</button>
     <div class="solar-place"><label><span>{{locale==='it' ? 'Luogo' : 'Place'}}</span> <input type="text" maxlength="160" [value]="placeName" (input)="placeName=$any($event.target).value"></label>
-      <span>{{latitude}}°, {{longitude}}° · {{timeZone}}</span>
+      <span>{{latitude}}°, {{longitude}}°</span><label>{{t('form.zone')}} <input type="text" [value]="timeZone" (input)="set('timeZone', $event)"></label><small *ngIf="timeZoneSuggested">{{t('returns.map.zoneSuggested')}}</small>
       <span *ngIf="hoverPoint as point">{{locale==='it' ? 'Puntatore' : 'Pointer'}}: {{point.latMicro / 1000000 | number:'1.2-2'}}°, {{point.lngMicro / 1000000 | number:'1.2-2'}}°</span></div>
     <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false"
       (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>

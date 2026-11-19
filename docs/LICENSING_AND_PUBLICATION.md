@@ -6,7 +6,7 @@
 
 The unmodified full [LICENSE](../LICENSE) contains the Common Public Attribution License 1.0, with a Desktop-specific completed Exhibit A and Exhibit B. Original project source and copyright notices follow that license; third-party packages and data retain their own independent terms. See [NOTICE](../NOTICE).
 
-**Exhibit B attribution:** Copyright (c) 2026 Cesare-ml (VirgoStars project); phrase **Powered by VirgoStars**; URL https://www.virgostars.it/; no required graphic image. CPAL Section 14 can require a prominent display at application launch/session, including larger works. An About link alone cannot always replace that notice. The current prototype includes the attribution in its GUI footer; review visibility in all window sizes and platforms before release. Section 15 includes source-availability obligations for external deployment.
+**Exhibit B attribution:** Copyright (c) 2026 Cesare-ml (VirgoStars project); phrase **Powered by VirgoStars**; URL https://www.virgostars.it/; no required graphic image. CPAL Section 14 can require a prominent display at application launch/session, including larger works. An About link alone cannot always replace that notice. The prototype displays the attribution on its launch screen; review visibility and duration in all window sizes and platforms before release. Section 15 includes source-availability obligations for external deployment.
 
 CPAL permissions are not a trademark license for the VirgoStars name, visual identity or associated services. Do not claim that third-party software, data or imagery is licensed by the Desktop CPAL merely because it is referenced in documentation.
 

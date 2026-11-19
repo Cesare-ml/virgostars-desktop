@@ -16,6 +16,7 @@
               "src/styles.css"
             ],
             "tsConfig": "tsconfig.app.json",
+            "preserveSymlinks": true,
             "outputPath": "dist/desktop",
             "assets": [
               {

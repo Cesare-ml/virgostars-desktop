@@ -62,8 +62,9 @@ const ACTIVE_BY_DEFAULT: readonly string[] = ['congiunzione', 'opposizione', 'tr
 /** Aspect orbs that cap the point orb by default; the others use the point orb. */
 const DEFAULT_ASPECT_ORBS: Readonly<Record<string, number>> = {quintile: 3, semiquadrato: 3, quinconce: 2, phisolare: 2, philunare: 2};
 const HIDDEN_BY_DEFAULT: readonly string[] = ['mean Node', 'mean Node Sud', 'mean Apogee', 'mean Perigee'];
-/** Shown, but not aspected unless the user asks: the trans-Saturnians, Chiron and the mean points. */
-const NO_ASPECTS_BY_DEFAULT: readonly string[] = ['Uranus', 'Neptune', 'Pluto', 'Chiron', ...HIDDEN_BY_DEFAULT];
+/** Hidden mean points stay out of the chart until selected. */
+const NO_ASPECTS_BY_DEFAULT: readonly string[] = HIDDEN_BY_DEFAULT;
+const LEGACY_VISIBLE_ASPECTS = ['Uranus', 'Neptune', 'Pluto', 'Chiron'] as const;
 
 export function defaultChartSettings(): ChartSettings {
   const aspects = {} as Record<AspectId, AspectSetting>;
@@ -134,7 +135,19 @@ export function loadChartSettings(storage: ChartSettingsStorage | null): ChartSe
     const raw = storage?.getItem(CHART_SETTINGS_KEY);
     if (!raw || raw.length > MAX_STORED_LENGTH) return defaultChartSettings();
     const data = record(JSON.parse(raw));
-    return data && data['version'] === 1 ? sanitizeChartSettings(data['settings']) : defaultChartSettings();
+    if (!data || (data['version'] !== 1 && data['version'] !== 2)) return defaultChartSettings();
+    const settings = sanitizeChartSettings(data['settings']);
+    if (data['version'] === 1) {
+      const source = record(data['settings']);
+      const points = source && record(source['points']);
+      // Upgrade only the old four-point default as a group; mixed selections
+      // already contain an identifiable user choice and remain untouched.
+      if (points && LEGACY_VISIBLE_ASPECTS.every(id => record(points[id])?.['aspects'] === false)) {
+        for (const id of LEGACY_VISIBLE_ASPECTS) settings.points[id].aspects = true;
+      }
+      try { storage?.setItem(CHART_SETTINGS_KEY, JSON.stringify({version:2, settings})); } catch { /* best effort */ }
+    }
+    return settings;
   } catch {
     return defaultChartSettings();
   }
@@ -144,7 +157,7 @@ export function loadChartSettings(storage: ChartSettingsStorage | null): ChartSe
 export function saveChartSettings(storage: ChartSettingsStorage | null, settings: ChartSettings): boolean {
   try {
     if (!storage) return false;
-    storage.setItem(CHART_SETTINGS_KEY, JSON.stringify({version: 1, settings: sanitizeChartSettings(settings)}));
+    storage.setItem(CHART_SETTINGS_KEY, JSON.stringify({version: 2, settings: sanitizeChartSettings(settings)}));
     return true;
   } catch {
     return false;

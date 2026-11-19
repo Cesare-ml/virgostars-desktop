@@ -318,6 +318,11 @@ impl GroupWriteTransport for StagingReqwestHttps {
 }
 
 impl TokenHttpTransport for StagingReqwestHttps {
+    fn reachable(&self, endpoint: &Url) -> bool {
+        if valid_staging_token_endpoint(endpoint.as_str()).is_none() { return false; }
+        restricted_client(MAX_TOKEN_DEADLINE).and_then(|client|
+            client.head(endpoint.clone()).send().map(|_|()).map_err(|_|())).is_ok()
+    }
     fn post_form(
         &self,
         endpoint: &Url,

@@ -1,5 +1,11 @@
 # Renderer lifecycle — latest request wins
 
+Visible outer planets and Chiron participate in aspects by default. Existing
+version-1 preferences with the original four disabled defaults are upgraded
+once; mixed selections and later explicit choices are preserved. True node and
+osculating Black Moon are included when shown and enabled. The dedicated
+aspect matrix includes outer planets by default and can still hide them.
+
 ## Synastry interaction (local integration)
 
 The desktop opts into separate dotted axes for the partner chart and omits its

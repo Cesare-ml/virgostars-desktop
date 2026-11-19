@@ -21,6 +21,8 @@ updater-loopback-test = []
 staging-connected-account = []
 # An explicit release build uses a fixed production origin pair.
 production-connected-account = ["staging-connected-account"]
+# Explicit candidate; backend and migration must be staged before use.
+persistent-connected-account = ["staging-connected-account"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -1,8 +1,50 @@
 # Offline authentication, account data and synchronization contract
 
-Status: **IMPLEMENTED_ISOLATED** for the Desktop candidate described below. It
-is disabled by default; the connected backend and web consent are deployed, but
-the Desktop candidate is not released or verified end to end in production.
+Status: **PRODUCTION / PARTIAL** for the backend and **IMPLEMENTED_ISOLATED**
+for the Desktop candidate. The backend refresh and revocation feature was
+enabled on 19 November 2026; the local Desktop build includes it, but is not a
+published release and has not yet been verified end to end with a real account.
+
+The Desktop welcome screen now offers browser sign-in/registration or local
+use. Choosing local use saves only a device preference and skips the prompt on
+subsequent launches; it does not create or restore a session. Access tokens
+expire within 15 minutes; a feature-enabled build uses OS-protected refresh
+credentials to renew them. Local use remains available if sign-in or storage
+is unavailable.
+
+When native startup finds a stored credential, the workspace and its last
+encrypted snapshot open without waiting for network restoration. The UI does
+not treat the stored credential as proof of an online session: while offline,
+background retries restore the session and resume synchronization when the
+server can verify it. Existing local data remain available even if a refresh
+credential expires. The current backend issues refresh credentials for 90
+days; after a longer absence or a remote revocation, a new sign-in can be
+required before synchronization resumes.
+
+The `persistent-connected-account` build feature wires the native OS credential
+store to sign-in, startup restoration, rotation, offline retry and explicit
+sign-out. A durable in-flight marker prevents blind replay after an uncertain
+request; a pending sign-out cannot be restored as a session. A lost response
+after dispatch can require revocation and a new sign-in. The credential never
+crosses the WebView IPC boundary. Closing the app keeps the credential;
+explicit sign-out requests server-side device revocation. When offline,
+sign-out remains pending and the UI reports it rather than claiming success.
+
+The local owner build and development scripts enable this feature automatically, and the companion backend
+and migration are deployed. If an older backend definitively rejects the persistent request with
+HTTP 400 or 413, the client retries the one-time code with the previous temporary
+contract and marks that connection as temporary in Account settings. It never
+retries a code after an uncertain network failure. The real Windows app,
+browser consent and account lifecycle have not yet been verified end to end.
+Existing ordinary builds continue to use the short-lived session described above.
+For a staging build, set the existing explicit staging consent/token endpoints
+at compile time and opt into `persistent-connected-account`. A production
+candidate requires both `production-connected-account` and
+`persistent-connected-account`; both are added by the local owner scripts.
+An older development build without the persistent feature can skip the welcome
+screen because of a previous local-use preference without restoring an account.
+A verified connection now clears that preference; the account screen remains
+the source of truth for whether a session was actually restored.
 
 Product requirement clarified on 2026-11-18: the same account's natal-chart
 groups should be available across Desktop and the website. This is not sharing
@@ -15,6 +57,10 @@ explicit choice. Missing remote charts retain their local copy and pending edits
 Notes are excluded. The most recently synchronized profile remains available
 offline; selecting another account cannot expose or edit that profile. The
 native server-provided profile reference never crosses IPC.
+
+The current archive and account screens temporarily hide group controls and
+conflict resolution for a later release. Existing group data and synchronization
+state are retained; unresolved conflicts are not silently discarded.
 
 Imported civil data preserve unknown times without inventing an instant. A
 known time is calculated only when its time zone resolves unambiguously; missing,
