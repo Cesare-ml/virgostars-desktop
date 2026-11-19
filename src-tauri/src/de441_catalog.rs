@@ -838,16 +838,19 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "contacts the public GitHub release and downloads a real 18 MB asset"]
-    fn public_github_mobile_asset_downloads_and_verifies() {
+    #[ignore = "contacts a public GitHub release and downloads a real DE441 asset"]
+    fn public_github_asset_downloads_and_verifies() {
         let bytes = include_bytes!("../de441-release-catalog-v1.json");
         let pin: [u8; 32] = Sha256::digest(bytes).into();
         let catalog = parse_pinned(bytes, &pin).unwrap();
+        let id = std::env::var("DE441_PUBLIC_TEST_PACK")
+            .unwrap_or_else(|_| "history-00800-00999".to_owned());
+        let expected_size = catalog.pack_size(&id).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = tauri::async_runtime::block_on(download_pack(
-            &catalog, dir.path(), "history-00800-00999", &AtomicBool::new(false), |_, _| {},
+            &catalog, dir.path(), &id, &AtomicBool::new(false), |_, _| {},
         )).unwrap();
-        assert_eq!(fs::metadata(path).unwrap().len(), 18_617_184);
+        assert_eq!(fs::metadata(path).unwrap().len(), expected_size);
     }
 
     #[test]
