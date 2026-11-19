@@ -230,6 +230,12 @@ fn calculate(request: HistoricalChartRequest) -> HistoricalChartResponse {
     {
         return failure("invalid_request");
     }
+    match crate::virgostars_provider::historical_epoch_covered(epoch.jd_ut1, delta, uncertainty) {
+        None => return failure("provider_unavailable"),
+        Some(Err(())) => return failure("calculation_failed"),
+        Some(Ok(false)) => return failure("ephemeris_out_of_range"),
+        Some(Ok(true)) => {}
+    }
     let site = Site {
         latitude_deg: f64::from(request.lat_micro) / 1e6,
         longitude_deg_east: f64::from(request.lng_micro) / 1e6,
@@ -328,6 +334,32 @@ mod tests {
             assert_eq!(chart.bodies.len(), 14);
             assert_eq!(chart.houses.len(), 5);
             assert_eq!(chart.unavailable_bodies, vec!["Chiron"]);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "virgostars-ephemeris")]
+    #[ignore = "requires the separately supplied Desktop DE441 base slice"]
+    fn desktop_base_supports_explicit_historical_years() {
+        assert!(std::env::var_os("VIRGOSTARS_DE441_PATH").is_some());
+        // The supplied ΔT in request() is synthetic. This exercises the
+        // explicit historical contract, not historical time accuracy.
+        for year in [1000, 2200] {
+            let result = calculate_historical_chart(request(year));
+            assert_eq!(result.status, "ok", "year {year}");
+            let chart = result.chart.expect("historical chart");
+            assert_eq!(chart.bodies.len(), 14);
+            assert_eq!(chart.houses.len(), 5);
+            assert_eq!(chart.unavailable_bodies, vec!["Chiron"]);
+            let time = result.time.expect("explicit time metadata");
+            assert_eq!(time.delta_t_uncertainty_seconds, 2.0);
+            let mut modelled = request(year);
+            modelled.delta_t = HistoricalDeltaT::EspenakMeeus2006 {
+                uncertainty_seconds: 2.0,
+            };
+            let result = calculate_historical_chart(modelled);
+            assert_eq!(result.status, "ok", "modelled year {year}");
+            assert_eq!(result.time.expect("model metadata").delta_t_source, "Espenak-Meeus 2006");
         }
     }
 }

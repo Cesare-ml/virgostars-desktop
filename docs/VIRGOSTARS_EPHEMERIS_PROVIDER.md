@@ -4,7 +4,7 @@
 
 ## What it does
 
-- `src-tauri/src/virgostars_provider.rs` implements the `EphemerisProvider` port with `virgostars-ephemeris-core` (CPAL-1.0), pinned to commit `0535e9d09e22674b853dcfaed7976e20ba9f82b7` of `Cesare-ml/VirgoStars-Ephemeris`, including [Ephemeris PR #648](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/648). The git dependency needs network access the first time it is fetched.
+- This draft pins `virgostars-ephemeris-core` to `8e4b44f56a2e425e3427ffdc09e68d80fe9f31b2` from the unmerged [Ephemeris PR #651](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/651). The existing chart adapter still uses a single DE441 file; this pin does not activate multipack calculation. The dependency needs network access the first time it is fetched.
 
 The normal new-chart form has an opt-in **historical date** mode. A separate
 versioned Tauri command sends the chosen Julian/proleptic Gregorian calendar,
@@ -33,7 +33,7 @@ Nothing astronomical is committed to this repository. The host looks for each of
 
 | Item | Environment variable | `ephemeris.json` key | Shipped name |
 | --- | --- | --- | --- |
-| Classic JPL DE441 binary | `VIRGOSTARS_DE441_PATH` | `de441` | `ephemeris/de441-slice.eph` (years 1890–2110, 20.6 MB) |
+| Classic JPL DE441 binary | `VIRGOSTARS_DE441_PATH` | `de441` | `ephemeris/de441-slice.eph` (last smoke-tested 1890–2110, 20.6 MB; next private staging default 1000–2200, untested) |
 | USNO ΔT folder (`deltat.data`, `historic_deltat.data`, `deltat.preds`) | `VIRGOSTARS_USNO_DIR` | `usnoDirectory` | `ephemeris/usno/` |
 | Chiron SPK (NAIF 20002060, 3.7 MB) | `VIRGOSTARS_CHIRON_SPK` | `chironSpk` | `ephemeris/chiron.bsp` |
 

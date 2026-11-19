@@ -1,4 +1,5 @@
 <div class="desktop-app" #shell [attr.data-theme]="theme">
+  <vs-de441-packages *ngIf="!welcomeLoading && !welcomeVisible" [locale]="locale"></vs-de441-packages>
   <div class="welcome-screen" *ngIf="welcomeLoading || welcomeVisible" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     <div class="welcome-content">
       <h1 id="welcome-title"><img class="welcome-wordmark" [src]="brandWordmark" alt="VirgoStars"></h1>
@@ -552,6 +553,7 @@
           <div class="settings-top">
             <div [hidden]="settingsCategory!=='app'">
             <vs-updates [locale]="locale" [settingsOpen]="view==='settings'" [blocked]="busy || calcBusy || archiveBusy" (available)="updateAvailable=$event"></vs-updates>
+            <vs-de441-packages [locale]="locale" [settingsOpen]="view==='settings'" [wizardEnabled]="false"></vs-de441-packages>
             <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
             <label class="settings-check"><input type="checkbox" [checked]="showArchivePhotos" (change)="toggleArchivePhotos()"><span>{{t('archive.photos.show')}}</span></label>
             <label class="setting-line select-line"><span>{{t('language')}}</span><select class="inline-select" [value]="languagePreference" (change)="setLanguage($event)"><option value="auto">{{t('language.auto')}}</option><option value="it">Italiano</option><option value="en">English</option></select></label>

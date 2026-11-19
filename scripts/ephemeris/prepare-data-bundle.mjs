@@ -9,12 +9,18 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { desktopBaseProfile, DESKTOP_BASE_FIRST_YEAR, DESKTOP_BASE_LAST_YEAR } from './desktop-base-profile.mjs';
+import { RELEASE_CATALOG_NAME, RELEASE_CATALOG_SHA256 } from './release-catalog.mjs';
 
-const [fullDe441, usnoDir, chiron, firstYear = '1890', lastYear = '2110', starCatalog] = process.argv.slice(2);
+const [fullDe441, usnoDir, chiron,
+  firstYear = String(DESKTOP_BASE_FIRST_YEAR),
+  lastYear = String(DESKTOP_BASE_LAST_YEAR),
+  starCatalog] = process.argv.slice(2);
 if (!fullDe441 || !usnoDir || !chiron) {
-  console.error('usage: prepare-data-bundle.mjs <full-de441.eph> <usno-dir> <chiron.bsp> [firstYear lastYear]');
+  console.error('usage: prepare-data-bundle.mjs <full-de441.eph> <usno-dir> <chiron.bsp> [firstYear=1000 lastYear=2200]');
   process.exit(2);
 }
+const profile = desktopBaseProfile(firstYear, lastYear);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const stage = join(root, '.local', 'ephemeris');
 const usnoFiles = ['deltat.data', 'historic_deltat.data', 'deltat.preds'];
@@ -31,17 +37,26 @@ mkdirSync(join(stage, 'usno'), { recursive: true });
 const sliceOutput = join(stage, 'de441-slice.eph');
 execFileSync(process.execPath, [join(root, 'scripts', 'ephemeris', 'slice-de441.mjs'), fullDe441, sliceOutput, firstYear, lastYear], { stdio: 'inherit' });
 execFileSync(process.execPath, [join(root, 'scripts', 'ephemeris', 'slice-de441.mjs'), '--verify', fullDe441, sliceOutput], { stdio: 'inherit' });
+const catalogBytes = readFileSync(join(root, 'src-tauri', RELEASE_CATALOG_NAME));
+if (createHash('sha256').update(catalogBytes).digest('hex') !== RELEASE_CATALOG_SHA256) throw new Error('release catalog does not match the reviewed pin');
+const catalog = JSON.parse(catalogBytes);
+const requiredBase = catalog.packs.filter(pack => pack.required);
+if (requiredBase.length !== 1 || createHash('sha256').update(readFileSync(sliceOutput)).digest('hex') !== requiredBase[0].sha256)
+  throw new Error('staged DE441 base does not match the authenticated release catalog');
+writeFileSync(join(stage, RELEASE_CATALOG_NAME), catalogBytes);
 for (const name of usnoFiles) copyFileSync(join(usnoDir, name), join(stage, 'usno', name));
 copyFileSync(chiron, join(stage, 'chiron.bsp'));
 
-const files = ['de441-slice.eph', ...usnoFiles.map(name => `usno/${name}`), 'chiron.bsp'];
+const files = ['de441-slice.eph', RELEASE_CATALOG_NAME, ...usnoFiles.map(name => `usno/${name}`), 'chiron.bsp'];
 if (starCatalog) {
   const destination = join(stage, 'fixed-stars.json');
   if (resolve(starCatalog) !== resolve(destination)) copyFileSync(starCatalog, destination);
   files.push('fixed-stars.json');
 }
 const manifest = {
-  note: 'Local staging manifest. Hashes identify the files that were shipped; no personal data.',
+  schema: 'virgostars.desktop.ephemeris-bundle.v2',
+  note: 'Local private staging; not a data-distribution authorization or scientific certification.',
+  de441Profile: profile,
   files: files.map(name => {
     const path = join(stage, name);
     return { name, bytes: statSync(path).size, sha256: createHash('sha256').update(readFileSync(path)).digest('hex') };

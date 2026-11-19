@@ -34,7 +34,7 @@
     "tauri:build:private": "npm run verify:version && npm run verify:ipc && npm run build:ui:private && npm run prepare:icon && tauri build",
     "tauri:build:places:private:windows": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run places:fetch:windows && py -3 scripts/places/prepare_tauri_bundle.py && npm run verify:ipc && npm run verify:places-override && npm run build:ui:private && npm run prepare:icon && tauri build --config .local/places/tauri-places.conf.json",
     "build:local": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run verify:ipc && npm run verify:places-override && npm run build:ui:private && npm run prepare:icon && node scripts/run-tauri-with-local-stars.mjs build --no-bundle --config .local/places/tauri-places.conf.json",
-    "build:installer": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run verify:ipc && npm run verify:places-override && node scripts/ephemeris/verify-staged-data.mjs && npm run build:ui:private && npm run prepare:icon && node scripts/run-tauri-with-local-stars.mjs build --bundles nsis --config .local/places/tauri-places.conf.json --config .local/ephemeris/tauri-ephemeris.conf.json",
+    "build:installer": "npm run verify:version && node scripts/verify-angular-source-config.mjs && npm run verify:ipc && npm run verify:places-override && node scripts/ephemeris/verify-staged-data.mjs && npm run build:ui:private && npm run prepare:icon && node scripts/ephemeris/build-installer.mjs",
     "verify:places-override": "node scripts/verify-places-tauri-override.mjs",
     "verify:privacy": "node scripts/verify-build-privacy.mjs"
   },

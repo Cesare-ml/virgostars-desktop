@@ -73,6 +73,7 @@ import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
 import { UpdatesComponent } from './updates.component';
+import { De441PackagesComponent } from './de441-packages.component';
 import {
   ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
   type ChartSettings
@@ -180,7 +181,7 @@ const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, UpdatesComponent],
+  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, UpdatesComponent, De441PackagesComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -995,7 +996,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private async computeChart(input: NewChartInput, archiveId: string | null = null, kind: 'chart' | 'sky' = 'chart'): Promise<SessionChart | MessageKey> {
     const result = input.historical ? await calculateHistoricalChart(input.historical) :
       await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
-    if (result.kind !== 'ready') return result.kind === 'time_source_out_of_range' ? 'calc.historicalRange' : CALCULATION_FAILURES[result.kind];
+    if (result.kind !== 'ready') return result.kind === 'time_source_out_of_range' ? 'calc.historicalRange' : result.kind === 'ephemeris_out_of_range' ? 'calc.ephemerisRange' : CALCULATION_FAILURES[result.kind];
     const displayTime = input.historical ? this.chartWhen(input) : input.utcIso;
     const data = buildTemaRenderData(result.chart, displayTime);
     if (!data) return 'calc.nohouses';
@@ -2332,7 +2333,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   private attachTransitHover(): void {
     this.renderer.setTransitPointHoverListener(value => {
-      if (!value) return;
+      if (!value || (value.ring !== 'natal' && value.ring !== 'transit')) return;
       this.transitFocus = {ring:value.ring, name:value.name};
       this.drawTransitFocus();
     });

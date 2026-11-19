@@ -997,6 +997,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2886,7 +2896,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4594,6 +4604,7 @@ version = "0.0.2"
 dependencies = [
  "base64 0.23.1",
  "chacha20poly1305",
+ "fs2",
  "futures-util",
  "getrandom 0.3.4",
  "httparse",
@@ -4602,6 +4613,7 @@ dependencies = [
  "open",
  "reqwest",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
@@ -4618,7 +4630,7 @@ dependencies = [
 [[package]]
 name = "virgostars-ephemeris-core"
 version = "0.1.0"
-source = "git+https://github.com/Cesare-ml/VirgoStars-Ephemeris?rev=0535e9d09e22674b853dcfaed7976e20ba9f82b7#0535e9d09e22674b853dcfaed7976e20ba9f82b7"
+source = "git+https://github.com/Cesare-ml/VirgoStars-Ephemeris?rev=85a29e886b6e7a4d89eb7859b8a0821f0570fa34#85a29e886b6e7a4d89eb7859b8a0821f0570fa34"
 
 [[package]]
 name = "virgostars-event-ephemeris"

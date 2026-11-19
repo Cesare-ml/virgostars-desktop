@@ -13,7 +13,7 @@ export type HistoricalChartTime = Readonly<{jdUt1:number; jdTt:number; deltaTSec
   deltaTUncertaintySeconds:number; deltaTSource:string; civilUncertaintySeconds:number;
   offsetSecondsEast:number; offsetSource:string}>;
 export type HistoricalChartResult = Readonly<{kind:'ready'; chart:ChartSnapshotV1; provider:ChartProviderV1; time:HistoricalChartTime}> |
-  Readonly<{kind:'invalid_request'|'provider_unavailable'|'time_source_out_of_range'|'calculation_failed'|'not_native'|'unavailable'}>;
+  Readonly<{kind:'invalid_request'|'provider_unavailable'|'time_source_out_of_range'|'ephemeris_out_of_range'|'calculation_failed'|'not_native'|'unavailable'}>;
 export interface HistoricalChartTransport {
   isNative():boolean;
   invoke(command:'calculate_historical_chart', args:{request: HistoricalChartRequest & {protocolVersion:1}}):Promise<unknown>;
@@ -36,7 +36,7 @@ type ChartDecoder = (raw:unknown, historical:boolean) =>
 export function decodeHistoricalChart(raw:unknown, decodeChartResponse:ChartDecoder, expected?:HistoricalChartRequest):HistoricalChartResult {
   if (!plain(raw) || field(raw,'protocolVersion') !== 1) throw new Error('Invalid historical chart protocol');
   const status = field(raw,'status');
-  if (status === 'invalid_request' || status === 'provider_unavailable' || status === 'time_source_out_of_range' || status === 'calculation_failed') return {kind:status};
+  if (status === 'invalid_request' || status === 'provider_unavailable' || status === 'time_source_out_of_range' || status === 'ephemeris_out_of_range' || status === 'calculation_failed') return {kind:status};
   const decoded = decodeChartResponse(raw, true);
   const t = field(raw,'time');
   if (decoded.status !== 'ok' || !('chart' in decoded) || !plain(t)) throw new Error('Invalid historical chart protocol');
