@@ -69,11 +69,13 @@ function utcOfWall(wall: WallParts): number {
  * No implicit DST "earlier" or "later" preference. Caller must ask on ambiguity.
  * This function is CPU-bounded and does not access disk, network or account state.
  */
-export function resolveCivilTime(input: CivilTimeInput): CivilTimeResult {
+export function resolveCivilTime(input: CivilTimeInput, options?: {yearRange:'archive'}): CivilTimeResult {
   const date = typeof input?.date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.date) : null;
   if (!date) return { status: 'invalid', code: 'INVALID_LOCAL_DATE' };
   const year = Number(date[1]), month = Number(date[2]), day = Number(date[3]);
-  if (year < MIN_YEAR || year > MAX_YEAR || month < 1 || month > 12 || day < 1 || day > 31) {
+  const minYear=options?.yearRange==='archive' ? 1 : MIN_YEAR;
+  const maxYear=options?.yearRange==='archive' ? 9999 : MAX_YEAR;
+  if (year < minYear || year > maxYear || month < 1 || month > 12 || day < 1 || day > 31) {
     return { status: 'invalid', code: 'INVALID_LOCAL_DATE' };
   }
   const time = typeof input.time === 'string' ? /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(input.time) : null;

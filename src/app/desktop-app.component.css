@@ -389,6 +389,10 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .function-status { flex:0 0 auto; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
   padding:2px 6px; border-radius:6px; border:1px solid var(--vs-border); color:var(--vs-text-secondary); }
 .function-group,.settings-section { border-bottom:1px solid var(--vs-border); padding:2px 0 6px; }
+.archive-entry { border-bottom: 1px solid var(--vs-border); padding-bottom: 8px; }
+.archive-groups { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
+.archive-groups input { min-width: 100px; max-width: 180px; flex: 1; }
+.archive-group { display: inline-flex; align-items: center; gap: 4px; }
 .function-group > summary,.settings-section > summary { display:flex; justify-content:flex-start; align-items:center; gap:8px;
   cursor:pointer; list-style:none; padding:11px 4px; font-size:13px; font-weight:700; }
 .settings-section > summary { gap:0; }

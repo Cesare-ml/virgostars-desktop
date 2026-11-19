@@ -19,6 +19,19 @@ if (existsSync(catalog)) {
   delete env.VIRGOSTARS_EMBED_PRIVATE_STARS;
   console.log('No local private stellar catalogue: using the synthetic Sirius fallback.');
 }
-const result=spawnSync(process.execPath,[join(root,'node_modules','@tauri-apps','cli','tauri.js'),...process.argv.slice(2)],{cwd:root,env,stdio:'inherit'});
+// Local owner builds explicitly include the reviewed production account bridge.
+// The public synthetic build retains the default-disabled native feature.
+const args = process.argv.slice(2);
+const featureIndex = args.indexOf('--features');
+const featureAssignment = args.findIndex(arg => arg.startsWith('--features='));
+if (featureIndex >= 0) {
+  if (!args[featureIndex + 1]) throw new Error('Missing value for --features');
+  args[featureIndex + 1] += ',production-connected-account';
+} else if (featureAssignment >= 0) {
+  args[featureAssignment] += ',production-connected-account';
+} else {
+  args.push('--features', 'production-connected-account');
+}
+const result=spawnSync(process.execPath,[join(root,'node_modules','@tauri-apps','cli','tauri.js'),...args],{cwd:root,env,stdio:'inherit'});
 if (result.error) throw result.error;
 process.exitCode=result.status ?? 1;

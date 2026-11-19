@@ -1,6 +1,6 @@
 # Local chart archive (SQLite)
 
-**Status: Prototype.** The pre-existing encrypted chart archive was tested on Windows 11 in November 2026; the new portrait/editor extension is TypeScript-tested but still needs a native Windows acceptance run and security review. Account-aware synchronization from [Offline auth and sync](OFFLINE_AUTH_AND_SYNC.md) is not implemented yet.
+**Status: local integration under validation.** The encrypted archive, photos, historical inputs and account-bound synchronization are present in this worktree. Production login and native end-to-end synchronization have not been verified. See [Offline auth and sync](OFFLINE_AUTH_AND_SYNC.md).
 
 ## What it stores
 
@@ -16,11 +16,16 @@ photos hidden the archive uses compact single-row entries without placeholders.
 
 Since 2026-11-17 the archive is a single file encrypted and authenticated as a whole, with a random key kept by the operating system's credential store ([Encrypted archive](ENCRYPTED_ARCHIVE.md)). The first prototype's plain file (`charts-v1.sqlite3`) is migrated once and then kept until the user deletes it from the archive panel. Encryption protects the file at rest only; there is no recovery key, so a lost credential means a lost archive. The design has not had a separate security review.
 
-There are no accounts, profiles, groups, notes, outbox or synchronisation yet. Deleting a chart removes its row and attempts to remove its optional encrypted portrait; it does not securely erase disk blocks.
+Groups and account-bound links are stored inside the sealed file; photos remain local and are not synchronized. Notes are not imported. Deleting a chart removes its row and attempts to remove its local encrypted photo; it does not securely erase disk blocks.
 
 ## Command
 
-`chart_archive::chart_archive` takes one `request` object: `protocolVersion`, `operation` (`list`, `save`, `delete`, `remove_legacy`, `photo_save`, `photo_read`, `photo_delete`), and a validated `chart`, `id`, or bounded JPEG bytes. Unknown fields are rejected. Every successful operation returns the whole archive, ordered by name, plus local photo presence IDs. Image bytes appear **only** in the response to an explicit `photo_read`, never in `list`.
+The native archive command supports list, save, delete, ordered group changes, legacy removal and local photo operations. Unknown fields, invalid group names and oversized images are rejected. Image bytes are returned only for an explicit photo read.
+
+The candidate website read model permits up to 500 groups on a chart, so an
+account containing more than 50 cannot yet be imported losslessly into this
+local representation. Synchronization must detect and report that condition;
+it must never truncate the remote groups.
 
 | Status | Meaning |
 | --- | --- |
@@ -42,16 +47,27 @@ Historical records retain the explicit calendar, local clock, offset choice,
 fields are empty rather than invented; they are recalculated on opening using
 the historical command. The application keeps modern records unchanged.
 
-The encrypted SQLite payload uses schema version 2 with an optional historical
-input column. Version-1 payloads are upgraded **in memory** after authentication;
-reading alone does not rewrite the encrypted file. The first successful write
-seals the upgraded data using the existing staged, atomic archive path. Older
-Desktop versions reject the newer schema rather than overwrite it, so retain a
-backup before downgrading. The legacy plain-v1 import remains read-only and its
-source file is not removed by migration. No historical data or archive key is
-sent to the server.
+The encrypted SQLite payload uses schema version 7. The two previous v2 layouts (historical input and account groups) are distinguished by their actual columns and tables, and upgraded in memory after authentication. The first successful write atomically seals the upgraded data; reads alone leave the original ciphertext untouched. Older versions reject the new schema. Tests cover synthetic historical v2 data, groups, photos and interrupted recovery; no user's archive was used.
 
-Saving the same id again updates the row in place and keeps its creation time, so a repeated save is harmless. Each save runs in one immediate transaction. Schema changes are tracked with `PRAGMA user_version` (currently 2); there is no automatic repair, deletion or downgrade.
+The encrypted database also has a candidate account-bound group sync record.
+It tracks a remote base and pending local group edits together with the edit;
+an older response cannot clear an edit made in the meantime. A native-only
+reconciliation candidate applies a server snapshot for an already linked
+chart, detects concurrent edits and preserves unresolved conflicts. It checks
+the captured base before writing the encrypted archive. The guarded account UI
+can display and resolve existing conflicts; both displayed versions are checked
+again atomically, and selecting the local version requires group-write consent.
+The guarded account interface imports website charts with independent local IDs,
+refreshes their civil data and reconciles their groups. It retains missing remote
+charts locally, queues offline group edits and provides explicit conflict choices.
+Existing local charts are never silently matched. A guarded explicit association
+compares both displayed versions, preserves the website civil record independently,
+and requires conflict resolution when groups differ. Deleting the local chart
+retains the imported record and its pending group state. Upload of local-only
+charts is available in the guarded candidate after separate consent. The
+creation request and its stable mutation ID remain encrypted until acknowledged;
+an uncertain response is retried before importing a snapshot. Imported records retain an unknown birth
+time as unknown; the older archive command cannot overwrite or delete those rows.
 
 ## Interface
 
@@ -65,6 +81,15 @@ Saving the same id again updates the row in place and keeps its creation time, s
 - Portraits default to **hidden**. The show/hide choice is a device-only preference, and hiding clears decrypted image object URLs from the WebView. The old long technical explanation has been removed from the archive panel.
 
 ## Verification on 2026-11-15 (Windows 11)
+
+Additional group verification on 2026-11-18: in an isolated Windows debug
+application profile, a fictional chart was saved, assigned a fictional group,
+and the group was still visible after closing and reopening the app. The
+fictional chart was then deleted and the test archive reported empty. Rust
+tests cover encrypted group persistence, migration from encrypted schema v1,
+invalid requests and removal with the chart. This does not verify network
+synchronization or an actual astronomical calculation: DE441 was unavailable
+in that isolated build.
 
 - Rust: 10 archive tests (create, persist across connections, update, delete, invalid input before any disk access, SQL-looking text stored literally, damaged file untouched, newer schema refused, full archive, wire format).
 - Node: 8 contract tests; IPC allowlist reports 4 commands and 4 adapters.

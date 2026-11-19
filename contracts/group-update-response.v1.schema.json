@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virgostars.it/contracts/group-update-response.v1.schema.json",
+  "title": "Connected chart group update response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "status", "groups"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "status": { "enum": ["updated", "unchanged", "conflict"] },
+    "groups": { "type": "array", "maxItems": 50, "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 160 } }
+  }
+}

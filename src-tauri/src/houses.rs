@@ -232,7 +232,8 @@ mod tests {
         // Computed with astrological-functions' calculate{Porphyry,Regiomontanus,Koch,Placidus}HouseCusps
         // for the same angles (ARMC, obliquity 23.4392911, latitude), printed to 10 decimals.
         // The Vehlow rule is a plain 30 degree step from the Ascendant minus 15 degrees.
-        let cases: [(f64, f64, [(&str, [f64; 12]); 4]); 2] = [
+        type ReferenceCase<'a> = (f64, f64, [(&'a str, [f64; 12]); 4]);
+        let cases: [ReferenceCase<'_>; 2] = [
             (100.0, 45.0, [
                 ("porfirio", [187.6006461919, 218.1302686898, 248.6598911876, 279.1895136855, 308.6598911876, 338.1302686898, 7.6006461919, 38.1302686898, 68.6598911876, 99.1895136855, 128.6598911876, 158.1302686898]),
                 ("regio-montano", [187.6006461919, 211.5393905619, 241.3836049912, 279.1895136855, 315.8324766861, 344.1746580512, 7.6006461919, 31.5393905619, 61.3836049912, 99.1895136855, 135.8324766861, 164.1746580512]),
@@ -256,9 +257,9 @@ mod tests {
                 }
             }
             let vehlow = cusps("egizia", &a).unwrap();
-            for index in 0..12 {
+            for (index, cusp) in vehlow.iter().enumerate() {
                 let expected = normalize(a.ascendant_deg - 15.0 + 30.0 * index as f64);
-                assert!((vehlow[index] - expected).abs() < 1e-9);
+                assert!((cusp - expected).abs() < 1e-9);
             }
         }
     }

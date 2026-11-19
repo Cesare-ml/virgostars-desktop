@@ -1,6 +1,4 @@
-// Local IPC: runtime probe, offline place search, chart calculation, archive,
-// event searches and a narrowly scoped system-browser link to a VirgoStars star.
-// No privileged account, arbitrary external URL or cloud-storage command.
+// Native host: typed local IPC and explicitly configured connected-account commands.
 mod runtime_probe;
 mod offline_places;
 mod chart_calculation;
@@ -8,6 +6,24 @@ mod archive_keys;
 mod archive_vault;
 mod chart_archive;
 mod chart_photos;
+// Native PKCE primitives: secrets remain in Rust.
+mod pkce_login;
+// Bounded loopback listener candidate, intentionally not a registered command.
+mod pkce_loopback;
+// Strict OS browser adapter exists, but is not yet called or exposed through IPC.
+mod system_browser;
+// Native-only, transport-injected staging token exchange; not an IPC command.
+mod pkce_token_exchange;
+// Compiled for native tests; not connected to an IPC command or login flow.
+mod pkce_reqwest_https;
+// Native-only staging login flow coordinator; intentionally not Tauri IPC.
+mod pkce_staging_flow;
+// Rust-only ephemeral account session; no Tauri IPC or persistent credentials.
+mod pkce_native_session;
+// One native-only login owner with admission control; no IPC registration.
+mod pkce_native_registry;
+// Versioned account IPC: default disabled, explicit staging build only.
+mod connected_account_ipc;
 mod houses;
 mod return_search;
 mod synod_events;
@@ -42,7 +58,14 @@ pub fn run() {
             Ok(())
         })
         .manage(offline_places::PlaceSearchGate::default())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update, star_link::open_star_page])
-        .run(tauri::generate_context!())
-        .expect("failed to launch the synthetic VirgoStars Desktop renderer spike");
+        .manage(pkce_native_registry::NativeLoginRegistry::new())
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update, star_link::open_star_page, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1, connected_account_ipc::desktop_chart_sync_v1])
+        .build(tauri::generate_context!())
+        .expect("failed to build VirgoStars Desktop")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                use tauri::Manager;
+                app.state::<pkce_native_registry::NativeLoginRegistry>().shutdown();
+            }
+        });
 }

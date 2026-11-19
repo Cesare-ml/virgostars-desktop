@@ -1,6 +1,37 @@
 # Offline authentication, account data and synchronization contract
 
-Status: **PROPOSED**. No production routes or synchronization engine exist here.
+Status: **IMPLEMENTED_ISOLATED** for the Desktop candidate described below. It
+is disabled by default; the connected backend and web consent are deployed, but
+the Desktop candidate is not released or verified end to end in production.
+
+Product requirement clarified on 2026-11-18: the same account's natal-chart
+groups should be available across Desktop and the website. This is not sharing
+with other accounts. The candidate server read model contains group names, but
+the guarded Desktop candidate imports the verified account's complete snapshot
+into the encrypted archive, maintains native account-bound identities, and
+periodically reconciles groups. Edits are recorded atomically for retry, require
+separate group-write consent to upload, and expose concurrent conflicts for an
+explicit choice. Missing remote charts retain their local copy and pending edits.
+Notes are excluded. The most recently synchronized profile remains available
+offline; selecting another account cannot expose or edit that profile. The
+native server-provided profile reference never crosses IPC.
+
+Imported civil data preserve unknown times without inventing an instant. A
+known time is calculated only when its time zone resolves unambiguously; missing,
+ambiguous or nonexistent local times require review. The snapshot is limited to
+500 charts and each chart to 50 groups; unsupported snapshots fail without
+truncation. The candidate creates a separate local copy for each remote identity.
+The user can explicitly associate it with an existing local chart after reviewing
+both; conflicting groups remain unresolved until the user chooses. Deleting the
+local chart retains the imported record and its pending group state. A separately
+consented creation queues an immutable encrypted payload and mutation ID before
+network I/O; a retry is completed before importing a snapshot. Ambiguous civil
+times and lossy subsecond values are refused. A definitive server rejection at
+the 500-chart limit can be cancelled without deleting the local chart. A network
+failure remains queued because the server may already have created the chart.
+Browser production consent is deployed; Desktop release and real end-to-end
+verification remain outstanding. The proposed journey and API below describe
+the target, not capabilities proven in production.
 
 ## Required user journey
 1. **First online login:** open trusted VirgoStars identity flow in the system browser using OAuth 2 Authorization Code + PKCE (or a rigorously reviewed desktop-safe equivalent). Register this installation with a per-device identifier; obtain only account-scoped privileges.
@@ -61,3 +92,23 @@ An indefinitely usable offline session and immediate remote revocation **cannot 
 - Concurrent web and desktop change with same base revision produces conflict instead of last-write-wins.
 - Server revocation blocks future online sync; UI clearly explains offline limitations.
 - Timezone conversion/DST, UTC birth timestamps and locality metadata preserved exactly; unknown birth times do not gain false accuracy.
+
+## Production endpoint build candidate
+
+An explicit `production-connected-account` build selects the fixed consent
+page `https://virgostars.it/collega-dispositivo` and API token endpoint
+`https://api.virgostars.it/chart-sync/v1/token`. Default builds still disable
+connected-account IPC, and the staging-only build rejects both production
+endpoints. The backend and website are active in production, while this remains
+an unreleased Desktop build candidate without verified live end-to-end sync. A
+standalone binary must be built with the Tauri CLI (`tauri build --no-bundle
+--features production-connected-account`); a plain `cargo build --release` can
+still use the development URL instead of bundling the frontend. The native host
+retains tokens and does not accept endpoint URLs from the WebView.
+
+Local owner builds launched by `tauri:dev`, `build:local` and `build:installer`
+now opt into this feature. Public synthetic builds remain disabled by default.
+The integration uses schema 7 and has been tested with synthetic archives and
+mock transports; a real user login and end-to-end synchronization have not yet
+been verified. Opening the account panel does not start login; the user chooses
+the sign-in button and completes authorization in their system browser.

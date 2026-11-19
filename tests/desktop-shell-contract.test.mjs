@@ -29,7 +29,7 @@ test('UI has dedicated archive, chart and honest account panels',()=>{
   assert.match(html,/\[attr.title\]="t\('archive'\)" \(click\)="openArchive\(\)"/);
   assert.match(html,/\[attr.title\]="t\('newchart'\)" \(click\)="openNewChart\(\)"/);
   assert.match(html,/class="inspector-body" id="inspector-content"/);
-  assert.match(html, /t\('account.unavailable'\)/);
+  assert.match(html, /\(click\)="account.start\(\)"/);
   for (const removed of ['research','lab','footer','footerKey','artworkStatus','runtimeStatus','provenanceLabel']) {
     assert.doesNotMatch(html,new RegExp("t\\(['\"]?" + removed + "['\"]?\\)|\\b" + removed + "\\b"),removed);
   }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virgostars.it/contracts/chart-create.v1.schema.json",
+  "title": "Owner-scoped idempotent chart creation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mutationId", "name", "localDate", "localTime", "timeUnknown", "utcIso", "timeZone", "latMicro", "lngMicro", "placeName", "groups"],
+  "properties": {
+    "mutationId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "localDate": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "localTime": { "type": ["string", "null"], "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}$" },
+    "timeUnknown": { "type": "boolean" },
+    "utcIso": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.000)?Z$" },
+    "timeZone": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "latMicro": { "type": "integer", "minimum": -90000000, "maximum": 90000000 },
+    "lngMicro": { "type": "integer", "minimum": -180000000, "maximum": 180000000 },
+    "placeName": { "type": "string", "maxLength": 100 },
+    "groups": { "type": "array", "maxItems": 50, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 160 } }
+  },
+  "allOf": [{ "if": { "properties": { "timeUnknown": { "const": true } } }, "then": { "properties": { "localTime": { "type": "null" }, "utcIso": { "type": "null" } } }, "else": { "properties": { "localTime": { "type": "string" }, "utcIso": { "type": "string" } } } }]
+}
