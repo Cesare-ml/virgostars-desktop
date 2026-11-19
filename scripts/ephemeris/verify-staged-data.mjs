@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hasDesktopBaseProfile } from './desktop-base-profile.mjs';
 
 const stage = join(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'), '.local', 'ephemeris');
 const manifestPath = join(stage, 'manifest.json');
@@ -12,6 +13,11 @@ if (!existsSync(manifestPath)) {
   process.exit(1);
 }
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+if (manifest.schema !== 'virgostars.desktop.ephemeris-bundle.v2' ||
+    !hasDesktopBaseProfile(manifest.de441Profile)) {
+  console.error('Staged DE441 manifest does not include the required 1000–2200 base. Restage from the approved source.');
+  process.exit(1);
+}
 const required = ['de441-slice.eph', 'usno/deltat.data', 'usno/historic_deltat.data', 'usno/deltat.preds', 'chiron.bsp'];
 for (const name of required) if (!manifest.files.some(file => file.name === name)) { console.error(`manifest lacks ${name}`); process.exit(1); }
 for (const file of manifest.files) {

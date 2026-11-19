@@ -33,7 +33,7 @@ Nothing astronomical is committed to this repository. The host looks for each of
 
 | Item | Environment variable | `ephemeris.json` key | Shipped name |
 | --- | --- | --- | --- |
-| Classic JPL DE441 binary | `VIRGOSTARS_DE441_PATH` | `de441` | `ephemeris/de441-slice.eph` (years 1890–2110, 20.6 MB) |
+| Classic JPL DE441 binary | `VIRGOSTARS_DE441_PATH` | `de441` | `ephemeris/de441-slice.eph` (last smoke-tested 1890–2110, 20.6 MB; next private staging default 1000–2200, untested) |
 | USNO ΔT folder (`deltat.data`, `historic_deltat.data`, `deltat.preds`) | `VIRGOSTARS_USNO_DIR` | `usnoDirectory` | `ephemeris/usno/` |
 | Chiron SPK (NAIF 20002060, 3.7 MB) | `VIRGOSTARS_CHIRON_SPK` | `chironSpk` | `ephemeris/chiron.bsp` |
 
