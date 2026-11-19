@@ -1,21 +1,30 @@
 import {CommonModule} from '@angular/common';
+import {SolarReturnStripComponent, type SolarReturnStripData} from 'grafici-astrologici';
 import {
   ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject,
 } from '@angular/core';
 import {OfflineCityPickerComponent} from './offline-city-picker.component';
 import type {OfflinePlaceV1} from './native/offline-places-contract';
 import {findReturns} from './native/return-search';
+import {calculateChart} from './native/chart-calculation';
+import type {ChartCalculationResult, HouseSystemId} from './native/chart-calculation-contract';
+import {buildTemaRenderData, formatLongitudeDms} from './astro/tema-render-data';
+import {addExtraHouses} from './astro/extra-houses';
 import type {ReturnInstantV1, ReturnSearchResult} from './native/return-search-contract';
 import {cleanChartName, parseDegreesMicro, type NewChartInput} from './new-chart-form';
 import {
-  formatReturnInstant, parseReturnYear, returnChartName, validTimeZone,
+  formatReturnInstant, parseReturnYear, returnChartName, returnMapCoordinates, suggestReturnTimeZone, validTimeZone,
   type ReturnKind, type ReturnRadix,
 } from './returns-form';
 import {translate, type Locale, type MessageKey} from './translations';
+import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 
 const SEARCH_FAILURES: Record<Exclude<ReturnSearchResult['kind'], 'ready'>, MessageKey> = {
   not_native: 'calc.browser', provider_unavailable: 'calc.noprovider', invalid_request: 'calc.invalid',
   calculation_failed: 'calc.failed', unavailable: 'calc.failed',
+};
+const PREVIEW_FAILURES: Record<Exclude<ChartCalculationResult['kind'], 'ready'>, MessageKey> = {
+  ...SEARCH_FAILURES, out_of_range:'calc.range',
 };
 
 export type ReturnChartRequest = Readonly<{input: NewChartInput; radixChartId: number; withRadix: boolean}>;
@@ -28,7 +37,7 @@ export type ReturnChartRequest = Readonly<{input: NewChartInput; radixChartId: n
 @Component({
   selector: 'vs-returns-panel',
   standalone: true,
-  imports: [CommonModule, OfflineCityPickerComponent],
+  imports: [CommonModule, OfflineCityPickerComponent, SolarReturnStripComponent],
   templateUrl: './returns-panel.component.html',
   styleUrls: ['./returns-panel.component.css'],
 })
@@ -37,18 +46,30 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   @Input() kind: ReturnKind = 'solar';
   @Input({required: true}) radix!: ReturnRadix;
   @Input() busy = false;
+  @Input() houseSystem: HouseSystemId = 'egizia';
   @Output() readonly chartRequested = new EventEmitter<ReturnChartRequest>();
   @Output() readonly closed = new EventEmitter<void>();
   private readonly cd = inject(ChangeDetectorRef);
   private searchTicket = 0;
   private destroyed = false;
+  private previewTicket = 0;
+  private previewTimer: ReturnType<typeof setTimeout> | null = null;
+  private previewBusy = false;
+  private pendingPreview: {ticket:number; utcIso:string; latMicro:number; lngMicro:number} | null = null;
 
   year = String(new Date().getUTCFullYear());
   latitude = '';
   longitude = '';
   timeZone = '';
+  timeZoneSuggested = false;
   placeName = '';
   city: OfflinePlaceV1 | null = null;
+  mapAvailable = true;
+  mapZoom = 1;
+  previewInstant: string | null = null;
+  preview: {latMicro:number; lngMicro:number; ascendant:number; mc:number; ds:number; ic:number; cusps:readonly number[];
+    planets:readonly {name:string; longitude:number; glyphUrl:string}[]} | null = null;
+  previewMessage: MessageKey | null = null;
   withRadix = true;
   searching = false;
   searched = false;
@@ -63,15 +84,18 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
       this.latitude = (this.radix.latMicro / 1e6).toFixed(6);
       this.longitude = (this.radix.lngMicro / 1e6).toFixed(6);
       this.timeZone = this.radix.timeZone;
+      this.timeZoneSuggested = false;
       this.placeName = this.radix.placeName;
       this.city = null;
     }
     if (radixChanged || changes['kind']) this.clearResults();
+    else if (changes['houseSystem']) this.invalidatePreview();
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
     this.searchTicket++;
+    this.invalidatePreview();
   }
 
   t(key: MessageKey): string { return translate(this.locale, key); }
@@ -81,6 +105,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
 
   private clearResults(): void {
     this.searchTicket++;
+    this.invalidatePreview();
+    this.previewInstant = null;
     this.searching = false;
     this.searched = false;
     this.instants = [];
@@ -94,16 +120,105 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     if (field === 'latitude' || field === 'longitude') {
       this.city = null;
       this.placeName = '';
+      this.timeZone = '';
+      this.timeZoneSuggested = false;
     }
+    if (field === 'timeZone') this.timeZoneSuggested = false;
   }
 
   toggleWithRadix(event: Event): void { this.withRadix = (event.target as HTMLInputElement).checked; }
+
+  zoomMap(direction: -1 | 1): void {
+    this.mapZoom = Math.min(4, Math.max(1, this.mapZoom * (direction === 1 ? 2 : 0.5)));
+    this.invalidatePreview();
+  }
+
+  selectMapPoint(event: MouseEvent): void {
+    const bounds = (event.currentTarget as HTMLElement).querySelector('img')?.getBoundingClientRect();
+    if (!bounds || !bounds.width || !bounds.height || event.detail === 0) return;
+    const coordinates = returnMapCoordinates((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
+    if (!coordinates) return;
+    this.latitude = (coordinates.latMicro / 1e6).toFixed(6);
+    this.longitude = (coordinates.lngMicro / 1e6).toFixed(6);
+    this.city = null;
+    this.placeName = '';
+    // The offline boundary database is approximate; the user can edit the result.
+    this.timeZone = suggestReturnTimeZone(coordinates.latMicro, coordinates.lngMicro) ?? '';
+    this.timeZoneSuggested = this.timeZone !== '';
+    this.message = null;
+    this.cd.markForCheck();
+    // As on the website, a map click casts the currently selected return once
+    // its instant and a valid location zone are available.
+    const selected = this.instants.find(instant => instant.utcIso === this.previewInstant);
+    if (selected && this.timeZone) this.cast(selected);
+  }
+
+  private invalidatePreview(): void {
+    this.previewTicket++;
+    if (this.previewTimer !== null) clearTimeout(this.previewTimer);
+    this.previewTimer = null;
+    this.pendingPreview = null;
+    this.preview = null;
+    this.previewMessage = null;
+  }
+  setPreviewInstant(instant: ReturnInstantV1): void {
+    this.invalidatePreview();
+    this.previewInstant = instant.utcIso;
+    this.cd.markForCheck();
+  }
+  previewMapPoint(event: MouseEvent): void {
+    if (!this.previewInstant || this.destroyed) return;
+    const bounds = (event.currentTarget as HTMLElement).querySelector('img')?.getBoundingClientRect();
+    if (!bounds || !bounds.width || !bounds.height) return;
+    const coordinates = returnMapCoordinates((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
+    if (!coordinates) return;
+    this.invalidatePreview();
+    const request = {ticket:this.previewTicket, utcIso:this.previewInstant, ...coordinates};
+    this.previewTimer = setTimeout(() => {
+      this.previewTimer = null;
+      this.pendingPreview = request;
+      void this.runMapPreview();
+    }, 350);
+  }
+  private async runMapPreview(): Promise<void> {
+    if (this.previewBusy || !this.pendingPreview || this.destroyed) return;
+    const request = this.pendingPreview;
+    this.pendingPreview = null;
+    this.previewBusy = true;
+    const result = await calculateChart({utcIso:request.utcIso, latMicro:request.latMicro, lngMicro:request.lngMicro});
+    const data = result.kind === 'ready' ? buildTemaRenderData(result.chart, request.utcIso) : null;
+    if (data && result.kind === 'ready') await addExtraHouses(data, result.chart, result.provider,
+      request.utcIso, request.latMicro, request.lngMicro);
+    this.previewBusy = false;
+    if (!this.destroyed && request.ticket === this.previewTicket) {
+      const house = data?.houses[this.houseSystem];
+      if (house && data) this.preview = {latMicro:request.latMicro, lngMicro:request.lngMicro,
+        ascendant:house.ascendant, mc:house.mc, ds:house.ds, ic:house.ic, cusps:house.house,
+        planets:['Moon','Mercury','Venus','Sun','Mars','Jupiter','Saturn','true Node','osc. Apogee','osc. Perigee']
+          .flatMap(name => { const planet=data.planets[name]; return planet ? [{name, longitude:planet.longitude,
+            glyphUrl:celestialGlyphUrl(name, planet.longitudeSpeed < 0)}] : []; })};
+      else this.previewMessage = result.kind === 'ready' ? 'calc.nohouses' : PREVIEW_FAILURES[result.kind];
+      this.cd.markForCheck();
+    }
+    if (!this.destroyed && this.pendingPreview) void this.runMapPreview();
+  }
+  previewLongitude(value: number): string { return formatLongitudeDms(value, this.locale); }
+  get previewStrip():SolarReturnStripData | null {
+    const p=this.preview, radix=this.radix.houseSets?.[this.houseSystem];
+    if (!p || !radix) return null;
+    const names:MessageKey[]=['sign.aries','sign.taurus','sign.gemini','sign.cancer','sign.leo','sign.virgo',
+      'sign.libra','sign.scorpio','sign.sagittarius','sign.capricorn','sign.aquarius','sign.pisces'];
+    return {radixCusps:radix.house, returnCusps:p.cusps,
+      axes:[{name:'ASC',longitude:p.ascendant},{name:'MC',longitude:p.mc},{name:'DS',longitude:p.ds},{name:'IC',longitude:p.ic}],
+      planets:p.planets, signs:names.map((name,i)=>({name:this.t(name),glyphUrl:zodiacGlyphUrl(i)}))};
+  }
 
   onCitySelected(place: OfflinePlaceV1): void {
     this.city = place;
     this.latitude = (place.latMicro / 1e6).toFixed(6);
     this.longitude = (place.lngMicro / 1e6).toFixed(6);
-    if (place.timeZone) this.timeZone = place.timeZone;
+    this.timeZone = place.timeZone || suggestReturnTimeZone(place.latMicro, place.lngMicro) || '';
+    this.timeZoneSuggested = !place.timeZone && this.timeZone !== '';
     this.placeName = place.name;
     this.message = null;
     this.cd.markForCheck();
@@ -135,6 +250,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.searching = false;
     this.searched = result.kind === 'ready';
     this.instants = result.kind === 'ready' ? result.instants : [];
+    this.previewInstant = this.instants[0]?.utcIso ?? null;
     this.message = result.kind === 'ready' ? null : SEARCH_FAILURES[result.kind];
     this.cd.markForCheck();
   }

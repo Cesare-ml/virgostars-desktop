@@ -6,8 +6,16 @@ import {
 import {
   defaultOpzioniGrafico, GestoreImmagini, GraficoRenderService, SkinManager, TemaRender
 } from 'grafici-astrologici';
+import * as chartsPackage from 'grafici-astrologici';
+import * as astrologyPackage from 'astrological-functions';
+import {makeDirectionPlan} from './directions-form';
+import {rendererPlanetaryHours} from './astro/planetary-hour';
+import {addExtraHouses} from './astro/extra-houses';
+import {calculateRegoloArabicParts, type RegoloPart} from 'astrological-functions/regolo-arabic-parts';
+import {calculateVirgoStarsStarContacts} from 'astrological-functions/virgostars-star-contacts';
+import {moduleExport} from './module-export';
 import {
-  chartSide, CHART_MARGIN_PX, CHART_MODES, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
+  chartSide, CHART_MARGIN_PX, CHART_MODES, commonHouseSystems, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
 } from './workspace-state';
 type DemoPlanet = 'Sun' | 'Moon' | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn' | 'Uranus' | 'Neptune' | 'Pluto';
 import { translate, type Locale, type MessageKey } from './translations';
@@ -36,7 +44,7 @@ import { NewChartComponent } from './new-chart.component';
 import type { NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
 import { calculateHistoricalChart } from './native/historical-chart';
-import type { ChartCalculationResult, ChartProviderV1, HouseSystemId } from './native/chart-calculation-contract';
+import type { ChartCalculationResult, ChartProviderV1, FixedStarV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
   availableHouseSystems, buildTemaRenderData, formatLatitudeDms, formatLongitudeDms,
   formatSpeed, houseDisplay, planetRows, type HouseDisplay, type PlanetRow, type TemaRenderData
@@ -47,6 +55,7 @@ import { newChartId, validChartRecord, type ArchiveFailure, type ArchiveResult, 
 import {preparePrivateChartPhoto} from './private-chart-photo';
 import { ReturnsPanelComponent, type ReturnChartRequest } from './returns-panel.component';
 import {synodEvents} from './native/synod-events';
+import {inNativeDesktop, openStarPage} from './native/star-link';
 import type {SynodRecord} from './native/synod-events-contract';
 import {hasSynodGlyph, orderSynodRecords} from './synod-selection';
 import {TRADITIONAL_POINTS, zodiacProjectionPoints, type ZodiacProjectionMode, type ZodiacProjectionAxis} from './astro/zodiac-projections';
@@ -77,9 +86,20 @@ const SIGN_KEYS: readonly MessageKey[] = [
   'sign.aries','sign.taurus','sign.gemini','sign.cancer','sign.leo','sign.virgo',
   'sign.libra','sign.scorpio','sign.sagittarius','sign.capricorn','sign.aquarius','sign.pisces',
 ];
-const HOUSE_SYSTEM_KEYS: Record<HouseSystemId,MessageKey> = {
+const HOUSE_SYSTEM_KEYS: Partial<Record<HouseSystemId,MessageKey>> = {
   egizia:'house.egizia', placido:'house.placido', koch:'house.koch',
   'regio-montano':'house.regiomontano', porfirio:'house.porfirio',
+};
+const EXTRA_HOUSE_LABELS: Readonly<Record<string, readonly [string,string]>> = {
+  CAMPANUS:['Campano','Campanus'], EQUAL_ASCENDANT:['Uguali dall’Ascendente','Equal Ascendant'],
+  EQUAL_MIDHEAVEN:['Uguali dal Medio Cielo','Equal Midheaven'], WHOLE_SIGN:['Segno intero','Whole sign'],
+  WHOLE_ARIES:['Segno intero dall’Ariete','Whole sign from Aries'], MERIDIAN:['Meridiano','Meridian'],
+  ALCABITIUS:['Alcabizio','Alcabitius'], KRUSINSKI_PISA_GOELZER:['Krusinski–Pisa–Goelzer','Krusinski–Pisa–Goelzer'],
+  AZIMUTH:['Azimut','Azimuth'], MORINUS:['Morino','Morinus'], POLICH_PAGE:['Polich–Page','Polich–Page'],
+  APC:['APC','APC'], PULLEN_SD:['Pullen sinusoidale delta','Pullen sinusoidal delta'],
+  PULLEN_SR:['Pullen sinusoidale rapporto','Pullen sinusoidal ratio'], SRIPATI:['Sripati','Sripati'],
+  CARTER_POLI_EQUATORIAL:['Carter poli-equatoriale','Carter poli-equatorial'], SUNSHINE:['Sunshine','Sunshine'],
+  ALBATEGNIUS:['Albategnio','Albategnius'],
 };
 const SOURCE_KEYS: Record<string,MessageKey> = {
   jpl:'source.jpl',
@@ -123,6 +143,7 @@ type SessionChart = Readonly<{
   unavailableHouseSystems: readonly HouseSystemId[];
   data: TemaRenderData;
   render: TemaRender;
+  gauquelin: readonly number[] | null;
 }>;
 
 /** The instant and place a chart is shown at while it is being navigated. */
@@ -160,6 +181,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private readonly renderer = new GraficoRenderService();
   private resizeObserver?: ResizeObserver;
   private initialized = false;
+  private planetaryHourTicket = 0;
+  private planetaryHourTimer: ReturnType<typeof setTimeout> | null = null;
+  private planetaryHour: {key: string; value: NonNullable<ReturnType<typeof rendererPlanetaryHours>>} | null = null;
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
@@ -185,6 +209,26 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
   chartPresentation: 'wheel' | 'elements' | 'aspects' = 'wheel';
   showDodecatemoria = false;
+  kleroiEnabled = false;
+  arabicPartsOpen = false;
+  gauquelinOpen = false;
+  fixedStarsEnabled = false;
+  fixedStarsBusy = false;
+  fixedStarsError = false;
+  private fixedStarsTicket = 0;
+  private fixedStarsResult: {key:string; stars:readonly FixedStarV1[]} | null = null;
+  fixedStarSelected: number | null = null;
+  arabicPartsGroup = 'essenziali';
+  arabicPartsIndex = -1;
+  arabicCustomPlanet = 'Sun';
+  arabicCustomDestination = 'ascendant';
+  arabicNewMoon: {key:string; status:'loading'|'ready'|'unavailable'; longitude:number | null} | null = null;
+  private arabicNewMoonTicket = 0;
+  private arabicPartsCache: {chart:SessionChart; house:HouseSystemId; moon:number | undefined;
+    result:{essenziali:readonly RegoloPart[]; abumashar:readonly (readonly RegoloPart[])[]}} | null = null;
+  readonly arabicCustomPlanets = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn'];
+  readonly arabicHouses = Array.from({length:12}, (_, i) => i);
+  readonly kleroiSupported = typeof moduleExport(astrologyPackage, 'calculateVirgoStarsKleroi') === 'function';
   zodiacMode: ZodiacProjectionMode | null = null;
   zodiacAxis: ZodiacProjectionAxis = 'Cardinale';
   zodiacPoint: string = 'tutti';
@@ -202,6 +246,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   sessionCharts: SessionChart[] = [];
   activeChartId: number | null = null;
   partnerChartId: number | null = null;
+  synastryPickerOpen = false;
+  readonly synastryDeflectionSupported = moduleExport(chartsPackage, 'SYNASTRY_DEFLECTION_VERSION') === 1;
+  readonly synastryHouses = [1,2,3,4,5,6,7,8,9,10,11,12];
+  synastryDeflection = false;
+  synastryDeflectionHouse = 1;
+  readonly directionsSupported = typeof moduleExport(astrologyPackage, 'calculateRegoloDirection') === 'function' &&
+    typeof moduleExport(astrologyPackage, 'regoloSymbolicLongitude') === 'function' &&
+    moduleExport(chartsPackage, 'REGOLO_DIRECTIONS_RENDER_VERSION') === 1;
+  directionToolOpen = false;
+  directionMode: 'SYMBOLIC' | 'SIMPLIFIED_PRIMARY' | 'SECONDARY_PROGRESSION' = 'SIMPLIFIED_PRIMARY';
+  directionDate = new Date().toISOString().slice(0, 10);
+  directionChart: SessionChart | null = null;
+  directionArc = 0;
+  directionAppliedMode: 'SYMBOLIC' | 'SIMPLIFIED_PRIMARY' | 'SECONDARY_PROGRESSION' = 'SIMPLIFIED_PRIMARY';
+  directionAppliedDate = '';
   houseSystem: HouseSystemId = 'egizia';
   calcBusy = false;
   updateAvailable = false;
@@ -213,6 +272,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** Settings of the old menu that are not built yet. */
   readonly pendingSettingEntries = pendingSettings();
   private transitChart: SessionChart | null = null;
+  private synastryTransitChart: SessionChart | null = null;
   private readonly australCache = new WeakMap<SessionChart, SessionChart>();
   private natalAspectFocus: string | null = null;
   private transitFocus: {ring: 'natal' | 'transit'; name: string} | null = null;
@@ -379,6 +439,159 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get activeChart(): SessionChart | null {
     return this.displayChart(this.sessionCharts.find(chart => chart.id === this.activeChartId) ?? null);
   }
+  get kleroi(): Readonly<Record<string, number>> | null {
+    const chart = this.activeChart;
+    const fn: unknown = moduleExport(astrologyPackage, 'calculateVirgoStarsKleroi');
+    if (!chart || typeof fn !== 'function') return null;
+    const p = chart.data.planets;
+    if (!p['Sun'] || !p['Moon']) return null;
+    try {
+      const planets:Record<string, number> = {};
+      for (const name of ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn'])
+        if (p[name]) planets[name] = p[name].longitude;
+      const result = (fn as (input:unknown) => {lots:Readonly<Record<string, number>>})({
+        profile:'VIRGOSTARS_LEGACY_V1', birthTimeKnown:true, zodiac:'TROPICAL', ascendantDeg:chart.data.as, planets,
+      });
+      return result.lots;
+    } catch { return null; }
+  }
+  toggleKleroi(): void {
+    if (!this.kleroiSupported || !this.kleroi || this.busy || this.calcBusy || this.exporting) return;
+    this.kleroiEnabled = !this.kleroiEnabled;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  get arabicParts(): {essenziali:readonly RegoloPart[]; abumashar:readonly (readonly RegoloPart[])[]} | null {
+    const chart = this.activeChart;
+    const house = chart?.data.houses[this.houseSystem];
+    if (!chart || !house) return null;
+    const previousNewMoonDeg = this.arabicNewMoon?.key === this.planetaryHourKey(chart) && this.arabicNewMoon.status === 'ready'
+      ? this.arabicNewMoon.longitude ?? undefined : undefined;
+    const cache = this.arabicPartsCache;
+    if (cache && cache.chart === chart && cache.house === this.houseSystem && cache.moon === previousNewMoonDeg) return cache.result;
+    const lots = this.kleroi;
+    if (!lots) return null;
+    const planets:Record<string,number> = {...lots};
+    for (const [name, planet] of Object.entries(chart.data.planets)) planets[name] = planet.longitude;
+    if (!Number.isFinite(planets['Sun'])) return null;
+    try {
+      const result = calculateRegoloArabicParts({ascendantDeg:house.ascendant, mcDeg:house.mc,
+        cuspsDeg:house.house, planets, sect:((planets['Sun'] - house.ascendant + 360) % 360) < 180 ? 'NIGHT' : 'DAY', previousNewMoonDeg});
+      this.arabicPartsCache = {chart, house:this.houseSystem, moon:previousNewMoonDeg, result};
+      return result;
+    }
+    catch { return null; }
+  }
+  get arabicPartsRows(): readonly RegoloPart[] {
+    const parts = this.arabicParts;
+    if (!parts) return [];
+    if (this.arabicPartsGroup === 'essenziali') return parts.essenziali;
+    const house = Number(this.arabicPartsGroup);
+    return Number.isInteger(house) && house >= 1 && house <= 12 ? parts.abumashar[house-1] : [];
+  }
+  trackArabicPart(_index:number, part:RegoloPart): string { return part.nome; }
+  changeArabicGroup(event:Event): void {
+    this.arabicPartsGroup = (event.target as HTMLSelectElement).value;
+    this.arabicPartsIndex = -1;
+    if (this.arabicPartsGroup === '4' || this.arabicPartsGroup === '8') void this.loadArabicNewMoon();
+    if (this.initialized) void this.draw();
+  }
+  changeArabicPart(event:Event): void {
+    this.arabicPartsIndex = Number((event.target as HTMLSelectElement).value);
+    if (this.initialized) void this.draw();
+  }
+  changeArabicCustom(event:Event, field:'planet'|'destination'): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if (field === 'planet' && this.arabicCustomPlanets.includes(value)) this.arabicCustomPlanet = value;
+    if (field === 'destination' && (['ascendant','ds','mc','ic'].includes(value) || /^(?:[0-9]|1[01])$/.test(value))) this.arabicCustomDestination = value;
+    if (this.initialized) void this.draw();
+  }
+  toggleArabicParts(): void {
+    this.arabicPartsOpen = !this.arabicPartsOpen;
+    this.arabicPartsIndex = -1;
+    if (this.arabicPartsOpen) { this.kleroiEnabled = false; this.directionChart = null; }
+    if (this.arabicPartsOpen && (this.arabicPartsGroup === '4' || this.arabicPartsGroup === '8')) void this.loadArabicNewMoon();
+    if (this.initialized) void this.draw();
+  }
+  async toggleFixedStars(): Promise<void> {
+    this.fixedStarsEnabled = !this.fixedStarsEnabled;
+    this.fixedStarSelected = null;
+    if (this.fixedStarsEnabled) await this.loadFixedStars();
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  private async loadFixedStars(): Promise<void> {
+    const chart = this.activeChart;
+    if (!chart || this.destroyed || !this.fixedStarsEnabled) return;
+    const key = this.planetaryHourKey(chart);
+    if (this.fixedStarsResult?.key === key) return;
+    const ticket = ++this.fixedStarsTicket;
+    this.fixedStarsBusy = true; this.fixedStarsError = false;
+    const result = await calculateChart({utcIso:chart.utcIso, latMicro:chart.latMicro, lngMicro:chart.lngMicro, includeFixedStars:true});
+    if (this.destroyed || ticket !== this.fixedStarsTicket || !this.activeChart || this.planetaryHourKey(this.activeChart) !== key) return;
+    this.fixedStarsBusy = false;
+    if (result.kind !== 'ready' || !result.fixedStars) { this.fixedStarsError = true; this.fixedStarsResult = null; }
+    else this.fixedStarsResult = {key, stars:result.fixedStars};
+    if (this.initialized && this.fixedStarsEnabled) void this.draw();
+    this.cd.markForCheck();
+  }
+  get fixedStarContacts(): readonly {star:FixedStarV1; conjunctions:readonly string[]; axis:string | null; longitude:number}[] {
+    const chart = this.activeChart, stored = this.fixedStarsResult;
+    if (!this.fixedStarsEnabled || !chart || stored?.key !== this.planetaryHourKey(chart)) return [];
+    const house = chart.data.houses[this.houseSystem];
+    if (!house) return [];
+    const points:Record<string,number> = {};
+    for (const [name, p] of Object.entries(chart.data.planets)) if (this.chartSettings.points[name as keyof typeof this.chartSettings.points]?.shown) points[name] = p.longitude;
+    return stored.stars.flatMap(star => {
+      const found = calculateVirgoStarsStarContacts({longitudeDeg:star.longitudeDeg, trueAltitudeDeg:star.trueAltitudeDeg,
+        azimuthDeg:star.azimuthSouthWestDeg, points});
+      if (!found.axis && !found.conjunctions.length) return [];
+      const axes:Record<string,number> = {AS:house.ascendant, DS:house.ds, MC:house.mc, IC:house.ic};
+      return [{star, conjunctions:found.conjunctions, axis:found.axis, longitude:found.axis ? axes[found.axis] : star.longitudeDeg}];
+    });
+  }
+  get selectedFixedStar(): ReturnType<DesktopAppComponent['fixedStarAt']> { return this.fixedStarAt(this.fixedStarSelected); }
+  private fixedStarAt(id:number | null) { return this.fixedStarContacts.find(item => item.star.id === id) ?? null; }
+  get fixedStarCatalogSize(): number { return this.fixedStarsResult?.stars.length ?? 0; }
+  get fixedStarApproximateCount(): number { return this.fixedStarsResult?.stars.filter(star=>star.approximate).length ?? 0; }
+  get fixedStarCatalogIsSample(): boolean {
+    return this.fixedStarsResult?.stars.length === 1 && this.fixedStarsResult.stars[0].id === 102 &&
+      Object.keys(this.fixedStarsResult.stars[0].interpretations).length === 0;
+  }
+  get fixedStarInterpretations(): readonly {name:string; text:string}[] {
+    const item = this.selectedFixedStar;
+    if (!item) return [];
+    return [...item.conjunctions, ...(item.axis ? [item.axis] : [])].flatMap(name => {
+      const value = item.star.interpretations[name];
+      return value ? [{name, text:value}] : [];
+    });
+  }
+
+  starLinkFailed = false;
+  openFixedStarPage(event: MouseEvent, id: number): void {
+    if (!inNativeDesktop()) return;
+    event.preventDefault();
+    this.starLinkFailed = false;
+    void openStarPage(id).then(ok => {
+      if (!ok && !this.destroyed && this.selectedFixedStar?.star.id === id) {
+        this.starLinkFailed = true;
+        this.cd.markForCheck();
+      }
+    });
+  }
+  private async loadArabicNewMoon(): Promise<void> {
+    const chart = this.activeChart;
+    if (!chart || this.destroyed) return;
+    const key = this.planetaryHourKey(chart);
+    if (this.arabicNewMoon?.key === key) return;
+    const ticket = ++this.arabicNewMoonTicket;
+    this.arabicNewMoon = {key, status:'loading', longitude:null};
+    const result = await calculateChart({utcIso:chart.utcIso, latMicro:chart.latMicro, lngMicro:chart.lngMicro, includePreviousNewMoon:true});
+    if (this.destroyed || ticket !== this.arabicNewMoonTicket || !this.activeChart || this.planetaryHourKey(this.activeChart) !== key) return;
+    const longitude = result.kind === 'ready' ? result.previousNewMoonLongitudeDeg ?? null : null;
+    this.arabicNewMoon = {key, status:longitude === null ? 'unavailable' : 'ready', longitude};
+    this.cd.markForCheck();
+  }
   get partnerChart(): SessionChart | null {
     return this.displayChart(this.sessionCharts.find(chart => chart.id === this.partnerChartId) ?? null);
   }
@@ -451,7 +664,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   get houseSystems(): HouseSystemId[] {
     const chart = this.activeChart;
-    return chart ? availableHouseSystems(chart.data) : [];
+    if (!chart) return [];
+    const systems = availableHouseSystems(chart.data);
+    const partner = this.mode === 'synastry' ? this.partnerChart : this.mode === 'natal' ? this.directionChart : null;
+    return partner ? commonHouseSystems(systems, availableHouseSystems(partner.data)) : systems;
   }
   /** The four angles lead the planet table; they have no speed or latitude, and the Ascendant and Descendant no house. */
   get angleRows(): ReadonlyArray<{id:string; fallback:string; longitude:number; house:number | null}> {
@@ -484,7 +700,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   speedText(speed:number): string { return formatSpeed(speed, this.locale); }
   latitudeSpeedText(speed:number): string { return formatSpeed(speed, this.locale, 3); }
   houseOf(house:number | null): HouseDisplay | null { return house === null ? null : houseDisplay(house); }
-  houseSystemLabel(system:HouseSystemId): string { return this.t(HOUSE_SYSTEM_KEYS[system]); }
+  houseSystemLabel(system:HouseSystemId): string {
+    const key = HOUSE_SYSTEM_KEYS[system];
+    return key ? this.t(key) : (EXTRA_HOUSE_LABELS[system]?.[this.locale === 'it' ? 0 : 1] ?? system);
+  }
   statusLabel(status:FunctionStatus): string { return this.t(STATUS_KEYS[status]); }
   entryLabel(entry:{it:string; en:string}): string { return this.locale === 'it' ? entry.it : entry.en; }
   signName(longitude:number): string {
@@ -503,6 +722,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const displayTime = input.historical ? this.chartWhen(input) : input.utcIso;
     const data = buildTemaRenderData(result.chart, displayTime);
     if (!data) return 'calc.nohouses';
+    const gauquelin = await addExtraHouses(data, result.chart, result.provider, input.utcIso, input.latMicro, input.lngMicro);
     const sources = new Set(result.chart.bodies.map(body => body.ephemerisSource));
     const onlySource = sources.size === 1 ? [...sources][0] : null;
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
@@ -516,6 +736,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       unavailableBodies:result.chart.unavailableBodies,
       unavailableHouseSystems:result.chart.unavailableHouseSystems,
       data,
+      gauquelin,
       // The renderer may annotate its input, so it gets its own copy.
       render:Object.assign(new TemaRender(), structuredClone(data)),
     };
@@ -560,20 +781,48 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     this.cd.markForCheck();
   }
-  private showChart(chart: SessionChart | null): void {
+  private showChart(chart: SessionChart | null, redraw = true): void {
     this.cancelTransitNavigation();
     this.natalAspectFocus = null;
     this.zodiacPoint = 'tutti';
     this.activeChartId = chart ? chart.id : null;
+    this.schedulePlanetaryHour(chart);
+    this.fixedStarSelected = null;
+    if (!chart) { ++this.fixedStarsTicket; this.fixedStarsBusy = false; }
+    if (this.fixedStarsEnabled) void this.loadFixedStars();
+    if (this.arabicPartsOpen && (this.arabicPartsGroup === '4' || this.arabicPartsGroup === '8')) void this.loadArabicNewMoon();
     this.transitChart = null;
+    this.synastryTransitChart = null;
+    this.directionChart = null;
     this.rowsCache = null;
     if (chart) this.useAvailableHouseSystem(chart);
     if (chart && this.partnerChartId === chart.id) this.partnerChartId = null;
     // Overlays belong to the previous chart; start again from the plain wheel.
     if (this.mode === 'transits' || this.mode === 'synastry') this.mode = 'natal';
-    if (this.initialized) void this.draw();
+    if (redraw && this.initialized) void this.draw();
     // The navigator follows the chart on screen.
     if (this.inspectorTab === 'navigate' && !this.inspectorCollapsed) this.initNav();
+  }
+  private planetaryHourKey(chart: SessionChart): string {
+    return `${chart.id}|${chart.utcIso}|${chart.latMicro}|${chart.lngMicro}|${chart.timeZone}`;
+  }
+  private schedulePlanetaryHour(chart: SessionChart | null): void {
+    const ticket = ++this.planetaryHourTicket;
+    if (this.planetaryHourTimer !== null) clearTimeout(this.planetaryHourTimer);
+    this.planetaryHourTimer = null;
+    this.planetaryHour = null;
+    const build = moduleExport(astrologyPackage, 'buildPlanetaryHours');
+    if (!chart || chart.kind !== 'chart' || typeof build !== 'function') return;
+    const key = this.planetaryHourKey(chart);
+    this.planetaryHourTimer = setTimeout(() => {
+      this.planetaryHourTimer = null;
+      void calculateChart({utcIso:chart.utcIso, latMicro:chart.latMicro, lngMicro:chart.lngMicro, includeSolarEvents:true}).then(result => {
+        if (this.destroyed || ticket !== this.planetaryHourTicket || !this.activeChart || this.planetaryHourKey(this.activeChart) !== key) return;
+        const value = result.kind === 'ready' && result.solarDay
+          ? rendererPlanetaryHours(result.solarDay, chart.utcIso, chart.timeZone, build as Parameters<typeof rendererPlanetaryHours>[3]) : null;
+        if (value) { this.planetaryHour = {key, value}; if (this.initialized) void this.draw(); }
+      });
+    }, 250);
   }
   activateChart(id:number): void {
     const chart = this.sessionCharts.find(item => item.id === id);
@@ -784,6 +1033,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.navShown = point;
       // Same identity, new data: the partner, the returns and the navigator keep pointing at it.
       this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id} : item);
+      this.schedulePlanetaryHour({...next, id:chart.id});
+      this.fixedStarSelected = null;
+      if (this.fixedStarsEnabled) void this.loadFixedStars();
+      if (this.arabicPartsOpen && (this.arabicPartsGroup === '4' || this.arabicPartsGroup === '8')) void this.loadArabicNewMoon();
       this.rowsCache = null;
       this.aspectCache = null;
       this.matrixAspectCache = null;
@@ -900,9 +1153,198 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     saveStartupPreference(this.uiPreferencesStorage, this.startup);
     this.cd.markForCheck();
   }
+  /** Keep the radix visible while selecting or changing the second chart. */
+  openSynastryPicker(): void {
+    if (!this.activeChart || this.busy || this.calcBusy || this.exporting) return;
+    this.view = 'chart';
+    this.synastryPickerOpen = true;
+    this.archiveQuery = '';
+    this.archiveMessage = null;
+    this.calcMessage = null;
+    this.cd.markForCheck();
+  }
+  closeSynastryPicker(): void {
+    if (this.calcBusy) return;
+    this.synastryPickerOpen = false;
+    this.cd.markForCheck();
+  }
+  selectSynastryChart(id: number): void {
+    const radix = this.activeChart;
+    const partner = this.sessionCharts.find(chart => chart.id === id);
+    if (!radix || !partner || id === radix.id || this.calcBusy || this.exporting) return;
+    const common = commonHouseSystems(availableHouseSystems(radix.data), availableHouseSystems(partner.data));
+    if (!common.length) { this.calcMessage = 'calc.nohouses'; this.cd.markForCheck(); return; }
+    if (!common.includes(this.houseSystem)) this.houseSystem = common[0];
+    if (this.houseSystem !== 'egizia') this.synastryDeflection = false;
+    if (this.mode === 'transits') {
+      this.cancelTransitNavigation();
+      this.transitHelpVisible = false;
+      if (this.inspectorTab === 'transits') this.inspectorCollapsed = true;
+    }
+    this.partnerChartId = id;
+    this.directionChart = null;
+    this.mode = 'synastry';
+    this.chartPresentation = 'wheel';
+    this.synastryPickerOpen = false;
+    this.calcMessage = null;
+    this.crossAspectCache = null;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  async selectSavedSynastryChart(saved: SavedChartV1): Promise<void> {
+    if (!this.activeChart || this.calcBusy || this.exporting || this.destroyed) return;
+    const open = this.sessionCharts.find(chart => chart.archiveId === saved.id);
+    if (open) { this.selectSynastryChart(open.id); return; }
+    const radixId = this.activeChartId;
+    if (this.activeChart.archiveId === saved.id) return;
+    const ticket = ++this.calcTicket;
+    this.calcBusy = true;
+    this.calcMessage = 'calc.running';
+    this.cd.markForCheck();
+    const chart = await this.computeChart({
+      name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
+      offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName,
+    }, saved.id);
+    if (this.destroyed || ticket !== this.calcTicket) return;
+    this.calcBusy = false;
+    if (typeof chart === 'string') this.calcMessage = chart;
+    else if (this.activeChartId === radixId && this.synastryPickerOpen) {
+      this.sessionCharts = [...this.sessionCharts, chart];
+      this.selectSynastryChart(chart.id);
+    }
+    this.cd.markForCheck();
+  }
+  swapSynastryCharts(): void {
+    if (this.mode !== 'synastry' || this.busy || this.calcBusy || this.exporting) return;
+    const previous = this.activeChartId;
+    const partner = this.sessionCharts.find(chart => chart.id === this.partnerChartId);
+    if (previous === null || !partner) return;
+    this.showChart(partner, false);
+    this.partnerChartId = previous;
+    this.mode = 'synastry';
+    this.crossAspectCache = null;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  get synastryTransitsShown(): boolean { return this.synastryTransitChart !== null; }
+  openDirections(): void {
+    if (!this.activeChart || !this.directionsSupported || this.busy || this.calcBusy || this.exporting) return;
+    this.directionToolOpen = true;
+    this.returnTool = null;
+    this.view = 'functions';
+    this.cd.markForCheck();
+  }
+  closeDirections(): void {
+    this.directionToolOpen = false;
+    this.cd.markForCheck();
+  }
+  setDirectionDate(event: Event): void { this.directionDate = (event.target as HTMLInputElement).value; }
+  setDirectionMode(event: Event): void {
+    const mode = (event.target as HTMLSelectElement).value;
+    if (mode === 'SYMBOLIC' || mode === 'SIMPLIFIED_PRIMARY' || mode === 'SECONDARY_PROGRESSION') this.directionMode = mode;
+  }
+  clearDirection(): void {
+    this.directionChart = null;
+    this.directionToolOpen = false;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  async applyDirection(): Promise<void> {
+    const radix = this.activeChart;
+    const calculate = moduleExport(astrologyPackage, 'calculateRegoloDirection');
+    const symbolic = moduleExport(astrologyPackage, 'regoloSymbolicLongitude');
+    if (!radix || !this.directionsSupported || this.calcBusy || this.busy || this.exporting || typeof calculate !== 'function' || typeof symbolic !== 'function') return;
+    const result = makeDirectionPlan(radix.utcIso, this.directionDate, this.directionMode, calculate as Parameters<typeof makeDirectionPlan>[3]);
+    if (!result) { this.calcMessage = 'calc.invalid'; return; }
+    const ticket = ++this.calcTicket;
+    this.calcBusy = true;
+    this.calcMessage = 'calc.running';
+    this.cd.markForCheck();
+    let chart: SessionChart | MessageKey;
+    if (this.directionMode === 'SYMBOLIC') {
+      const data = structuredClone(radix.data);
+      for (const body of Object.values(data.planets)) {
+        body.longitude = symbolic(body.longitude, body.longitudeSpeed, result.degreeOffset);
+        body.longitudeSign = Math.floor(body.longitude / 30);
+        body.longitude30 = body.longitude % 30;
+      }
+      chart = {...radix, id:this.nextChartId++, data, render:Object.assign(new TemaRender(), structuredClone(data))};
+    } else {
+      chart = await this.computeChart({name:'', utcIso:new Date(result.directedUtcMillis!).toISOString(), localDate:'', localTime:'', timeZone:radix.timeZone,
+        offsetSeconds:0, latMicro:radix.latMicro, lngMicro:radix.lngMicro, placeName:radix.placeName});
+    }
+    if (this.destroyed || ticket !== this.calcTicket) return;
+    this.calcBusy = false;
+    if (typeof chart === 'string') this.calcMessage = chart;
+    else if (this.activeChartId === radix.id) {
+      const common = commonHouseSystems(availableHouseSystems(radix.data), availableHouseSystems(chart.data));
+      if (!common.length) this.calcMessage = 'calc.nohouses';
+      else {
+        if (!common.includes(this.houseSystem)) this.houseSystem = common[0];
+        this.cancelTransitNavigation();
+        this.mode = 'natal';
+        this.chartPresentation = 'wheel';
+        this.kleroiEnabled = false;
+        this.directionChart = chart;
+        this.directionArc = result.degreeOffset;
+        this.directionAppliedMode = this.directionMode;
+        this.directionAppliedDate = this.directionDate;
+        this.calcMessage = null;
+        this.view = 'chart';
+        if (this.initialized) void this.draw();
+      }
+    }
+    this.cd.markForCheck();
+  }
+  toggleSynastryDeflection(): void {
+    if (!this.synastryDeflectionSupported || this.houseSystem !== 'egizia' || this.busy || this.calcBusy || this.exporting) return;
+    this.synastryDeflection = !this.synastryDeflection;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  setSynastryDeflectionHouse(event: Event): void {
+    const value = Number((event.target as HTMLSelectElement).value);
+    if (!this.synastryDeflection || !this.synastryHouses.includes(value) || this.busy || this.calcBusy || this.exporting) return;
+    this.synastryDeflectionHouse = value;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  get synastryTransitWhen(): string {
+    return this.synastryTransitChart ? this.chartWhen(this.synastryTransitChart) : '';
+  }
+  /** A separately calculated current sky; it must never replace either comparison chart. */
+  async toggleSynastryTransits(): Promise<void> {
+    const radix = this.activeChart;
+    if (!radix || !this.partnerChart || this.mode !== 'synastry' || this.busy || this.calcBusy || this.exporting || this.destroyed) return;
+    if (this.synastryTransitChart) {
+      this.synastryTransitChart = null;
+      if (this.initialized) void this.draw();
+      this.cd.markForCheck();
+      return;
+    }
+    const partnerId = this.partnerChartId;
+    const ticket = ++this.calcTicket;
+    this.calcBusy = true;
+    this.calcMessage = 'calc.running';
+    this.cd.markForCheck();
+    const chart = await this.computeChart({
+      name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:radix.timeZone,
+      offsetSeconds:0, latMicro:radix.latMicro, lngMicro:radix.lngMicro, placeName:radix.placeName,
+    });
+    if (this.destroyed || ticket !== this.calcTicket) return;
+    this.calcBusy = false;
+    if (typeof chart === 'string') this.calcMessage = chart;
+    else if (this.mode === 'synastry' && this.activeChartId === radix.id && this.partnerChartId === partnerId) {
+      this.synastryTransitChart = chart;
+      this.calcMessage = null;
+      if (this.initialized) void this.draw();
+    }
+    this.cd.markForCheck();
+  }
   setPartner(event: Event): void {
     const id = Number((event.target as HTMLSelectElement).value);
     const chart = this.sessionCharts.find(item => item.id === id && item.id !== this.activeChartId);
+    if (chart && this.mode === 'synastry') { this.selectSynastryChart(chart.id); return; }
     this.partnerChartId = chart ? chart.id : null;
     if (this.mode === 'synastry') {
       if (chart) { if (this.initialized) void this.draw(); }
@@ -914,6 +1356,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const value = (event.target as HTMLSelectElement).value as HouseSystemId;
     if (!this.houseSystems.includes(value) || value === this.houseSystem || this.exporting) return;
     this.houseSystem = value;
+    if (value !== 'egizia') this.synastryDeflection = false;
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -954,6 +1397,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.calcMessage = chart;
     } else {
       this.transitChart = chart;
+      this.synastryTransitChart = null;
+      this.directionChart = null;
       this.mode = 'transits';
       if (this.initialized) this.attachTransitHover();
       const point: NavPoint = {utcMs:Date.parse(chart.utcIso), latMicro:chart.latMicro, lngMicro:chart.lngMicro,
@@ -1357,6 +1802,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.returnRadix = {
       chartId:chart.id, name:chart.name, sunLongitude:sun.longitude, moonLongitude:moon.longitude,
       latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.historical ? 'UTC' : chart.timeZone, placeName:chart.placeName,
+      houseSets:chart.data.houses,
     };
     this.returnTool = kind;
     this.view = 'functions';
@@ -1382,6 +1828,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   openArchive(): void {
+    this.synastryPickerOpen = false;
     this.view = 'archive';
     this.editingChart = null;
     this.archiveMessage = null;
@@ -1431,6 +1878,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       case 'mode_natal': this.closeSheet(); this.setMode('natal'); break;
       case 'mode_transits': this.closeSheet(); this.setMode('transits'); break;
       case 'mode_synastry': this.closeSheet(); this.setMode('synastry'); break;
+      case 'synastry_transits': this.closeSheet(); void this.toggleSynastryTransits(); break;
+      case 'synastry_swap': this.closeSheet(); this.swapSynastryCharts(); break;
+      case 'synastry_deflection': this.closeSheet(); this.toggleSynastryDeflection(); break;
+      case 'kleroi': this.closeSheet(); this.toggleKleroi(); break;
+      case 'fixed_stars': this.closeSheet(); this.mode = 'natal'; this.chartPresentation = 'wheel'; void this.toggleFixedStars(); break;
+      case 'arabic_parts': case 'arabic_abu': case 'arabic_custom':
+        this.closeSheet();
+        if (this.activeChart && this.kleroi) {
+          this.mode = 'natal'; this.chartPresentation = 'wheel'; this.kleroiEnabled = false; this.directionChart = null;
+          this.arabicPartsOpen = true; this.arabicPartsIndex = -1;
+          this.arabicPartsGroup = entry.action === 'arabic_parts' ? 'essenziali' : entry.action === 'arabic_abu' ? '1' : 'custom';
+          if (this.initialized) void this.draw();
+        }
+        break;
+      case 'directions': this.openDirections(); break;
       case 'mode_latitude': this.closeSheet(); this.setMode('latitude'); break;
     }
   }
@@ -1501,6 +1963,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       GestoreImmagini.configurePublicAssetsBase('/assets/');
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
+      this.renderer.setFixedStarHoverListener(id => {
+        if (id !== null && this.fixedStarsEnabled && !this.destroyed) {this.fixedStarSelected = id; this.cd.markForCheck();}
+      });
       this.renderer.setNatalPlanetHoverListener(value => {
         if (!value || this.destroyed || this.view !== 'chart' || this.mode !== 'natal' ||
           this.chartPresentation !== 'wheel' || !this.activeChart) return;
@@ -1565,6 +2030,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    ++this.fixedStarsTicket;
+    ++this.arabicNewMoonTicket;
+    ++this.planetaryHourTicket;
+    if (this.planetaryHourTimer !== null) clearTimeout(this.planetaryHourTimer);
     this.cancelTransitNavigation();
     this.releasePhotoUrls();
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
@@ -1721,16 +2190,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setMode(mode:ChartMode): void {
     if (this.view !== 'chart') { this.view = 'chart'; this.cd.markForCheck(); }
     if(this.busy) return;
+    if (mode === 'natal' && this.mode === 'natal' && this.directionChart) { this.clearDirection(); return; }
     // "Tema natale" while the sky is on screen means the last subject's chart, or the archive to choose one.
     if (mode === 'natal' && this.isSkyActive) { this.openNatal(); return; }
+    if (mode === 'synastry' && this.activeChart) { this.openSynastryPicker(); return; }
+    this.synastryPickerOpen = false;
     if (mode === this.mode) return;
+    this.directionChart = null;
     if (this.activeChart && mode === 'transits') { void this.showTransits(); return; }
-    if (this.activeChart && mode === 'synastry' && !this.partnerChart) {
-      // A synastry needs a second calculated chart.
-      this.calcMessage = 'synastry.needsecond';
-      if (this.sessionCharts.length > 1) this.openArchive(); else this.openNewChart();
-      return;
-    }
+    this.synastryTransitChart = null;
     if (this.mode === 'transits') {
       this.cancelTransitNavigation();
       this.transitHelpVisible = false;
@@ -1764,6 +2232,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const options = structuredClone(defaultOpzioniGrafico);
     options.settaggi.skin_id = this.chartSkin;
     options.nascondiAssiDuplicati = true;
+    options.mostraDirezioneMotoMC = true;
     options.mostraAssiTransiti = this.mode === 'transits';
     options.temaGrafico = this.theme;
     const active = this.activeChart;
@@ -1786,12 +2255,35 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       options.proiezioneZodiacale = {tipo:this.zodiacMode === 'antiscia' ? 'antisci' : 'contrantisci',
         asse:this.zodiacAxis, pianeta:this.zodiacPoint, punti:zodiacProjectionPoints(active.data,this.zodiacAxis,this.chartSettings.points)};
     }
-    options.mostraTransiti = this.mode === 'transits' && (!active || this.transitChart !== null);
+    options.mostraTransiti = (this.mode === 'transits' && (!active || this.transitChart !== null)) ||
+      (this.mode === 'synastry' && this.synastryTransitChart !== null);
     options.mostraSinastria = (this.mode === 'synastry' && (!active || this.partnerChart !== null)) ||
-      (this.mode === 'transits' && this.synodView === 'transit-synod' && this.synodChart !== null);
+      (this.mode === 'transits' && this.synodView === 'transit-synod' && this.synodChart !== null) ||
+      (this.mode === 'natal' && this.directionChart !== null && this.directionAppliedMode === 'SECONDARY_PROGRESSION');
+    if (this.mode === 'natal' && this.directionChart) {
+      options.mostraDirezioni = true;
+      options.direzioniModalita = this.directionAppliedMode === 'SYMBOLIC' ? 'simboliche' :
+        this.directionAppliedMode === 'SIMPLIFIED_PRIMARY' ? 'primarieSemplificate' : 'temaProgresso';
+      options.direzioniDegOffs = this.directionArc;
+      if (this.directionAppliedMode !== 'SECONDARY_PROGRESSION') options.direzioni2ndTemaRender = this.directionChart.render;
+    }
+    options.sinastria.sinastriaDeflettiva = this.mode === 'synastry' && this.synastryDeflectionSupported && this.synastryDeflection;
+    options.sinastria.deflettiSuCasa = this.synastryDeflectionHouse;
     if (active) options.settaggi.domificazione_selezionata = this.houseSystem;
     const settings = this.chartSettings;
     options.mostraAspetti = settings.showAspects;
+    if (this.mode === 'natal' && this.kleroiEnabled && !this.directionChart && this.kleroi) options.kleros = 'visualizza sorti';
+    if (this.mode === 'natal' && this.arabicPartsOpen && !this.directionChart) {
+      if (this.arabicPartsGroup === 'custom') {
+        options.mostraPartiArabe = true;
+        options.partiArabe = {modalita:'crea', nomeElCeleste:this.arabicCustomPlanet, elDestinazione:this.arabicCustomDestination};
+      } else if (this.arabicPartsRows[this.arabicPartsIndex]) {
+        options.mostraPartiArabe = true;
+        options.partiArabe = {modalita:(this.arabicPartsGroup === 'essenziali' ? 'essenziali' : 'abumashar') as 'essenziali',
+          formulaSelezionataIndex:this.arabicPartsIndex,
+          ...(this.arabicPartsGroup === 'essenziali' ? {} : {formulaAbumasharCasaSelezionata:Number(this.arabicPartsGroup)-1})};
+      }
+    }
     const aspectsOn = options.settaggi.aspetti_attivi as unknown as Record<string,boolean>;
     const aspectOrbs = options.settaggi.aspetti_orbite as unknown as Record<string,number|null>;
     for (const {id} of ASPECT_DEFINITIONS) {
@@ -1822,11 +2314,27 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const noOverlay = null as unknown as TemaRender;
     const active = this.activeChart;
     if (!active) return null;
-    const transit = this.displayedTransit?.render;
-    const synastry = this.mode === 'transits' && this.synodView === 'transit-synod' ? this.displayChart(this.synodChart)?.render : this.partnerChart?.render;
-    return [active.render,
-      this.mode==='transits' && transit ? transit : noOverlay,
-      (this.mode==='synastry' || this.mode==='transits' && this.synodView==='transit-synod') && synastry ? synastry : noOverlay,
+    const transit = this.mode === 'synastry' ? this.displayChart(this.synastryTransitChart)?.render : this.displayedTransit?.render;
+    const synastry = this.mode === 'natal' && this.directionAppliedMode === 'SECONDARY_PROGRESSION' ? this.directionChart?.render :
+      this.mode === 'transits' && this.synodView === 'transit-synod' ? this.displayChart(this.synodChart)?.render : this.partnerChart?.render;
+    let natal = active.render;
+    const kleroi = this.mode === 'natal' && this.kleroiEnabled ? this.kleroi : null;
+    const parts = this.mode === 'natal' && this.arabicPartsOpen ? this.arabicParts : null;
+    const partLots = parts ? this.kleroi : null;
+    const stars = this.mode === 'natal' ? this.fixedStarContacts : [];
+    const hour = this.planetaryHour?.key === this.planetaryHourKey(active) ? this.planetaryHour.value : null;
+    if (kleroi || hour || parts || stars.length) {
+      natal = Object.assign(new TemaRender(), structuredClone(active.data));
+      if (kleroi) for (const [name, longitude] of Object.entries(kleroi)) natal.planets[name] = {longitude};
+      if (partLots) for (const [name, longitude] of Object.entries(partLots)) natal.planets[name] = {longitude};
+      if (parts) natal.partiArabe = parts;
+      if (stars.length) (natal as TemaRender & {fixedStars:unknown}).fixedStars = stars.map(item => ({
+        id:item.star.id, longitude:item.longitude, magnitude:item.star.magnitude ?? 3, axisContact:!!item.axis}));
+      if (hour) natal.orePlanetarie = hour;
+    }
+    return [natal,
+      (this.mode==='transits' || this.mode==='synastry') && transit ? transit : noOverlay,
+      (this.mode==='synastry' || this.mode==='transits' && this.synodView==='transit-synod' || this.mode==='natal' && this.directionChart && this.directionAppliedMode==='SECONDARY_PROGRESSION') && synastry ? synastry : noOverlay,
       this.mode==='latitude' ? 'latitudini' : 'carta-astrale'];
   }
   async draw(): Promise<void> {

@@ -1,6 +1,6 @@
-// Local-only IPC: a read-only runtime probe, an offline place search, a chart calculation
-// a local chart archive and a solar/lunar return search.
-// No privileged account, storage or network command.
+// Local IPC: runtime probe, offline place search, chart calculation, archive,
+// event searches and a narrowly scoped system-browser link to a VirgoStars star.
+// No privileged account, arbitrary external URL or cloud-storage command.
 mod runtime_probe;
 mod offline_places;
 mod chart_calculation;
@@ -17,6 +17,7 @@ mod updater;
 mod update_backup;
 #[cfg(all(feature = "updater-loopback-test", not(debug_assertions)))]
 compile_error!("The loopback acceptance feature is forbidden in release builds");
+mod star_link;
 // The canonical astronomy provider (VirgoStars-Ephemeris), behind the `virgostars-ephemeris` feature.
 #[cfg(feature = "virgostars-ephemeris")]
 mod virgostars_provider;
@@ -41,7 +42,7 @@ pub fn run() {
             Ok(())
         })
         .manage(offline_places::PlaceSearchGate::default())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update])
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update, star_link::open_star_page])
         .run(tauri::generate_context!())
         .expect("failed to launch the synthetic VirgoStars Desktop renderer spike");
 }

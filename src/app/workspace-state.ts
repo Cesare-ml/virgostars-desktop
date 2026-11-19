@@ -42,3 +42,9 @@ export function navigationLabel(mode: ChartMode): string {
 export function safeMode(input: string): ChartMode | null {
   return CHART_MODES.includes(input as ChartMode) ? input as ChartMode : null;
 }
+
+/** A comparison may only use systems computed for both charts, preserving radix order. */
+export function commonHouseSystems<T extends string>(radix: readonly T[], partner: readonly T[]): T[] {
+  const supported = new Set(partner);
+  return radix.filter(system => supported.has(system));
+}

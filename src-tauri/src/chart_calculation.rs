@@ -25,6 +25,13 @@ pub struct ChartRequestV1 {
     pub utc_iso: String,
     pub lat_micro: i32,
     pub lng_micro: i32,
+    /// Optional, more expensive local sunrise/sunset calculation.
+    #[serde(default)]
+    pub include_solar_events: bool,
+    #[serde(default)]
+    pub include_previous_new_moon: bool,
+    #[serde(default)]
+    pub include_fixed_stars: bool,
 }
 
 /// A request that passed every range check. Providers never see raw input.
@@ -70,11 +77,19 @@ pub struct HouseSystemV1 {
 #[serde(rename_all = "camelCase")]
 pub struct ChartSnapshotV1 {
     pub julian_day_ut: f64,
+    pub house_angle_context: Option<HouseAngleContextV1>,
     pub bodies: Vec<BodyPositionV1>,
     pub houses: Vec<HouseSystemV1>,
     /// Requested but not computable with the available data. Never substituted.
     pub unavailable_bodies: Vec<&'static str>,
     pub unavailable_house_systems: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HouseAngleContextV1 {
+    pub tt_julian_day: f64,
+    pub true_obliquity_deg: f64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -93,7 +108,25 @@ pub struct ChartResponseV1 {
     pub status: &'static str,
     pub provider: Option<ProviderInfoV1>,
     pub chart: Option<ChartSnapshotV1>,
+    pub solar_day: Option<SolarDayV1>,
+    pub previous_new_moon_longitude_deg: Option<f64>,
+    pub fixed_stars: Option<Vec<FixedStarV1>>,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FixedStarV1 {
+    pub id: u32, pub name: String, pub longitude_deg: f64, pub latitude_deg: f64,
+    pub magnitude: Option<f64>, pub true_altitude_deg: f64, pub azimuth_south_west_deg: f64,
+    pub approximate:bool,
+    pub constellation:Option<String>,
+    pub interpretations: std::collections::BTreeMap<String,String>,
+}
+
+/// UT Julian days bracketing the requested instant; no event is fabricated at polar sites.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SolarDayV1 { pub sunrise_jd_ut:f64, pub sunset_jd_ut:f64, pub next_sunrise_jd_ut:f64 }
 
 /// Deliberately opaque: provider diagnostics may echo paths or inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +147,9 @@ pub trait EphemerisProvider: Send + Sync {
         true
     }
     fn chart(&self, request: &ValidatedRequest) -> Result<ChartSnapshotV1, ProviderError>;
+    fn solar_day(&self, _request: &ValidatedRequest) -> Result<Option<SolarDayV1>, ProviderError> { Ok(None) }
+    fn previous_new_moon_longitude(&self, _request: &ValidatedRequest) -> Result<Option<f64>, ProviderError> { Ok(None) }
+    fn fixed_stars(&self, _request: &ValidatedRequest) -> Result<Option<Vec<FixedStarV1>>, ProviderError> { Ok(None) }
     /// Apparent geocentric ecliptic longitude of a luminary, degrees in `[0, 360)`.
     /// Providers that cannot answer keep this default and searches report a failure.
     fn luminary_longitude(&self, _body: Luminary, _julian_day_ut: f64) -> Result<f64, ProviderError> {
@@ -190,7 +226,7 @@ pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
 }
 
 fn failure(status: &'static str) -> ChartResponseV1 {
-    ChartResponseV1 { protocol_version: PROTOCOL_VERSION, status, provider: None, chart: None }
+    ChartResponseV1 { protocol_version: PROTOCOL_VERSION, status, provider: None, chart: None, solar_day:None, previous_new_moon_longitude_deg:None, fixed_stars:None }
 }
 
 /// Pure decision logic, separated from Tauri so it can be unit tested.
@@ -210,6 +246,9 @@ pub fn respond(provider: Option<&dyn EphemerisProvider>, request: &ChartRequestV
             status: "ok",
             provider: Some(provider.info()),
             chart: Some(chart),
+            solar_day: if request.include_solar_events { provider.solar_day(&valid).ok().flatten() } else { None },
+            previous_new_moon_longitude_deg: if request.include_previous_new_moon { provider.previous_new_moon_longitude(&valid).ok().flatten() } else { None },
+            fixed_stars: if request.include_fixed_stars { provider.fixed_stars(&valid).ok().flatten() } else { None },
         },
         Err(ProviderError) => failure("calculation_failed"),
     }
@@ -241,6 +280,9 @@ mod tests {
             utc_iso: utc_iso.to_string(),
             lat_micro: 44_697_805,
             lng_micro: 11_805_778,
+            include_solar_events: false,
+            include_previous_new_moon: false,
+            include_fixed_stars: false,
         }
     }
 
@@ -291,6 +333,7 @@ mod tests {
     fn empty_chart() -> ChartSnapshotV1 {
         ChartSnapshotV1 {
             julian_day_ut: 2_451_545.0,
+            house_angle_context: None,
             bodies: vec![],
             houses: vec![],
             unavailable_bodies: vec!["Chiron"],

@@ -1,8 +1,8 @@
 # VirgoStars Desktop — official app icon
 
-The Tauri native app icon is the original gold/ivory circular VirgoStars emblem supplied by the project maintainer on 18 November 2026. The transparent original was mechanically resized and placed on a dark `#101726` square; no synthetic icon generator or AI redraw is used for distributed assets.
+The Tauri native app icon is the gold/ivory circular VirgoStars emblem supplied by the project maintainer on 18 November 2026. The previously added dark `#101726` square was removed from the existing 512px image, including its antialiased edge, and the platform variants were resized from that result. No synthetic icon generator or AI redraw is used for distributed assets.
 
-Source assets under `src-tauri/icons/`: `icon.png` (512), `icon.ico` (Windows multi-resolution), `icon.icns` (macOS), plus 32/128/256px PNG variants. `npm run prepare:icon` performs read-only signature and dimension checks; it no longer creates a temporary placeholder icon.
+Source assets under `src-tauri/icons/`: `icon.png` (512), `icon.ico` (Windows multi-resolution), `icon.icns` (macOS), plus 32/128/256px PNG variants. `npm run prepare:icon` checks file structure, PNG dimensions and the transparent top-left pixel in every packaged image; it does not create a placeholder icon.
 
 The macOS ICNS is packaged from those same approved PNGs with `node scripts/package-brand-icns.mjs` when the artwork changes. This manual operation does not redraw or alter the glyph. The read-only verifier checks ICNS size and chunk boundaries to detect truncated files before a native build.
 

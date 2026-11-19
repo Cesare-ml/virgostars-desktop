@@ -3,11 +3,12 @@
 import {lstatSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns', 'synod_events', 'calculate_historical_planet', 'calculate_historical_planet_calendar', 'calculate_historical_chart']);
-const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns', 'synod_events::synod_events', 'historical_planets::calculate_historical_planet', 'historical_planets::calculate_historical_planet_calendar', 'historical_chart::calculate_historical_chart']);
-const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts', 'src/app/native/synod-events.ts', 'src/app/native/historical-planets.ts', 'src/app/native/historical-calendar.ts', 'src/app/native/historical-chart.ts']);
+const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns', 'synod_events', 'calculate_historical_planet', 'calculate_historical_planet_calendar', 'calculate_historical_chart', 'open_star_page']);
+const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns', 'synod_events::synod_events', 'historical_planets::calculate_historical_planet', 'historical_planets::calculate_historical_planet_calendar', 'historical_chart::calculate_historical_chart', 'star_link::open_star_page']);
+const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts', 'src/app/native/synod-events.ts', 'src/app/native/historical-planets.ts', 'src/app/native/historical-calendar.ts', 'src/app/native/historical-chart.ts', 'src/app/native/star-link.ts']);
 const FRONTEND_EXTENSIONS = /\.(?:ts|tsx|js|mjs)$/;
 
 function assert(ok, message) { if (!ok) throw new Error(message); }
@@ -57,7 +58,7 @@ export function auditNativeIpc(sources) {
   }
   // The presence of one approved call must not mask a second, unreviewed IPC.
   // Bracket notation is also a native invoke call and requires review.
-  for(const contract of [sources.runtimeContract,sources.placesContract,sources.chartContract,sources.archiveContract,sources.returnContract,sources.synodContract,sources.historicalContract,sources.historicalCalendarContract,sources.historicalChartContract]) {
+  for(const contract of [sources.runtimeContract,sources.placesContract,sources.chartContract,sources.archiveContract,sources.returnContract,sources.synodContract,sources.historicalContract,sources.historicalCalendarContract,sources.historicalChartContract,sources.starLinkContract]) {
     assert(typeof contract==='string', 'Missing reviewed native protocol');
     const calls=[...contract.matchAll(/(?:\.\s*invoke|\[\s*['"]invoke['"]\s*\])\s*(?:\?\.)?\s*\(/g)];
     assert(calls.length===1, 'Unexpected protocol native invocation count');
@@ -71,6 +72,7 @@ export function auditNativeIpc(sources) {
   assert(/invoke\(['"]calculate_historical_planet['"]\s*,/.test(sources.historicalContract), 'Historical contract command mismatch');
   assert(/invoke\(['"]calculate_historical_planet_calendar['"]\s*,/.test(sources.historicalCalendarContract), 'Historical calendar contract command mismatch');
   assert(/invoke\(['"]calculate_historical_chart['"]\s*,/.test(sources.historicalChartContract), 'Historical chart contract command mismatch');
+  assert(/invoke\(['"]open_star_page['"]\s*,/.test(sources.starLinkContract), 'Star link contract command mismatch');
   // Inspect every frontend source, including src/main.ts, not just src/app.
   // Conservative inventory: any additional Tauri package/API usage needs review.
   for(const [path,content] of Object.entries(sources.tsFiles)) {
@@ -119,9 +121,13 @@ function verifyNoImplicitCapabilities(root) {
 export function auditCheckout(root=ROOT) {
   const read=path=>readFileSync(join(root,path),'utf8');
   verifyNoImplicitCapabilities(root);
-  // Any custom build script could change capability path discovery or the
-  // native command manifest. Require an explicit review of such a change.
-  assert(/^\s*fn\s+main\s*\(\s*\)\s*\{\s*tauri_build::build\(\);\s*\}\s*$/s.test(read('src-tauri/build.rs')),
+  // The reviewed private-catalog build script only reads a fixed local file,
+  // writes OUT_DIR and calls tauri_build::build. Pin its exact bytes: any
+  // change requires a fresh capability/security review, not a broad allowlist.
+  const buildScript=read('src-tauri/build.rs');
+  const plainBuild=/^\s*fn\s+main\s*\(\s*\)\s*\{\s*tauri_build::build\(\);\s*\}\s*$/s.test(buildScript);
+  const reviewedHash='afba63941f12d2bdc23742533292ec6cb890ed61590882d159e50cf60873ca60';
+  assert(plainBuild || createHash('sha256').update(buildScript).digest('hex')===reviewedHash,
     'Tauri build configuration changed; inspect native permissions');
   const tsFiles=Object.fromEntries(listSources(root,'src').map(path=>[path,read(path)]));
   const rustModules={};
@@ -130,7 +136,7 @@ export function auditCheckout(root=ROOT) {
     assert(!Object.hasOwn(rustModules,moduleName), 'Ambiguous Rust module filename');
     rustModules[moduleName]=read(path);
   }
-  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','chart_archive','return_search','synod_events','historical_planets','historical_chart']) {
+  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','chart_archive','return_search','synod_events','historical_planets','historical_chart','star_link']) {
     assert(Object.hasOwn(rustModules,moduleName), 'Missing reviewed Rust command module');
   }
   return auditNativeIpc({
@@ -146,6 +152,7 @@ export function auditCheckout(root=ROOT) {
     historicalCalendarContract:read('src/app/native/historical-calendar-contract.ts'),
     historicalChartContract:read('src/app/native/historical-chart-contract.ts'),
     updateContract:Object.hasOwn(rustModules,'updater') ? read('src/app/native/update-contract.ts') : undefined,
+    starLinkContract:read('src/app/native/star-link-contract.ts'),
     tsFiles,
     tauriConfig:JSON.parse(read('src-tauri/tauri.conf.json')),
   });

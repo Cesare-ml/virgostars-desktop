@@ -2,7 +2,25 @@
  * Pure helpers for the solar and lunar return panel: input checks and labels.
  * No astronomy; the instants come from the native return search.
  */
+import tzlookup from './vendor/tz-lookup.cjs';
+
 export type ReturnKind = 'solar' | 'lunar';
+
+/** Approximate 2019 geographical boundaries, for an editable user suggestion. */
+export function suggestReturnTimeZone(latMicro:number, lngMicro:number): string | null {
+  if (!Number.isSafeInteger(latMicro) || !Number.isSafeInteger(lngMicro) ||
+      Math.abs(latMicro) > 90_000_000 || Math.abs(lngMicro) > 180_000_000) return null;
+  try {
+    const zone = tzlookup(latMicro / 1e6, lngMicro / 1e6);
+    return validTimeZone(zone) ? zone : null;
+  } catch { return null; }
+}
+
+/** Coordinates on the approved 2:1 equirectangular world map, east/north positive. */
+export function returnMapCoordinates(x: number, y: number): {latMicro: number; lngMicro: number} | null {
+  if (![x,y].every(Number.isFinite) || x < 0 || x > 1 || y < 0 || y > 1) return null;
+  return {latMicro:Math.round((90 - 180 * y) * 1e6), lngMicro:Math.round((360 * x - 180) * 1e6)};
+}
 
 /** The chart a return is computed from, captured when the panel opens. */
 export type ReturnRadix = Readonly<{
@@ -14,6 +32,7 @@ export type ReturnRadix = Readonly<{
   lngMicro: number;
   timeZone: string;
   placeName: string;
+  houseSets?: Readonly<Record<string, {house:readonly number[]}>>;
 }>;
 
 const MIN_YEAR = 1600;

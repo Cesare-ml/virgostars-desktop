@@ -139,8 +139,72 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!monomeriAvailable || busy" [attr.title]="t(monomeriAvailable ? 'monomeri.help' : 'monomeri.unavailable')"
             [class.selected]="monomeriEnabled" [attr.aria-pressed]="monomeriEnabled" (click)="toggleMonomeri()">{{t('monomeri.title')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
+            [disabled]="!kleroiSupported || !kleroi || busy || calcBusy" [attr.title]="t(kleroiSupported ? 'kleroi.hint' : 'kleroi.unavailable')"
+            [class.selected]="kleroiEnabled" [attr.aria-pressed]="kleroiEnabled" (click)="toggleKleroi()">{{t('kleroi.title')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
+            [disabled]="!kleroi || busy || calcBusy" [class.selected]="arabicPartsOpen" [attr.aria-pressed]="arabicPartsOpen"
+            (click)="toggleArabicParts()">{{t('arabic.title')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal'"
+            [disabled]="!activeChart.gauquelin" [class.selected]="gauquelinOpen" [attr.aria-pressed]="gauquelinOpen"
+            (click)="gauquelinOpen=!gauquelinOpen">{{t('gauquelin.title')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
+            [disabled]="fixedStarsBusy" [class.selected]="fixedStarsEnabled" [attr.aria-pressed]="fixedStarsEnabled"
+            (click)="toggleFixedStars()">{{t('stars.title')}}</button>
           <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
             [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
+        </div>
+
+        <div class="arabic-panel" *ngIf="arabicPartsOpen && mode==='natal' && chartPresentation==='wheel' && activeChart">
+          <label>{{t('arabic.group')}}
+            <select [value]="arabicPartsGroup" (change)="changeArabicGroup($event)">
+              <option value="essenziali">{{t('arabic.essential')}}</option>
+              <option *ngFor="let h of arabicHouses" [value]="h+1">Abu Ma'shar — {{t('arabic.house')}} {{h+1}}</option>
+              <option value="custom">{{t('arabic.custom')}}</option>
+            </select>
+          </label>
+          <label *ngIf="arabicPartsGroup!=='custom'">{{t('arabic.formula')}}
+            <select [value]="arabicPartsIndex" (change)="changeArabicPart($event)">
+              <option value="-1">{{t('arabic.choose')}}</option>
+              <option *ngFor="let item of arabicPartsRows; let i=index; trackBy: trackArabicPart" [value]="i">{{item.nome}} — {{item.descrizione}}</option>
+            </select>
+          </label>
+          <ng-container *ngIf="arabicPartsGroup==='custom'">
+            <label>{{t('arabic.planet')}} <select [value]="arabicCustomPlanet" (change)="changeArabicCustom($event, 'planet')">
+              <option *ngFor="let p of arabicCustomPlanets" [value]="p">{{planetLabel(p)}}</option>
+            </select></label>
+            <label>{{t('arabic.destination')}} <select [value]="arabicCustomDestination" (change)="changeArabicCustom($event, 'destination')">
+              <option value="ascendant">ASC</option><option value="ds">DS</option><option value="mc">MC</option><option value="ic">IC</option>
+              <option *ngFor="let h of arabicHouses" [value]="h">{{t('arabic.house')}} {{h+1}}</option>
+            </select></label>
+          </ng-container>
+          <span *ngIf="arabicPartsGroup!=='custom' && arabicPartsRows[arabicPartsIndex] as item">{{longitudeText(item.longitude)}}</span>
+          <small *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='loading'">{{t('arabic.newMoonLoading')}}</small>
+          <small *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='unavailable'">{{t('arabic.newMoonUnavailable')}}</small>
+        </div>
+        <div class="gauquelin-panel" *ngIf="gauquelinOpen && mode==='natal' && activeChart?.gauquelin as sectors">
+          <strong>{{t('gauquelin.title')}}</strong>
+          <div *ngFor="let longitude of sectors; let i=index">{{i+1}} — {{longitudeText(longitude)}}</div>
+        </div>
+        <div class="star-panel" *ngIf="fixedStarsEnabled && mode==='natal' && chartPresentation==='wheel'">
+          <small>{{t('stars.catalogNote')}} {{fixedStarCatalogSize}}</small>
+          <small *ngIf="fixedStarApproximateCount">{{t('stars.approximateCount')}} {{fixedStarApproximateCount}}</small>
+          <small *ngIf="fixedStarCatalogIsSample">{{t('stars.sample')}}</small>
+          <small *ngIf="fixedStarsBusy">{{t('stars.loading')}}</small>
+          <small *ngIf="fixedStarsError">{{t('stars.unavailable')}}</small>
+          <ng-container *ngIf="selectedFixedStar as item">
+            <button type="button" (click)="fixedStarSelected=null" [attr.aria-label]="t('sheet.close')">×</button>
+            <strong>{{item.star.name}}</strong>
+            <span *ngIf="item.star.constellation">{{item.star.constellation}}</span>
+            <span>{{longitudeText(item.star.longitudeDeg)}} · {{t('stars.magnitude')}} {{item.star.magnitude ?? '—'}}</span>
+            <small *ngIf="item.star.approximate">{{t('stars.approximate')}}</small>
+            <span *ngIf="item.axis">{{t('stars.axis')}} {{item.axis}}</span>
+            <span *ngIf="item.conjunctions.length">{{t('stars.conjunctions')}} {{namesOf(item.conjunctions)}}</span>
+            <p *ngFor="let interpretation of fixedStarInterpretations"><strong>{{planetLabel(interpretation.name)}}:</strong> {{interpretation.text}}</p>
+            <a [href]="'https://virgostars.it/stella/' + item.star.id + '/' + item.star.name.toLowerCase()"
+              target="_blank" rel="noopener noreferrer" (click)="openFixedStarPage($event, item.star.id)">{{t('stars.website')}}</a>
+            <small *ngIf="starLinkFailed" role="alert">{{t('stars.websiteFailed')}}</small>
+          </ng-container>
         </div>
 
         <div class="chart-toolbar chart-toolbar-left" role="toolbar" [attr.aria-label]="t('chart')">
@@ -175,6 +239,53 @@
         <div class="empty-state" *ngIf="!activeChart && view==='chart'" role="status">
           <p>{{t(calcMessage ?? 'sky.loading')}}</p>
           <button type="button" class="form-primary-link" *ngIf="!calcBusy" (click)="openNewChart()">{{t('newchart')}}</button>
+        </div>
+
+        <!-- Compact archive keeps the radix visible and makes the second chart replaceable. -->
+        <aside class="synastry-picker" *ngIf="view==='chart' && synastryPickerOpen" [attr.aria-label]="t('synastry.choose')">
+          <header class="sheet-head">
+            <h2>{{t('synastry.choose')}}</h2>
+            <button type="button" class="toolbar-button" [disabled]="calcBusy" [attr.aria-label]="t('sheet.close')" (click)="closeSynastryPicker()">×</button>
+          </header>
+          <p class="inspector-hint">{{t('synastry.choose.help')}}</p>
+          <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
+          <h3 class="panel-title">{{t('archive.session')}}</h3>
+          <ng-container *ngFor="let chart of sessionCharts; trackBy:trackChart">
+            <button type="button" class="session-open synastry-choice" *ngIf="chart.id!==activeChartId"
+              [disabled]="busy || calcBusy" (click)="selectSynastryChart(chart.id)">
+              <strong>{{chartName(chart)}}</strong><span>{{chartWhen(chart)}}</span>
+            </button>
+          </ng-container>
+          <h3 class="panel-title">{{t('archive.saved.title')}}</h3>
+          <input type="search" class="archive-search" autocomplete="off" spellcheck="false" maxlength="80"
+            *ngIf="savedCharts.length" [attr.placeholder]="t('archive.search')" [attr.aria-label]="t('archive.search')"
+            [value]="archiveQuery" (input)="setArchiveQuery($event)">
+          <p class="inspector-hint" *ngIf="!savedCharts.length">{{t('archive.empty')}}</p>
+          <p class="inspector-hint" *ngIf="savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
+          <ng-container *ngFor="let saved of visibleSavedCharts; trackBy:trackSaved">
+            <button type="button" class="session-open synastry-choice" *ngIf="saved.id!==activeChart?.archiveId"
+              [disabled]="busy || calcBusy" (click)="selectSavedSynastryChart(saved)">
+              <strong>{{saved.name || t('session.unnamed')}}</strong><span>{{chartWhen(saved)}}</span><span>{{savedPlace(saved)}}</span>
+            </button>
+          </ng-container>
+        </aside>
+        <div class="synastry-controls" *ngIf="view==='chart' && mode==='synastry' && partnerChart && !synastryPickerOpen" role="group" [attr.aria-label]="t('mode.synastry')">
+          <span>{{t('session.partner')}}: {{chartName(partnerChart)}}</span>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="openSynastryPicker()">{{t('synastry.change')}}</button>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="swapSynastryCharts()">{{t('synastry.swap')}}</button>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy || !synastryDeflectionSupported || houseSystem!=='egizia'" [attr.title]="t(synastryDeflectionSupported ? 'synastry.deflection.hint' : 'synastry.deflection.unavailable')" [attr.aria-pressed]="synastryDeflection" (click)="toggleSynastryDeflection()">{{t('synastry.deflection')}}</button>
+          <label *ngIf="synastryDeflection">{{t('synastry.deflectHouse')}}
+            <select class="inline-select" [value]="synastryDeflectionHouse" [disabled]="busy || calcBusy" (change)="setSynastryDeflectionHouse($event)">
+              <option *ngFor="let house of synastryHouses" [value]="house">{{house}}</option>
+            </select>
+          </label>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy" [attr.aria-pressed]="synastryTransitsShown" (click)="toggleSynastryTransits()">{{t('synastry.transits')}}</button>
+          <span *ngIf="synastryTransitsShown">{{synastryTransitWhen}}</span>
+        </div>
+        <div class="synastry-controls" *ngIf="view==='chart' && mode==='natal' && directionChart" role="group" [attr.aria-label]="t('directions.title')">
+          <span>{{t(directionAppliedMode==='SYMBOLIC' ? 'directions.symbolic' : directionAppliedMode==='SIMPLIFIED_PRIMARY' ? 'directions.primary' : 'directions.progression')}} · {{directionAppliedDate}} UTC</span>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="openDirections()">{{t('directions.change')}}</button>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="clearDirection()">{{t('directions.close')}}</button>
         </div>
 
         <!-- New chart: its own panel, nothing else in it. -->
@@ -317,16 +428,30 @@
             <h2>{{t('tab.functions')}}</h2>
             <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
           </header>
-          <vs-returns-panel *ngIf="returnTool && returnRadix" [locale]="locale" [kind]="returnTool" [radix]="returnRadix"
+          <vs-returns-panel *ngIf="returnTool && returnRadix" [locale]="locale" [kind]="returnTool" [radix]="returnRadix" [houseSystem]="houseSystem"
             [busy]="calcBusy || busy" (chartRequested)="onReturnChartRequested($event)" (closed)="closeReturns()"></vs-returns-panel>
           <p class="calc-status" role="status" *ngIf="returnTool && calcMessage">{{t(calcMessage)}}</p>
+          <section class="direction-panel" *ngIf="directionToolOpen" [attr.aria-label]="t('directions.title')">
+            <header class="sheet-head"><h2>{{t('directions.title')}}</h2><button type="button" class="toolbar-button" [disabled]="calcBusy" [attr.aria-label]="t('sheet.close')" (click)="closeDirections()">×</button></header>
+            <label class="setting-line select-line"><span>{{t('directions.method')}}</span>
+              <select class="inline-select" [value]="directionMode" [disabled]="calcBusy" (change)="setDirectionMode($event)">
+                <option value="SIMPLIFIED_PRIMARY">{{t('directions.primary')}}</option>
+                <option value="SYMBOLIC">{{t('directions.symbolic')}}</option>
+                <option value="SECONDARY_PROGRESSION">{{t('directions.progression')}}</option>
+              </select>
+            </label>
+            <label class="setting-line select-line"><span>{{t('directions.date')}}</span><input type="date" [value]="directionDate" [disabled]="calcBusy" (input)="setDirectionDate($event)"></label>
+            <p class="inspector-hint">{{t('directions.note')}}</p>
+            <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
+            <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="applyDirection()">{{t('directions.apply')}}</button>
+          </section>
           <details class="function-group" *ngFor="let group of catalog; let first = first" [open]="first">
             <summary>
               <span>{{entryLabel(group)}}</span>
               <span class="function-count">{{availableIn(group).length}}</span>
             </summary>
             <button type="button" class="data-line function-line" *ngFor="let entry of availableIn(group)"
-              [disabled]="busy || calcBusy || (entry.action==='monomeri' && !monomeriAvailable)"
+              [disabled]="busy || calcBusy || (entry.action==='monomeri' && !monomeriAvailable) || (entry.action==='directions' && !directionsSupported)"
               [attr.title]="entry.action==='monomeri' && !monomeriAvailable ? t('monomeri.unavailable') : null" (click)="runFunction(entry)">
               <span>{{entryLabel(entry)}}</span>
             </button>
@@ -629,7 +754,8 @@
             <span class="numeric">{{formatOrb(row.orbDeg)}}<span class="aspect-motion" *ngIf="row.applying !== null"
               [attr.title]="t(row.applying ? 'aspects.applying' : 'aspects.separating')"> {{t(row.applying ? 'aspects.appl.short' : 'aspects.sep.short')}}</span></span>
           </div>
-          <ng-container *ngIf="(mode === 'transits' && transitChartAvailable) || (mode === 'synastry' && partnerChart)">
+          <p class="inspector-hint" *ngIf="mode==='synastry' && synastryDeflection">{{t('synastry.deflection.aspects')}}</p>
+          <ng-container *ngIf="(mode === 'transits' && transitChartAvailable) || (mode === 'synastry' && partnerChart && !synastryDeflection)">
             <div class="data-head spaced" [attr.title]="t(mode === 'transits' ? 'aspects.transits.help' : 'aspects.synastry.help')">
               <span>{{t(mode === 'transits' ? 'aspects.transits' : 'aspects.synastry')}} ({{crossAspectRows.length}})</span><span>{{t('aspects.orb')}}</span>
             </div>
