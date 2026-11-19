@@ -1,5 +1,18 @@
 # Tauri production and development WebView security configuration gate
 
+## Optional solar-return map (2026-11-19)
+
+The reviewed production and development CSPs additionally allow image loads
+from `https://tile.openstreetmap.org` and fetches from
+`https://nominatim.openstreetmap.org`; no other remote sources are allowed.
+The map is disabled until a user enables it. The app identifies itself with a
+fixed WebView user agent and discloses that viewing sends IP/area and a click
+sends coordinates. No geocoding occurs on pointer movement. This is a private
+single-device prototype: the public Nominatim aggregate rate limit and runtime
+service-switching requirement are not solved for wider distribution. See
+`RETURNS.md`; this static gate does not verify WebView caching, CORS or service
+policy compliance.
+
 **Status:** synthetic-source build safeguard; no native runtime or release certification.
 
 ## Why

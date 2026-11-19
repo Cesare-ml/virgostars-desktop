@@ -18,6 +18,8 @@ import {
 } from './returns-form';
 import {translate, type Locale, type MessageKey} from './translations';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
+import {ReturnOsmMapComponent, type ReturnMapPoint} from './return-osm-map.component';
+import {ReturnMapGeocoder} from './return-map-geocode';
 
 const SEARCH_FAILURES: Record<Exclude<ReturnSearchResult['kind'], 'ready'>, MessageKey> = {
   not_native: 'calc.browser', provider_unavailable: 'calc.noprovider', invalid_request: 'calc.invalid',
@@ -37,7 +39,7 @@ export type ReturnChartRequest = Readonly<{input: NewChartInput; radixChartId: n
 @Component({
   selector: 'vs-returns-panel',
   standalone: true,
-  imports: [CommonModule, OfflineCityPickerComponent, SolarReturnStripComponent],
+  imports: [CommonModule, OfflineCityPickerComponent, SolarReturnStripComponent, ReturnOsmMapComponent],
   templateUrl: './returns-panel.component.html',
   styleUrls: ['./returns-panel.component.css'],
 })
@@ -56,6 +58,9 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
   private previewBusy = false;
   private pendingPreview: {ticket:number; utcIso:string; latMicro:number; lngMicro:number} | null = null;
+  private readonly geocoder = new ReturnMapGeocoder();
+  private geocodeAbort:AbortController | null = null;
+  private selectionTicket = 0;
 
   year = String(new Date().getUTCFullYear());
   latitude = '';
@@ -66,6 +71,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   city: OfflinePlaceV1 | null = null;
   mapAvailable = true;
   mapZoom = 1;
+  onlineMap = false;
   previewInstant: string | null = null;
   preview: {latMicro:number; lngMicro:number; ascendant:number; mc:number; ds:number; ic:number; cusps:readonly number[];
     planets:readonly {name:string; longitude:number; glyphUrl:string}[]} | null = null;
@@ -94,6 +100,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
     this.searchTicket++;
     this.invalidatePreview();
   }
@@ -104,6 +112,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   trackInstant(_index: number, instant: ReturnInstantV1): string { return instant.utcIso; }
 
   private clearResults(): void {
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
     this.searchTicket++;
     this.invalidatePreview();
     this.previewInstant = null;
@@ -114,6 +124,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   }
 
   set(field: 'year' | 'latitude' | 'longitude' | 'timeZone', event: Event): void {
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
     this[field] = (event.target as HTMLInputElement).value;
     this.message = null;
     if (field === 'year') this.clearResults();
@@ -133,11 +145,39 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.invalidatePreview();
   }
 
+  toggleOnlineMap(event:Event):void {
+    this.onlineMap = (event.target as HTMLInputElement).checked;
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
+    this.invalidatePreview();
+  }
+
   selectMapPoint(event: MouseEvent): void {
     const bounds = (event.currentTarget as HTMLElement).querySelector('img')?.getBoundingClientRect();
     if (!bounds || !bounds.width || !bounds.height || event.detail === 0) return;
     const coordinates = returnMapCoordinates((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
     if (!coordinates) return;
+    this.geocodeAbort?.abort();
+    this.selectionTicket++;
+    this.applyMapPoint(coordinates);
+    this.castSelectedReturn();
+  }
+
+  async selectOnlinePoint(coordinates:ReturnMapPoint):Promise<void> {
+    this.geocodeAbort?.abort();
+    const ticket = ++this.selectionTicket;
+    const abort = this.geocodeAbort = new AbortController();
+    this.applyMapPoint(coordinates);
+    const timer = setTimeout(() => abort.abort(), 4000);
+    const place = await this.geocoder.lookup(coordinates.latMicro, coordinates.lngMicro, abort.signal);
+    clearTimeout(timer);
+    if (this.destroyed || ticket !== this.selectionTicket || !this.onlineMap) return;
+    this.placeName = place;
+    this.cd.markForCheck();
+    this.castSelectedReturn();
+  }
+
+  private applyMapPoint(coordinates:ReturnMapPoint):void {
     this.latitude = (coordinates.latMicro / 1e6).toFixed(6);
     this.longitude = (coordinates.lngMicro / 1e6).toFixed(6);
     this.city = null;
@@ -147,8 +187,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.timeZoneSuggested = this.timeZone !== '';
     this.message = null;
     this.cd.markForCheck();
-    // As on the website, a map click casts the currently selected return once
-    // its instant and a valid location zone are available.
+  }
+  private castSelectedReturn():void {
     const selected = this.instants.find(instant => instant.utcIso === this.previewInstant);
     if (selected && this.timeZone) this.cast(selected);
   }
@@ -162,16 +202,21 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.previewMessage = null;
   }
   setPreviewInstant(instant: ReturnInstantV1): void {
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
     this.invalidatePreview();
     this.previewInstant = instant.utcIso;
     this.cd.markForCheck();
   }
   previewMapPoint(event: MouseEvent): void {
-    if (!this.previewInstant || this.destroyed) return;
     const bounds = (event.currentTarget as HTMLElement).querySelector('img')?.getBoundingClientRect();
     if (!bounds || !bounds.width || !bounds.height) return;
     const coordinates = returnMapCoordinates((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
     if (!coordinates) return;
+    this.previewCoordinates(coordinates);
+  }
+  previewCoordinates(coordinates:ReturnMapPoint):void {
+    if (!this.previewInstant || this.destroyed) return;
     this.invalidatePreview();
     const request = {ticket:this.previewTicket, utcIso:this.previewInstant, ...coordinates};
     this.previewTimer = setTimeout(() => {
@@ -214,6 +259,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   }
 
   onCitySelected(place: OfflinePlaceV1): void {
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
     this.city = place;
     this.latitude = (place.latMicro / 1e6).toFixed(6);
     this.longitude = (place.lngMicro / 1e6).toFixed(6);
@@ -225,12 +272,16 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   }
 
   onCityEdited(): void {
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
     this.city = null;
     this.cd.markForCheck();
   }
 
   async search(): Promise<void> {
     if (this.searching) return;
+    this.selectionTicket++;
+    this.geocodeAbort?.abort();
     const year = parseReturnYear(this.year);
     if (year === null) {
       this.message = 'returns.year.invalid';

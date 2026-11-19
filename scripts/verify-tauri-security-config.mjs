@@ -11,9 +11,9 @@ const EXPECTED_CSP = Object.freeze({
   'default-src': ["'self'"],
   'script-src': ["'self'"],
   'style-src': ["'self'", "'unsafe-inline'"],
-  'img-src': ["'self'", 'data:', 'blob:'],
+  'img-src': ["'self'", 'data:', 'blob:', 'https://tile.openstreetmap.org'],
   'font-src': ["'self'", 'data:'],
-  'connect-src': ["'self'"],
+  'connect-src': ["'self'", 'https://nominatim.openstreetmap.org'],
   'object-src': ["'none'"],
   'frame-src': ["'none'"],
   'base-uri': ["'self'"],
@@ -24,9 +24,9 @@ const EXPECTED_DEV_CSP = Object.freeze({
   'default-src': ["'self'"],
   'script-src': ["'self'", "'unsafe-eval'"],
   'style-src': ["'self'", "'unsafe-inline'"],
-  'img-src': ["'self'", 'data:', 'blob:', 'http://127.0.0.1:4177'],
+  'img-src': ["'self'", 'data:', 'blob:', 'http://127.0.0.1:4177', 'https://tile.openstreetmap.org'],
   'font-src': ["'self'", 'data:'],
-  'connect-src': ["'self'", 'ws://127.0.0.1:4200', 'http://127.0.0.1:4177'],
+  'connect-src': ["'self'", 'ws://127.0.0.1:4200', 'http://127.0.0.1:4177', 'https://nominatim.openstreetmap.org'],
   'object-src': ["'none'"],
   'frame-src': ["'none'"],
 });
@@ -35,7 +35,7 @@ const REVIEWED_ROOT_FIELDS = Object.freeze(['$schema', 'productName', 'version',
 const REVIEWED_BUILD_FIELDS = Object.freeze(['devUrl', 'frontendDist']);
 const REVIEWED_BUNDLE_FIELDS = Object.freeze(['active', 'icon']);
 const REVIEWED_BUNDLE_ICONS = Object.freeze(['icons/icon.png', 'icons/icon.ico', 'icons/icon.icns']);
-const REVIEWED_WINDOW_FIELDS = Object.freeze(['label', 'title', 'width', 'height', 'minWidth', 'minHeight']);
+const REVIEWED_WINDOW_FIELDS = Object.freeze(['label', 'title', 'width', 'height', 'minWidth', 'minHeight', 'userAgent']);
 const REVIEWED_APP_FIELDS = Object.freeze(['windows', 'security']);
 const REVIEWED_SECURITY_FIELDS = Object.freeze(['capabilities', 'csp', 'devCsp']);
 
@@ -112,7 +112,8 @@ export function verifyTauriSecurityConfig(config) {
   assertSafe(Array.isArray(config.app.windows) && config.app.windows.length === 1 &&
     config.app.windows.every(window => isObject(window) &&
       Object.keys(window).length === REVIEWED_WINDOW_FIELDS.length &&
-      REVIEWED_WINDOW_FIELDS.every(field => Object.hasOwn(window, field))),
+      REVIEWED_WINDOW_FIELDS.every(field => Object.hasOwn(window, field)) &&
+      window.userAgent === 'VirgoStarsDesktop/0.0.2 (+https://virgostars.it)'),
     'unreviewed native window option or number of windows');
   // Restrict every application option, not just the native window shape.
   // Future Tauri options (even when set to false) require source review.
@@ -143,7 +144,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     assertSafe(process.argv.length === 2, 'unexpected command-line argument');
     const result = verifyTauriSecurityCheckout();
-    console.log('Tauri production security configuration reviewed: ' + result.windows + ' local window(s), pinned offline CSP.');
+    console.log('Tauri production security configuration reviewed: ' + result.windows + ' local window(s), pinned CSP with optional OpenStreetMap.');
   } catch {
     // Never print arbitrary config contents, private paths or parse exceptions.
     console.error('TAURI SECURITY CONFIG: verification failed; review the production Tauri configuration.');
