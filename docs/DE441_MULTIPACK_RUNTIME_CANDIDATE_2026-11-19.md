@@ -35,6 +35,13 @@ that contract. Installation/removal serialize against the engine and discard
 its cached reader; installed files are revalidated before use. Downloads can
 resume after interruption. No release catalog digest is configured by default.
 
+The generated catalog covers complete data years −13000–16999, but this is not
+the supported range of a complete historical chart. The current Desktop chart
+contract is limited to −12999–3999, and the core's experimental lunar mean
+point correction and long-term orientation have their own numerical guards.
+Do not widen those scientific model guards merely because kernel data exists.
+The UI distinguishes installed data coverage from the complete chart limit.
+
 The ignored local integration test checks a pinned private catalog and the
 adjacent 800–999 and 2201–2400 slices against the full source at 900, 1000,
 2000 and 2201, plus modern apparent positions. It also checks 1000-01-01 with

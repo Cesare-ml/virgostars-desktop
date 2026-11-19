@@ -25,11 +25,21 @@ import type {Locale} from './translations';
   <ng-template #content>
     <p role="status">{{message}}</p>
     <ng-container *ngIf="configured">
+      <p>{{msg('Copertura dati installata','Installed data coverage')}}: {{coverage}} · {{msg('Spazio occupato','Disk used')}}: {{size(occupied)}}</p>
+      <p class="muted">{{msg('I dati DE441 e i modelli astrologici hanno limiti diversi: il tema storico completo è attualmente limitato agli anni astronomici −12999–3999.','DE441 data and astrological models have different limits: the complete historical chart currently supports astronomical years −12999–3999.')}}</p>
+      <p class="muted">{{msg('Numerazione astronomica: anno 0 = 1 a.C.','Astronomical numbering: year 0 = 1 BCE.')}}</p>
+      <div class="row"><button type="button" [disabled]="busy" (click)="preset('base')">{{msg('Base','Base')}}</button>
+        <button type="button" [disabled]="busy" (click)="preset('past')">{{msg('Tutto il passato','All past')}}</button>
+        <button type="button" [disabled]="busy" (click)="preset('future')">{{msg('Tutto il futuro','All future')}}</button>
+        <button type="button" [disabled]="busy" (click)="preset('all')">{{msg('Tutti i dati','All data')}}</button></div>
       <div class="row"><label>{{msg('Da anno','From year')}} <input type="number" [value]="firstYear" [disabled]="busy" (input)="setYear('first',$event)"></label>
       <label>{{msg('A anno','To year')}} <input type="number" [value]="lastYear" [disabled]="busy" (input)="setYear('last',$event)"></label></div>
       <button type="button" [disabled]="busy" (click)="plan()">{{msg('Calcola i pacchetti necessari','Preview required packages')}}</button>
       <div *ngIf="preview"><p>{{msg('Download richiesto','Download required')}}: {{size(preview.plannedBytes)}}</p>
-        <ul><li *ngFor="let id of preview.planned">{{id}}</li></ul>
+        <p>{{msg('Copertura finale','Final coverage')}}: {{plannedCoverage}}</p>
+        <p>{{msg('Spazio richiesto stimato','Estimated disk required')}}: {{size(preview.plannedBytes ? preview.plannedBytes + 8388608 : 0)}}
+          <span *ngIf="preview.freeBytes !== null"> · {{msg('Libero','Free')}}: {{size(preview.freeBytes)}}</span></p>
+        <ul><li *ngFor="let id of preview.planned">{{packLabel(id)}}</li></ul>
         <button type="button" *ngIf="preview.planned.length" [disabled]="busy" (click)="start()">{{msg('Scarica e installa','Download and install')}}</button>
       </div>
       <div *ngIf="busy"><p>{{msg('Download','Downloading')}} {{job?.current}}</p><progress [value]="job?.downloaded || 0" [max]="job?.total || 1"></progress>
@@ -39,6 +49,11 @@ import type {Locale} from './translations';
           <button type="button" *ngIf="!p.required" [disabled]="busy" (click)="remove(p.id)">{{msg('Rimuovi','Remove')}}</button></li></ul>
         <p class="muted">{{msg('Puoi rimuovere solo i pacchetti ai margini della copertura.','Only packages at the edges of coverage can be removed.')}}</p>
       </details>
+      <details><summary>{{msg('Intervalli aggiuntivi disponibili','Additional available ranges')}}</summary><ul>
+        <li *ngFor="let p of available">{{p.firstYear}} – {{p.lastYear}} ({{size(p.bytes)}})</li></ul></details>
+      <div class="row"><button type="button" [disabled]="busy" (click)="verify()">{{msg('Verifica integrità','Verify integrity')}}</button>
+        <span class="muted">{{msg('La verifica controlla hash e copertura dei file installati.','Verification checks hashes and coverage of installed files.')}}</span></div>
+      <p class="muted">{{msg('Aggiornamenti dei dati: dipendono da un catalogo autenticato distribuito con un aggiornamento dell’app.','Data updates require an authenticated catalog delivered with an app update.')}}</p>
     </ng-container>
   </ng-template>
 `})
@@ -50,16 +65,22 @@ export class De441PackagesComponent implements OnInit, OnChanges, OnDestroy {
   get busy():boolean{return this.loading||!!this.job?.busy;}
   get configured():boolean{return !!this.job && ['ok','busy','started'].includes(this.job.status);}
   get installed(){return this.job?.packages.filter(p=>p.installed) || [];}
+  get available(){return this.job?.packages.filter(p=>!p.installed) || [];}
+  get occupied():number{return this.installed.reduce((sum,p)=>sum+p.bytes,0);}
+  get coverage():string {const p=this.installed;return p.length?`${Math.min(...p.map(x=>x.firstYear))} – ${Math.max(...p.map(x=>x.lastYear))}`:'—';}
+  get plannedCoverage():string {const p=this.installed;return p.length?`${Math.min(this.firstYear,...p.map(x=>x.firstYear))} – ${Math.max(this.lastYear,...p.map(x=>x.lastYear))}`:'—';}
   get message():string {
     const status=this.job?.outcome || this.job?.status;
     if(status==='not_configured'||status==='custom_source') return this.msg('Download dei pacchetti non configurato per questa installazione.','Package downloads are not configured for this installation.');
     if(status==='completed') return this.msg('Pacchetti installati.','Packages installed.');
     if(status==='cancelled') return this.msg('Download annullato; puoi riprenderlo.','Download cancelled; you can resume it.');
     if(status==='removed') return this.msg('Pacchetto rimosso.','Package removed.');
+    if(status==='ok') return this.msg('Integrità dei pacchetti installati verificata.','Installed packages passed integrity verification.');
     if(status && !['ok','busy','started'].includes(status)) return this.msg('Operazione non riuscita: ','Operation failed: ')+status;
     return this.msg('Copertura base: anni 1000–2200.','Base coverage: years 1000–2200.');
   }
   size(bytes:number):string{return (bytes/1048576).toFixed(1)+' MiB';}
+  packLabel(id:string):string {const p=this.job?.packages.find(item=>item.id===id);return p?`${p.firstYear} – ${p.lastYear} (${this.size(p.bytes)})`:id;}
   ngOnInit():void {if(packagesAvailable()) void this.refresh(true);}
   ngOnChanges():void {if(this.settingsOpen && this.job && !this.loading && packagesAvailable()) void this.refresh();}
   ngOnDestroy():void {this.destroyed=true;if(this.timer)clearTimeout(this.timer);}
@@ -74,6 +95,10 @@ export class De441PackagesComponent implements OnInit, OnChanges, OnDestroy {
     this.cd.markForCheck();
   }
   setYear(which:'first'|'last',event:Event):void {const raw=(event.target as HTMLInputElement).value;const value=raw.trim()?Number(raw):Number.NaN;if(which==='first')this.firstYear=value;else this.lastYear=value;this.preview=null;}
+  preset(choice:'base'|'past'|'future'|'all'):void {const packs=this.job?.packages || [];if(!packs.length)return;
+    const first=Math.min(...packs.map(p=>p.firstYear)),last=Math.max(...packs.map(p=>p.lastYear));
+    this.firstYear=choice==='past'||choice==='all'?first:1000;this.lastYear=choice==='future'||choice==='all'?last:2200;this.preview=null;}
+  async verify():Promise<void>{await this.refresh();}
   async plan():Promise<void>{this.preview=await this.run({action:'plan',firstYear:this.firstYear,lastYear:this.lastYear});if(this.preview.status!=='ok')this.job=this.preview;}
   async start():Promise<void>{if(!this.preview?.planned.length)return;const r=await this.run({action:'start',firstYear:this.firstYear,lastYear:this.lastYear,planned:this.preview.planned,plannedBytes:this.preview.plannedBytes});this.job=r;if(r.busy)this.timer=setTimeout(()=>void this.refresh(),1000);}
   async cancel():Promise<void>{await this.run({action:'cancel'});}

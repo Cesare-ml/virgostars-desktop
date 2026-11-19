@@ -45,13 +45,14 @@ pub struct PackageReply {
     packages: Vec<()>,
     planned: Vec<String>,
     planned_bytes: u64,
+    free_bytes: Option<u64>,
 }
 
 fn reply(state: &DownloadState, status: &'static str) -> PackageReply {
     let job = state.0.lock().unwrap_or_else(|p| p.into_inner());
     PackageReply { status, busy: job.busy, current: job.current.clone(), downloaded: job.downloaded,
         total: job.total, outcome: job.outcome,
-        packages: Vec::new(), planned: Vec::new(), planned_bytes: 0 }
+        packages: Vec::new(), planned: Vec::new(), planned_bytes: 0, free_bytes: None }
 }
 
 #[tauri::command]
@@ -88,6 +89,8 @@ fn handle(state: &DownloadState, request: PackageRequest) -> PackageReply {
     };
     let mut result = reply(state, "ok");
     result.packages = catalog.summaries(&installed);
+    let space_path = if directory.exists() { directory.as_path() } else { directory.parent().unwrap_or(&directory) };
+    result.free_bytes = fs2::available_space(space_path).ok();
     match request {
         PackageRequest::Status {} => result,
         PackageRequest::Cancel {} => unreachable!(),
