@@ -44,7 +44,7 @@ use virgostars_ephemeris_core::mvp_snapshot::{experimental_snapshot_from_civil, 
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-0535e9d";
+pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-8e4b44f";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
