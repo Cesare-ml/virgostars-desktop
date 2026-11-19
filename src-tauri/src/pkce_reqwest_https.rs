@@ -408,6 +408,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn account_http_client_initializes_with_updater_dependencies() {
+        assert!(restricted_client(Duration::from_secs(2)).is_ok());
+    }
+
+    #[test]
     fn group_snapshot_rejects_other_profile_duplicates_notes_and_unrepresentable_groups() {
         let profile = "44444444-4444-4444-8444-444444444444";
         let chart_id = "11111111-1111-4111-8111-111111111111";

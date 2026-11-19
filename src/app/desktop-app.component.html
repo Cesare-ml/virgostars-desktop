@@ -512,7 +512,8 @@
 
         <!-- Settings: a drawer that opens from the left menu. -->
         <section class="drawer" *ngIf="view==='account'" [attr.aria-label]="t('account.title')">
-          <header><h2>{{t('account.title')}}</h2></header>
+          <header class="sheet-head"><h2>{{t('account.title')}}</h2>
+            <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" (click)="closeSheet()">×</button></header>
           <details class="settings-section" open>
             <summary>{{t('account.title')}}</summary>
             <p class="inspector-hint">{{t('account.local')}}</p>
