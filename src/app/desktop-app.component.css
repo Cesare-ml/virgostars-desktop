@@ -440,3 +440,8 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .update-notice { position:fixed; right:20px; bottom:20px; z-index:20; padding:10px 14px; border-radius:8px; cursor:pointer; }
 .chart-stage:not(.chart-dark) .year-planet img { filter:brightness(0); }
 .chart-stage.chart-dark .year-planet { color:#ddd; }
+.fixed-stars-panel { position:absolute; right:12px; top:60px; z-index:5; display:flex; flex-direction:column; gap:6px; width:min(320px, 80%); max-height:60%; padding:12px; overflow:auto; color:var(--vs-text); background:var(--vs-surface); border:1px solid var(--vs-border); border-radius:8px; }
+.fixed-stars-panel label { display:flex; flex-direction:column; gap:4px; }
+.fixed-stars-panel input { min-width:0; padding:6px; color:var(--vs-text); background:var(--vs-surface); border:1px solid var(--vs-border); }
+.fixed-stars-list { overflow:auto; }
+.fixed-stars-list div { display:flex; justify-content:space-between; gap:10px; padding:3px 0; }

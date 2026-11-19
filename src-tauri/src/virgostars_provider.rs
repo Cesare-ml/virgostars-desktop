@@ -144,6 +144,7 @@ fn load_star_catalog(path:&Path) -> Option<Vec<FixedStarRecord>> {
     let file = File::open(path).ok()?;
     if file.metadata().ok()?.len() > MAX { return None; }
     let mut text=String::new(); file.take(MAX + 1).read_to_string(&mut text).ok()?;
+    if text.len() as u64 > MAX { return None; }
     parse_star_catalog(&text)
 }
 
@@ -675,6 +676,26 @@ impl EphemerisProvider for VirgoStarsEphemeris {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stellar_catalog_rejects_duplicate_and_invalid_sources() {
+        let star = r#"{"id":1,"name":"Test Star","magnitude":2.0,"epochTdbJd":2451545.0,"approximateEcliptic":{"longitudeDeg":40,"latitudeDeg":20}}"#;
+        let valid = format!(r#"{{"schema":"virgostars-desktop-stars/1","provenance":"synthetic","stars":[{star}]}}"#);
+        assert_eq!(parse_star_catalog(&valid).unwrap().len(), 1);
+        assert!(parse_star_catalog(&valid.replace("synthetic", "")).is_none());
+        assert!(parse_star_catalog(&format!(r#"{{"schema":"virgostars-desktop-stars/1","provenance":"synthetic","stars":[{star},{star}]}}"#)).is_none());
+        assert!(parse_star_catalog(&valid.replace("\"longitudeDeg\":40", "\"longitudeDeg\":400")).is_none());
+    }
+
+    #[test]
+    fn configured_stellar_catalog_produces_positions_when_real_data_are_available() {
+        if std::env::var_os("VIRGOSTARS_DE441_PATH").is_none() || std::env::var_os("VIRGOSTARS_FIXED_STARS").is_none() { return; }
+        let stars = VirgoStarsEphemeris.fixed_stars(&request(2000, 1, 1, 12.0)).unwrap().unwrap();
+        assert!(stars.len() > 700);
+        let sirius = stars.iter().find(|star| star.name == "Sirius").expect("Sirius");
+        assert!((103.0..106.0).contains(&sirius.longitude_deg));
+        assert!(stars.iter().any(|star| star.approximate));
+    }
 
     #[test]
     fn historical_usno_requires_table_and_explicit_prediction_choice() {
