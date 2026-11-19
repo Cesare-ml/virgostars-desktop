@@ -1,4 +1,4 @@
-<section *ngIf="kind==='solar'" class="solar-map" [attr.aria-label]="t(titleKey)">
+<section *ngIf="kind==='solar' && mapOpen" class="solar-map" [attr.aria-label]="t(titleKey)">
   <header class="solar-header">
     <div class="solar-title"><h3>{{t(titleKey)}}</h3><strong>{{radix.name || t('session.unnamed')}}</strong>
       <button type="button" class="returns-close" [attr.aria-label]="t('returns.close')" (click)="closed.emit()">×</button></div>

@@ -1769,7 +1769,7 @@ mod tests {
         fs::write(archive.folder.join("restore-in-progress.json"), b"{}\n").unwrap();
         assert_eq!(go(&archive, &keys, &list_request(), 2000).status, "archive_unavailable");
         assert_eq!(go(&archive, &keys, &save_request(record(ID_B, "Other")), 2000).status, "archive_unavailable");
-        assert_eq!(list_offline_civil_charts(&archive.paths, &keys).unwrap_err(), "archive_unavailable");
+        assert!(matches!(list_offline_civil_charts(&archive.paths, &keys), Err("archive_unavailable")));
         assert_eq!(fs::read(&archive.paths.sealed).unwrap(), before);
     }
 

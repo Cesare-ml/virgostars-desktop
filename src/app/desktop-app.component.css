@@ -100,7 +100,7 @@
 .stage-info p { margin:0; font-size:12px; color:var(--vs-text-secondary); overflow-wrap:anywhere; }
 .stage-info .stage-subject { color:var(--vs-text); font-weight:650; }
 .chart-stage.chart-dark .stage-info, .chart-stage.chart-dark .stage-info .stage-subject { color:#fff; }
-.chart-stage.chart-dark .stage-info p, .chart-stage.chart-dark .device-clock-reading,
+.chart-stage.chart-dark .stage-info p,
 .chart-stage.chart-dark .status-message { color:#ddd; }
 .stage-info .calc-status { margin-top:6px; }
 .stage-tools { position:absolute; top:12px; right:14px; display:flex; align-items:center; gap:10px; z-index:3; }
@@ -112,13 +112,6 @@
   padding:12px; background:var(--vs-surface); color:var(--vs-text); border:1px solid var(--vs-border); border-radius:8px; font-size:12px; }
 .star-panel { position:absolute; z-index:4; bottom:55px; right:14px; display:grid; gap:5px; max-width:300px; max-height:55%; overflow:auto;
   padding:10px; background:var(--vs-surface); color:var(--vs-text); border:1px solid var(--vs-border); border-radius:8px; font-size:12px; }
-.device-clock { display:flex; flex-direction:column; align-items:flex-end; min-width:0; text-align:right; }
-.device-clock-reading { color:var(--vs-text-secondary); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.clock-compact { display:none; }
-@media (max-width:960px) {
-  .clock-full { display:none; }
-  .clock-compact { display:inline; }
-}
 .chart-message { position:absolute; bottom:14px; left:50%; transform:translateX(-50%); padding:6px 12px;
   background:var(--vs-surface-muted); border:1px solid var(--vs-border); color:var(--vs-text); border-radius:8px; }
 .chart-error { position:absolute; inset:auto 22px 22px; border:1px solid var(--vs-border); border-radius:8px;
@@ -276,6 +269,12 @@
 .settings-tabs { display:flex; gap:6px; padding:4px; margin-bottom:14px; background:var(--vs-surface-muted); border-radius:12px; }
 .settings-tabs button { flex:1; border:0; border-radius:9px; padding:9px; background:transparent; color:var(--vs-text-secondary); font-weight:650; }
 .settings-tabs button.active { color:var(--vs-accent); background:var(--vs-surface); box-shadow:0 2px 8px rgba(24,18,42,.1); }
+.solar-map-open { margin-top:10px; padding:8px 12px; border:1px solid var(--vs-accent); border-radius:9px; background:var(--vs-surface); color:var(--vs-accent); font-weight:650; cursor:pointer; }
+.settings-panel { padding:22px 20px 32px; }
+.settings-panel .settings-top { padding:4px 0 12px; }
+.settings-panel .setting-line { align-items:center; gap:14px; }
+.settings-panel .settings-check { padding:10px 0; }
+.settings-panel .inline-select { max-width:58%; }
 .archive-card { min-width:0; display:flex; flex-direction:column; justify-content:space-between;
   border:1px solid var(--vs-border); background:var(--vs-surface); border-radius:17px; padding:15px;
   box-shadow:0 5px 18px rgba(34,23,72,.035); transition:border-color .15s ease,box-shadow .15s ease; }

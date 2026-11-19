@@ -114,7 +114,19 @@
           </div>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
+          <button type="button" class="solar-map-open" *ngIf="returnTool==='solar' && activeChart.id===solarReturnChartId"
+            (click)="solarMapOpen=true">{{t('returns.map.online')}}</button>
+          <button type="button" class="solar-map-open" *ngIf="returnTool==='solar' && activeChart.id===solarReturnChartId"
+            (click)="closeSolarReturn()">{{t('returns.close')}}</button>
         </div>
+
+        <vs-returns-panel *ngIf="returnTool==='solar' && returnRadix" [locale]="locale" kind="solar" [radix]="returnRadix"
+          [houseSystem]="houseSystem" [busy]="calcBusy || busy" [mapOpen]="solarMapOpen"
+          (chartRequested)="onReturnChartRequested($event)" (closed)="solarMapOpen=false"></vs-returns-panel>
+        <section class="drawer" *ngIf="returnTool==='lunar' && returnRadix && view==='functions'">
+          <vs-returns-panel [locale]="locale" kind="lunar" [radix]="returnRadix" [houseSystem]="houseSystem"
+            [busy]="calcBusy || busy" (chartRequested)="onReturnChartRequested($event)" (closed)="closeReturns()"></vs-returns-panel>
+        </section>
 
         <!-- A light DOM view of the same calculated longitudes, never a second wheel renderer. -->
         <vs-elements-view *ngIf="view==='chart' && activeChart && chartPresentation!=='wheel'"
@@ -124,12 +136,6 @@
           [showTransaturnians]="showTransaturnians" (toggleTransaturnians)="toggleTransaturnians()"></vs-elements-view>
 
         <div class="stage-tools">
-          <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
-            <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
-              <span class="clock-full">{{clockText}}</span>
-              <span class="clock-compact">{{clockCompactText}}</span>
-            </time>
-          </div>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
             [class.selected]="chartPresentation==='elements'" [attr.aria-pressed]="chartPresentation==='elements'"
             (click)="toggleElements()">{{t('elements.button')}}</button>
@@ -271,6 +277,7 @@
         </aside>
         <div class="synastry-controls" *ngIf="view==='chart' && mode==='synastry' && partnerChart && !synastryPickerOpen" role="group" [attr.aria-label]="t('mode.synastry')">
           <span>{{t('session.partner')}}: {{chartName(partnerChart)}}</span>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="closeSynastry()">{{t('sheet.close')}}</button>
           <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="openSynastryPicker()">{{t('synastry.change')}}</button>
           <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="swapSynastryCharts()">{{t('synastry.swap')}}</button>
           <button type="button" class="small-control wide" [disabled]="busy || calcBusy || !synastryDeflectionSupported || houseSystem!=='egizia'" [attr.title]="t(synastryDeflectionSupported ? 'synastry.deflection.hint' : 'synastry.deflection.unavailable')" [attr.aria-pressed]="synastryDeflection" (click)="toggleSynastryDeflection()">{{t('synastry.deflection')}}</button>
@@ -416,13 +423,13 @@
                 <div class="archive-card-actions">
                   <button type="button" class="archive-action primary" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
                   <button type="button" class="archive-action" [disabled]="archiveBusy || calcBusy" (click)="editSavedChart(saved)">{{t('archive.edit')}}</button>
-                  <label class="archive-action archive-file-action" [class.is-disabled]="archiveBusy || !!photoBusyId">
+                  <label *ngIf="showArchivePhotos" class="archive-action archive-file-action" [class.is-disabled]="archiveBusy || !!photoBusyId">
                     {{t(hasPrivatePhoto(saved.id) ? 'archive.photo.change' : 'archive.photo.add')}}
                     <input type="file" accept="image/jpeg,image/png,image/webp" [disabled]="archiveBusy || !!photoBusyId"
                       [attr.aria-label]="t(hasPrivatePhoto(saved.id) ? 'archive.photo.change' : 'archive.photo.add')"
                       (change)="uploadPrivatePhoto(saved, $event)">
                   </label>
-                  <button type="button" class="archive-action" *ngIf="hasPrivatePhoto(saved.id)"
+                  <button type="button" class="archive-action" *ngIf="showArchivePhotos && hasPrivatePhoto(saved.id)"
                     [disabled]="archiveBusy || !!photoBusyId" (click)="askRemovePrivatePhoto(saved.id)">{{t('archive.photo.remove')}}</button>
                   <button type="button" class="archive-action archive-danger" [disabled]="archiveBusy || !!photoBusyId"
                     [attr.aria-label]="t('archive.delete')" [attr.title]="t('archive.delete')" (click)="askDeleteSaved(saved.id)">×</button>
@@ -475,8 +482,6 @@
             <h2>{{t('tab.functions')}}</h2>
             <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
           </header>
-          <vs-returns-panel *ngIf="returnTool && returnRadix" [locale]="locale" [kind]="returnTool" [radix]="returnRadix" [houseSystem]="houseSystem"
-            [busy]="calcBusy || busy" (chartRequested)="onReturnChartRequested($event)" (closed)="closeReturns()"></vs-returns-panel>
           <p class="calc-status" role="status" *ngIf="returnTool && calcMessage">{{t(calcMessage)}}</p>
           <section class="direction-panel" *ngIf="directionToolOpen" [attr.aria-label]="t('directions.title')">
             <header class="sheet-head"><h2>{{t('directions.title')}}</h2><button type="button" class="toolbar-button" [disabled]="calcBusy" [attr.aria-label]="t('sheet.close')" (click)="closeDirections()">×</button></header>
@@ -594,7 +599,7 @@
             </div>
           </details>
           <!-- Aspects and celestial elements are two spoilers of their own, written by the component. -->
-          <vs-chart-settings [hidden]="settingsCategory!=='chart'" [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
+          <vs-chart-settings *ngIf="settingsCategory==='chart'" [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
             (settingsChange)="onChartSettingsChanged($event)"></vs-chart-settings>
           <details class="settings-section" *ngIf="pendingSettingEntries.length">
             <summary>{{t('functions.soon')}}</summary>
