@@ -1812,13 +1812,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   closeReturns(): void {
     this.returnTool = null;
     this.returnRadix = null;
+    this.view = 'chart';
     this.cd.markForCheck();
   }
   async onReturnChartRequested(request: ReturnChartRequest): Promise<void> {
     await this.onChartRequested(request.input);
     const cast = this.activeChart;
     const radix = this.sessionCharts.find(chart => chart.id === request.radixChartId);
-    if (!this.destroyed && cast && cast.id !== request.radixChartId && cast.utcIso === request.input.utcIso && this.calcMessage === 'calc.ready') {
+    if (!request.keepMapOpen && !this.destroyed && cast && cast.id !== request.radixChartId && cast.utcIso === request.input.utcIso && this.calcMessage === 'calc.ready') {
       this.closeReturns();
       this.closeSheet();
     }

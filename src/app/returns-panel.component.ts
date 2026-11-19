@@ -29,7 +29,7 @@ const PREVIEW_FAILURES: Record<Exclude<ChartCalculationResult['kind'], 'ready'>,
   ...SEARCH_FAILURES, out_of_range:'calc.range',
 };
 
-export type ReturnChartRequest = Readonly<{input: NewChartInput; radixChartId: number; withRadix: boolean}>;
+export type ReturnChartRequest = Readonly<{input: NewChartInput; radixChartId: number; withRadix: boolean; keepMapOpen?:boolean}>;
 
 /**
  * Solar or lunar returns of one chart: pick a year and a place, list the
@@ -301,14 +301,16 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
       if (next) {
         this.year=String(candidate); this.instants=result.instants; this.previewInstant=next.utcIso;
         this.searching=false; this.searched=true; this.message=null;
-        this.previewCoordinates(this.mapCenter); this.cd.markForCheck(); return;
+        this.previewCoordinates(this.mapCenter);
+        this.cast(next, true);
+        this.cd.markForCheck(); return;
       }
     }
     this.searching=false; this.searched=true; this.message=null; this.cd.markForCheck();
   }
 
   /** Cast the chart of one return at the chosen place. */
-  cast(instant: ReturnInstantV1): void {
+  cast(instant: ReturnInstantV1, keepMapOpen = false): void {
     if (this.busy) return;
     const latMicro = parseDegreesMicro(this.latitude, 90);
     const lngMicro = parseDegreesMicro(this.longitude, 180);
@@ -319,6 +321,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.chartRequested.emit({
       radixChartId: this.radix.chartId,
       withRadix: this.withRadix,
+      ...(keepMapOpen ? {keepMapOpen:true} : {}),
       input: {
         name: returnChartName(this.kind, instant.utcIso, this.radix.name),
         utcIso: instant.utcIso, localDate: '', localTime: '', timeZone, offsetSeconds: 0,
