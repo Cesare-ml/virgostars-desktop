@@ -15,6 +15,8 @@ mod historical_planets;
 mod historical_chart;
 mod updater;
 mod update_backup;
+#[cfg(feature = "virgostars-ephemeris")]
+mod de441_catalog;
 #[cfg(all(feature = "updater-loopback-test", not(debug_assertions)))]
 compile_error!("The loopback acceptance feature is forbidden in release builds");
 mod star_link;
