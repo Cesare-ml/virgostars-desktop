@@ -200,7 +200,7 @@ impl Catalog {
         self.packs.iter().find(|pack| pack.id == id)
     }
 
-    fn manager(
+    pub(crate) fn manager(
         &self,
         directory: &Path,
         bundled_base: &Path,
@@ -286,7 +286,7 @@ impl Catalog {
 
     /// Verify every present file before using its ID for planning. A present
     /// but damaged optional pack fails closed rather than being skipped.
-    fn installed_verified(
+    pub(crate) fn installed_verified(
         &self,
         directory: &Path,
         base_path: &Path,
