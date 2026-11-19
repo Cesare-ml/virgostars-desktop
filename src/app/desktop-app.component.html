@@ -162,6 +162,7 @@
         </div>
 
         <div class="arabic-panel" *ngIf="arabicPartsOpen && mode==='natal' && chartPresentation==='wheel' && activeChart">
+          <button type="button" class="toolbar-button" [disabled]="busy || calcBusy" [attr.aria-label]="t('sheet.close')" (click)="toggleArabicParts()">×</button>
           <label>{{t('arabic.group')}}
             <select [value]="arabicPartsGroup" (change)="changeArabicGroup($event)">
               <option value="essenziali">{{t('arabic.essential')}}</option>
@@ -189,10 +190,12 @@
           <small *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='unavailable'">{{t('arabic.newMoonUnavailable')}}</small>
         </div>
         <div class="gauquelin-panel" *ngIf="gauquelinOpen && mode==='natal' && activeChart?.gauquelin as sectors">
+          <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" (click)="gauquelinOpen=false">×</button>
           <strong>{{t('gauquelin.title')}}</strong>
           <div *ngFor="let longitude of sectors; let i=index">{{i+1}} — {{longitudeText(longitude)}}</div>
         </div>
         <div class="star-panel" *ngIf="fixedStarsEnabled && mode==='natal' && chartPresentation==='wheel'">
+          <button type="button" class="toolbar-button" [disabled]="fixedStarsBusy" [attr.aria-label]="t('sheet.close')" (click)="toggleFixedStars()">×</button>
           <small>{{t('stars.catalogNote')}} {{fixedStarCatalogSize}}</small>
           <small *ngIf="fixedStarApproximateCount">{{t('stars.approximateCount')}} {{fixedStarApproximateCount}}</small>
           <small *ngIf="fixedStarCatalogIsSample">{{t('stars.sample')}}</small>
