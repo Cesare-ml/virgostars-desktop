@@ -1,5 +1,14 @@
 # Renderer lifecycle — latest request wins
 
+## Synastry interaction (local integration)
+
+The desktop opts into separate dotted axes for the partner chart and omits its
+duplicate axis glyphs. Hovering either chart selects its already calculated
+cross-aspects; the renderer only draws the supplied facts. Deflective synastry
+does not display cross-aspects. A close control returns to the single chart,
+or to the original radix when closing a solar return. Browser verification
+uses fictional chart fixtures; this is not a native WebView2 acceptance test.
+
 ## Chart skins (local integration, 2026-11-18)
 
 The settings drawer selects one of the eight skins in the sibling Charts

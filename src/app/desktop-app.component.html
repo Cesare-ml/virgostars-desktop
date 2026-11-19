@@ -116,6 +116,8 @@
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
           <button type="button" class="solar-map-open" *ngIf="returnTool==='solar' && activeChart.id===solarReturnChartId"
             (click)="solarMapOpen=true">{{t('returns.map.online')}}</button>
+          <button type="button" class="solar-map-open" *ngIf="returnTool==='solar' && activeChart.id===solarReturnChartId"
+            (click)="closeSolarReturn()">{{t('returns.close')}}</button>
         </div>
 
         <vs-returns-panel *ngIf="returnTool==='solar' && returnRadix" [locale]="locale" kind="solar" [radix]="returnRadix"
@@ -134,12 +136,6 @@
           [showTransaturnians]="showTransaturnians" (toggleTransaturnians)="toggleTransaturnians()"></vs-elements-view>
 
         <div class="stage-tools">
-          <div class="device-clock" role="group" [attr.aria-label]="t('clock.label')" [attr.title]="t('clock.note')">
-            <time class="device-clock-reading" [attr.datetime]="clockInstantIso">
-              <span class="clock-full">{{clockText}}</span>
-              <span class="clock-compact">{{clockCompactText}}</span>
-            </time>
-          </div>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
             [class.selected]="chartPresentation==='elements'" [attr.aria-pressed]="chartPresentation==='elements'"
             (click)="toggleElements()">{{t('elements.button')}}</button>
@@ -281,6 +277,7 @@
         </aside>
         <div class="synastry-controls" *ngIf="view==='chart' && mode==='synastry' && partnerChart && !synastryPickerOpen" role="group" [attr.aria-label]="t('mode.synastry')">
           <span>{{t('session.partner')}}: {{chartName(partnerChart)}}</span>
+          <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="closeSynastry()">{{t('sheet.close')}}</button>
           <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="openSynastryPicker()">{{t('synastry.change')}}</button>
           <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="swapSynastryCharts()">{{t('synastry.swap')}}</button>
           <button type="button" class="small-control wide" [disabled]="busy || calcBusy || !synastryDeflectionSupported || houseSystem!=='egizia'" [attr.title]="t(synastryDeflectionSupported ? 'synastry.deflection.hint' : 'synastry.deflection.unavailable')" [attr.aria-pressed]="synastryDeflection" (click)="toggleSynastryDeflection()">{{t('synastry.deflection')}}</button>

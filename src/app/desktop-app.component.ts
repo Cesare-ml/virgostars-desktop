@@ -28,7 +28,6 @@ import {CHART_SKINS, isChartSkin, loadChartSkin, saveChartSkin, type ChartSkin} 
 import {monomeriAvailable, monomeroOnHover, monomeroForChart, type MonomeroView} from './monomeri';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 import {GETTING_STARTED_STEPS, dismissGettingStarted, shouldShowGettingStarted} from './getting-started';
-import { DeviceClock, formatDeviceClock } from './device-clock';
 import { aspectPlanet, aspectSymbol } from './aspect-symbols';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
@@ -189,7 +188,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private exporting = false;
   private readonly uiPreferencesStorage = browserUiPreferencesStorage();
   private readonly initialUiPreferences = loadUiPreferences(this.uiPreferencesStorage);
-  private readonly deviceClock = new DeviceClock();
 
   readonly modes = CHART_MODES;
 
@@ -275,7 +273,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private synastryTransitChart: SessionChart | null = null;
   private readonly australCache = new WeakMap<SessionChart, SessionChart>();
   private natalAspectFocus: string | null = null;
-  private transitFocus: {ring: 'natal' | 'transit'; name: string} | null = null;
+  private transitFocus: {ring: 'natal' | 'transit' | 'synastry'; name: string} | null = null;
   synodReference: 'radix' | 'transit' = 'transit';
   synodRecords: readonly SynodRecord[] = [];
   synodSelected: string | null = null;
@@ -1191,6 +1189,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.synastryPickerOpen = false;
     this.calcMessage = null;
     this.crossAspectCache = null;
+    if (this.initialized) this.attachTransitHover();
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -1226,6 +1225,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.partnerChartId = previous;
     this.mode = 'synastry';
     this.crossAspectCache = null;
+    if (this.initialized) this.attachTransitHover();
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -1821,6 +1821,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.view = 'chart';
     this.cd.markForCheck();
   }
+  closeSolarReturn(): void {
+    const radix = this.returnRadix && this.sessionCharts.find(chart => chart.id === this.returnRadix?.chartId);
+    this.closeReturns();
+    if (radix) this.showChart(radix);
+  }
+  closeSynastry(): void {
+    if (this.returnTool === 'solar') { this.closeSolarReturn(); return; }
+    this.synastryPickerOpen = false;
+    this.setMode('natal');
+  }
   async onReturnChartRequested(request: ReturnChartRequest): Promise<void> {
     await this.onChartRequested(request.input);
     const cast = this.activeChart;
@@ -1841,6 +1851,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
     this.partnerChartId = radix.id;
     this.mode = 'synastry';
+    if (this.initialized) this.attachTransitHover();
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -1951,12 +1962,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get themeToggleLabel(): string { return this.t(this.theme === 'light' ? 'theme.light':'theme.dark'); }
   get activeThemeLabel(): string { return this.t(this.theme === 'light' ? 'theme.current.light' : 'theme.current.dark'); }
   formatDegrees(value:number): string { return value.toFixed(1) + '°'; }
-  get clockText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale); }
-  get clockCompactText(): string { return formatDeviceClock(this.deviceClock.timestamp, this.locale, true); }
-  get clockInstantIso(): string | null {
-    const ms = this.deviceClock.timestamp;
-    return Number.isFinite(ms) && Math.abs(ms) <= 8_640_000_000_000_000 ? new Date(ms).toISOString() : null;
-  }
   private persistUiPreferences(): void {
     // Best effort: storing theme/language never blocks offline interaction.
     saveUiPreferences(this.uiPreferencesStorage, {theme:this.theme, locale:this.languagePreference});
@@ -1967,11 +1972,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     // Inspect applied WebView CSS after Angular's initial view check.
     queueMicrotask(() => this.checkStyles());
     if (this.guideVisible) this.focusGuide();
-    // Local clock is independent of renderer success, astronomy and account auth.
-    this.deviceClock.start(() => {
-      if (this.destroyed) return;
-      this.cd.markForCheck();
-    });
     // Read-only capability check, distinct from account authentication.
     void this.checkRuntime();
     this.skyTimer = setInterval(() => { void this.skyTick(); }, SKY_REFRESH_MS);
@@ -2018,20 +2018,25 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private drawTransitFocus(): void {
         const value = this.transitFocus;
-        const natal = this.activeChart, transit = this.displayedTransit;
-        if (!value || !natal || !transit || this.mode !== 'transits' || this.view !== 'chart' ||
+        const natal = this.activeChart, transit = this.mode === 'synastry' ? this.partnerChart : this.displayedTransit;
+        if (!value || !natal || !transit || !['transits','synastry'].includes(this.mode) ||
+          (this.mode === 'synastry' && (this.synastryDeflection || value.ring === 'transit')) ||
+          (this.mode === 'transits' && value.ring === 'synastry') || this.view !== 'chart' ||
           this.chartPresentation !== 'wheel' || !this.chartSettings.showAspects) {
           this.renderer.setTransitAspectLines([]);
           return;
         }
         const moving = new Map(aspectPoints(transit.data, settingsWithConjunctOuter(transit.data,this.chartSettings).points).map(point => [point.name, point.longitude]));
         const fixed = new Map(aspectPoints(natal.data, settingsWithConjunctOuter(natal.data,this.chartSettings).points).map(point => [point.name, point.longitude]));
+        const synastry = this.mode === 'synastry';
         const lines = this.crossAspectRows
-          .filter(row => value.ring === 'transit' ? row.from === value.name : row.to === value.name)
+          .filter(row => synastry ? (value.ring === 'synastry' ? row.to === value.name : row.from === value.name)
+            : (value.ring === 'transit' ? row.from === value.name : row.to === value.name))
           .flatMap(row => {
-            const transitLongitude = moving.get(row.from), natalLongitude = fixed.get(row.to);
+            const transitName = synastry ? row.to : row.from, natalName = synastry ? row.from : row.to;
+            const transitLongitude = moving.get(transitName), natalLongitude = fixed.get(natalName);
             return transitLongitude === undefined || natalLongitude === undefined ? [] : [{aspect:row.aspect,
-              transitName:row.from, transitLongitude, natalName:row.to, natalLongitude}];
+              transitName, transitLongitude, natalName, natalLongitude}];
           });
         this.renderer.setTransitAspectLines(lines);
   }
@@ -2056,7 +2061,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.skyTimer !== null) clearInterval(this.skyTimer);
     if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.stopHold();
-    this.deviceClock.dispose();
     this.drawGeneration.dispose();
     this.resizeObserver?.disconnect();
     this.renderer.ngOnDestroy();
@@ -2221,6 +2225,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.transitHelpVisible = false;
       if (this.inspectorTab === 'transits') this.inspectorCollapsed = true;
     }
+    if (this.mode === 'synastry') {
+      this.renderer.setTransitPointHoverListener(null);
+      this.transitFocus = null;
+    }
     this.mode = mode;
     if(this.initialized) void this.draw();
     this.cd.markForCheck();
@@ -2251,6 +2259,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     options.nascondiAssiDuplicati = true;
     options.mostraDirezioneMotoMC = true;
     options.mostraAssiTransiti = this.mode === 'transits';
+    options.mostraAssiSinastria = this.mode === 'synastry';
     options.temaGrafico = this.theme;
     const active = this.activeChart;
     options.settaggi.transaturnini_se_congiunti = this.chartSettings.outerWhenConjunct;
@@ -2378,7 +2387,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
           this.monomero = monomeroForChart(this.monomero.name, this.activeChart.data, this.houseSystem);
         }
         if (this.monomeriEnabled && this.mode === 'natal') this.renderer.setNatalAspectsVisible(false);
-        if (this.mode === 'transits') {
+        if (this.mode === 'transits' || this.mode === 'synastry') {
           this.renderer.setNatalAspectsDimmed(true);
           this.drawTransitFocus();
         }
