@@ -33,7 +33,7 @@ getrandom = "0.3"
 open = { version = "=5.4.5", features = ["shellexecute-on-windows"] }
 keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
 # Pinned to one reviewed commit of the Ephemeris repository; never a floating branch.
-virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "38befb2acea81e288c1ceeb018f3a0f1eb85cee9", optional = true }
+virgostars-ephemeris-core = { git = "https://github.com/Cesare-ml/VirgoStars-Ephemeris", rev = "85a29e886b6e7a4d89eb7859b8a0821f0570fa34", optional = true }
 virgostars-events = { package = "virgostars-event-ephemeris", git = "https://github.com/Cesare-ml/VirgoStars-Event-Ephemeris", rev = "f78a3b65d771dfd14e0028b3c767397be7fb93d7", optional = true }
 serde_json = "1"
 tauri-plugin-updater = "=2.14.1"
