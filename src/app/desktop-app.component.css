@@ -276,6 +276,12 @@
 .settings-tabs { display:flex; gap:6px; padding:4px; margin-bottom:14px; background:var(--vs-surface-muted); border-radius:12px; }
 .settings-tabs button { flex:1; border:0; border-radius:9px; padding:9px; background:transparent; color:var(--vs-text-secondary); font-weight:650; }
 .settings-tabs button.active { color:var(--vs-accent); background:var(--vs-surface); box-shadow:0 2px 8px rgba(24,18,42,.1); }
+.solar-map-open { margin-top:10px; padding:8px 12px; border:1px solid var(--vs-accent); border-radius:9px; background:var(--vs-surface); color:var(--vs-accent); font-weight:650; cursor:pointer; }
+.settings-panel { padding:22px 20px 32px; }
+.settings-panel .settings-top { padding:4px 0 12px; }
+.settings-panel .setting-line { align-items:center; gap:14px; }
+.settings-panel .settings-check { padding:10px 0; }
+.settings-panel .inline-select { max-width:58%; }
 .archive-card { min-width:0; display:flex; flex-direction:column; justify-content:space-between;
   border:1px solid var(--vs-border); background:var(--vs-surface); border-radius:17px; padding:15px;
   box-shadow:0 5px 18px rgba(34,23,72,.035); transition:border-color .15s ease,box-shadow .15s ease; }

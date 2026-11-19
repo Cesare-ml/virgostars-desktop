@@ -29,7 +29,7 @@ const PREVIEW_FAILURES: Record<Exclude<ChartCalculationResult['kind'], 'ready'>,
   ...SEARCH_FAILURES, out_of_range:'calc.range',
 };
 
-export type ReturnChartRequest = Readonly<{input: NewChartInput; radixChartId: number; withRadix: boolean; keepMapOpen?:boolean}>;
+export type ReturnChartRequest = Readonly<{input: NewChartInput; radixChartId: number; withRadix: boolean}>;
 
 /**
  * Solar or lunar returns of one chart: pick a year and a place, list the
@@ -48,6 +48,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   @Input() kind: ReturnKind = 'solar';
   @Input({required: true}) radix!: ReturnRadix;
   @Input() busy = false;
+  @Input() mapOpen = false;
   @Input() houseSystem: HouseSystemId = 'egizia';
   @Output() readonly chartRequested = new EventEmitter<ReturnChartRequest>();
   @Output() readonly closed = new EventEmitter<void>();
@@ -61,6 +62,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   private readonly geocoder = new ReturnMapGeocoder();
   private geocodeAbort:AbortController | null = null;
   private selectionTicket = 0;
+  private pendingAutomaticInstant: ReturnInstantV1 | null = null;
 
   year = String(new Date().getUTCFullYear());
   latitude = '';
@@ -99,6 +101,15 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
       if (this.kind === 'solar') void this.searchNextSolarReturn();
     }
     else if (changes['houseSystem']) this.invalidatePreview();
+    if (changes['mapOpen'] && !this.mapOpen) {
+      this.selectionTicket++;
+      this.geocodeAbort?.abort();
+    }
+    if (changes['busy'] && !this.busy && this.pendingAutomaticInstant) {
+      const instant = this.pendingAutomaticInstant;
+      this.pendingAutomaticInstant = null;
+      this.cast(instant);
+    }
   }
 
   ngOnDestroy(): void {
@@ -120,6 +131,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.searchTicket++;
     this.invalidatePreview();
     this.previewInstant = null;
+    this.pendingAutomaticInstant = null;
     this.searching = false;
     this.searched = false;
     this.instants = [];
@@ -302,7 +314,8 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
         this.year=String(candidate); this.instants=result.instants; this.previewInstant=next.utcIso;
         this.searching=false; this.searched=true; this.message=null;
         this.previewCoordinates(this.mapCenter);
-        this.cast(next, true);
+        if (this.busy) this.pendingAutomaticInstant = next;
+        else this.cast(next);
         this.cd.markForCheck(); return;
       }
     }
@@ -310,7 +323,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   }
 
   /** Cast the chart of one return at the chosen place. */
-  cast(instant: ReturnInstantV1, keepMapOpen = false): void {
+  cast(instant: ReturnInstantV1): void {
     if (this.busy) return;
     const latMicro = parseDegreesMicro(this.latitude, 90);
     const lngMicro = parseDegreesMicro(this.longitude, 180);
@@ -321,7 +334,6 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
     this.chartRequested.emit({
       radixChartId: this.radix.chartId,
       withRadix: this.withRadix,
-      ...(keepMapOpen ? {keepMapOpen:true} : {}),
       input: {
         name: returnChartName(this.kind, instant.utcIso, this.radix.name),
         utcIso: instant.utcIso, localDate: '', localTime: '', timeZone, offsetSeconds: 0,

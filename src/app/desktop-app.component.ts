@@ -321,6 +321,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private crossAspectCache: {from: SessionChart; to: SessionChart; mode: 'transits' | 'synastry'; settings: ChartSettings; rows: AspectRow[]} | null = null;
   // Solar or lunar return panel; its radix is the chart that was active when it opened.
   returnTool: ReturnKind | null = null;
+  solarMapOpen = false;
+  solarReturnChartId: number | null = null;
   returnRadix: ReturnRadix | null = null;
   navCollapsed = shouldCollapseNavigation(window.innerWidth, window.innerHeight, false);
   /** Once the user folds or unfolds the navigation themselves, the window size no longer decides. */
@@ -1806,11 +1808,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       houseSets:chart.data.houses,
     };
     this.returnTool = kind;
+    this.solarMapOpen = false;
+    this.solarReturnChartId = null;
     this.view = 'functions';
     this.cd.markForCheck();
   }
   closeReturns(): void {
     this.returnTool = null;
+    this.solarMapOpen = false;
+    this.solarReturnChartId = null;
     this.returnRadix = null;
     this.view = 'chart';
     this.cd.markForCheck();
@@ -1819,8 +1825,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     await this.onChartRequested(request.input);
     const cast = this.activeChart;
     const radix = this.sessionCharts.find(chart => chart.id === request.radixChartId);
-    if (!request.keepMapOpen && !this.destroyed && cast && cast.id !== request.radixChartId && cast.utcIso === request.input.utcIso && this.calcMessage === 'calc.ready') {
-      this.closeReturns();
+    if (!this.destroyed && cast && cast.id !== request.radixChartId && cast.utcIso === request.input.utcIso && this.calcMessage === 'calc.ready') {
+      if (this.returnTool === 'solar') {
+        this.solarReturnChartId = cast.id;
+        this.solarMapOpen = false;
+      } else {
+        this.closeReturns();
+      }
       this.closeSheet();
     }
     // Pair with the radix only if this very return is now on screen.
