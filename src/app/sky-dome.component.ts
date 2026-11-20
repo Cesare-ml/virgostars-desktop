@@ -34,6 +34,7 @@ const WORDS={
     meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',starLabels:'Nomi stelle',planets:'Pianeti',
     atmosphere:'Atmosfera',houseGrid:'Griglia delle case',houseSystem:'Domificazione',houseUnavailable:'Cuspidi non disponibili per questo metodo',
     houseNote:'Cuspidi proiettate sull’eclittica, non superfici spaziali delle case.',
+    houseCusps:'Cuspidi delle case',houseFocus:'Punta la cuspide',
     appearance:'Aspetto del cielo',objectDetails:'Coordinate astronomiche',longitude:'Longitudine eclittica',latitude:'Latitudine eclittica',
     rightAscension:'Ascensione retta',declination:'Declinazione',distance:'Distanza geocentrica',
     longitudeSpeed:'Velocità in longitudine',constellation:'Costellazione',catalogId:'ID archivio',
@@ -78,6 +79,7 @@ const WORDS={
     meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',starLabels:'Star names',planets:'Planets',
     atmosphere:'Atmosphere',houseGrid:'House cusp grid',houseSystem:'House system',houseUnavailable:'Cusps unavailable for this method',
     houseNote:'Ecliptic cusp projections, not spatial house boundary surfaces.',
+    houseCusps:'House cusps',houseFocus:'Point to cusp',
     appearance:'Sky appearance',objectDetails:'Astronomical coordinates',longitude:'Ecliptic longitude',latitude:'Ecliptic latitude',
     rightAscension:'Right ascension',declination:'Declination',distance:'Geocentric distance',
     longitudeSpeed:'Longitude speed',constellation:'Constellation',catalogId:'Catalogue ID',
@@ -177,6 +179,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   selected:PointWithKind|null=null;
   showAtmosphere=true;
   showHouses=true;
+  selectedCuspIndex:number|null=null;
   showMeridian=true;
   showGrid=false;
   showEquator=false;
@@ -206,6 +209,32 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get activeHouseGrid():SkyHouseGrid|null{
     return this.data?.houseGrids.find(grid=>grid.id===this.houseSystem)??null;
+  }
+  get cuspRows():readonly {index:number;house:number;longitude:number;azimuth:number;altitude:number}[] {
+    const grid=this.activeHouseGrid;
+    if(!grid)return [];
+    return grid.cuspLongitudesDeg.map((longitude,index)=>({
+      index,house:index+1,longitude,
+      azimuth:grid.separators[index][4].azimuthNorthEastDeg,
+      altitude:grid.separators[index][4].altitudeDeg,
+    }));
+  }
+  formatCusp(longitude:number):string {
+    return (((longitude%30)+30)%30).toFixed(2)+'°';
+  }
+  cuspSign(longitude:number):string {
+    return this.signNames()[Math.floor(((longitude%360)+360)%360/30)]??'';
+  }
+  cuspGlyph(longitude:number):string {
+    return zodiacGlyphUrl(Math.floor(((longitude%360)+360)%360/30));
+  }
+  focusCusp(index:number):void {
+    const row=this.cuspRows[index];
+    if(!row||!this.showHouses)return;
+    this.selectedCuspIndex=index;
+    this.look(row.azimuth,row.altitude);
+    this.buildHouseGrid();
+    this.cd.markForCheck();
   }
   houseLabel(id:string):string {
     const italian:Readonly<Record<string,string>>={
@@ -309,7 +338,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(changes['latMicro']&&this.scene) this.buildEquator();
     if(changes['locale']&&this.scene) this.buildCardinalLabels();
     if(changes['overlays']&&this.scene)this.buildOverlays();
-    if(changes['houseSystem']&&this.scene)this.buildHouseGrid();
+    if(changes['houseSystem']){
+      this.selectedCuspIndex=null;
+      if(this.scene)this.buildHouseGrid();
+    }
   }
   ngAfterViewInit():void {
     try {
@@ -602,7 +634,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     for(let index=0;index<12;index++){
       const line=grid.separators[index];
       const vectors=line.map(point=>this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,99.16));
-      this.curve(vectors,index===0||index===9?0xa8e9ce:0x75bca7,(index===0||index===9)?0.83:0.58,group);
+      const focused=this.selectedCuspIndex===index;
+      this.curve(vectors,focused?0xf1e5b8:(index===0||index===9?0xa8e9ce:0x75bca7),
+        focused?1:(index===0||index===9?0.83:0.58),group);
       const label=grid.labels[index];
       const canvas=document.createElement('canvas');
       canvas.width=128;canvas.height=64;
