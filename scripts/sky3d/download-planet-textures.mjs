@@ -20,7 +20,8 @@ async function download(id,name) {
   });
   assert(response.ok,'Download failed for '+id+' ('+response.status+')');
   const mime=response.headers.get('content-type')||'';
-  assert(mime.startsWith('image/jpeg')||mime.startsWith('image/jpg'),'Unexpected media type: '+id);
+  assert(mime.startsWith('image/jpeg')||mime.startsWith('image/jpg')||
+    mime.startsWith('application/octet-stream'),'Unexpected media type: '+id);
   const bytes=Buffer.from(await response.arrayBuffer());
   assert(bytes.length>5000&&bytes.length<3_000_000,'Unsafe or unsupported JPEG size: '+id);
   assert(bytes[0]===255&&bytes[1]===216&&bytes[bytes.length-2]===255&&bytes[bytes.length-1]===217,
@@ -31,14 +32,21 @@ async function main(){
   assert(process.argv.length===2,'Unexpected CLI arguments');
   mkdirSync(DIRECTORY,{recursive:true});
   const downloaded=[];
+  const failures=[];
   for(const [id,name] of TEXTURES){
-    const record=await download(id,name);
-    const path=join(DIRECTORY,name),tmp=path+'.part';
-    try{writeFileSync(tmp,record.bytes);renameSync(tmp,path);}
-    finally{if(existsSync(tmp))rmSync(tmp);}
-    downloaded.push({id,name,bytes:record.bytes.length,sha256:record.sha256});
-    console.log('Verified '+id+' texture ('+Math.round(record.bytes.length/1024)+' KiB)');
+    try{
+      const record=await download(id,name);
+      const path=join(DIRECTORY,name),tmp=path+'.part';
+      try{writeFileSync(tmp,record.bytes);renameSync(tmp,path);}
+      finally{if(existsSync(tmp))rmSync(tmp);}
+      downloaded.push({id,name,bytes:record.bytes.length,sha256:record.sha256});
+      console.log('Verified '+id+' texture ('+Math.round(record.bytes.length/1024)+' KiB)');
+    }catch(error){
+      failures.push(id);
+      console.warn('Texture unavailable for '+id+': '+error.message);
+    }
   }
+  assert(downloaded.length>0,'No planetary images could be downloaded; existing portraits remain available');
   const manifest={
     schemaVersion:1,
     source:'Solar System Scope',
@@ -51,6 +59,7 @@ async function main(){
   const dest=join(DIRECTORY,'manifest.json');
   try{writeFileSync(tmp,JSON.stringify(manifest,null,2)+'\n','utf8');renameSync(tmp,dest);}
   finally{if(existsSync(tmp))rmSync(tmp);}
-  console.log('Planet maps ready in the ignored local texture cache. Run the private Desktop build.');
+  console.log('Saved '+downloaded.length+' maps; '+failures.length+' unavailable. Private builds stay offline.');
+  if(failures.length)console.warn('Illustrated fallback for: '+failures.join(', '));
 }
 main().catch(error=>{console.error('Planet texture download failed:',error.message);process.exitCode=1;});
