@@ -104,5 +104,8 @@ test('3D renderer uses one cached cubemap and a coherent fisheye pick ray',()=>{
   assert.match(html,/word\(isSpherical \? 'spherical' : 'perspective'\)/);
   assert.match(html,/\(click\)="look\(180,-90\)"/);
   assert.match(html,/\(click\)="zoomSky\(10\)"/);
+  assert.match(html,/\(click\)="showAllSky\(\)"/);
+  assert.match(viewer,/this\.camera\.fov=200/);
+  assert.match(viewer,/underground\.computeLineDistances\(\)/);
   assert.doesNotMatch(viewer,/Math\.random|fakeStar|syntheticStar/);
 });
