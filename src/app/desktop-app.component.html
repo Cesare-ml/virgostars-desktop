@@ -133,7 +133,7 @@
           <p>{{item.text}}</p>
         </div>
 
-        <div class="stage-info" *ngIf="view==='chart' && activeChart">
+        <div class="stage-info" *ngIf="view==='chart' && activeChart && chartPresentation!=='sky3d'">
           <h1>{{stageTitle}}</h1>
           <p class="stage-subject" *ngIf="!isSkyActive">{{subjectTitle}}</p>
           <p class="stage-caption">{{subjectCaption}}</p>
@@ -210,7 +210,7 @@
           </article>
         </div>
 
-        <div class="chart-toolbar chart-toolbar-left" role="toolbar" [attr.aria-label]="t('chart')">
+        <div class="chart-toolbar chart-toolbar-left" [hidden]="view==='chart' && chartPresentation==='sky3d'" role="toolbar" [attr.aria-label]="t('chart')">
           <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
           <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
@@ -222,7 +222,7 @@
             <span class="sky-dot" aria-hidden="true"></span><span aria-hidden="true">{{skyLive ? '⏸︎' : '▶︎'}}</span>
           </button>
         </div>
-        <div class="chart-toolbar chart-toolbar-right">
+        <div class="chart-toolbar chart-toolbar-right" [hidden]="view==='chart' && chartPresentation==='sky3d'">
           <span class="status-message" role="status" *ngIf="chartPresentation==='wheel'" [class.quiet]="status !== 'exporting' && status !== 'exported'">{{t(status)}}</span>
           <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && activeChart.kind === 'chart' && activeChart.archiveId === null"
             [disabled]="archiveBusy || calcBusy" (click)="saveActiveChart()">{{t('chart.save')}}</button>
