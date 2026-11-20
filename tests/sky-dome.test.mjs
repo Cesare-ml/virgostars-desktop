@@ -131,11 +131,14 @@ test('planet and fixed-star metadata are validated and never invented in the bro
   assert.equal(decoded.kind,'ready');
   assert.equal(decoded.data.planets[0].distanceAu,1.02);
   assert.equal(decoded.data.stars[0].constellation,'CMa');
+  const longName=structuredClone(item);
+  longName.stars[0].constellation='O'.repeat(160);
+  assert.equal(decodeSkyDome(longName).kind,'ready');
   for(const modify of [
     raw=>raw.planets[0].distanceAu=Infinity,
     raw=>raw.planets[0].rightAscensionDeg=-1,
     raw=>raw.stars[0].catalogId=-9,
-    raw=>raw.stars[0].constellation='x'.repeat(81),
+    raw=>raw.stars[0].constellation='x'.repeat(161),
   ]){
     const broken=structuredClone(item);
     modify(broken);
