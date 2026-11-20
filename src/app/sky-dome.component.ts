@@ -5,7 +5,7 @@ import {
 } from '@angular/core';
 import * as THREE from 'three';
 import {calculateSkyDome} from './native/sky-dome';
-import type {SkyDomeData, SkyDomePoint, SkyDomeResult} from './native/sky-dome-contract';
+import type {SkyDomeData, SkyDomePoint, SkyDomeResult, SkyHouseGrid} from './native/sky-dome-contract';
 import {validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
 import {SkyDomeLens} from './sky-dome-fisheye';
 import {
@@ -31,6 +31,12 @@ const WORDS={
   it:{
     title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
     meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',starLabels:'Nomi stelle',planets:'Pianeti',
+    atmosphere:'Atmosfera',houseGrid:'Griglia delle case',houseSystem:'Domificazione',houseUnavailable:'Cuspidi non disponibili per questo metodo',
+    houseNote:'Cuspidi proiettate sull’eclittica, non superfici spaziali delle case.',
+    appearance:'Aspetto del cielo',objectDetails:'Coordinate astronomiche',longitude:'Longitudine eclittica',latitude:'Latitudine eclittica',
+    rightAscension:'Ascensione retta',declination:'Declinazione',distance:'Distanza geocentrica',
+    longitudeSpeed:'Velocità in longitudine',constellation:'Costellazione',catalogId:'ID archivio',
+    source:'Effemeridi',sign:'Segno',notAvailable:'Non disponibile',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -68,6 +74,12 @@ const WORDS={
   en:{
     title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
     meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',starLabels:'Star names',planets:'Planets',
+    atmosphere:'Atmosphere',houseGrid:'House cusp grid',houseSystem:'House system',houseUnavailable:'Cusps unavailable for this method',
+    houseNote:'Ecliptic cusp projections, not spatial house boundary surfaces.',
+    appearance:'Sky appearance',objectDetails:'Astronomical coordinates',longitude:'Ecliptic longitude',latitude:'Ecliptic latitude',
+    rightAscension:'Right ascension',declination:'Declination',distance:'Geocentric distance',
+    longitudeSpeed:'Longitude speed',constellation:'Constellation',catalogId:'Catalogue ID',
+    source:'Ephemeris',sign:'Sign',notAvailable:'Unavailable',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -116,6 +128,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   @Input({required:true}) latMicro=0;
   @Input({required:true}) lngMicro=0;
   @Input() locale:'it'|'en'='it';
+  @Input() houseSystem='egizia';
+  @Input() houseSystemName='';
+  @Output() houseSystemSelected=new EventEmitter<string>();
   /** Future natal zodiac/house/primary direction curves: never synthesized in the renderer. */
   @Input() overlays:readonly SkyOverlayPolyline[]=[];
   @Output() closed=new EventEmitter<void>();
@@ -146,6 +161,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private zodiacGroup:THREE.Group|null=null;
   private zodiacTextures:THREE.Texture[]=[];
   private zodiacGeneration=0;
+  private houseGroup:THREE.Group|null=null;
+  private houseTextures:THREE.Texture[]=[];
   private angleGroup:THREE.Group|null=null;
   private angleTextures:THREE.Texture[]=[];
   private targets:THREE.Object3D[]=[];
@@ -155,6 +172,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private data:SkyDomeData|null=null;
   status:NativeStatus='loading';
   selected:PointWithKind|null=null;
+  showAtmosphere=true;
+  showHouses=true;
   showMeridian=true;
   showGrid=false;
   showEquator=false;
@@ -177,6 +196,43 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get approximateStars():boolean{return !!this.data?.stars.some(s=>s.approximate);}
   get starCount():number{return this.data?.stars.length??0;}
+  get availableHouseGrids():readonly SkyHouseGrid[]{return this.data?.houseGrids??[];}
+  get activeHouseGrid():SkyHouseGrid|null{
+    return this.data?.houseGrids.find(grid=>grid.id===this.houseSystem)??null;
+  }
+  houseLabel(id:string):string {
+    const italian:Readonly<Record<string,string>>={
+      egizia:'Egizia',placido:'Placido',koch:'Koch','regio-montano':'Regiomontano',porfirio:'Porfirio',
+    };
+    const english:Readonly<Record<string,string>>={
+      egizia:'Egyptian / Vehlow',placido:'Placidus',koch:'Koch','regio-montano':'Regiomontanus',porfirio:'Porphyry',
+    };
+    return (this.locale==='it'?italian:english)[id]??id;
+  }
+  selectHouseSystem(event:Event):void {
+    const value=(event.target as HTMLSelectElement).value;
+    if(this.data?.houseGrids.some(grid=>grid.id===value)){
+      this.houseSystemSelected.emit(value);
+    }
+  }
+  private signNames():readonly string[]{
+    return this.locale==='it'
+      ? ['Ariete','Toro','Gemelli','Cancro','Leone','Vergine','Bilancia','Scorpione','Sagittario','Capricorno','Acquario','Pesci']
+      : ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
+  }
+  get selectedSign():string|null {
+    const longitude=this.selected?.point.eclipticLongitudeDeg;
+    if(longitude===undefined||longitude===null)return null;
+    const value=((longitude%360)+360)%360;
+    return this.signNames()[Math.floor(value/30)]??null;
+  }
+  get selectedSignImage():string {
+    const longitude=this.selected?.point.eclipticLongitudeDeg;
+    return longitude===undefined||longitude===null?'':zodiacGlyphUrl(Math.floor(((longitude%360)+360)%360/30));
+  }
+  valueText(value:number|null|undefined,suffix='°',digits=3):string {
+    return value===null||value===undefined?this.word('notAvailable'):value.toFixed(digits)+suffix;
+  }
   close():void { this.closed.emit(); }
   clearSelection():void {
     this.selected=null;
@@ -246,6 +302,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(changes['latMicro']&&this.scene) this.buildEquator();
     if(changes['locale']&&this.scene) this.buildCardinalLabels();
     if(changes['overlays']&&this.scene)this.buildOverlays();
+    if(changes['houseSystem']&&this.scene)this.buildHouseGrid();
   }
   ngAfterViewInit():void {
     try {
@@ -278,6 +335,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.buildCardinalLabels();
       this.buildEquator();
       this.buildZodiac();
+      this.buildHouseGrid();
       this.buildAngles();
       this.buildOverlays();
       this.buildMarkers();
@@ -317,6 +375,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.sparkleTexture=null;
     this.selectionTexture?.dispose();
     this.selectionTexture=null;
+    for(const texture of this.houseTextures)texture.dispose();
+    this.houseTextures=[];
     for(const texture of this.angleTextures)texture.dispose();
     this.angleTextures=[];
     for(const texture of this.zodiacTextures)texture.dispose();
@@ -335,6 +395,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.selected=null;this.data=null;this.clearStarQuery();
     this.buildMarkers();
     this.buildZodiac();
+    this.buildHouseGrid();
     this.buildAngles();
     this.cd.markForCheck();
     const result=await calculateSkyDome({utcIso:this.utcIso,latMicro:this.latMicro,lngMicro:this.lngMicro});
