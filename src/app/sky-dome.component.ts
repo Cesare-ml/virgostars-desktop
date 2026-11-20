@@ -262,7 +262,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       const texture=new THREE.CanvasTexture(canvas);
       this.compassTextures.push(texture);
       const label=new THREE.Sprite(new THREE.SpriteMaterial({
-        map:texture,transparent:true,depthTest:false,depthWrite:false,
+        map:texture,transparent:true,depthTest:true,depthWrite:false,
       }));
       label.position.copy(this.vec(az,4,96));
       label.scale.set(11,11,1);
