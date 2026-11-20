@@ -29,6 +29,17 @@ test('the panel has the date and time fields with arrows, back/forward, the step
   }
 });
 
+test('both navigation clocks accept typed fields and commit them on change or Enter', () => {
+  const inputs = [...html.matchAll(/<input class="nav-value"[^>]*>/g)].map(match => match[0]);
+  assert.equal(inputs.length, 2);
+  for (const input of inputs) {
+    assert.match(input, /\[value\]="field\.text"/);
+    assert.match(input, /\(change\)="editClockField\(field\.key, \$event/);
+    assert.match(input, /\(keydown\.enter\)="finishClockEdit\(\$event\)"/);
+    assert.match(input, /\[attr\.aria-label\]="field\.label"/);
+  }
+});
+
 test('the chart is redrawn as the clock moves, only the latest request is shown', () => {
   assert.match(component, /NAV_RECOMPUTE_MS = 70/);
   assert.match(component, /const ticket = \+\+this\.navTicket;/);
@@ -50,7 +61,7 @@ test('opening the navigator stops the sky from refreshing itself, and nothing mo
 });
 
 test('Salva exists only for a subject\'s chart and overwrites only after a confirmation', () => {
-  assert.match(panel, /\*ngIf="activeChart\.kind === 'chart'"[^>]*\[disabled\]="archiveBusy \|\| \(!navDirty && activeChart\.archiveId !== null\)"/);
+  assert.match(panel, /\*ngIf="activeChart\.kind === 'chart'"[^>]*\[disabled\]="archiveBusy \|\| navUsesHistoricalEstimate \|\| \(!navDirty && activeChart\.archiveId !== null\)"/);
   const ask = component.match(/askNavSave\(\): void \{[\s\S]*?\n  \}/)?.[0] ?? '';
   assert.match(ask, /chart\.kind !== 'chart'/);
   assert.match(ask, /chart\.archiveId === null\) \{ void this\.confirmNavSave\(\); return; \}/);

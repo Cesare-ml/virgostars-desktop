@@ -106,6 +106,7 @@ pub async fn check_updates(app: AppHandle, channel: String) -> UpdateReply {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     // Public throwaway verification vector from tauri-plugin-updater 2.14.1.
     const PUBLIC: &str = "untrusted comment: minisign public key: A49EF4746FA6E6D7\nRWTX5qZvdPSepDGWg2bz8n6ArQnBMwgQK1geVosorcbLzcunD+KJ+cYe";
     const SIGNATURE: &str = "untrusted comment: signature from tauri secret key\nRUTX5qZvdPSepPF2zsjvP/L/TQtBLRnWRvaq+4omK1UEugtQp/USrGiI1v762sDy3id3aor7bRC9ETyeot6lMHHrWoZ5hjUM1Qc=\ntrusted comment: timestamp:1791649051\tfile:payload\tversion:2.0.0\nDDq2CLOEl5cQmC2eJRHlnZPVViOZsu1CjpPKQoei4A/XBfkDqGO0B+QMrcrHgEQ5qV3mne75tdFWhJpqUXh9AA==";
@@ -137,6 +138,36 @@ mod tests {
         assert!(key.verify(b"altered", &signature, true).is_err());
         let changed = minisign_verify::Signature::decode(&SIGNATURE.replace("version:2.0.0", "version:2.0.1")).unwrap();
         assert!(key.verify(b"test", &changed, true).is_err());
+    }
+    fn verified_release(data: &[u8], public: &str, signature: &str, version: &str) -> bool {
+        let decode = |input: &str| STANDARD.decode(input.trim()).ok().and_then(|bytes| String::from_utf8(bytes).ok());
+        let Some(public) = decode(public) else { return false };
+        let Some(signature) = decode(signature) else { return false };
+        let Ok(key) = minisign_verify::PublicKey::decode(&public) else { return false };
+        let Ok(sig) = minisign_verify::Signature::decode(&signature) else { return false };
+        key.verify(data, &sig, true).is_ok() && sig.trusted_comment().split_whitespace()
+            .any(|entry| entry == format!("version:{version}"))
+    }
+    #[test]
+    fn release_artifact_verification_requires_valid_signature_and_matching_version() {
+        let public = STANDARD.encode(PUBLIC);
+        let signature = STANDARD.encode(SIGNATURE);
+        assert!(verified_release(b"test", &public, &signature, "2.0.0"));
+        assert!(!verified_release(b"altered", &public, &signature, "2.0.0"));
+        assert!(!verified_release(b"test", &public, &signature, "2.0.1"));
+        assert!(!verified_release(b"test", "invalid", &signature, "2.0.0"));
+    }
+    #[test]
+    #[ignore = "requires a locally built updater artifact and its public key"]
+    fn verify_built_release_artifact() {
+        use std::{fs, path::PathBuf};
+        let path = |name| PathBuf::from(std::env::var_os(name).expect("missing verification path"));
+        let installer = path("VIRGOSTARS_VERIFY_INSTALLER");
+        let signature = fs::read_to_string(path("VIRGOSTARS_VERIFY_SIGNATURE")).unwrap();
+        let public = fs::read_to_string(path("VIRGOSTARS_VERIFY_PUBLIC_KEY")).unwrap();
+        assert!(fs::metadata(&installer).unwrap().len() <= MAX_PACKAGE_BYTES as u64);
+        assert!(verified_release(&fs::read(installer).unwrap(), &public, &signature,
+            env!("CARGO_PKG_VERSION")), "Invalid updater signature or signed version");
     }
 }
 

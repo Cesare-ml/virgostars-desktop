@@ -62,6 +62,8 @@ enum HistoricalDeltaT {
     EspenakMeeus2006 {
         uncertainty_seconds: f64,
     },
+    /// An automatic navigation estimate; no accuracy claim is made.
+    EspenakMeeus2006Unquantified,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,7 +72,7 @@ pub struct HistoricalChartTime {
     jd_ut1: f64,
     jd_tt: f64,
     delta_t_seconds: f64,
-    delta_t_uncertainty_seconds: f64,
+    delta_t_uncertainty_seconds: Option<f64>,
     delta_t_source: String,
     civil_uncertainty_seconds: f64,
     offset_seconds_east: f64,
@@ -98,6 +100,10 @@ fn failure(status: &'static str) -> HistoricalChartResponse {
 }
 
 impl HistoricalChartRequest {
+    /// Navigation's automatic estimate is transient until archive migration is defined.
+    pub(crate) fn archivable(&self) -> bool {
+        !matches!(self.delta_t, HistoricalDeltaT::EspenakMeeus2006Unquantified)
+    }
     /// Validate stored input without opening an ephemeris or depending on a
     /// platform timezone database; this also runs on archive read/write.
     pub(crate) fn valid(&self) -> bool {
@@ -143,6 +149,7 @@ impl HistoricalChartRequest {
                 HistoricalDeltaT::EspenakMeeus2006 {
                     uncertainty_seconds,
                 } => uncertainty(*uncertainty_seconds),
+                HistoricalDeltaT::EspenakMeeus2006Unquantified => true,
             }
     }
 }
@@ -205,12 +212,12 @@ fn calculate(request: HistoricalChartRequest) -> HistoricalChartResponse {
         Ok(epoch) => epoch,
         Err(_) => return failure("invalid_request"),
     };
-    let (delta, uncertainty, source) = match &request.delta_t {
+    let (delta, uncertainty, source, quantified) = match &request.delta_t {
         HistoricalDeltaT::Supplied {
             seconds,
             uncertainty_seconds,
             source,
-        } => (*seconds, *uncertainty_seconds, source.as_str()),
+        } => (*seconds, *uncertainty_seconds, source.as_str(), true),
         HistoricalDeltaT::EspenakMeeus2006 {
             uncertainty_seconds,
         } => {
@@ -218,7 +225,16 @@ fn calculate(request: HistoricalChartRequest) -> HistoricalChartResponse {
             else {
                 return failure("time_source_out_of_range");
             };
-            (time.delta_t_seconds, time.uncertainty_seconds, time.source)
+            (time.delta_t_seconds, time.uncertainty_seconds, time.source, true)
+        }
+        HistoricalDeltaT::EspenakMeeus2006Unquantified => {
+            // The core needs a numerical argument for calculating the central
+            // estimate. Zero here is not an uncertainty estimate; the IPC
+            // response explicitly returns null for unknown uncertainty.
+            let Ok(time) = PlanetaryTime::espenak_meeus_2006(epoch.jd_ut1, 0.0) else {
+                return failure("time_source_out_of_range");
+            };
+            (time.delta_t_seconds, 0.0, time.source, false)
         }
     };
     if !delta.is_finite()
@@ -262,7 +278,7 @@ fn calculate(request: HistoricalChartRequest) -> HistoricalChartResponse {
                 jd_ut1: result.epoch.jd_ut1,
                 jd_tt: result.epoch.jd_tt,
                 delta_t_seconds: result.epoch.delta_t_seconds,
-                delta_t_uncertainty_seconds: result.epoch.uncertainty_seconds,
+                delta_t_uncertainty_seconds: quantified.then_some(result.epoch.uncertainty_seconds),
                 delta_t_source: result.delta_t_source,
                 civil_uncertainty_seconds: result.civil.uncertainty_seconds,
                 offset_seconds_east: result.civil.offset_seconds_east,
@@ -284,6 +300,15 @@ mod tests {
             "deltaT":{"kind":"supplied", "seconds":69.0, "uncertaintySeconds":2.0, "source":"test"}
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn automatic_navigation_is_valid_but_not_archivable() {
+        let mut r = request(800);
+        assert!(r.archivable());
+        r.delta_t = HistoricalDeltaT::EspenakMeeus2006Unquantified;
+        assert!(r.valid());
+        assert!(!r.archivable());
     }
 
     #[test]
@@ -327,7 +352,7 @@ mod tests {
             assert_eq!(result.status, "ok", "year {year}");
             let time = result.time.unwrap();
             assert_eq!(time.civil_uncertainty_seconds, 60.0);
-            assert_eq!(time.delta_t_uncertainty_seconds, 2.0);
+            assert_eq!(time.delta_t_uncertainty_seconds, Some(2.0));
             assert_eq!(time.offset_seconds_east, 3000.0);
             let chart = result.chart.unwrap();
             assert_eq!(chart.julian_day_ut, time.jd_ut1);
@@ -352,7 +377,7 @@ mod tests {
             assert_eq!(chart.houses.len(), 5);
             assert_eq!(chart.unavailable_bodies, vec!["Chiron"]);
             let time = result.time.expect("explicit time metadata");
-            assert_eq!(time.delta_t_uncertainty_seconds, 2.0);
+            assert_eq!(time.delta_t_uncertainty_seconds, Some(2.0));
             let mut modelled = request(year);
             modelled.delta_t = HistoricalDeltaT::EspenakMeeus2006 {
                 uncertainty_seconds: 2.0,

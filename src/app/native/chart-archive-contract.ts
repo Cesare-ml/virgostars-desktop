@@ -107,7 +107,7 @@ function validHistory(value:unknown, latMicro:number, lngMicro:number):boolean {
   const version=Object.getOwnPropertyDescriptor(value,'protocolVersion');
   const copy=copyHistoricalChartRequest(value);
   return !!version && version.enumerable === true && Object.hasOwn(version,'value') && version.value === 1 &&
-    !!copy && copy.latMicro === latMicro && copy.lngMicro === lngMicro;
+    !!copy && copy.deltaT.kind !== 'espenakMeeus2006Unquantified' && copy.latMicro === latMicro && copy.lngMicro === lngMicro;
 }
 
 /** The same rules the Rust side enforces, checked before anything is sent. */

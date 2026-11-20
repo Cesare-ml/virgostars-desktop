@@ -326,11 +326,28 @@ static CONFIG_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 static RESOURCE_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
+fn active_data_paths() -> Option<DataPaths> {
+    let resource = RESOURCE_FOLDER.get().map(PathBuf::as_path);
+    let mut paths = data_paths(
+        CONFIG_FOLDER.get().map(PathBuf::as_path), resource,
+        &|name| std::env::var(name).ok(),
+    )?;
+    // The development launcher explicitly selects a verified multipack base.
+    // Keep the user's saved single-file choice untouched for other builds.
+    #[cfg(debug_assertions)]
+    if let (Some(folder), Some(dev)) = (resource, std::env::var_os("VIRGOSTARS_DE441_DEV_RESOURCES")) {
+        if folder == Path::new(&dev) {
+            paths.de441 = folder.join(BUNDLED_FOLDER).join(BUNDLED_DE441);
+        }
+    }
+    Some(paths)
+}
+
 pub(crate) fn catalog_context() -> Result<(crate::de441_catalog::Catalog, PathBuf, PathBuf), &'static str> {
     let digest = option_env!("VIRGOSTARS_DE441_CATALOG_SHA256").ok_or("not_configured")?;
     let resource = RESOURCE_FOLDER.get().ok_or("not_configured")?;
     let data = CONFIG_FOLDER.get().ok_or("not_configured")?;
-    let paths = data_paths(Some(data), Some(resource), &|name| std::env::var(name).ok()).ok_or("not_configured")?;
+    let paths = active_data_paths().ok_or("not_configured")?;
     let base = resource.join(BUNDLED_FOLDER).join(BUNDLED_DE441);
     if paths.de441 != base { return Err("custom_source"); }
     let catalog = read_pinned_catalog(resource, digest).ok_or("invalid_catalog")?;
@@ -382,11 +399,7 @@ fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
     let mut guard = ENGINE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if guard.is_none() {
         // Tried again on every call until the files are there: nothing is cached about a failure.
-        let paths = data_paths(
-            CONFIG_FOLDER.get().map(PathBuf::as_path),
-            RESOURCE_FOLDER.get().map(PathBuf::as_path),
-            &|name| std::env::var(name).ok(),
-        )?;
+        let paths = active_data_paths()?;
         let mut engine = Engine::open(&paths)?;
         if let Some(digest) = option_env!("VIRGOSTARS_DE441_CATALOG_SHA256") {
             let resource = RESOURCE_FOLDER.get()?;

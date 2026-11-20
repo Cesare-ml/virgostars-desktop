@@ -191,7 +191,7 @@ fn valid_record(chart: &ChartRecordV1) -> bool {
         && match &chart.historical {
             None => valid_zone(&chart.time_zone) && chart_calculation::validate(&instant_and_place).is_some(),
             Some(historical) => chart.utc_iso.is_empty() && chart.time_zone.is_empty()
-                && historical.valid() && historical.lat_micro == chart.lat_micro && historical.lng_micro == chart.lng_micro,
+                && historical.valid() && historical.archivable() && historical.lat_micro == chart.lat_micro && historical.lng_micro == chart.lng_micro,
         }
 }
 

@@ -2,6 +2,12 @@
 
 Stato: **prototipo in revisione**. Un aggiornamento 0.0.2 → 0.0.3 è stato collaudato su Windows con installer, dati e chiavi sintetici isolati e un server HTTPS locale; non è una verifica delle release pubbliche né dei dati reali. La versione iniziale 0.0.1 non ha un updater: 0.0.2 va installata manualmente. L'updater di distribuzione non funziona finché non viene incorporata una chiave pubblica e non esistono endpoint accessibili.
 
+La 0.0.2 pubblicata come anteprima è priva di aggiornamento automatico: anche
+la prima versione con updater configurato deve essere installata manualmente.
+Le versioni successive potranno usare l'aggiornamento firmato soltanto dopo la
+pubblicazione del manifest e il collaudo del percorso reale. L'avviso porta
+direttamente a Impostazioni → Applicazione, dove si trova il pulsante Aggiorna.
+
 L'host usa `tauri-plugin-updater` 2.14.1 e richiede firma e versione firmata (`requireSignedVersion`). I due endpoint sono fissi e puntano a `latest.json` nelle release GitHub con tag `updates-stable` e `updates-beta`. L'utente sceglie il canale; stable rifiuta prerelease e Tauri accetta solo versioni superiori a quella installata. Il controllo di avvio è asincrono; solo l'azione esplicita Aggiorna scarica e installa. Gli errori non interrompono l'uso offline. Il download viene verificato dal plugin prima dell'installazione. Il programma di installazione NSIS di Tauri riavvia per impostazione predefinita.
 
 La chiave pubblica viene incorporata in compilazione tramite `VIRGOSTARS_UPDATER_PUBLIC_KEY`. Senza di essa il bridge restituisce `not_configured`; la configurazione predefinita non contiene chiavi né endpoint. Il frontend non può scegliere un URL, una chiave o consentire downgrade. Nessun permesso del plugin è esposto direttamente alla WebView: l'IPC ha due comandi dedicati. Le informazioni della release sono mostrate come testo.
@@ -51,6 +57,19 @@ Remove-Variable updatePassword
 ```
 
 Il comando produce l'installer NSIS e il file `.sig` con firma della versione, senza pubblicare. La password resta temporaneamente nell'ambiente del processo: usare un terminale fidato e chiuderlo dopo l'operazione. Creare manualmente un file UTF-8 `release-notes.txt` senza dati privati, quindi sostituire i percorsi con quelli effettivamente generati:
+
+Lo script inoltra l'overlay `.local/updater/tauri-release.conf.json` al comando
+Tauri insieme a quelli di città, effemeridi e licenze. La sola presenza dello
+script non dimostra che una build sia stata firmata o che la release funzioni:
+verificare sempre che siano stati prodotti sia l'installer sia il suo `.sig`.
+
+In alternativa, con le chiavi già create fuori dal checkout e le note in
+`.local/release-<versione>-notes.txt`, `scripts/updates/build-release-interactive.ps1`
+chiede la password nel terminale, prepara l'installer e verifica la firma e la
+versione firmata usando la chiave pubblica. Prepara poi un manifest stable in
+`.local/`, senza pubblicare. Rifiuta di sovrascrivere un installer o manifest
+della stessa versione già presenti. La verifica locale non sostituisce la
+prova di aggiornamento dell'app installata attraverso GitHub.
 
 ```powershell
 node .\scripts\updates\prepare-manifest.mjs --channel stable --installer '.\src-tauri\target\release\bundle\nsis\NOME_INSTALLER.exe' --signature '.\src-tauri\target\release\bundle\nsis\NOME_INSTALLER.exe.sig' --notes '.\release-notes.txt' --output '.\latest.json'

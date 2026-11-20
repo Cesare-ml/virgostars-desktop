@@ -17,6 +17,19 @@ The optional files are looked up only under the application local-data folder's
 who explicitly configures another DE441 file retains the single-file provider.
 Without a catalog pin this candidate leaves existing behavior unchanged.
 
+For `npm run tauri:dev`, a separate `.local/de441-dev/ephemeris` folder can
+hold the reviewed catalog as `de441-release-catalog-v1.json` and its exact
+1000–2200 base as `de441-slice.eph`. The launcher verifies the catalog pin,
+base length and SHA-256 before compiling the pin and selecting that folder
+for the debug host. Optional USNO files under `usno/` and `chiron.bsp` can
+also be staged there. In this explicitly selected debug mode, the verified
+base takes precedence over a configured single-file DE441 source. The saved
+configuration is not changed, and release builds keep their normal precedence;
+optional packs
+remain in the app's local-data directory. Restart both the Angular dev server
+and Tauri after updating either source. The base and catalog are not supplied
+by a public-source checkout; without them the app retains its prior behavior.
+
 At an installed coverage edge, retarded and finite-difference sub-samples may
 use the already-verified edge file's physical coefficient overlap. Reception
 epochs are independently checked against the original logical installed
@@ -29,8 +42,10 @@ for planets and lunar points. The historical-planet diagnostic and its
 explicit delta-T sensitivity samples also use the provider. Historical
 solar-event searches are not exposed by the provider-backed snapshot and fail
 if explicitly requested. The
-normal UTC path retains its own time-policy bounds: historical dates require
-the explicit historical civil-time and delta-T contract.
+normal UTC path retains its own time-policy bounds. Outside those bounds the
+sky navigator uses the historical contract with the reference city's IANA
+offset and an automatically selected ΔT estimate of unknown uncertainty. Such
+navigation remains session-only; it does not synthesize a saved UTC instant.
 
 The restricted `de441_packages` IPC provides inventory, preview, download,
 cancellation and edge-only removal. URLs and paths remain host-controlled.

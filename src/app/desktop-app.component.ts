@@ -42,7 +42,7 @@ import { aspectPlanet, aspectSymbol } from './aspect-symbols';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import {
-  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, isoFromMs, localParts, shiftInstant, stepInstant, utcFromLocal,
+  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, historicalNavigationRequest, isoFromMs, localParts, setInstantField, shiftInstant, stepInstant, utcFromLocal,
   type NavField, type StepUnit
 } from './sky-navigator';
 import {
@@ -141,6 +141,8 @@ type SessionChart = Readonly<{
   utcIso: string;
   timeZone: string;
   historical?: NewChartInput['historical'];
+  /** UI-only date coordinate for an automatically calculated historical sky. */
+  navigationInstant?: number;
   /** Identity in the on-device archive; null while the chart exists only in memory. */
   archiveId: string | null;
   placeName: string;
@@ -1000,7 +1002,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const displayTime = input.historical ? this.chartWhen(input) : input.utcIso;
     const data = buildTemaRenderData(result.chart, displayTime);
     if (!data) return 'calc.nohouses';
-    const gauquelin = await addExtraHouses(data, result.chart, result.provider, input.utcIso, input.latMicro, input.lngMicro);
+    const gauquelin = input.historical?.deltaT.kind === 'espenakMeeus2006Unquantified' ? null :
+      await addExtraHouses(data, result.chart, result.provider, input.utcIso, input.latMicro, input.lngMicro);
     const sources = new Set(result.chart.bodies.map(body => body.ephemerisSource));
     const onlySource = sources.size === 1 ? [...sources][0] : null;
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
@@ -1157,7 +1160,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // ---- Naviga cielo -------------------------------------------------------------------------------
   private initNav(): void {
     const chart = this.activeChart;
-    const utcMs = chart ? Date.parse(chart.utcIso) : Number.NaN;
+    const utcMs = chart ? chart.navigationInstant ?? Date.parse(chart.utcIso) : Number.NaN;
     this.navConfirmSave = false;
     this.cityChangeOpen = false;
     this.navStatus = null;
@@ -1189,6 +1192,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return a.utcMs !== b.utcMs || a.latMicro !== b.latMicro || a.lngMicro !== b.lngMicro || a.timeZone !== b.timeZone;
   }
   stepUnitLabel(unit: StepUnit): string { return this.t(NAV_UNIT_LABELS[unit]); }
+  private navigationInput(point:NavPoint, name:string):NewChartInput | null {
+    const local = localParts(point.utcMs, point.timeZone);
+    if (!local) return null;
+    const utcYear = new Date(point.utcMs).getUTCFullYear();
+    const historical = local.year < 1900 || local.year > 2033 || utcYear < 1900 || utcYear > 2033;
+    const request = historical ? historicalNavigationRequest(point.utcMs, point.timeZone, point.latMicro, point.lngMicro) : null;
+    if (historical && !request) return null;
+    return {name, utcIso:historical ? '' : isoFromMs(point.utcMs), localDate:'', localTime:'', timeZone:point.timeZone,
+      offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName,
+      ...(request ? {historical:{protocolVersion:1 as const, ...request}} : {})};
+  }
+  get navUsesHistoricalEstimate():boolean {
+    const point = this.nav?.current;
+    return !!point && !!this.navigationInput(point, '')?.historical;
+  }
   /** True when the clock moved; false at the edge of the supported years or with nothing to move. */
   private moveNav(next: number | null): boolean {
     const nav = this.nav;
@@ -1204,13 +1222,23 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const point = this.nav?.current;
     return point ? this.moveNav(shiftInstant(point.utcMs, point.timeZone, field, delta)) : false;
   }
+  editClockField(field:NavField, event:Event, transit = false):void {
+    const input = event.target as HTMLInputElement;
+    const point = transit ? this.transitNav?.current : this.nav?.current;
+    if (!point) return;
+    const next = setInstantField(point.utcMs, point.timeZone, field, input.value.trim());
+    if (transit) this.moveTransit(next); else this.moveNav(next);
+    const current = transit ? this.transitNav?.current : this.nav?.current;
+    input.value = current ? fieldTexts(current.utcMs, current.timeZone)?.[field] ?? '' : '';
+  }
+  finishClockEdit(event:Event):void { (event.target as HTMLInputElement).blur(); }
   stepNav(direction: 1 | -1): boolean {
     const point = this.nav?.current;
     return point ? this.moveNav(stepInstant(point.utcMs, point.timeZone, this.navStepUnit, this.navStepValue, direction)) : false;
   }
   /**
    * Pressing a move button steps once at once and, while it stays pressed, keeps stepping, so the planets can be
-   * watched moving. The pointer is captured, so letting go anywhere stops it; reaching the edge of the years 1900–2033 stops it too.
+   * watched moving. The pointer is captured, so letting go anywhere stops it.
    */
   private beginHold(event: PointerEvent, move: () => boolean): void {
     if (event.button !== 0) return;
@@ -1284,6 +1312,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.scheduleNavRecompute();
   }
   private scheduleNavRecompute(): void {
+    // A request already in flight must not redraw the old time while a new
+    // field value is waiting for its debounce timer.
+    ++this.navTicket;
     if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.navTimer = setTimeout(() => { this.navTimer = null; void this.recomputeNav(); }, NAV_RECOMPUTE_MS);
     this.cd.markForCheck();
@@ -1295,10 +1326,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!nav || !chart || chart.id !== nav.chartId || this.destroyed) return;
     const ticket = ++this.navTicket;
     const point = nav.current;
-    const next = await this.computeChart({
-      name:chart.name, utcIso:isoFromMs(point.utcMs), localDate:'', localTime:'', timeZone:point.timeZone,
-      offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName,
-    }, chart.archiveId, chart.kind);
+    const input = this.navigationInput(point, chart.name);
+    const next = input ? await this.computeChart(input, chart.archiveId, chart.kind) : 'nav.limit';
     if (this.destroyed || ticket !== this.navTicket || this.nav?.chartId !== chart.id) return;
     if (typeof next === 'string') {
       // The chart on screen stays as it was, so the clock goes back to it and a held button stops: a clock
@@ -1310,7 +1339,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.navStatus = null;
       this.navShown = point;
       // Same identity, new data: the partner, the returns and the navigator keep pointing at it.
-      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id} : item);
+      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id, navigationInstant:point.utcMs} : item);
       this.schedulePlanetaryHour({...next, id:chart.id});
       this.fixedStarSelected = null;
       if (this.fixedStarsEnabled) void this.loadFixedStars();
@@ -1327,7 +1356,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** Overwriting a saved chart's data asks first; a chart not saved yet is simply saved. */
   askNavSave(): void {
     const chart = this.activeChart;
-    if (!chart || chart.kind !== 'chart' || !this.nav) return;
+    if (!chart || chart.kind !== 'chart' || !this.nav || this.navUsesHistoricalEstimate) return;
     if (chart.archiveId === null) { void this.confirmNavSave(); return; }
     this.navConfirmSave = true;
     this.cd.markForCheck();
@@ -1339,7 +1368,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async confirmNavSave(): Promise<void> {
     const chart = this.activeChart;
     const nav = this.nav;
-    if (!chart || chart.kind !== 'chart' || !nav || this.archiveBusy) return;
+    if (!chart || chart.kind !== 'chart' || !nav || this.archiveBusy || this.navUsesHistoricalEstimate) return;
     this.navConfirmSave = false;
     const archiveId = chart.archiveId ?? newChartId();
     const point = nav.current;
@@ -1356,7 +1385,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openElective(): void {
     const nav = this.nav;
-    if (!nav) return;
+    if (!nav || this.navUsesHistoricalEstimate) return;
     this.electiveName = defaultElectiveName(this.t('nav.elective.default'), nav.current.utcMs, nav.current.timeZone);
     this.electiveInvalid = false;
     this.electiveOpen = true;
@@ -1378,7 +1407,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** A new chart for the navigated instant and place, saved in the archive under the name given. */
   async confirmElective(): Promise<void> {
     const nav = this.nav;
-    if (!nav || this.archiveBusy) return;
+    if (!nav || this.archiveBusy || this.navUsesHistoricalEstimate) return;
     const point = nav.current;
     const record = {
       id:newChartId(), name:this.electiveName.trim(), utcIso:isoFromMs(point.utcMs), timeZone:point.timeZone,
@@ -1739,16 +1768,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const nav = this.transitNav, natal = this.activeChart;
     if (!nav || !natal || natal.id !== nav.chartId || this.mode !== 'transits') return;
     const point = nav.current;
-    const chart = await this.computeChart({name:'', utcIso:isoFromMs(point.utcMs), localDate:'', localTime:'',
-      timeZone:point.timeZone, offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName});
+    const input = this.navigationInput(point, '');
+    const chart = input ? await this.computeChart(input) : 'nav.limit';
     if (this.destroyed || ticket !== this.transitTicket || this.activeChartId !== natal.id || this.mode !== 'transits') return;
     if (typeof chart === 'string') {
       this.transitStatus = chart;
       this.stopHold();
       if (this.transitNav && this.transitChart) this.transitNav = {...this.transitNav,
-        current:{...this.transitNav.current, utcMs:Date.parse(this.transitChart.utcIso)}};
+        current:{...this.transitNav.current, utcMs:this.transitChart.navigationInstant ?? Date.parse(this.transitChart.utcIso)}};
     } else {
-      this.transitChart = chart;
+      this.transitChart = {...chart, navigationInstant:point.utcMs};
       this.crossAspectCache = null;
       if (this.synodReference === 'transit') void this.refreshSynods();
       if (this.initialized) void this.draw();
@@ -2250,6 +2279,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openSettings(): void {
     this.view = this.view === 'settings' ? 'chart' : 'settings';
+    this.cd.markForCheck();
+  }
+  openUpdateSettings(): void {
+    this.settingsCategory = 'app';
+    this.view = 'settings';
     this.cd.markForCheck();
   }
 

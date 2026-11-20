@@ -99,6 +99,14 @@ No installer, deployment, migration, online account or public release is part of
 
 The transit inspector navigates an independent calculated sky snapshot; its natal chart remains fixed. Cross-aspect selection is directional from transit to radix and uses desktop-computed aspect facts and current orb settings. The Charts renderer owns pointer picking and renders only those supplied facts, restoring its resources when a scene changes. Natal lines are temporarily grey and translucent in transit mode. The first-use hint stores only a device-local dismissal flag.
 
+Both navigator clocks accept direct field entry and retain the reference city's
+displayed local clock. Dates outside the modern chart path use the historical
+provider and installed coverage; the automatic model's uncertainty is unknown,
+not zero. Older IANA zone offsets can be extrapolated. Automatically estimated
+historical navigation is transient and cannot be saved as a subject or elective;
+this avoids silently changing the historical archive contract. The separate
+explicit historical-chart form retains its existing save flow.
+
 The desktop opts into dashed ASC, DS, MC and IC markers for the displayed transit chart, using its selected house system. They participate in transit hover and are omitted when those source axes are unavailable. The synod body selector uses the approved `astrological-assets` glyphs, with textual fallback for missing artwork or unknown bodies.
 
 The synod panel queries the pinned experimental VirgoStars Event Ephemeris Rust reader offline. It displays the latest **recorded** event for each body and a phase only when the reader derives one from recorded thresholds. A calculated chart for the selected recorded instant is shown around the radix, alone or alongside transits; the transit clock can also be moved to that instant. The source snapshot is historical; its hash and all blocks are checked, but this does not establish complete scientific coverage.

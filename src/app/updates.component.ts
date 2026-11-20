@@ -17,7 +17,7 @@ import type {Locale} from './translations';
   <section class="updates" *ngIf="settingsOpen" [attr.aria-label]="msg('Aggiornamenti','Updates')">
     <h3>{{msg('Aggiornamenti','Updates')}}</h3>
     <div class="row"><label>{{msg('Canale','Channel')}} <select [value]="channel" [disabled]="busy || installing" (change)="changeChannel($event)"><option value="stable">Stable</option><option value="beta">Beta</option></select></label></div>
-    <p>{{msg('Versione attuale','Current version')}}: {{release?.currentVersion || '0.0.2'}}</p>
+    <p>{{msg('Versione attuale','Current version')}}: {{release?.currentVersion || '0.0.3'}}</p>
     <p *ngIf="release?.version">{{msg('Versione disponibile','Available version')}}: {{release?.version}}</p>
     <p *ngIf="release?.notes">{{release?.notes}}</p>
     <p role="status">{{statusText}}</p>
@@ -57,9 +57,9 @@ export class UpdatesComponent implements OnInit, OnDestroy {
       default: return this.busy ? this.msg('Verifica in corso…','Checking…') : '';
     }
   }
-  async check():Promise<void> {if(this.busy || this.installing || !updateAvailable())return; this.busy=true; this.cd.markForCheck(); try {this.release=await requestUpdate('check',this.channel);} catch {this.release={status:'check_failed',currentVersion:'0.0.2',version:null,notes:null};} finally {this.busy=false; if(!this.destroyed){this.available.emit(this.release?.status==='available');this.cd.markForCheck();}}}
+  async check():Promise<void> {if(this.busy || this.installing || !updateAvailable())return; this.busy=true; this.cd.markForCheck(); try {this.release=await requestUpdate('check',this.channel);} catch {this.release={status:'check_failed',currentVersion:'0.0.3',version:null,notes:null};} finally {this.busy=false; if(!this.destroyed){this.available.emit(this.release?.status==='available');this.cd.markForCheck();}}}
   async install():Promise<void> {const version=this.release?.version; if(!version || this.blocked || this.busy || this.installing || !updateAvailable())return; this.installing=true; this.percentage=null; this.cd.markForCheck();
     const onProgress=(p:UpdateProgress)=>{if(p.total && p.total>0){this.percentage=Math.min(100,Math.floor(p.downloaded/p.total*100));this.cd.markForCheck();}};
-    try {this.release=await requestUpdate('install',this.channel,version,onProgress);} catch {this.release={status:'install_failed',currentVersion:'0.0.2',version:null,notes:null};} finally {this.installing=false;if(!this.destroyed)this.cd.markForCheck();}
+    try {this.release=await requestUpdate('install',this.channel,version,onProgress);} catch {this.release={status:'install_failed',currentVersion:'0.0.3',version:null,notes:null};} finally {this.installing=false;if(!this.destroyed)this.cd.markForCheck();}
   }
 }

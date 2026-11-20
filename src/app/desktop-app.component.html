@@ -1,5 +1,5 @@
 <div class="desktop-app" #shell [attr.data-theme]="theme">
-  <vs-de441-packages *ngIf="!welcomeLoading && !welcomeVisible" [locale]="locale"></vs-de441-packages>
+  <vs-de441-packages class="de441-startup" *ngIf="!welcomeLoading && !welcomeVisible" [locale]="locale"></vs-de441-packages>
   <div class="welcome-screen" *ngIf="welcomeLoading || welcomeVisible" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     <div class="welcome-content">
       <h1 id="welcome-title"><img class="welcome-wordmark" [src]="brandWordmark" alt="VirgoStars"></h1>
@@ -44,7 +44,7 @@
       </div>
     </div>
   </div>
-  <button *ngIf="updateAvailable && view!=='settings' && !welcomeLoading && !welcomeVisible" type="button" class="update-notice" (click)="openSettings()">{{locale==='it' ? 'Aggiornamento disponibile' : 'Update available'}}</button>
+  <button *ngIf="updateAvailable && view!=='settings' && !welcomeLoading && !welcomeVisible" type="button" class="update-notice" (click)="openUpdateSettings()">{{locale==='it' ? 'Aggiornamento disponibile' : 'Update available'}}</button>
   <div class="workspace" #workspace [attr.inert]="welcomeLoading || welcomeVisible ? '' : null" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.inspector-narrow]="inspectorTab==='navigate' || inspectorTab==='transits'">
     <nav class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
@@ -709,7 +709,7 @@
                 <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
                 <div class="nav-field" [class.wide]="field.key==='year'" [class.time-start]="field.key==='hour'">
                   <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (pointerdown)="holdTransitField($event, field.key, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitField($event, field.key, 1)"></button>
-                  <span class="nav-value">{{field.text}}</span>
+                  <input class="nav-value" type="text" inputmode="numeric" [attr.maxlength]="field.key==='year' ? 4 : 2" [attr.aria-label]="field.label" [value]="field.text" (focus)="$any($event.target).select()" (change)="editClockField(field.key, $event, true)" (keydown.enter)="finishClockEdit($event)">
                   <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (pointerdown)="holdTransitField($event, field.key, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitField($event, field.key, -1)"></button>
                 </div>
               </ng-container>
@@ -772,7 +772,7 @@
                 <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
                 <div class="nav-field" [class.wide]="field.key==='year'" [class.time-start]="field.key==='hour'">
                   <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (pointerdown)="holdField($event, field.key, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event, field.key, 1)"></button>
-                  <span class="nav-value">{{field.text}}</span>
+                  <input class="nav-value" type="text" inputmode="numeric" [attr.maxlength]="field.key==='year' ? 4 : 2" [attr.aria-label]="field.label" [value]="field.text" (focus)="$any($event.target).select()" (change)="editClockField(field.key, $event)" (keydown.enter)="finishClockEdit($event)">
                   <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (pointerdown)="holdField($event, field.key, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event, field.key, -1)"></button>
                 </div>
               </ng-container>
@@ -817,7 +817,7 @@
             </button>
             <!-- Only a subject's chart can be saved over; the sky of the moment has no data to overwrite. -->
             <button type="button" class="nav-tool" [class.pending]="navDirty" *ngIf="activeChart.kind === 'chart'" [attr.title]="t('nav.save')" [attr.aria-label]="t('nav.save')"
-              [disabled]="archiveBusy || (!navDirty && activeChart.archiveId !== null)" (click)="askNavSave()">
+              [disabled]="archiveBusy || navUsesHistoricalEstimate || (!navDirty && activeChart.archiveId !== null)" (click)="askNavSave()">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>
               <span>{{t('nav.save')}}</span>
             </button>
@@ -825,7 +825,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.600-5.900"/><path d="M4 4.500v5h5"/></svg>
               <span>{{t('nav.restore')}}</span>
             </button>
-            <button type="button" class="nav-tool" [attr.title]="t('nav.elective')" [attr.aria-label]="t('nav.elective')" [disabled]="archiveBusy" (click)="openElective()">
+            <button type="button" class="nav-tool" [attr.title]="t('nav.elective')" [attr.aria-label]="t('nav.elective')" [disabled]="archiveBusy || navUsesHistoricalEstimate" (click)="openElective()">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.200 6.300L21 12l-6.800 2.700L12 21l-2.200-6.300L3 12l6.800-2.700z"/></svg>
               <span>{{t('nav.elective.short')}}</span>
             </button>

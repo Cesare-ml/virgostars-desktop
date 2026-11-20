@@ -67,7 +67,12 @@ pub fn run() {
             {
                 use tauri::Manager;
                 if let Ok(folder) = _app.path().app_local_data_dir() {
-                    virgostars_provider::configure(folder, _app.path().resource_dir().ok());
+                    let resources = _app.path().resource_dir().ok();
+                    // Local developer resources cannot replace packaged resources in release builds.
+                    #[cfg(debug_assertions)]
+                    let resources = std::env::var_os("VIRGOSTARS_DE441_DEV_RESOURCES")
+                        .map(std::path::PathBuf::from).or(resources);
+                    virgostars_provider::configure(folder, resources);
                 }
             }
             Ok(())

@@ -19,9 +19,15 @@ The requested civil year range is astronomical −12999..3999, conditional on
 the actual DE441 file's coverage. The built-in Espenak–Meeus model covers only
 −1999..3000; outside that interval the user must supply ΔT. Local mean solar
 time is a chosen convention, not an automatic historical timezone lookup. No
-UTC instant is fabricated; the modern chart path remains unchanged. The
-time-based navigator still requires a modern UTC instant and does not navigate
-historical charts. This is an experimental local implementation, not a release.
+UTC instant is fabricated; the modern chart path remains unchanged. The sky
+navigator can also calculate dates outside 1900–2033 through the historical
+provider, using the reference city's IANA clock rules and an Espenak–Meeus
+estimate with unquantified uncertainty. IANA rules may be extrapolated for
+ancient dates and do not establish historically accurate civil time. The
+automatic navigator supports years 1–3000 subject to installed DE441 coverage;
+its estimated historical results remain session-only and cannot be archived.
+The explicit historical form retains its separate input contract. This is an
+experimental local implementation, not a release.
 - `calculate_chart` v1 is unchanged (same IPC contract, no path, name or account data crosses it). It now answers with provider id `virgostars_ephemeris`, source `jpl` and the engine version string.
 - Bodies: Sun, Moon, Mercury, Venus, Mars–Pluto, mean and true lunar Node, mean and osculating Apogee, and Chiron (JPL SPK, NAIF 20002060). Apparent geocentric ecliptic-of-date positions, speeds, right ascension and declination.
 - Mars to Pluto are the **system barycentres** (the usual convention for the outer planets, DE441 carries no separate body for them).

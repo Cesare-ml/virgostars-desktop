@@ -15,7 +15,8 @@ export function validHistoricalChartRequest(r) {
     nonnegative(c.uncertaintySeconds) && Number.isSafeInteger(r.latMicro) && Math.abs(r.latMicro) <= 90_000_000 &&
     Number.isSafeInteger(r.lngMicro) && Math.abs(r.lngMicro) <= 180_000_000 &&
     (o.kind === 'localMeanSolar' || (o.kind === 'supplied' && Number.isFinite(o.secondsEast) && Math.abs(o.secondsEast) <= 86400 && source(o.source))) &&
-    nonnegative(d.uncertaintySeconds) && (d.kind === 'espenakMeeus2006' || (d.kind === 'supplied' && Number.isFinite(d.seconds) && source(d.source)));
+    (d.kind === 'espenakMeeus2006Unquantified' || (nonnegative(d.uncertaintySeconds) &&
+      (d.kind === 'espenakMeeus2006' || (d.kind === 'supplied' && Number.isFinite(d.seconds) && source(d.source)))));
 }
 
 /** Copy only own data properties; never retain mutable native/IPC objects. */
@@ -31,7 +32,7 @@ export function copyHistoricalChartRequest(value) {
     const offsetKind=read(o,'kind'), deltaKind=read(d,'kind');
     const offset=offsetKind === 'localMeanSolar' ? {kind:offsetKind} :
       {kind:offsetKind, secondsEast:read(o,'secondsEast'), source:read(o,'source')};
-    const deltaT=deltaKind === 'espenakMeeus2006' ? {kind:deltaKind,uncertaintySeconds:read(d,'uncertaintySeconds')} :
+    const deltaT=deltaKind === 'espenakMeeus2006Unquantified' ? {kind:deltaKind} : deltaKind === 'espenakMeeus2006' ? {kind:deltaKind,uncertaintySeconds:read(d,'uncertaintySeconds')} :
       {kind:deltaKind,seconds:read(d,'seconds'),uncertaintySeconds:read(d,'uncertaintySeconds'),source:read(d,'source')};
     const civil={year:read(c,'year'),month:read(c,'month'),day:read(c,'day'),hour:read(c,'hour'),minute:read(c,'minute'),
       second:read(c,'second'),calendar:read(c,'calendar'),offset:Object.freeze(offset),uncertaintySeconds:read(c,'uncertaintySeconds')};

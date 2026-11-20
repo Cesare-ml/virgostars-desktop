@@ -18,6 +18,8 @@
   --vs-sidebar:#19172C; --vs-focus:#C7A9FF;
   --vs-nav-text:#F3EFFA; --vs-nav-muted:#B7AEC8;
 }
+/* The first-run component contains only a fixed overlay; it is not a grid row. */
+.desktop-app > .de441-startup { display:contents; }
 .guide-card { position:fixed; z-index:25; right:24px; bottom:24px; width:min(390px,calc(100vw - 32px));
   padding:18px 20px; border:1px solid var(--vs-border); border-radius:16px; background:var(--vs-surface);
   color:var(--vs-text); box-shadow:0 12px 40px rgba(20,16,35,.2); }
@@ -176,8 +178,9 @@
 .nav-clock { display:flex; align-items:center; justify-content:center; gap:2px; }
 .nav-field { display:flex; flex-direction:column; align-items:center; }
 .nav-field.time-start { margin-left:8px; padding-left:8px; border-left:1px solid var(--vs-border); }
-.nav-value { min-width:30px; text-align:center; font-size:19px; font-weight:600; line-height:26px; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
-.nav-field.wide .nav-value { min-width:46px; }
+.nav-value { width:30px; min-width:0; padding:0; border:0; border-radius:4px; background:transparent; color:inherit; text-align:center; font:inherit; font-size:19px; font-weight:600; line-height:26px; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
+.nav-value:focus-visible { outline:2px solid var(--vs-focus); outline-offset:1px; }
+.nav-field.wide .nav-value { width:46px; }
 .nav-sep { color:var(--vs-text-secondary); opacity:.7; font-size:15px; font-weight:300; }
 .nav-arrow { position:relative; width:100%; height:16px; padding:0; border:0; border-radius:6px; background:transparent; cursor:pointer;
   opacity:.5; transition:opacity .12s ease, background-color .12s ease; }

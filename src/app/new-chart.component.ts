@@ -73,11 +73,11 @@ export class NewChartComponent implements OnChanges {
       this.historicalOffset = historical.civil.offset.kind;
       this.historicalOffsetSeconds = historical.civil.offset.kind === 'supplied' ? String(historical.civil.offset.secondsEast) : '0';
       this.historicalOffsetSource = historical.civil.offset.kind === 'supplied' ? historical.civil.offset.source : 'User supplied local minus UT1';
-      this.historicalDeltaT = historical.deltaT.kind;
+      this.historicalDeltaT = historical.deltaT.kind === 'espenakMeeus2006Unquantified' ? 'espenakMeeus2006' : historical.deltaT.kind;
       this.historicalDeltaTSeconds = historical.deltaT.kind === 'supplied' ? String(historical.deltaT.seconds) : '';
       this.historicalDeltaTSource = historical.deltaT.kind === 'supplied' ? historical.deltaT.source : 'User supplied';
       this.historicalCivilUncertainty = String(historical.civil.uncertaintySeconds);
-      this.historicalDeltaTUncertainty = String(historical.deltaT.uncertaintySeconds);
+      this.historicalDeltaTUncertainty = historical.deltaT.kind === 'espenakMeeus2006Unquantified' ? '' : String(historical.deltaT.uncertaintySeconds);
     }
     this.city = null;
     this.problem = null;

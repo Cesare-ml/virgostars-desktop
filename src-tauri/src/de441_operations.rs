@@ -189,6 +189,57 @@ mod tests {
         assert!(cancelled.load(Ordering::Relaxed));
     }
 
+    #[cfg(feature = "virgostars-ephemeris")]
+    #[test]
+    #[ignore = "requires the verified local DE441 development base and build-time catalog pin"]
+    fn local_development_base_reports_inventory_and_plans_adjacent_pack() {
+        let resource = std::path::PathBuf::from(std::env::var_os("VIRGOSTARS_DE441_DEV_RESOURCES").expect("development resources"));
+        let data = tempfile::tempdir().unwrap();
+        // A pre-existing single-file selection must not hide the explicitly
+        // selected development multipack base or be edited by this test.
+        std::fs::write(data.path().join("ephemeris.json"), r#"{"de441":"fictional-custom.eph"}"#).unwrap();
+        crate::virgostars_provider::configure(data.path().to_path_buf(), Some(resource));
+        let state = DownloadState::default();
+        let status = handle(&state, PackageRequest::Status {});
+        assert_eq!(status.status, "ok");
+        assert!(status.packages.iter().any(|p| {
+            let value = serde_json::to_value(p).unwrap();
+            value["required"] == true && value["installed"] == true
+        }));
+        let plan = handle(&state, PackageRequest::Plan {first_year: 800, last_year: 2200});
+        assert_eq!(plan.status, "ok");
+        assert_eq!(plan.planned, vec!["history-00800-00999"]);
+        assert!(plan.planned_bytes > 0);
+        assert_eq!(std::fs::read_to_string(data.path().join("ephemeris.json")).unwrap(), r#"{"de441":"fictional-custom.eph"}"#);
+        let calculate = |year| {
+            let value = serde_json::json!({"protocolVersion":1,"latMicro":41900000,"lngMicro":12500000,
+                "civil":{"year":year,"month":6,"day":15,"hour":12,"minute":5,"second":0,
+                    "calendar":"gregorian","offset":{"kind":"supplied","secondsEast":2996,"source":"IANA Europe/Rome (historical rules may be extrapolated)"},"uncertaintySeconds":0},
+                "deltaT":{"kind":"espenakMeeus2006Unquantified"}});
+            let request = serde_json::from_value(value).unwrap();
+            serde_json::to_value(crate::historical_chart::calculate_historical_chart(request)).unwrap()
+        };
+        for year in [1000, 2200] {
+            let result = calculate(year);
+            assert_eq!(result["status"], "ok", "year {year}");
+            assert!(result["time"]["deltaTUncertaintySeconds"].is_null());
+            assert!(!result["chart"]["bodies"].as_array().unwrap().is_empty());
+        }
+        assert_eq!(calculate(800)["status"], "ephemeris_out_of_range");
+        if let Some(source) = std::env::var_os("DE441_TEST_OPTIONAL_PACK") {
+            let packs = data.path().join("de441-packs");
+            std::fs::create_dir_all(&packs).unwrap();
+            std::fs::copy(source, packs.join("de441-history-0800-0999.eph")).unwrap();
+            crate::virgostars_provider::without_engine(|| ());
+            let result = calculate(800);
+            assert_eq!(result["status"], "ok");
+            assert!(result["time"]["deltaTUncertaintySeconds"].is_null());
+            if let Some(output) = std::env::var_os("DE441_TEST_RESPONSE_PATH") {
+                std::fs::write(output, serde_json::to_vec(&result).unwrap()).unwrap();
+            }
+        }
+    }
+
     #[test]
     #[ignore = "requires private catalog, generated packs and its build-time digest"]
     fn local_ipc_plans_and_rejects_stale_consent_then_removes_edge() {
