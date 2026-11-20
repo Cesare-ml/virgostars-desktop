@@ -35,7 +35,7 @@ Nel checkout del **branch di questa PR**, eseguire una sola volta:
 npm run sky3d:textures:download
 ```
 
-Il comando scarica le nove mappe JPEG dall'origine ufficiale (solo HTTPS e URL allowlisted), controlla tipo, firma JPEG e dimensione, e registra hash SHA-256 in `.local/sky3d/textures/manifest.json`. Questo percorso è ignorato da Git; non contiene dati utente.
+Il comando tenta di scaricare le nove mappe JPEG dall'origine ufficiale (solo HTTPS e URL allowlisted), controlla tipo, firma JPEG e dimensione, e registra hash SHA-256 in `.local/sky3d/textures/manifest.json`. Se qualche mappa non è disponibile, il comando dichiara l'assenza e mantiene le altre immagini verificate: per il corpo mancante il renderer utilizza il ritratto illustrato. Questo percorso è ignorato da Git; non contiene dati utente.
 
 Successivamente aprire l'app nativa nel modo abituale (`npm run tauri:dev`). Per le build private `prepare:frontend:private` esegue `sky3d:textures:stage`, che verifica gli hash e produce un modulo TypeScript **interno e compilato** con le immagini in formato data URI: la WebView non richiede rete durante il funzionamento. Una build pubblica/sintetica usa il modulo predefinito vuoto e non scarica automaticamente materiali di terzi.
 
