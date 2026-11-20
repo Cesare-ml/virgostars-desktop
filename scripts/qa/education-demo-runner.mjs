@@ -13,7 +13,7 @@ const REPO = Object.freeze({
   ephemeris: 'virgostars-ephemeris', functions: 'astrological-functions',
   charts: 'astrological-charts', desktop: 'virgostars-desktop',
 });
-const rust = file => ({repo:'ephemeris', file:`crates/ephemeris-core/tests/${file}.rs`, kind:'rust', args:['test','-p','virgostars-ephemeris-core','--test',file]});
+const rust = file => ({repo:'ephemeris', file:`crates/ephemeris-core/tests/${file}.rs`, kind:'rust', args:['test','--offline','--locked','-p','virgostars-ephemeris-core','--test',file]});
 const js = (repo,file) => ({repo, file, kind:'node', args:repo==='desktop'?['--experimental-strip-types','--test',file]:['--test',file]});
 const CASES = Object.freeze([
   {id:'QA-01', title:'Tema natale, angoli, case, aspetti', checks:[rust('house_angles'),rust('mvp_planets'),js('functions','test/house-set.test.mjs'),js('charts','tests/axis-markers.test.mjs'),js('desktop','tests/chart-calculation-contract.test.mjs')], gate:'Confronto DE441/Swiss + grafico Desktop con input sintetico reale'},
@@ -71,13 +71,19 @@ function probeCommand(c,root){
 function runCheck(c,root){
   const dir=rootFor(root,c.repo),command=c.kind==='rust'?'cargo':process.execPath;
   // Nested node:test can silently skip all child tests while exiting 0: fail closed.
-  const env={...process.env,CI:'1',NO_COLOR:'1',NODE_OPTIONS:''};
+  const env={...process.env,CI:'1',NO_COLOR:'1',NODE_OPTIONS:'',CARGO_NET_OFFLINE:'true',CARGO_NET_GIT_FETCH_WITH_CLI:'false'};
   delete env.NODE_TEST_CONTEXT;
   const args=c.kind==='node'?[...c.args.slice(0,-1),'--test-reporter=tap',c.args.at(-1)]:c.args;
   const p=spawnSync(command,args,{cwd:dir,encoding:'utf8',timeout:c.kind==='rust'?300000:120000,windowsHide:true,env,maxBuffer:1024*1024*2});
   if(p.error?.code==='ENOENT')return {status:'BLOCKED_ENV',note:`${command} not installed`};
   if(p.error?.code==='ETIMEDOUT')return {status:'FAILED_AUTOMATED',note:'Targeted test command timed out'};
   if(p.error)return {status:'FAILED_AUTOMATED',note:`Test subprocess failure: ${p.error.code||'UNKNOWN'}`};
+  // An offline Cargo cache/lockfile failure is an environment blocker, not a failed feature test.
+  // Inspect stderr only transiently for classification; never save raw subprocess output.
+  if(c.kind==='rust' && p.status!==0 &&
+     /failed to download|no matching package named|attempting to make an HTTP request|offline mode|--locked was passed|lock file needs to be updated|lockfile needs to be updated/i.test(p.stderr||'')) {
+    return {status:'BLOCKED_ENV',exitCode:p.status,note:'Rust dependency cache or Cargo.lock not ready for offline locked test; prepare prerequisites explicitly'};
+  }
   const stdout=p.stdout||'';
   const nodeStats=c.kind==='node'?{
     tests:Number(stdout.match(/^# tests (\d+)\s*$/m)?.[1]??0),
