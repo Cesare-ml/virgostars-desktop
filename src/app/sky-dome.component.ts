@@ -422,48 +422,142 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     }
     this.scene.add(group);this.overlayGroup=group;this.draw();
   }
+  /**
+   * A small original radial sprite, shared by every *real catalogue point*.
+   * This is a rendering effect; it does not imply any spectral class.
+   */
+  private radialTexture():THREE.CanvasTexture|null {
+    if(this.sparkleTexture)return this.sparkleTexture;
+    const canvas=document.createElement('canvas');
+    canvas.width=128;canvas.height=128;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)return null;
+    const gradient=ctx.createRadialGradient(64,64,1,64,64,63);
+    gradient.addColorStop(0,'rgba(255,255,255,1)');
+    gradient.addColorStop(0.12,'rgba(255,255,255,.95)');
+    gradient.addColorStop(0.30,'rgba(255,255,255,.4)');
+    gradient.addColorStop(0.65,'rgba(255,255,255,.1)');
+    gradient.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=gradient;
+    ctx.fillRect(0,0,128,128);
+    this.sparkleTexture=new THREE.CanvasTexture(canvas);
+    return this.sparkleTexture;
+  }
+  private selectionOutline():THREE.CanvasTexture|null {
+    if(this.selectionTexture)return this.selectionTexture;
+    const canvas=document.createElement('canvas');
+    canvas.width=128;canvas.height=128;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)return null;
+    ctx.strokeStyle='#faf1ce';
+    ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(64,64,48,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle='rgba(255,243,211,.24)';
+    ctx.lineWidth=12;ctx.beginPath();ctx.arc(64,64,48,0,Math.PI*2);ctx.stroke();
+    this.selectionTexture=new THREE.CanvasTexture(canvas);
+    return this.selectionTexture;
+  }
+  private updateSelectionRing():void {
+    if(!this.markerGroup)return;
+    if(this.selectionRing){
+      this.markerGroup.remove(this.selectionRing);
+      this.selectionRing.material.dispose();
+      this.selectionRing=null;
+    }
+    if(!this.selected){this.draw();return;}
+    const texture=this.selectionOutline();
+    if(!texture)return;
+    const {point}=this.selected;
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:texture,transparent:true,depthTest:true,depthWrite:false,
+    }));
+    sprite.position.copy(this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,98.5));
+    sprite.scale.set(this.selected.kind==='star'?6.8:9, this.selected.kind==='star'?6.8:9,1);
+    this.markerGroup.add(sprite);
+    this.selectionRing=sprite;
+    this.draw();
+  }
   private buildMarkers():void {
     if(!this.scene)return;
-    if(this.markerGroup){this.scene.remove(this.markerGroup);this.disposeTree(this.markerGroup);}
+    const generation=++this.markerGeneration;
+    if(this.markerGroup){
+      this.scene.remove(this.markerGroup);
+      this.disposeTree(this.markerGroup);
+    }
+    for(const texture of this.markerTextures)texture.dispose();
+    this.markerTextures=[];
+    this.selectionRing=null;
     const group=new THREE.Group();
     this.targets=[];
     const data=this.data;
     if(data){
       if(this.showPlanets){
+        const loader=new THREE.TextureLoader();
         for(const point of data.planets){
-          const radius=point.id==='Sun'?1.35:point.id==='Moon'?1.18:0.8;
-          const material=new THREE.MeshBasicMaterial({color:point.id==='Sun'?0xffd38a:point.id==='Moon'?0xf1ebd9:0xc5b7ff});
-          const mesh=new THREE.Mesh(new THREE.SphereGeometry(radius,12,8),material);
-          mesh.position.copy(this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,100));
-          mesh.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-          group.add(mesh);this.targets.push(mesh);
+          const position=this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,100);
+          const size=point.id==='Sun'?18:point.id==='Moon'?15:12;
+          const accent=planetAccent(point.id);
+          // The glow is not a physically scaled planetary disk.
+          const halo=new THREE.Sprite(new THREE.SpriteMaterial({
+            map:this.radialTexture(),color:new THREE.Color(accent),
+            transparent:true,blending:THREE.AdditiveBlending,opacity:0.87,
+            depthTest:true,depthWrite:false,
+          }));
+          halo.position.copy(position);
+          halo.scale.set(size,size,1);
+          group.add(halo);
+          const core=new THREE.Mesh(
+            new THREE.SphereGeometry(point.id==='Sun'?1.15:0.7,12,10),
+            new THREE.MeshBasicMaterial({color:accent}),
+          );
+          core.position.copy(position);
+          core.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+          group.add(core);
+          this.targets.push(core);
+          const texture=loader.load(celestialGlyphUrl(point.id),()=>{
+            if(this.destroyed||generation!==this.markerGeneration)return;
+            const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+              map:texture,transparent:true,depthTest:true,depthWrite:false,
+            }));
+            // Overlay closer to the observer than the marker core.
+            sprite.position.copy(position.clone().multiplyScalar(0.996));
+            const side=point.id==='Sun'||point.id==='Moon'?6.0:5.0;
+            sprite.scale.set(side,side,1);
+            sprite.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(sprite);
+            this.targets.push(sprite);
+            this.draw();
+          });
+          this.markerTextures.push(texture);
         }
       }
       if(this.showStars){
         for(let bin=0;bin<4;bin++){
-          const stars=data.stars.filter(s=>{
-            const mag=s.magnitude;
-            return Math.min(3,Math.max(0,Math.floor(((mag??4)+1)/2)))===bin;
-          });
+          const stars=data.stars.filter(star=>starAppearance(star.magnitude).bin===bin);
           if(!stars.length)continue;
-          const geometry=new THREE.BufferGeometry();
           const coords=new Float32Array(stars.length*3);
           stars.forEach((star,i)=>{
-            const v=this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,100);
-            coords[i*3]=v.x;coords[i*3+1]=v.y;coords[i*3+2]=v.z;
+            const point=this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,100);
+            coords[i*3]=point.x;coords[i*3+1]=point.y;coords[i*3+2]=point.z;
           });
+          const geometry=new THREE.BufferGeometry();
           geometry.setAttribute('position',new THREE.BufferAttribute(coords,3));
-          const material=new THREE.PointsMaterial({
-            size:Math.max(2,5-bin),sizeAttenuation:false,
-            color:bin===0?0xfff6de:0xc9d9f5,transparent:true,opacity:Math.max(0.65,1-bin*0.1),
-          });
-          const dots=new THREE.Points(geometry,material);
+          const appearance=starAppearance(stars[0].magnitude);
+          const dots=new THREE.Points(geometry,new THREE.PointsMaterial({
+            map:this.radialTexture(),
+            size:appearance.sizePx,sizeAttenuation:false,
+            color:0xf1f4ff,transparent:true,opacity:appearance.opacity,
+            depthTest:true,depthWrite:false,blending:THREE.AdditiveBlending,
+          }));
           dots.userData['skyStars']=stars;
-          group.add(dots);this.targets.push(dots);
+          group.add(dots);
+          this.targets.push(dots);
         }
       }
     }
-    this.markerGroup=group;this.scene.add(group);
+    this.markerGroup=group;
+    this.scene.add(group);
+    this.updateSelectionRing();
     this.draw();
   }
   toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'signs'|'angles'|'ground'|'stars'|'planets'):void {
@@ -550,6 +644,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       if(chosen)break;
     }
     this.selected=chosen;
+    this.updateSelectionRing();
     this.cd.markForCheck();
   }
 }
