@@ -40,6 +40,21 @@ test('private planet map staging is deterministic, offline and exact-sha-verifie
   }finally{rmSync(f.root,{recursive:true,force:true});}
 });
 
+test('a partial official image cache preserves maps for available planets',()=>{
+  const f=fixture();
+  try{
+    const path=join(f.cache,'manifest.json');
+    const manifest=JSON.parse(readFileSync(path,'utf8'));
+    manifest.images=manifest.images.filter(item=>item.id==='Jupiter'||item.id==='Saturn');
+    writeFileSync(path,JSON.stringify(manifest));
+    assert.equal(stagePlanetTextures(f.root),2);
+    const result=readFileSync(output(f.root),'utf8');
+    assert.match(result,/"Jupiter":"data:image\/jpeg;base64,/);
+    assert.match(result,/"Saturn":"data:image\/jpeg;base64,/);
+    assert.doesNotMatch(result,/"Moon":"data:image\/jpeg;base64,/);
+  }finally{rmSync(f.root,{recursive:true,force:true});}
+});
+
 test('without an opt-in cache the private build creates a safe empty module',()=>{
   const root=mkdtempSync(join(tmpdir(),'sky3d-empty-'));
   try{
