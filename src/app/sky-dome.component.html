@@ -55,6 +55,8 @@
     <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('objects')">
       <button type="button" [class.active]="showStars" [attr.aria-pressed]="showStars"
         (click)="toggleLayer('stars')">{{word('stars')}}</button>
+      <button type="button" [class.active]="showStarLabels" [disabled]="!showStars" [attr.aria-pressed]="showStarLabels"
+        (click)="toggleLayer('starLabels')">{{word('starLabels')}}</button>
       <button type="button" [class.active]="showPlanets" [attr.aria-pressed]="showPlanets"
         (click)="toggleLayer('planets')">{{word('planets')}}</button>
     </div>
