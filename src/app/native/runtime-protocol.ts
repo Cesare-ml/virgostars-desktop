@@ -28,29 +28,42 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 export function decodeDesktopRuntimeInfo(payload: unknown): DesktopRuntimeInfoV1 {
-  if (!record(payload) || payload['protocolVersion'] !== 1 ||
-      payload['product'] !== 'VirgoStars Desktop' ||
-      typeof payload['applicationVersion'] !== 'string' ||
-      !/^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.+-]+)?$/.test(payload['applicationVersion']) ||
-      (payload['platform'] !== 'windows' &&
-       payload['platform'] !== 'macos' &&
-       payload['platform'] !== 'linux') ||
-      payload['fixtureKind'] !== 'synthetic_demo' ||
-      payload['accountConnected'] !== false ||
-      payload['cloudSyncAvailable'] !== false ||
-      payload['ephemerisReady'] !== false) {
+  try {
+    if (!record(payload)) throw new Error('Invalid runtime response');
+    // IPC replies are untrusted objects. Read each field once so an accessor or
+    // mutable transport result cannot change between validation and display.
+    const protocolVersion = payload['protocolVersion'];
+    const product = payload['product'];
+    const applicationVersion = payload['applicationVersion'];
+    const platform = payload['platform'];
+    const fixtureKind = payload['fixtureKind'];
+    const accountConnected = payload['accountConnected'];
+    const cloudSyncAvailable = payload['cloudSyncAvailable'];
+    const ephemerisReady = payload['ephemerisReady'];
+    if (protocolVersion !== 1 || product !== 'VirgoStars Desktop' ||
+        typeof applicationVersion !== 'string' || applicationVersion.length > 64 ||
+        !/^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.+-]+)?$/.test(applicationVersion) ||
+        (platform !== 'windows' && platform !== 'macos' && platform !== 'linux') ||
+        fixtureKind !== 'synthetic_demo' ||
+        accountConnected !== false || cloudSyncAvailable !== false || ephemerisReady !== false) {
+      throw new Error('Invalid runtime response');
+    }
+    // Return only the reviewed v1 fields; keep the trusted result detached
+    // from, and immutable despite later mutations of, the untrusted payload.
+    return Object.freeze({
+      protocolVersion: 1,
+      product: 'VirgoStars Desktop',
+      applicationVersion,
+      platform,
+      fixtureKind: 'synthetic_demo',
+      accountConnected: false,
+      cloudSyncAvailable: false,
+      ephemerisReady: false,
+    });
+  } catch {
+    // A malicious/throwing accessor cannot leak its exception text to callers.
     throw new Error('Unsupported or invalid desktop runtime protocol');
   }
-  return {
-    protocolVersion: 1,
-    product: 'VirgoStars Desktop',
-    applicationVersion: payload['applicationVersion'],
-    platform: payload['platform'],
-    fixtureKind: 'synthetic_demo',
-    accountConnected: false,
-    cloudSyncAvailable: false,
-    ephemerisReady: false,
-  };
 }
 
 /**
@@ -85,10 +98,13 @@ export async function probeDesktopRuntime(
 ): Promise<RuntimeProbeResult> {
   let scheduled = false;
   let handle: unknown;
-  const timers = options.timers ?? defaultProbeTimers;
+  let timers: RuntimeProbeTimers | undefined;
   try {
     if (!transport.isNative()) return { kind: 'browser_preview', info: null };
-    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    // Resolve configurable timer hooks inside the error boundary and only for
+    // native mode. Invalid or throwing hooks must not escape as raw errors.
+    timers = options?.timers ?? defaultProbeTimers;
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
       throw new Error('Invalid native runtime probe timeout');
     }
@@ -107,6 +123,9 @@ export async function probeDesktopRuntime(
       firedSynchronously = true;
       rejectTimeout(new Error('Native runtime probe timeout'));
     }, timeoutMs);
+    // A scheduler returning no cancellation handle cannot prove it installed
+    // the required deadline. Never dispatch an unbounded native call.
+    if (handle == null) throw new Error('Native runtime probe deadline unavailable');
     scheduled = true;
     if (firedSynchronously) throw new Error('Native runtime probe timeout');
     const invocation = Promise.resolve().then(() => transport.invoke('desktop_runtime_info'));
@@ -116,7 +135,7 @@ export async function probeDesktopRuntime(
     // Do not expose local file paths, IPC errors or untrusted response details.
     return { kind: 'native_unavailable', info: null };
   } finally {
-    if (scheduled) {
+    if (scheduled && timers) {
       try { timers.clear(handle); } catch { /* diagnostic never leaks timer failures */ }
     }
   }
