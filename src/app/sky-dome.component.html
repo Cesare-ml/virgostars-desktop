@@ -1,0 +1,46 @@
+<section class="sky3d" [attr.aria-label]="word('title')">
+  <div #viewport class="sky3d-viewport" aria-hidden="true"></div>
+  <header class="sky3d-header">
+    <div>
+      <h2>{{word('title')}}</h2>
+      <p>{{word('hint')}}</p>
+    </div>
+    <div class="sky3d-location">{{utcIso}} · {{(latMicro / 1000000).toFixed(3)}}°, {{(lngMicro / 1000000).toFixed(3)}}°</div>
+  </header>
+  <div class="sky3d-controls" role="group" [attr.aria-label]="word('title')">
+    <button type="button" [class.active]="showMeridian" [attr.aria-pressed]="showMeridian"
+      (click)="toggleLayer('meridian')">{{word('meridian')}}</button>
+    <button type="button" [class.active]="showGrid" [attr.aria-pressed]="showGrid"
+      (click)="toggleLayer('grid')">{{word('grid')}}</button>
+    <button type="button" [class.active]="showEquator" [attr.aria-pressed]="showEquator"
+      (click)="toggleLayer('equator')">{{word('equator')}}</button>
+    <button type="button" [class.active]="showGround" [attr.aria-pressed]="showGround"
+      (click)="toggleLayer('ground')">{{word('ground')}}</button>
+    <button type="button" [class.active]="showStars" [attr.aria-pressed]="showStars"
+      (click)="toggleLayer('stars')">{{word('stars')}}</button>
+    <button type="button" [class.active]="showPlanets" [attr.aria-pressed]="showPlanets"
+      (click)="toggleLayer('planets')">{{word('planets')}}</button>
+  </div>
+  <div class="sky3d-directions" role="group" [attr.aria-label]="word('north')">
+    <button type="button" [attr.aria-label]="word('north')" (click)="look(0,20)">N</button>
+    <button type="button" [attr.aria-label]="word('east')" (click)="look(90,20)">E</button>
+    <button type="button" [attr.aria-label]="word('south')" (click)="look(180,20)">S</button>
+    <button type="button" [attr.aria-label]="word('west')" (click)="look(270,20)">O</button>
+    <button type="button" [attr.aria-label]="word('zenith')" (click)="look(180,85)">↑</button>
+  </div>
+  <article class="sky3d-selection" *ngIf="selected as selection">
+    <button type="button" class="sky3d-dismiss" [attr.aria-label]="word('close')" (click)="selected=null">×</button>
+    <div class="sky3d-selection-title">
+      <img *ngIf="selection.kind==='planet'" [src]="bodyGlyph(selection.point.id)" alt="" aria-hidden="true">
+      <strong>{{selection.kind==='planet' ? bodyName(selection.point.id) : selection.point.id}}</strong>
+    </div>
+    <dl>
+      <div><dt>{{word('altitude')}}</dt><dd>{{formatted(selection.point.altitudeDeg)}}</dd></div>
+      <div><dt>{{word('azimuth')}}</dt><dd>{{formatted(selection.point.azimuthNorthEastDeg)}}</dd></div>
+    </dl>
+    <p *ngIf="selection.point.approximate">{{word('approximate')}}</p>
+  </article>
+  <p class="sky3d-status" role="status" *ngIf="warning">{{warning}}</p>
+  <p class="sky3d-footer">{{word('note')}} <span *ngIf="status==='ready' && starCount===0">{{word('noStars')}}</span>
+    <span *ngIf="status==='ready' && approximateStars">{{word('approximate')}}</span></p>
+</section>
