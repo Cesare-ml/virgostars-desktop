@@ -151,3 +151,19 @@ test('all 14 cases are explicit and no missing checkout is reported as passed',(
     assert.ok(result.cases.every(c=>c.status!=='AUTOMATED_PARTIAL_MANUAL_REQUIRED'));
   } finally {w.cleanup();}
 });
+
+test('QA-02 includes the solar-event adapter as a separate regression gate',()=>{
+  const w=workspace();
+  try {
+    const dest=join(w.base,'qa02-dry-run.json');
+    const p=invoke('--root',w.root,'--only','QA-02','--out',dest);
+    assert.equal(p.status,0,p.stderr);
+    const report=JSON.parse(readFileSync(dest,'utf8'));
+    assert.equal(report.cases.length,1);
+    const checks=report.cases[0].checks;
+    assert.equal(checks.length,5);
+    assert.ok(checks.some(c=>c.repo==='functions' && c.file==='test/planetary-hours-solar-adapter.test.mjs'));
+    assert.equal(report.cases[0].status,'BLOCKED_ENV');
+    assert.ok(checks.every(c=>c.status!=='PASS_AUTOMATED'));
+  } finally {w.cleanup()}
+});
