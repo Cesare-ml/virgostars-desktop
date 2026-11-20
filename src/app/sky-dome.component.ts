@@ -15,6 +15,7 @@ import {
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 import {planetAccent, skyLightFromSun, starAppearance, labeledCatalogStars, type SkyLight} from './sky-dome-visuals';
 import {createPlanetPortrait,planetPortraitSpec} from './sky-dome-planet-portraits';
+import {findSkyStars} from './sky-dome-star-search';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -49,6 +50,10 @@ const WORDS={
     direction:'Orientamento',
     statusReady:'Posizioni astronomiche',
     starMagnitude:'Magnitudine',
+    findStar:'Cerca una stella',
+    findStarHint:'Scrivi almeno due lettere',
+    noStarMatches:'Nessuna stella trovata nel catalogo locale',
+    belowHorizon:'Sotto l’orizzonte: disattiva Terreno per vederla.',
     skyHelp:'Trascina per ruotare anche oltre lo zenit; rotellina per passare alla vista sferica.',
     spherical:'Vista sferica',
     perspective:'Prospettiva',
@@ -81,6 +86,10 @@ const WORDS={
     direction:'Direction',
     statusReady:'Astronomical positions',
     starMagnitude:'Magnitude',
+    findStar:'Find a star',
+    findStarHint:'Type at least two letters',
+    noStarMatches:'No matching star in the local catalogue',
+    belowHorizon:'Below the horizon: turn off Ground to see it.',
     skyHelp:'Drag beyond the zenith; scroll out for a spherical all-sky view.',
     spherical:'Spherical view',
     perspective:'Perspective',
@@ -153,6 +162,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   showStars=true;
   showStarLabels=true;
   showPlanets=true;
+  starQuery='';
 
   word(key:keyof typeof WORDS.it):string { return WORDS[this.locale][key]; }
   bodyName(id:string):string {return NAMES[id]?.[this.locale==='it'?0:1]??id;}
@@ -181,6 +191,28 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   get fieldOfView():number { return Math.round(this.camera?.fov??75); }
   get visiblePlanetCount():number{return this.data?.planets.length??0;}
   get planetDock():readonly SkyDomePoint[] { return this.data?.planets??[]; }
+  get starMatches():readonly SkyDomePoint[] {
+    return this.showStars && this.status==='ready'
+      ? findSkyStars(this.data?.stars??[],this.starQuery,7):[];
+  }
+  onStarQuery(event:Event):void {
+    const input=event.target as HTMLInputElement;
+    this.starQuery=input.value.slice(0,60);
+    this.cd.markForCheck();
+  }
+  clearStarQuery():void {this.starQuery='';this.cd.markForCheck();}
+  onStarSearchKey(event:KeyboardEvent):void {
+    if(event.key==='Escape'){this.clearStarQuery();event.preventDefault();}
+  }
+  focusStar(point:SkyDomePoint):void {
+    // The result must be one of the host-supplied stars, never a local guess.
+    if(!this.showStars || this.status!=='ready' || !this.data?.stars.includes(point))return;
+    this.selected={point,kind:'star'};
+    this.look(point.azimuthNorthEastDeg,point.altitudeDeg);
+    this.updateSelectionRing();
+    this.clearStarQuery();
+    this.cd.markForCheck();
+  }
   focusPlanet(id:string):void {
     const point=this.data?.planets.find(body=>body.id===id);
     if(!point || !this.showPlanets || this.status!=='ready')return;
@@ -286,7 +318,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private async load():Promise<void> {
     const ticket=++this.generation;
     if(!this.webglFailed)this.status='loading';
-    this.selected=null;this.data=null;
+    this.selected=null;this.data=null;this.clearStarQuery();
     this.buildMarkers();
     this.buildZodiac();
     this.buildAngles();
