@@ -38,6 +38,7 @@ const WORDS={
     appearance:'Aspetto del cielo',objectDetails:'Coordinate astronomiche',longitude:'Longitudine eclittica',latitude:'Latitudine eclittica',
     rightAscension:'Ascensione retta',declination:'Declinazione',distance:'Distanza geocentrica',
     longitudeSpeed:'Velocità in longitudine',constellation:'Costellazione',catalogId:'ID archivio',
+    illuminatedFraction:'Luna illuminata',
     source:'Effemeridi',sign:'Segno',notAvailable:'Non disponibile',distanceUnit:' UA',speedUnit:' °/giorno',
     realTextureNote:'Mappe planetarie Solar System Scope (CC BY 4.0); orientamento e fasi illustrativi.',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
@@ -83,6 +84,7 @@ const WORDS={
     appearance:'Sky appearance',objectDetails:'Astronomical coordinates',longitude:'Ecliptic longitude',latitude:'Ecliptic latitude',
     rightAscension:'Right ascension',declination:'Declination',distance:'Geocentric distance',
     longitudeSpeed:'Longitude speed',constellation:'Constellation',catalogId:'Catalogue ID',
+    illuminatedFraction:'Illuminated Moon',
     source:'Ephemeris',sign:'Sign',notAvailable:'Unavailable',distanceUnit:' AU',speedUnit:' °/day',
     realTextureNote:'Planet maps by Solar System Scope (CC BY 4.0); illustrative orientation and phases.',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
@@ -142,6 +144,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   @ViewChild('viewport',{static:true}) private viewport!:ElementRef<HTMLDivElement>;
   private readonly cd=inject(ChangeDetectorRef);
   private scene:THREE.Scene|null=null;
+  private sunLight:THREE.DirectionalLight|null=null;
   private camera:THREE.PerspectiveCamera|null=null;
   private renderer:THREE.WebGLRenderer|null=null;
   private skyLens:SkyDomeLens|null=null;
@@ -350,11 +353,16 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     try {
       this.scene=new THREE.Scene();
       this.scene.background=null;
-      // Graphic volume lighting, NOT the actual physical phase angle.
-      this.scene.add(new THREE.AmbientLight(0xffffff,1.75));
-      const planetLight=new THREE.DirectionalLight(0xfff4df,2.0);
-      planetLight.position.set(-45,65,-40);
-      this.scene.add(planetLight);
+      // Sunlit hemisphere follows the actual calculated solar direction.
+      // Faint ambient illumination keeps the Moon's dark limb legible.
+      // Other planetary phase angles remain illustrative until a per-body
+      // illumination model is supplied by the astronomical provider.
+      this.scene.add(new THREE.AmbientLight(0xffffff,0.18));
+      this.sunLight=new THREE.DirectionalLight(0xfff7ea,2.4);
+      this.sunLight.position.set(0,0,-70);
+      this.sunLight.visible=false;
+      this.sunLight.target.position.set(0,0,0);
+      this.scene.add(this.sunLight,this.sunLight.target);
       this.camera=new THREE.PerspectiveCamera(75,1,0.1,180);
       this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
       this.renderer.setClearColor(0x000000,0);
@@ -434,12 +442,13 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.skyLens=null;
     this.renderer?.dispose();
     this.renderer?.forceContextLoss();
-    this.renderer=null;this.scene=null;this.camera=null;this.targets=[];
+    this.renderer=null;this.scene=null;this.sunLight=null;this.camera=null;this.targets=[];
   }
   private async load():Promise<void> {
     const ticket=++this.generation;
     if(!this.webglFailed)this.status='loading';
     this.selected=null;this.selectedCuspIndex=null;this.data=null;this.clearStarQuery();
+    this.updateSunLighting();
     this.buildMarkers();
     this.buildZodiac();
     this.buildHouseGrid();
@@ -449,11 +458,31 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(this.destroyed||ticket!==this.generation)return;
     this.status=this.webglFailed?'webgl_error':result.kind;
     this.data=result.kind==='ready'?result.data:null;
+    this.updateSunLighting();
     this.buildMarkers();
     this.buildZodiac();
     this.buildHouseGrid();
     this.buildAngles();
     this.cd.markForCheck();
+  }
+  /** Light direction comes from the observer's native Sun position,
+   * not from an arbitrary fixed UI light or from the camera direction.
+   * This is a directional approximation for spheres at symbolic radii.
+   */
+  private updateSunLighting():void {
+    if(!this.sunLight)return;
+    const sun=this.data?.planets.find(point=>point.id==='Sun');
+    if(!sun){
+      this.sunLight.visible=false;
+      this.draw();
+      return;
+    }
+    this.sunLight.position.copy(
+      this.vec(sun.azimuthNorthEastDeg,sun.altitudeDeg,70),
+    );
+    this.sunLight.visible=true;
+    this.sunLight.updateMatrixWorld();
+    this.draw();
   }
   private disposeTree(node:THREE.Object3D):void {
     node.traverse(obj=>{
