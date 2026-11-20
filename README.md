@@ -8,6 +8,16 @@ VirgoStars Desktop is an offline-first workstation in development. It combines a
 
 **Project status: prototype, not a production release.** The current application can show **synthetic demonstration positions** and exercises a limited native runtime bridge. An optional local-use provider can calculate real positions (see below), but the project does not yet offer independently validated astronomical calculations, production cloud synchronization, a finished personal-data archive, a signed updater, or a supported public installer. Screenshots and fictional chart data must not be treated as scientifically calculated birth charts.
 
+## Build macOS on GitHub Actions · Compila Mac senza avere un Mac
+
+**No Mac needed / Non serve possedere un Mac.** The repository has a [manually launched macOS DMG workflow](https://github.com/Cesare-ml/virgostars-desktop/actions/workflows/build-macos.yml) with GitHub-hosted Apple Silicon (`arm64`) and Intel (`x64`) runners.
+
+1. Open **Actions → macOS DMG · manual → Run workflow** and choose the `main` branch.
+2. Start the workflow and open its run page. When both jobs succeed, open **Artifacts** and download `virgostars-macos-arm64-test-…` and/or `virgostars-macos-x64-test-…`.
+3. Each artifact contains the test `.dmg`, `SHA256SUMS.txt` and `build-report.json`. Inspect failures in the job logs; do not upload unknown files or secrets.
+
+**Only `workflow_dispatch` triggers this job:** it does not run on push, create GitHub Releases, notarize software or require signing credentials. The DMGs are *unsigned/ad-hoc test builds using synthetic artwork*, not official installers; Mac launch and graphical behavior still require real-device acceptance testing. [Detailed build and release instructions](docs/MACOS_BUILD_AND_RELEASE.md).
+
 ## Help us build VirgoStars Desktop for Mac · Contribuisci alla versione macOS
 
 **Have a Mac? You can help us create and test the first macOS build!**  
@@ -92,4 +102,4 @@ Third-party packages, original artworks, fonts, commercial location databases, a
 
 Read [AGENTS.md](AGENTS.md) and [Contributing](docs/CONTRIBUTING.md). Use focused branches, tests and draft pull requests; report exactly what has been verified. Never include credentials, private information or production data in issues, fixtures or commits. For security issues, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
-This repository does not use GitHub Actions or perform automatic deployments. Publication of the source repository and distribution of release binaries are **separate maintainer decisions**.
+Only the maintainer-approved **manual** macOS DMG GitHub Action is enabled; there are **no automatic build or deployment triggers**. Official release publishing and distribution remain separate maintainer decisions.

@@ -1,6 +1,19 @@
 # VirgoStars Desktop — build macOS con un collaboratore
 
-Stato: percorso **preparato nel sorgente, non ancora eseguito su un Mac**. Nessun artefatto macOS o notarizzazione è stato convalidato. Non usare GitHub Actions. Le release rimangono una decisione del maintainer.
+Stato: percorso **preparato nel sorgente, non ancora convalidato su un Mac**. Una GitHub Action è autorizzata esclusivamente per la **build manuale** dei DMG di prova, senza pubblicazioni automatiche. Nessuna notarizzazione o funzionalità macOS è dichiarata convalidata. Le release rimangono una decisione del maintainer.
+
+## Senza un Mac: compilazione con GitHub Actions (solo manuale)
+
+Il workflow [`macOS DMG · manual`](https://github.com/Cesare-ml/virgostars-desktop/actions/workflows/build-macos.yml) usa le VM ufficiali GitHub `macos-15` (Apple Silicon ARM64) e `macos-15-intel` (Intel x64).
+
+1. Nel repository vai a **Actions → macOS DMG · manual**.
+2. Seleziona **Run workflow**, branch `main`, e avvia manualmente.
+3. Alla conclusione, apri la pagina del run. Nei job `DMG arm64` e `DMG x64` trovi log, eventuali errori, compilazione e verifica SHA-256.
+4. Sotto **Artifacts**, scarica gli ZIP `virgostars-macos-arm64-test-…` e `virgostars-macos-x64-test-…`. Ogni ZIP contiene un `.dmg`, `SHA256SUMS.txt` e `build-report.json`.
+
+Il workflow non usa un account Apple Developer e **non possiede segreti di firma**, privilegi di scrittura sui repository, capacità di pubblicare release o trigger su push/PR. Le due build utilizzano asset grafici sintetici e le risorse pubbliche DE441 1000–2200 / città autenticati con SHA-256. Gli artefatti sono **di prova, non firmati/notarizzati per distribuzione pubblica**, e vengono conservati per 14 giorni. I file `.app` e `.dmg` sono generati dal progetto sul runner ma soltanto il `.dmg`, l'hash e il report vengono caricati come artefatti di workflow.
+
+**Se un job fallisce:** apri il log del passaggio fallito e prepara una issue con link al run, architettura, commit ed errore senza dati sensibili. Un job concluso con successo non sostituisce una prova di avvio/uso del `.dmg` su macOS reale. Per la distribuzione pubblica occorrono verifiche funzionali, diritti dei dataset/immagini, firma Developer ID e notarizzazione separate.
 
 ## Destinatario
 

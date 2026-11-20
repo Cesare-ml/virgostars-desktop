@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Run from an ordinary macOS Terminal: node scripts/mac/build.mjs [--original] [--release]
 // Clones pinned, public sibling source, checks packages/data, builds Tauri .app and .dmg.
-// No Github Actions, deployment, automatic publication or credential exporting.
+// Also used by the manually dispatched, read-only macOS GitHub Action. Never automatically publishes or exports credentials.
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createReadStream, copyFileSync, existsSync, lstatSync, mkdirSync,
