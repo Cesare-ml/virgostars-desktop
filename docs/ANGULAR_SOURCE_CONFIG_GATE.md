@@ -41,3 +41,13 @@ No production accounts, tokens, birth records, restricted city catalog, third-pa
 ## Reconciliation with the version gate
 
 Integrated from draft PR #192 onto the main branch after the version preflight entered main. All five Tauri npm entrypoints retain `npm run verify:version` first. Both normal UI builds and the dev server use the Angular source guard, while catalog-enabled builds guard before fetching protected city resources. The existing Tauri security test continues to check the same CSP and dev command, with the new guard inserted. No schema, capability or lockfile modification is required.
+
+## Cielo 3D · optional private texture file replacement (2026-11-20)
+
+The reviewed `private-artwork` configuration now includes one more **specific file replacement**:
+
+`src/app/sky-dome-real-textures.ts` → `.local/sky3d-real-textures.private.ts`
+
+The staging file is generated only by `scripts/sky3d/stage-planet-textures.mjs`, using opt-in Solar System Scope images cached with SHA-256 digests, or a **valid empty module** when no images are downloaded. This is not a new Angular assets input root. The source-config verifier's exact approved configuration is updated alongside `angular.json`, so any other replacement or build-hook change still fails closed.
+
+The default/synthetic build remains unchanged. Private application JavaScript may include CC BY 4.0 data-URI images and must retain the source credit. Verification of compiled bundle sizes and WebView2 memory consumption remains outstanding.
