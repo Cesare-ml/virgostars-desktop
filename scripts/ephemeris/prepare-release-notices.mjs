@@ -31,6 +31,7 @@ const localLicenseFiles = dir => readdirSync(dir, {withFileTypes:true})
   .filter(entry => entry.isFile() && filename(entry.name)).map(entry => join(dir, entry.name)).sort();
 const sections = [platformLabel + ' Cargo dependency notices',
   'This inventory conservatively includes the resolved '+platformLabel+' dependency graph, including build-time dependencies.'];
+const missingLicenses = [];
 for (const pkg of packages) {
   const key = `${pkg.name}@${pkg.version}`;
   let dir = dirname(pkg.manifest_path);
@@ -42,11 +43,11 @@ for (const pkg of packages) {
   // Published objc2/block2 crate archives sometimes omit the repository-root
   // license file. Only those exact upstream-owned crates with an SPDX MIT
   // alternative may use this reviewed MIT text; all other missing licenses fail.
-  const objcFamily = pkg.name === 'block2' || pkg.name === 'objc2' || pkg.name.startsWith('objc2-');
+  const objcFamily = ['block2','dispatch2','objc2'].includes(pkg.name) || pkg.name.startsWith('objc2-');
   const hasMitOption = /(?:^|[^A-Za-z0-9-])MIT(?:$|[^A-Za-z0-9-])/.test(pkg.license ?? '');
   if (!files.length && target.includes('apple') && objcFamily && hasMitOption)
     files = [join(fallbackDir, 'objc2-MIT-reviewed.txt')];
-  if (!files.length) throw Error(`No license text found for ${key}; review the dependency before release.`);
+  if (!files.length) { missingLicenses.push(key); continue; }
   sections.push(`\n${'='.repeat(72)}\n${key}\nDeclared license: ${pkg.license || 'project license'}`);
   if (key === 'tauri-plugin@2.7.4') sections.push('Copyright 2019-2024 Tauri Programme within The Commons Conservancy.');
   for (const file of files) {
@@ -54,6 +55,7 @@ for (const pkg of packages) {
     sections.push(readFileSync(file, 'utf8').trim());
   }
 }
+if (missingLicenses.length) throw Error('Missing reviewed license text for '+missingLicenses.join(', ')+'. Do not package until these exact dependencies are reviewed.');
 const gsap = readFileSync('node_modules/gsap/gsap-core.js', 'utf8');
 const gsapNotice = gsap.match(/\/\*![\s\S]*?\*\//)?.[0];
 if (!gsapNotice?.includes('gsap.com/standard-license') || !gsapNotice.includes('@license'))

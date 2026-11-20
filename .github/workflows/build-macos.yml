@@ -26,7 +26,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' &&
-       github.event.head_commit.message == 'ci(mac): retry v0.0.4 DMG with verified macOS license notices')
+       github.event.head_commit.message == 'ci(mac): retry v0.0.4 DMG with reviewed dispatch license and aggregate audit')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 6
+          fetch-depth: 7
 
       - name: Set up native Node.js
         uses: actions/setup-node@v4
@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${{ github.ref_name }}" = "build/macos-v0.0.4-snapshot-20261120"
-          test "$(git rev-parse HEAD~5)" = "cbaf7d02f1c4c4dd2f92404a4aa1a3fb6e722629"
+          test "$(git rev-parse HEAD~6)" = "cbaf7d02f1c4c4dd2f92404a4aa1a3fb6e722629"
           test "$(node -p 'require("./package.json").version')" = "0.0.4"
           npm run verify:version
 
