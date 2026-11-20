@@ -25,7 +25,7 @@
 - Update binaries only after cryptographic signature validation. Never commit update signing private keys.
 - Keep Windows and macOS considerations in every core API. Windows-only release first; no forced Windows dependencies in the shared core.
 - Planet, celestial-point and zodiac-sign glyphs in the desktop must use the approved `astrological-assets` pack; do not substitute Unicode or font glyphs. If artwork is unavailable, use an accessible textual name rather than an invented glyph.
-- No GitHub Actions, automatic deployment, public visibility changes, releases or main merges without explicit maintainer authorization. In particular, do not make this repository public while its protected city catalog remains attached to a GitHub release.
+- The maintainer explicitly authorized only the **manual** macOS DMG build workflow (`.github/workflows/build-macos.yml`, `workflow_dispatch`, read-only, unsigned artifacts). Do not add automatic GitHub Actions triggers, deployments, public visibility changes, releases or main merges without explicit maintainer authorization. Keep protected datasets and credentials out of builds and logs.
 
 ## Incremental development
 1. Choose one small vertical slice with a testable outcome.
