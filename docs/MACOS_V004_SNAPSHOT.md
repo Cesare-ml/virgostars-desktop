@@ -17,3 +17,7 @@ Il run 44783480637 è fallito prima di Rust/Tauri in `npm test` (13 fail ARM64 /
 - I test di recovery Windows usano una directory temporanea fisicamente canonica quando `/var` è un alias macOS; il rifiuto dei symlink della recovery reale resta invariato.
 - Il test privacy con nomi diversi solo per maiuscole viene saltato esclusivamente quando il volume del runner non può rappresentare entrambi, mantenendo invariato l'audit della build.
 - Si include lo script pubblicazione già revisionato nel `main` per i contratti statici; nessuna release viene pubblicata.
+
+## Secondo tentativo — gate IPC
+
+Nel run 44786607615, `npm test` ARM64 ha superato 1080 test, 0 falliti e 2 saltati. Il successivo gate `verify:ipc` ha respinto lo snapshot perché il valore SHA-256 fissato per `src-tauri/build.rs` non corrispondeva più al codice effettivo già presente nel tag v0.0.4. Il file reale (835 byte) contiene solo il caricamento opzionale del catalogo stelle su `OUT_DIR` e `tauri_build::build()`, senza plugin o IPC aggiuntivi. È stato letto e il suo SHA-256 confermato (`5b5317f84fdde87bbea8a2e2f7719e1453c195ea386d17643806bf9f3d626565`); viene aggiornata **solo l'impronta pin**, lasciando inalterati tutti i controlli su plugin, comandi, adapter e capabilities.
