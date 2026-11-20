@@ -149,6 +149,8 @@
         <vs-sky-dome *ngIf="view==='chart' && chartPresentation==='sky3d' && activeChart"
           [utcIso]="activeChart.utcIso" [latMicro]="activeChart.latMicro"
           [lngMicro]="activeChart.lngMicro" [locale]="locale"
+          [houseSystem]="houseSystem" [houseSystemName]="houseSystemLabel(houseSystem)"
+          (houseSystemSelected)="setSkyHouseSystem($event)"
           (closed)="toggleSkyDome()"></vs-sky-dome>
         <div class="monomero-overlay monomero-tip" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'"
           *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel' && monomeriEnabled && !monomero && !busy" role="status">{{t('monomeri.help')}}</div>
