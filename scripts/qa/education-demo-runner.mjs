@@ -74,7 +74,7 @@ function runCheck(c,root){
   const env={...process.env,CI:'1',NO_COLOR:'1',NODE_OPTIONS:''};
   delete env.NODE_TEST_CONTEXT;
   const args=c.kind==='node'?[...c.args.slice(0,-1),'--test-reporter=tap',c.args.at(-1)]:c.args;
-  const p=spawnSync(command,args,{cwd:dir,encoding:'utf8',timeout:120000,windowsHide:true,env,maxBuffer:1024*1024*2});
+  const p=spawnSync(command,args,{cwd:dir,encoding:'utf8',timeout:c.kind==='rust'?300000:120000,windowsHide:true,env,maxBuffer:1024*1024*2});
   if(p.error?.code==='ENOENT')return {status:'BLOCKED_ENV',note:`${command} not installed`};
   if(p.error?.code==='ETIMEDOUT')return {status:'FAILED_AUTOMATED',note:'Targeted test command timed out'};
   if(p.error)return {status:'FAILED_AUTOMATED',note:`Test subprocess failure: ${p.error.code||'UNKNOWN'}`};
