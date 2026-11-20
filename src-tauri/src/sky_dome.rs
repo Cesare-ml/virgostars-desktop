@@ -45,6 +45,18 @@ pub struct SkyZodiacSegmentV1 {
     pub label: SkyDirectionV1,
 }
 
+/// A didactic +/-8 degree ecliptic-latitude band, computed in the host
+/// using the true obliquity of the observed instant. The band width is an
+/// explicit UI convention, NOT an astronomical boundary or a house system.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all="camelCase")]
+pub struct SkyZodiacGridV1 {
+    pub north_edge: Vec<SkyDirectionV1>,
+    pub south_edge: Vec<SkyDirectionV1>,
+    pub sign_dividers: Vec<Vec<SkyDirectionV1>>,
+    pub decade_ticks: Vec<Vec<SkyDirectionV1>>,
+}
+
 /// The calculated ecliptic intersection directions at the four chart angles.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +76,7 @@ pub struct SkyDomeV1 {
     pub planets: Vec<HorizontalObject>,
     pub stars: Vec<HorizontalObject>,
     pub zodiac_segments: Vec<SkyZodiacSegmentV1>,
+    pub zodiac_grid: Option<SkyZodiacGridV1>,
     pub angles: Vec<SkyAngleV1>,
 }
 
@@ -124,20 +137,72 @@ fn celestial_horizontal(
 
 /// Tropical 0° is the true equinox of date. Zodiac intervals are measured
 /// along the true ecliptic, never by dividing the horizon into twelve.
+fn zodiac_latitude_direction(
+    ecliptic_longitude_deg:f64, ecliptic_latitude_deg:f64,
+    true_obliquity_deg:f64, armc_deg:f64, latitude_deg:f64,
+) -> Option<SkyDirectionV1> {
+    if !ecliptic_longitude_deg.is_finite() || !ecliptic_latitude_deg.is_finite()
+        || ecliptic_latitude_deg.abs()>90.0 || !true_obliquity_deg.is_finite()
+        || !(0.0..90.0).contains(&true_obliquity_deg) { return None; }
+    let longitude = ecliptic_longitude_deg.to_radians();
+    let latitude = ecliptic_latitude_deg.to_radians();
+    let obliquity = true_obliquity_deg.to_radians();
+    // Rotate the true ecliptic-of-date unit vector into the true equatorial
+    // frame, then to the geographic observer's local horizon.
+    let ecl_x = latitude.cos() * longitude.cos();
+    let ecl_y = latitude.cos() * longitude.sin();
+    let ecl_z = latitude.sin();
+    let x = ecl_x;
+    let y = ecl_y * obliquity.cos() - ecl_z * obliquity.sin();
+    let z = ecl_y * obliquity.sin() + ecl_z * obliquity.cos();
+    let ra = circle_degrees(y.atan2(x).to_degrees());
+    let dec = z.atan2(x.hypot(y)).to_degrees();
+    celestial_horizontal(ra,dec,armc_deg,latitude_deg)
+}
 fn zodiac_direction(
     ecliptic_longitude_deg:f64, true_obliquity_deg:f64,
     armc_deg:f64, latitude_deg:f64,
 ) -> Option<SkyDirectionV1> {
-    if !ecliptic_longitude_deg.is_finite() || !true_obliquity_deg.is_finite()
-        || !(0.0..90.0).contains(&true_obliquity_deg) { return None; }
-    let longitude = ecliptic_longitude_deg.to_radians();
-    let obliquity = true_obliquity_deg.to_radians();
-    let x = longitude.cos();
-    let y = longitude.sin() * obliquity.cos();
-    let z = longitude.sin() * obliquity.sin();
-    let ra = circle_degrees(y.atan2(x).to_degrees());
-    let dec = z.atan2(x.hypot(y)).to_degrees();
-    celestial_horizontal(ra,dec,armc_deg,latitude_deg)
+    zodiac_latitude_direction(ecliptic_longitude_deg,0.0,true_obliquity_deg,armc_deg,latitude_deg)
+}
+
+/// A wide, faint zodiac reference grid, not the physical boundaries of signs.
+fn zodiac_grid(
+    true_obliquity_deg:f64,armc_deg:f64,latitude_deg:f64,
+) -> Option<SkyZodiacGridV1> {
+    let mut north_edge=Vec::with_capacity(361);
+    let mut south_edge=Vec::with_capacity(361);
+    for degree in 0..=360 {
+        north_edge.push(zodiac_latitude_direction(
+            f64::from(degree),8.0,true_obliquity_deg,armc_deg,latitude_deg
+        )?);
+        south_edge.push(zodiac_latitude_direction(
+            f64::from(degree),-8.0,true_obliquity_deg,armc_deg,latitude_deg
+        )?);
+    }
+    let mut sign_dividers=Vec::with_capacity(12);
+    for sign in 0..12 {
+        let longitude=f64::from(sign*30);
+        let mut line=Vec::with_capacity(9);
+        for step in 0..=8 {
+            line.push(zodiac_latitude_direction(
+                longitude,f64::from(step*2)-8.0,true_obliquity_deg,armc_deg,latitude_deg
+            )?);
+        }
+        sign_dividers.push(line);
+    }
+    let mut decade_ticks=Vec::with_capacity(24);
+    for degree in (0..360).step_by(10) {
+        if degree % 30 == 0 {continue;}
+        let mut line=Vec::with_capacity(5);
+        for beta in [-4.0_f64,-2.0,0.0,2.0,4.0] {
+            line.push(zodiac_latitude_direction(
+                f64::from(degree),beta,true_obliquity_deg,armc_deg,latitude_deg
+            )?);
+        }
+        decade_ticks.push(line);
+    }
+    Some(SkyZodiacGridV1 {north_edge,south_edge,sign_dividers,decade_ticks})
 }
 
 fn zodiac_segments(
@@ -159,7 +224,7 @@ fn zodiac_segments(
 }
 
 fn failure(status: &'static str) -> SkyDomeV1 {
-    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![], angles:vec![] }
+    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![], zodiac_grid:None, angles:vec![] }
 }
 
 pub fn respond(
@@ -186,6 +251,9 @@ pub fn respond(
     let Some(zodiac_segments) = zodiac_segments(
         context.true_obliquity_deg, armc, latitude
     ) else { return failure("calculation_failed"); };
+    let Some(zodiac_grid) = zodiac_grid(
+        context.true_obliquity_deg,armc,latitude
+    ) else {return failure("calculation_failed");};
     let mut angles = Vec::with_capacity(4);
     for (id,longitude) in [
         ("ASC",house.ascendant_deg),
@@ -225,7 +293,7 @@ pub fn respond(
     SkyDomeV1 {
         protocol_version:1,status:"ok",
         provider_id:calculated.provider.map(|p|p.id.to_string()),
-        planets,stars,zodiac_segments,angles,
+        planets,stars,zodiac_segments,zodiac_grid:Some(zodiac_grid),angles,
     }
 }
 
@@ -267,7 +335,8 @@ mod tests {
             include_fixed_stars:false,
         });
         assert_eq!(reply.status,"provider_unavailable");
-        assert!(reply.planets.is_empty() && reply.stars.is_empty() && reply.zodiac_segments.is_empty() && reply.angles.is_empty());
+        assert!(reply.planets.is_empty() && reply.stars.is_empty()
+            && reply.zodiac_segments.is_empty() && reply.zodiac_grid.is_none() && reply.angles.is_empty());
     }
     #[test]
     fn zodiac_is_twelve_contiguous_real_ecliptic_arcs() {
@@ -306,6 +375,31 @@ mod tests {
             let b=vec(zodiac_direction(longitude+180.0,23.4392911,135.0,44.0).unwrap());
             for i in 0..3 {assert!((a[i]+b[i]).abs() < 1e-9);}
         }
+    }
+    #[test]
+    fn zodiac_grid_is_twelve_signs_with_a_didactic_ecliptic_latitude_band() {
+        let grid=zodiac_grid(23.4392911,125.0,45.0).unwrap();
+        assert_eq!(grid.north_edge.len(),361);
+        assert_eq!(grid.south_edge.len(),361);
+        assert_eq!(grid.sign_dividers.len(),12);
+        assert!(grid.sign_dividers.iter().all(|line|line.len()==9));
+        assert_eq!(grid.decade_ticks.len(),24);
+        assert!(grid.decade_ticks.iter().all(|line|line.len()==5));
+        let equal_vec=|a:SkyDirectionV1,b:SkyDirectionV1|{
+            let v=|p:SkyDirectionV1|{
+                let alt=p.altitude_deg.to_radians();
+                let az=p.azimuth_north_east_deg.to_radians();
+                [alt.cos()*az.sin(),alt.cos()*az.cos(),alt.sin()]
+            };
+            let x=v(a);let y=v(b);
+            (0..3).all(|i|(x[i]-y[i]).abs()<1e-10)
+        };
+        assert!(equal_vec(grid.north_edge[0],grid.north_edge[360]));
+        assert!(equal_vec(grid.south_edge[0],grid.south_edge[360]));
+        assert!(!equal_vec(grid.north_edge[90],grid.south_edge[90]));
+        assert!(equal_vec(grid.sign_dividers[0][4],zodiac_direction(0.0,23.4392911,125.0,45.0).unwrap()));
+        assert!(zodiac_grid(23.4,0.0,91.0).is_none());
+        assert!(zodiac_grid(f64::NAN,0.0,45.0).is_none());
     }
     #[test]
     fn zodiac_accounts_for_hemisphere_and_rejects_untrusted_angles() {
