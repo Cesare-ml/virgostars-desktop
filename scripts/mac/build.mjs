@@ -98,6 +98,8 @@ async function main() {
   command(process.execPath,['scripts/mac/prepare-public-data.mjs']);
   command('npm',['run',OPTIONS.original?'build:ui:private':'build:ui']);
   command('npm',['run','prepare:icon']);
+  log('Fetching locked Rust dependencies before the offline license inventory');
+  command('cargo',['fetch','--locked','--target',TARGET,'--manifest-path','src-tauri/Cargo.toml']);
   log('Auditing platform-specific native and frontend license notices');
   command(process.execPath,['scripts/ephemeris/prepare-release-notices.mjs','--target',TARGET]);
   log('Building native macOS application and DMG');
