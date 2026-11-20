@@ -115,6 +115,9 @@
   </article>
 
   <p class="sky3d-status" role="status" *ngIf="warning">{{warning}}</p>
+  <p class="sky3d-fisheye-warning" role="status" *ngIf="fisheyeUnavailable">
+    {{word('lensUnavailable')}}
+  </p>
 
   <nav class="sky3d-planet-dock" *ngIf="status==='ready' && showPlanets"
     [attr.aria-label]="word('planets')">
