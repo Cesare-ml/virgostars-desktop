@@ -188,7 +188,7 @@ function point(v:unknown,star:boolean):SkyDomePoint {
     declinationDeg:optionalNum(v,'declinationDeg',-90,90),
     distanceAu:optionalNum(v,'distanceAu',0,10000),
     longitudeSpeedDegPerDay:optionalNum(v,'longitudeSpeedDegPerDay',-360,360),
-    constellation:optionalString(v,'constellation',48),
+    constellation:optionalString(v,'constellation',160),
     catalogId:optionalNum(v,'catalogId',1,10000000),
     ephemerisSource:optionalString(v,'ephemerisSource',80),
   });
