@@ -8,6 +8,17 @@ VirgoStars Desktop is an offline-first workstation in development. It combines a
 
 **Project status: prototype, not a production release.** The current application can show **synthetic demonstration positions** and exercises a limited native runtime bridge. An optional local-use provider can calculate real positions (see below), but the project does not yet offer independently validated astronomical calculations, production cloud synchronization, a finished personal-data archive, a signed updater, or a supported public installer. Screenshots and fictional chart data must not be treated as scientifically calculated birth charts.
 
+## QA didattico (14 scenari, solo locale)
+
+Per verificare in modo ripetibile le funzioni che potrebbero essere utili alle scuole, è disponibile un **runner locale** che usa test già presenti nei quattro repository (Desktop, Ephemeris, Astrological Functions e Charts).
+
+```bash
+npm run qa:education-demo
+npm run qa:education-demo -- --run --only QA-02,QA-03 --out .local/education-demo-qa.json
+```
+
+Il primo comando esegue solo il preflight; il secondo avvia i test selezionati dai checkout locali **già preparati**, senza installare pacchetti dal runner, scaricare effemeridi dal runner, avviare GitHub Actions o inviare comunicazioni. I comandi Cargo usano **`--offline --locked`**; gli eventuali test Node preesistenti potrebbero però aprire connessioni di rete autonomamente: per una garanzia di isolamento eseguirli in un ambiente con rete disabilitata. Il report distingue test passati, falliti, bloccati e gate manuali. **Una verifica automatica positiva non certifica la demo o una release.** Per prerequisiti, matrice dei 14 casi e interpretazione degli stati vedi [Educational Demo QA](docs/EDUCATIONAL_DEMO_QA.md).
+
 ## Build macOS on GitHub Actions · Compila Mac senza avere un Mac
 
 **No Mac needed / Non serve possedere un Mac.** The repository has a [manually launched macOS DMG workflow](https://github.com/Cesare-ml/virgostars-desktop/actions/workflows/build-macos.yml) with GitHub-hosted Apple Silicon (`arm64`) and Intel (`x64`) runners.
