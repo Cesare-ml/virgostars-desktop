@@ -12,7 +12,7 @@ const sampleDirection=(altitudeDeg,azimuthNorthEastDeg)=>({altitudeDeg,azimuthNo
 const zodiacFixture=()=>Array.from({length:12},(_,signIndex)=>({
   signIndex,
   // Fixtures test the IPC schema; they are not astronomical predictions.
-  points:Array.from({length:31},(_,i)=>sampleDirection(0,signIndex*30+i)),
+  points:Array.from({length:31},(_,i)=>sampleDirection(0,(signIndex*30+i)%360)),
   label:sampleDirection(0,signIndex*30+15),
 }));
 const reply=()=>({
