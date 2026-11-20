@@ -1,0 +1,373 @@
+import {CommonModule} from '@angular/common';
+import {
+  AfterViewInit, ChangeDetectorRef, Component, ElementRef, Input, OnChanges, OnDestroy,
+  SimpleChanges, ViewChild, inject,
+} from '@angular/core';
+import * as THREE from 'three';
+import {calculateSkyDome} from './native/sky-dome';
+import type {SkyDomeData, SkyDomePoint, SkyDomeResult} from './native/sky-dome-contract';
+import {observerVector, validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
+import {celestialGlyphUrl} from './astrological-glyphs';
+
+const NAMES:Readonly<Record<string,readonly [string,string]>>={
+  Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
+  Venus:['Venere','Venus'],Mars:['Marte','Mars'],Jupiter:['Giove','Jupiter'],
+  Saturn:['Saturno','Saturn'],Uranus:['Urano','Uranus'],Neptune:['Nettuno','Neptune'],
+  Pluto:['Plutone','Pluto'],Chiron:['Chirone','Chiron'],
+};
+type LayerName='horizon'|'meridian'|'equator'|'grid';
+type NativeStatus=SkyDomeResult['kind']|'loading'|'webgl_error';
+type PointWithKind={point:SkyDomePoint;kind:'planet'|'star'};
+const WORDS={
+  it:{
+    title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
+    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',ground:'Terreno',stars:'Stelle',planets:'Pianeti',
+    north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
+    altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
+    close:'Chiudi',loading:'Calcolo astronomico in corso…',
+    not_native:'Il cielo 3D con dati astronomici è disponibile nell’app Desktop.',
+    provider_unavailable:'Dati DE441 non disponibili. Configura le effemeridi nelle impostazioni.',
+    out_of_range:'Questo istante non è supportato dal calcolo 3D. Il supporto storico arriverà dopo la convalida.',
+    invalid_request:'Data o posizione geografica non valide per questa versione.',
+    calculation_failed:'Non è stato possibile calcolare il cielo per questo istante.',
+    unavailable:'Il calcolo del cielo 3D non è disponibile.',
+    webgl_error:'WebGL non disponibile sulla scheda grafica o in questa finestra.',
+    note:'Altitudine geometrica (senza rifrazione). Gli astri sono simbolici, non in scala angolare.',
+    noStars:'Catalogo locale delle stelle non disponibile.',
+  },
+  en:{
+    title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
+    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',ground:'Ground',stars:'Stars',planets:'Planets',
+    north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
+    altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
+    close:'Close',loading:'Calculating astronomical positions…',
+    not_native:'The 3D sky with astronomical data is available in the Desktop app.',
+    provider_unavailable:'DE441 data are unavailable. Configure the ephemerides in Settings.',
+    out_of_range:'This instant is not supported in 3D yet. Historical support requires separate validation.',
+    invalid_request:'Invalid date or observer location for this version.',
+    calculation_failed:'Could not calculate the sky for this instant.',
+    unavailable:'The 3D sky calculation is unavailable.',
+    webgl_error:'WebGL is unavailable on this device or in this window.',
+    note:'Geometric altitude (no refraction). Body markers are symbolic, not to angular scale.',
+    noStars:'Local star catalogue unavailable.',
+  },
+} as const;
+
+@Component({
+  selector:'vs-sky-dome',
+  standalone:true,
+  imports:[CommonModule],
+  templateUrl:'./sky-dome.component.html',
+  styleUrls:['./sky-dome.component.css'],
+})
+export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
+  @Input({required:true}) utcIso='';
+  @Input({required:true}) latMicro=0;
+  @Input({required:true}) lngMicro=0;
+  @Input() locale:'it'|'en'='it';
+  /** Future natal zodiac/house/primary direction curves: never synthesized in the renderer. */
+  @Input() overlays:readonly SkyOverlayPolyline[]=[];
+  @ViewChild('viewport',{static:true}) private viewport!:ElementRef<HTMLDivElement>;
+  private readonly cd=inject(ChangeDetectorRef);
+  private scene:THREE.Scene|null=null;
+  private camera:THREE.PerspectiveCamera|null=null;
+  private renderer:THREE.WebGLRenderer|null=null;
+  private observer:ResizeObserver|null=null;
+  private frame=0;
+  private generation=0;
+  private destroyed=false;
+  private markerGroup:THREE.Group|null=null;
+  private overlayGroup:THREE.Group|null=null;
+  private layerGroups:Partial<Record<LayerName,THREE.Group>>={};
+  private ground:THREE.Mesh|null=null;
+  private targets:THREE.Object3D[]=[];
+  private pointer:{x:number;y:number;lastX:number;lastY:number;dragged:boolean}|null=null;
+  private yaw=180;
+  private pitch=24;
+  private data:SkyDomeData|null=null;
+  status:NativeStatus='loading';
+  selected:PointWithKind|null=null;
+  showMeridian=true;
+  showGrid=false;
+  showEquator=false;
+  showGround=false;
+  showStars=true;
+  showPlanets=true;
+
+  word(key:keyof typeof WORDS.it):string { return WORDS[this.locale][key]; }
+  bodyName(id:string):string {return NAMES[id]?.[this.locale==='it'?0:1]??id;}
+  bodyGlyph(id:string):string {return celestialGlyphUrl(id);}
+  formatted(v:number):string{return v.toFixed(2)+'°';}
+  get warning():string|null {
+    return this.status==='ready'?null:this.word(this.status==='loading'?'loading':this.status);
+  }
+  get approximateStars():boolean{return !!this.data?.stars.some(s=>s.approximate);}
+  get starCount():number{return this.data?.stars.length??0;}
+
+  ngOnChanges(changes:SimpleChanges):void {
+    if(changes['utcIso']||changes['latMicro']||changes['lngMicro']) void this.load();
+    if(changes['latMicro']&&this.scene) this.buildEquator();
+    if(changes['overlays']&&this.scene)this.buildOverlays();
+  }
+  ngAfterViewInit():void {
+    try {
+      this.scene=new THREE.Scene();
+      this.scene.background=new THREE.Color('#08111f');
+      this.camera=new THREE.PerspectiveCamera(75,1,0.1,180);
+      this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'low-power'});
+      this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+      this.renderer.domElement.setAttribute('aria-hidden','true');
+      this.viewport.nativeElement.appendChild(this.renderer.domElement);
+      this.renderer.domElement.addEventListener('pointerdown',this.pointerDown);
+      this.renderer.domElement.addEventListener('pointermove',this.pointerMove);
+      this.renderer.domElement.addEventListener('pointerup',this.pointerUp);
+      this.renderer.domElement.addEventListener('pointercancel',this.pointerCancel);
+      this.renderer.domElement.addEventListener('wheel',this.wheel,{passive:false});
+      this.renderer.domElement.addEventListener('webglcontextlost',this.contextLost);
+      this.buildScaffold();
+      this.buildEquator();
+      this.buildOverlays();
+      this.buildMarkers();
+      this.look(180,24);
+      this.observer=new ResizeObserver(()=>this.resize());
+      this.observer.observe(this.viewport.nativeElement);
+      this.resize();
+    }catch {
+      this.status='webgl_error';
+      this.cd.markForCheck();
+    }
+  }
+  ngOnDestroy():void {
+    this.destroyed=true;
+    ++this.generation;
+    if(this.frame)cancelAnimationFrame(this.frame);
+    this.observer?.disconnect();
+    const canvas=this.renderer?.domElement;
+    if(canvas){
+      canvas.removeEventListener('pointerdown',this.pointerDown);
+      canvas.removeEventListener('pointermove',this.pointerMove);
+      canvas.removeEventListener('pointerup',this.pointerUp);
+      canvas.removeEventListener('pointercancel',this.pointerCancel);
+      canvas.removeEventListener('wheel',this.wheel);
+      canvas.removeEventListener('webglcontextlost',this.contextLost);
+      canvas.remove();
+    }
+    if(this.scene)this.disposeTree(this.scene);
+    this.renderer?.dispose();
+    this.renderer?.forceContextLoss();
+    this.renderer=null;this.scene=null;this.camera=null;this.targets=[];
+  }
+  private async load():Promise<void> {
+    const ticket=++this.generation;
+    this.status='loading';this.selected=null;this.data=null;
+    this.buildMarkers();
+    this.cd.markForCheck();
+    const result=await calculateSkyDome({utcIso:this.utcIso,latMicro:this.latMicro,lngMicro:this.lngMicro});
+    if(this.destroyed||ticket!==this.generation)return;
+    this.status=result.kind;
+    this.data=result.kind==='ready'?result.data:null;
+    this.buildMarkers();
+    this.cd.markForCheck();
+  }
+  private disposeTree(node:THREE.Object3D):void {
+    node.traverse(obj=>{
+      const candidate=obj as THREE.Mesh;
+      candidate.geometry?.dispose();
+      if(candidate.material) {
+        for(const m of (Array.isArray(candidate.material)?candidate.material:[candidate.material]))m.dispose();
+      }
+    });
+  }
+  private line(points:THREE.Vector3[],color:number,opacity=1):THREE.Line {
+    const material=new THREE.LineBasicMaterial({color,transparent:opacity<1,opacity,depthWrite:false});
+    return new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),material);
+  }
+  private curve(points:THREE.Vector3[],color:number,opacity=1,group?:THREE.Group):void {
+    (group??this.scene)?.add(this.line(points,color,opacity));
+  }
+  private vec(az:number,alt:number,r=100):THREE.Vector3 {
+    const p=observerVector(az,alt,r);
+    return new THREE.Vector3(p?.x??0,p?.y??0,p?.z??0);
+  }
+  private buildScaffold():void {
+    if(!this.scene)return;
+    const horizon=new THREE.Group();
+    this.curve(Array.from({length:361},(_,a)=>this.vec(a,0,98)),0x64ccbb,0.93,horizon);
+    this.scene.add(horizon);this.layerGroups.horizon=horizon;
+
+    const meridian=new THREE.Group();
+    this.curve(Array.from({length:181},(_,a)=>this.vec(a<=90?0:180,a<=90?a:180-a,99)),0xf1bd7c,0.9,meridian);
+    this.scene.add(meridian);this.layerGroups.meridian=meridian;
+
+    const grid=new THREE.Group();
+    for(const alt of [-60,-30,30,60])this.curve(
+      Array.from({length:121},(_,i)=>this.vec(i*3,alt,99)),0x7589aa,0.19,grid);
+    for(let az=0;az<360;az+=30)this.curve(
+      Array.from({length:61},(_,i)=>this.vec(az,-90+i*3,99)),0x7589aa,0.17,grid);
+    grid.visible=this.showGrid;this.scene.add(grid);this.layerGroups.grid=grid;
+
+    const geometry=new THREE.SphereGeometry(96,64,32,0,Math.PI*2,Math.PI/2,Math.PI/2);
+    const material=new THREE.MeshBasicMaterial({color:0x172536,side:THREE.BackSide});
+    this.ground=new THREE.Mesh(geometry,material);
+    this.ground.visible=this.showGround;
+    this.scene.add(this.ground);
+  }
+  private buildEquator():void {
+    if(!this.scene)return;
+    if(this.layerGroups.equator) {
+      this.scene.remove(this.layerGroups.equator);this.disposeTree(this.layerGroups.equator);
+    }
+    const group=new THREE.Group();
+    const latitude=this.latMicro/1e6*Math.PI/180;
+    if(Number.isFinite(latitude)&&Math.abs(latitude)<=Math.PI/2){
+      const points=Array.from({length:361},(_,i)=>{
+        const t=i*Math.PI/180;
+        return new THREE.Vector3(
+          99*Math.cos(t),99*Math.sin(t)*Math.cos(latitude),
+          -99*Math.sin(t)*Math.sin(latitude));
+      });
+      this.curve(points,0x9a92e8,0.9,group);
+    }
+    group.visible=this.showEquator;
+    this.scene.add(group);this.layerGroups.equator=group;this.draw();
+  }
+  private buildOverlays():void {
+    if(!this.scene)return;
+    if(this.overlayGroup){this.scene.remove(this.overlayGroup);this.disposeTree(this.overlayGroup);}
+    const group=new THREE.Group();
+    const colors={zodiac:0xc5a0ff,houses:0x87d9ae,'primary-directions':0xffa1a1};
+    for(const overlay of this.overlays.slice(0,32)){
+      if(!validOverlay(overlay))continue;
+      const points=overlay.points.map(p=>this.vec(p.azimuthNorthEastDeg,p.altitudeDeg,97));
+      this.curve(points,colors[overlay.kind],0.8,group);
+    }
+    this.scene.add(group);this.overlayGroup=group;this.draw();
+  }
+  private buildMarkers():void {
+    if(!this.scene)return;
+    if(this.markerGroup){this.scene.remove(this.markerGroup);this.disposeTree(this.markerGroup);}
+    const group=new THREE.Group();
+    this.targets=[];
+    const data=this.data;
+    if(data){
+      if(this.showPlanets){
+        for(const point of data.planets){
+          const radius=point.id==='Sun'?1.35:point.id==='Moon'?1.18:0.8;
+          const material=new THREE.MeshBasicMaterial({color:point.id==='Sun'?0xffd38a:point.id==='Moon'?0xf1ebd9:0xc5b7ff});
+          const mesh=new THREE.Mesh(new THREE.SphereGeometry(radius,12,8),material);
+          mesh.position.copy(this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,100));
+          mesh.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+          group.add(mesh);this.targets.push(mesh);
+        }
+      }
+      if(this.showStars){
+        for(let bin=0;bin<4;bin++){
+          const stars=data.stars.filter(s=>{
+            const mag=s.magnitude;
+            return Math.min(3,Math.max(0,Math.floor(((mag??4)+1)/2)))===bin;
+          });
+          if(!stars.length)continue;
+          const geometry=new THREE.BufferGeometry();
+          const coords=new Float32Array(stars.length*3);
+          stars.forEach((star,i)=>{
+            const v=this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,100);
+            coords[i*3]=v.x;coords[i*3+1]=v.y;coords[i*3+2]=v.z;
+          });
+          geometry.setAttribute('position',new THREE.BufferAttribute(coords,3));
+          const material=new THREE.PointsMaterial({
+            size:Math.max(2,5-bin),sizeAttenuation:false,
+            color:bin===0?0xfff6de:0xc9d9f5,transparent:true,opacity:Math.max(0.65,1-bin*0.1),
+          });
+          const dots=new THREE.Points(geometry,material);
+          dots.userData['skyStars']=stars;
+          group.add(dots);this.targets.push(dots);
+        }
+      }
+    }
+    this.markerGroup=group;this.scene.add(group);
+    this.draw();
+  }
+  toggleLayer(name:'meridian'|'grid'|'equator'|'ground'|'stars'|'planets'):void {
+    switch(name){
+      case 'meridian':this.showMeridian=!this.showMeridian;break;
+      case 'grid':this.showGrid=!this.showGrid;break;
+      case 'equator':this.showEquator=!this.showEquator;break;
+      case 'ground':this.showGround=!this.showGround;break;
+      case 'stars':this.showStars=!this.showStars;this.buildMarkers();break;
+      case 'planets':this.showPlanets=!this.showPlanets;this.buildMarkers();break;
+    }
+    if(this.layerGroups.meridian)this.layerGroups.meridian.visible=this.showMeridian;
+    if(this.layerGroups.grid)this.layerGroups.grid.visible=this.showGrid;
+    if(this.layerGroups.equator)this.layerGroups.equator.visible=this.showEquator;
+    if(this.ground)this.ground.visible=this.showGround;
+    this.draw();
+  }
+  look(az:number,alt:number):void {
+    this.yaw=az;this.pitch=alt;
+    this.camera?.lookAt(this.vec(this.yaw,this.pitch,1));
+    this.draw();
+  }
+  private resize():void {
+    if(!this.camera||!this.renderer)return;
+    const w=Math.max(1,this.viewport.nativeElement.clientWidth);
+    const h=Math.max(1,this.viewport.nativeElement.clientHeight);
+    this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w,h,false);this.draw();
+  }
+  private draw():void {
+    if(!this.renderer||!this.scene||!this.camera||this.frame)return;
+    this.frame=requestAnimationFrame(()=>{
+      this.frame=0;
+      if(this.renderer&&this.scene&&this.camera)this.renderer.render(this.scene,this.camera);
+    });
+  }
+  private pointerDown=(event:PointerEvent):void=>{
+    if(event.button!==0)return;
+    this.pointer={x:event.clientX,y:event.clientY,lastX:event.clientX,lastY:event.clientY,dragged:false};
+    this.renderer?.domElement.setPointerCapture(event.pointerId);
+  };
+  private pointerMove=(event:PointerEvent):void=>{
+    if(!this.pointer)return;
+    const dx=event.clientX-this.pointer.lastX,dy=event.clientY-this.pointer.lastY;
+    if(Math.abs(event.clientX-this.pointer.x)+Math.abs(event.clientY-this.pointer.y)>5)this.pointer.dragged=true;
+    this.pointer.lastX=event.clientX;this.pointer.lastY=event.clientY;
+    this.look((this.yaw-dx*0.27+360)%360,Math.max(-85,Math.min(85,this.pitch+dy*0.27)));
+  };
+  private pointerUp=(event:PointerEvent):void=>{
+    const drag=this.pointer?.dragged??true;
+    this.pointer=null;
+    if(this.renderer?.domElement.hasPointerCapture(event.pointerId))this.renderer.domElement.releasePointerCapture(event.pointerId);
+    if(!drag)this.pick(event);
+  };
+  private pointerCancel=():void=>{this.pointer=null;};
+  private wheel=(event:WheelEvent):void=>{
+    event.preventDefault();
+    if(!this.camera)return;
+    this.camera.fov=Math.max(28,Math.min(100,this.camera.fov+Math.sign(event.deltaY)*4));
+    this.camera.updateProjectionMatrix();this.draw();
+  };
+  private contextLost=(event:Event):void=>{
+    event.preventDefault();this.status='webgl_error';this.cd.markForCheck();
+  };
+  private pick(event:PointerEvent):void {
+    if(!this.camera||!this.renderer)return;
+    const bounds=this.renderer.domElement.getBoundingClientRect();
+    if(bounds.width<=0||bounds.height<=0)return;
+    const ndc=new THREE.Vector2(
+      ((event.clientX-bounds.left)/bounds.width)*2-1,
+      1-((event.clientY-bounds.top)/bounds.height)*2);
+    const ray=new THREE.Raycaster();
+    ray.params.Points.threshold=1.6;
+    ray.setFromCamera(ndc,this.camera);
+    let chosen:PointWithKind|null=null;
+    for(const hit of ray.intersectObjects(this.targets,false)){
+      const obj=hit.object;
+      const objectPoint=obj.userData['skyPoint'] as PointWithKind|undefined;
+      const stars=obj.userData['skyStars'] as SkyDomePoint[]|undefined;
+      chosen=objectPoint??(stars && hit.index!==undefined ? {point:stars[hit.index],kind:'star'} : null);
+      if(chosen)break;
+    }
+    this.selected=chosen;
+    this.cd.markForCheck();
+  }
+}
