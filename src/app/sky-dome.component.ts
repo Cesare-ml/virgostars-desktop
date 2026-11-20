@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import {calculateSkyDome} from './native/sky-dome';
 import type {SkyDomeData, SkyDomePoint, SkyDomeResult} from './native/sky-dome-contract';
 import {observerVector, validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
-import {celestialGlyphUrl} from './astrological-glyphs';
+import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -21,7 +21,7 @@ type PointWithKind={point:SkyDomePoint;kind:'planet'|'star'};
 const WORDS={
   it:{
     title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
-    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',ground:'Terreno',stars:'Stelle',planets:'Pianeti',
+    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',signs:'Segni',ground:'Terreno',stars:'Stelle',planets:'Pianeti',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -37,7 +37,7 @@ const WORDS={
   },
   en:{
     title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
-    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',ground:'Ground',stars:'Stars',planets:'Planets',
+    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',signs:'Signs',ground:'Ground',stars:'Stars',planets:'Planets',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -83,6 +83,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private ground:THREE.Mesh|null=null;
   private compassGroup:THREE.Group|null=null;
   private compassTextures:THREE.Texture[]=[];
+  private zodiacGroup:THREE.Group|null=null;
+  private zodiacTextures:THREE.Texture[]=[];
+  private zodiacGeneration=0;
   private targets:THREE.Object3D[]=[];
   private pointer:{x:number;y:number;lastX:number;lastY:number;dragged:boolean}|null=null;
   private yaw=180;
@@ -93,6 +96,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   showMeridian=true;
   showGrid=false;
   showEquator=false;
+  showZodiac=true;
+  showSigns=true;
   showGround=false;
   showStars=true;
   showPlanets=true;
@@ -131,6 +136,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.buildScaffold();
       this.buildCardinalLabels();
       this.buildEquator();
+      this.buildZodiac();
       this.buildOverlays();
       this.buildMarkers();
       this.look(180,24);
@@ -158,7 +164,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       canvas.removeEventListener('webglcontextlost',this.contextLost);
       canvas.remove();
     }
+    ++this.zodiacGeneration;
     if(this.scene)this.disposeTree(this.scene);
+    for(const texture of this.zodiacTextures)texture.dispose();
+    this.zodiacTextures=[];
     for(const texture of this.compassTextures)texture.dispose();
     this.compassTextures=[];
     this.renderer?.dispose();
@@ -176,6 +185,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.status=this.webglFailed?'webgl_error':result.kind;
     this.data=result.kind==='ready'?result.data:null;
     this.buildMarkers();
+    this.buildZodiac();
     this.cd.markForCheck();
   }
   private disposeTree(node:THREE.Object3D):void {
@@ -272,6 +282,59 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     group.visible=this.showEquator;
     this.scene.add(group);this.layerGroups.equator=group;this.draw();
   }
+  /**
+   * Render the true tropical ecliptic in 12 native-calculated thirty-degree
+   * arcs. Sign glyphs come exclusively from the approved asset pack; no
+   * astronomical or zodiac angles are synthesized in the WebView.
+   */
+  private buildZodiac():void {
+    const generation=++this.zodiacGeneration;
+    if(!this.scene)return;
+    if(this.zodiacGroup){
+      this.scene.remove(this.zodiacGroup);
+      this.disposeTree(this.zodiacGroup);
+    }
+    for(const tex of this.zodiacTextures)tex.dispose();
+    this.zodiacTextures=[];
+    const group=new THREE.Group();
+    this.scene.add(group);
+    this.zodiacGroup=group;
+    if(!this.data || (!this.showZodiac && !this.showSigns)){this.draw();return;}
+    const loader=new THREE.TextureLoader();
+    for(const sign of this.data.zodiacSegments){
+      const color=sign.signIndex%2===0?0xe1bb75:0xc99f6a;
+      if(this.showZodiac){
+        this.curve(sign.points.map(point=>this.vec(
+          point.azimuthNorthEastDeg,point.altitudeDeg,99.5
+        )),color,0.82,group);
+        // A small mark at every genuine 30-degree sign boundary.
+        const boundary=sign.points[0];
+        const tick=new THREE.Mesh(new THREE.SphereGeometry(0.42,8,6),
+          new THREE.MeshBasicMaterial({color:0xf5d89d}));
+        tick.position.copy(this.vec(boundary.azimuthNorthEastDeg,boundary.altitudeDeg,99.5));
+        group.add(tick);
+      }
+      if(this.showSigns){
+        const url=zodiacGlyphUrl(sign.signIndex);
+        if(!url)continue;
+        // Keep an unlabelled sky if an asset is missing: never substitute an emoji.
+        const texture=loader.load(url,()=>{
+          if(this.destroyed || generation!==this.zodiacGeneration)return;
+          const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+            map:texture,transparent:true,depthTest:false,depthWrite:false
+          }));
+          sprite.position.copy(this.vec(
+            sign.label.azimuthNorthEastDeg,sign.label.altitudeDeg,98.5
+          ));
+          sprite.scale.set(8,8,1);
+          group.add(sprite);
+          this.draw();
+        });
+        this.zodiacTextures.push(texture);
+      }
+    }
+    this.draw();
+  }
   private buildOverlays():void {
     if(!this.scene)return;
     if(this.overlayGroup){this.scene.remove(this.overlayGroup);this.disposeTree(this.overlayGroup);}
@@ -328,11 +391,13 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.markerGroup=group;this.scene.add(group);
     this.draw();
   }
-  toggleLayer(name:'meridian'|'grid'|'equator'|'ground'|'stars'|'planets'):void {
+  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'signs'|'ground'|'stars'|'planets'):void {
     switch(name){
       case 'meridian':this.showMeridian=!this.showMeridian;break;
       case 'grid':this.showGrid=!this.showGrid;break;
       case 'equator':this.showEquator=!this.showEquator;break;
+      case 'zodiac':this.showZodiac=!this.showZodiac;this.buildZodiac();break;
+      case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'ground':this.showGround=!this.showGround;break;
       case 'stars':this.showStars=!this.showStars;if(!this.showStars && this.selected?.kind==='star')this.selected=null;this.buildMarkers();break;
       case 'planets':this.showPlanets=!this.showPlanets;if(!this.showPlanets && this.selected?.kind==='planet')this.selected=null;this.buildMarkers();break;
