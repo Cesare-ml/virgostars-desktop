@@ -156,28 +156,36 @@ fn celestial_horizontal(
     })
 }
 
+/// Convert apparent ecliptic-of-date coordinates to the matching apparent
+/// equatorial frame. This only transforms the provider's existing direction:
+/// it does not correct an approximate star catalogue or invent missing data.
+fn ecliptic_to_equatorial(
+    longitude_deg:f64,latitude_deg:f64,true_obliquity_deg:f64
+)->Option<(f64,f64)> {
+    if ![longitude_deg,latitude_deg,true_obliquity_deg].iter().all(|v|v.is_finite())
+        || latitude_deg.abs()>90.0 || !(0.0..90.0).contains(&true_obliquity_deg) {
+        return None;
+    }
+    let longitude=longitude_deg.to_radians();
+    let latitude=latitude_deg.to_radians();
+    let obliquity=true_obliquity_deg.to_radians();
+    let x=latitude.cos()*longitude.cos();
+    let y=latitude.cos()*longitude.sin()*obliquity.cos()-latitude.sin()*obliquity.sin();
+    let z=latitude.cos()*longitude.sin()*obliquity.sin()+latitude.sin()*obliquity.cos();
+    let ra=circle_degrees(y.atan2(x).to_degrees());
+    let dec=z.atan2(x.hypot(y)).to_degrees();
+    (ra.is_finite()&&dec.is_finite()).then_some((ra,dec))
+}
+
 /// Tropical 0° is the true equinox of date. Zodiac intervals are measured
 /// along the true ecliptic, never by dividing the horizon into twelve.
 fn zodiac_latitude_direction(
     ecliptic_longitude_deg:f64, ecliptic_latitude_deg:f64,
     true_obliquity_deg:f64, armc_deg:f64, latitude_deg:f64,
 ) -> Option<SkyDirectionV1> {
-    if !ecliptic_longitude_deg.is_finite() || !ecliptic_latitude_deg.is_finite()
-        || ecliptic_latitude_deg.abs()>90.0 || !true_obliquity_deg.is_finite()
-        || !(0.0..90.0).contains(&true_obliquity_deg) { return None; }
-    let longitude = ecliptic_longitude_deg.to_radians();
-    let latitude = ecliptic_latitude_deg.to_radians();
-    let obliquity = true_obliquity_deg.to_radians();
-    // Rotate the true ecliptic-of-date unit vector into the true equatorial
-    // frame, then to the geographic observer's local horizon.
-    let ecl_x = latitude.cos() * longitude.cos();
-    let ecl_y = latitude.cos() * longitude.sin();
-    let ecl_z = latitude.sin();
-    let x = ecl_x;
-    let y = ecl_y * obliquity.cos() - ecl_z * obliquity.sin();
-    let z = ecl_y * obliquity.sin() + ecl_z * obliquity.cos();
-    let ra = circle_degrees(y.atan2(x).to_degrees());
-    let dec = z.atan2(x.hypot(y)).to_degrees();
+    let (ra,dec)=ecliptic_to_equatorial(
+        ecliptic_longitude_deg,ecliptic_latitude_deg,true_obliquity_deg
+    )?;
     celestial_horizontal(ra,dec,armc_deg,latitude_deg)
 }
 fn zodiac_direction(
@@ -347,19 +355,22 @@ pub fn respond(
     if !planets.iter().any(|p|p.id=="Sun") || !planets.iter().any(|p|p.id=="Moon") {
         return failure("calculation_failed");
     }
-    let stars = calculated.fixed_stars.unwrap_or_default().into_iter().map(|s|
+    let stars = calculated.fixed_stars.unwrap_or_default().into_iter().map(|s| {
+        let (star_ra,star_dec)=ecliptic_to_equatorial(
+            s.longitude_deg,s.latitude_deg,context.true_obliquity_deg
+        ).map_or((None,None),|(ra,dec)|(Some(ra),Some(dec)));
         HorizontalObject {
             id:s.name,altitude_deg:s.true_altitude_deg,
             azimuth_north_east_deg:(s.azimuth_south_west_deg+180.0).rem_euclid(360.0),
             magnitude:s.magnitude,approximate:s.approximate,
             ecliptic_longitude_deg:Some(s.longitude_deg),
             ecliptic_latitude_deg:Some(s.latitude_deg),
-            right_ascension_deg:None,declination_deg:None,
+            right_ascension_deg:star_ra,declination_deg:star_dec,
             distance_au:None,longitude_speed_deg_per_day:None,
             constellation:s.constellation,catalog_id:Some(s.id),
             ephemeris_source:None,
         }
-    ).collect();
+    }).collect();
     SkyDomeV1 {
         protocol_version:1,status:"ok",
         provider_id:calculated.provider.map(|p|p.id.to_string()),
@@ -473,6 +484,19 @@ mod tests {
         assert!(house_grid(&modified,23.4392911,155.0,44.0).is_none());
     }
 
+    #[test]
+    fn stellar_ecliptic_coordinates_yield_consistent_equatorial_coordinates() {
+        // Equinox is RA 0°, dec 0° at zero longitude/latitude.
+        let (ra,dec)=ecliptic_to_equatorial(0.0,0.0,23.4392911).unwrap();
+        assert!(ra.abs()<1e-10 && dec.abs()<1e-10);
+        // North solstitial point: RA 90°, declination equals obliquity.
+        let (ra,dec)=ecliptic_to_equatorial(90.0,0.0,23.4392911).unwrap();
+        assert!((ra-90.0).abs()<1e-10);
+        assert!((dec-23.4392911).abs()<1e-10);
+        assert!(ecliptic_to_equatorial(12.0,f64::NAN,23.4).is_none());
+        assert!(ecliptic_to_equatorial(12.0,91.0,23.4).is_none());
+        assert!(ecliptic_to_equatorial(12.0,45.0,0.0).is_none());
+    }
     #[test]
     fn zodiac_grid_is_twelve_signs_with_a_didactic_ecliptic_latitude_band() {
         let grid=zodiac_grid(23.4392911,125.0,45.0).unwrap();
