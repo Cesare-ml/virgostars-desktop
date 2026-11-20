@@ -164,7 +164,13 @@
       </div>
       <div *ngIf="selection.point.illuminatedFraction!==null">
         <dt>{{word('illuminatedFraction')}}</dt>
-        <dd>{{percentText(selection.point.illuminatedFraction)}}</dd>
+        <dd class="sky3d-moon-illumination">
+          <span>{{percentText(selection.point.illuminatedFraction)}}</span>
+          <meter min="0" max="1" [value]="selection.point.illuminatedFraction ?? 0"
+            [attr.aria-label]="word('illuminatedFraction')">
+            {{percentText(selection.point.illuminatedFraction)}}
+          </meter>
+        </dd>
       </div>
       <div *ngIf="selection.point.longitudeSpeedDegPerDay!==null">
         <dt>{{word('longitudeSpeed')}}</dt><dd>{{valueText(selection.point.longitudeSpeedDegPerDay,word('speedUnit'),4)}}</dd>
