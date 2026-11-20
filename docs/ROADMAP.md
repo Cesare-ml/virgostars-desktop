@@ -37,7 +37,8 @@ Status: **PROPOSED**. This is an ordered work plan, NOT a list of completed feat
 
 - [ ] Validate the initial interactive Three.js observer sky on Windows/WebView2 with real DE441: topocentric geometric planet positions, existing fixed stars, true-N/E/S/W horizon, meridian, equatorial grid and selection. See [Cielo 3D plan](SKY_3D_OBSERVER_MVP_2026-11-20.md). Code is not evidence of native QA or scientific acceptance.
 - [ ] Add ephemeris-native equatorial-to-horizontal API independent from house-system availability, observer elevation, refraction, historical/ΔT treatment and trusted stellar catalogue.
-- [ ] Ecliptic with real 30° zodiac intervals, then method-specific astronomical house boundaries.
+- [x] **Code in draft PR #390 (not yet validated/released):** true tropical ecliptic with 12×30° arcs, original zodiac glyphs, computed ASC/DSC/MC/IC markers and dedicated visibility controls.
+- [ ] Geometrically correct house boundaries for each system, not just cusp degrees; see [3D houses and primary directions RFC](SKY_3D_HOUSES_PRIMARY_DIRECTIONS_RFC.md).
 - [ ] **True primary directions (distinct from SIMPLIFIED_PRIMARY):** decide classical methodology, direct/converse/semiárches and time keys, implement independently validated engine output, render geometric arcs on the natal sphere with provenance and numerical audit.
 
 ## Gate 4 — Production-safe cloud auth and sync (separate backend work required)
