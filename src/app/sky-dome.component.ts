@@ -319,7 +319,18 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.scene.add(horizon);this.layerGroups.horizon=horizon;
 
     const meridian=new THREE.Group();
+    // Full 360° meridian: N -> zenith -> S above the horizon.
     this.curve(Array.from({length:181},(_,a)=>this.vec(a<=90?0:180,a<=90?a:180-a,99)),0xf1bd7c,0.9,meridian);
+    // S -> nadir -> N below the horizon (subdued and dashed).
+    const underground=new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(Array.from({length:181},(_,a)=>
+        this.vec(a<=90?180:0,a<=90?-a:a-180,99))),
+      new THREE.LineDashedMaterial({
+        color:0xf1bd7c,dashSize:2,gapSize:1.6,transparent:true,opacity:0.46,depthWrite:false,
+      }),
+    );
+    underground.computeLineDistances();
+    meridian.add(underground);
     this.scene.add(meridian);this.layerGroups.meridian=meridian;
 
     const grid=new THREE.Group();
