@@ -2,6 +2,7 @@
 """Fetch the pinned private GitHub release asset; verify before installing locally."""
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -83,6 +84,13 @@ def install_archive(archive: Path, destination: Path, archive_hash: str = ARCHIV
 def main() -> None:
     root = Path(__file__).absolute().parents[2]
     dest = root / ".local" / "places"
+    parser = argparse.ArgumentParser(description="Install the pinned VirgoStars city catalog")
+    parser.add_argument("--archive", type=Path, help="Use a locally downloaded archive instead of GitHub CLI")
+    args = parser.parse_args()
+    if args.archive is not None:
+        install_archive(args.archive, dest)
+        print("Verified offline city catalog installed in .local/places.")
+        return
     gh = shutil.which("gh")
     if not gh:
         raise SystemExit("GitHub CLI (gh) is required; install it and run gh auth login with repository access.")

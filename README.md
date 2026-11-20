@@ -4,9 +4,35 @@
 
 [License: CPAL-1.0](LICENSE) · [Contributing](docs/CONTRIBUTING.md) · [Roadmap](docs/ROADMAP.md) · [Security](docs/SECURITY_AND_PRIVACY.md)
 
-VirgoStars Desktop is an offline-first workstation in development. It combines an Angular/TypeScript user interface, a Tauri 2/Rust host and an interactive Three.js astrological chart renderer. The goal is a professional desktop environment for exploring natal charts, transits, synastry and research workflows on Windows, with macOS support planned.
+VirgoStars Desktop is an offline-first workstation in development. It combines an Angular/TypeScript user interface, a Tauri 2/Rust host and an interactive Three.js astrological chart renderer. The goal is a professional desktop environment for exploring natal charts, transits, synastry and research workflows. Windows is the first tested platform; **macOS contributors are invited to help validate the new native build workflow**.
 
 **Project status: prototype, not a production release.** The current application can show **synthetic demonstration positions** and exercises a limited native runtime bridge. An optional local-use provider can calculate real positions (see below), but the project does not yet offer independently validated astronomical calculations, production cloud synchronization, a finished personal-data archive, a signed updater, or a supported public installer. Screenshots and fictional chart data must not be treated as scientifically calculated birth charts.
+
+## Help us build VirgoStars Desktop for Mac · Contribuisci alla versione macOS
+
+**Have a Mac? You can help us create and test the first macOS build!**  
+**Hai un Mac? Puoi aiutarci a compilare e provare VirgoStars Desktop su macOS.** Apple Silicon (M-series) and Intel x64 are both welcome.
+
+**One-time setup:** install [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/), [Node.js](https://nodejs.org/) 22.12+ or 24.x, [Rust](https://rustup.rs/) 1.90+ (including Cargo), and Python 3. Git and curl must also be available. If the Apple command-line tools are missing, run `xcode-select --install` and complete Apple's installer. **You do not need an Apple Developer account or access to private VirgoStars repositories for a test build.**
+
+Then open **Terminal**, choose a clean work directory and run these **two commands**:
+
+```bash
+git clone https://github.com/Cesare-ml/virgostars-desktop.git && cd virgostars-desktop
+npm run build:mac
+```
+
+The build script fetches pinned public Charts/Functions dependencies, checks the offline city database and DE441 1000–2200 base against fixed SHA-256 hashes, runs source checks and attempts a native macOS `.app` + `.dmg` build. A successful test build writes files into `.local/mac/output/<version>/<arm64-or-x64>/`:
+
+- `VirgoStars-Desktop-<version>-macos-<arch>.dmg` — installer to test locally
+- `SHA256SUMS.txt` — file integrity checksum
+- `build-report.json` — version, source commit, target and build information
+
+**How to contribute:** open a [GitHub issue](https://github.com/Cesare-ml/virgostars-desktop/issues) or [pull request](https://github.com/Cesare-ml/virgostars-desktop/pulls) with the macOS version, Mac model/CPU, the result of `npm run build:mac` (including any sanitized error output), whether the DMG installs and opens, and the build report/checksum. Never share passwords, signing certificates, private keys or personal chart data. Coordinate the DMG handoff with a maintainer before uploading it anywhere public.
+
+**Status:** the workflow has been prepared but **has not yet passed a native macOS build or launch test**. The default test build uses *synthetic artwork*; original images have a separate redistribution-rights review. The public-data test bundle does not include every optional astronomical dataset. **Do not publish it as an official VirgoStars release.** A public release needs Mac acceptance testing, rights verification, Apple Developer ID signing/notarization and maintainer approval. There is a separate controlled upload procedure for an already-existing GitHub release.
+
+For original-artwork builds, troubleshooting, signing and official release handoff, read the **[full macOS contribution and release guide](docs/MACOS_BUILD_AND_RELEASE.md)**.
 
 ## What works today
 
