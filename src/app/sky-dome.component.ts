@@ -399,6 +399,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.buildAngles();
       this.buildOverlays();
       this.buildMarkers();
+      this.updateSunLighting();
       this.look(180,24);
       this.observer=new ResizeObserver(()=>this.resize());
       this.observer.observe(this.viewport.nativeElement);
