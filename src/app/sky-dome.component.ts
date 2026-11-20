@@ -439,7 +439,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private async load():Promise<void> {
     const ticket=++this.generation;
     if(!this.webglFailed)this.status='loading';
-    this.selected=null;this.data=null;this.clearStarQuery();
+    this.selected=null;this.selectedCuspIndex=null;this.data=null;this.clearStarQuery();
     this.buildMarkers();
     this.buildZodiac();
     this.buildHouseGrid();
@@ -948,7 +948,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       case 'equator':this.showEquator=!this.showEquator;break;
       case 'zodiac':this.showZodiac=!this.showZodiac;this.buildZodiac();break;
       case 'zodiacGrid':this.showZodiacGrid=!this.showZodiacGrid;this.buildZodiac();break;
-      case 'houses':this.showHouses=!this.showHouses;this.buildHouseGrid();break;
+      case 'houses':this.showHouses=!this.showHouses;if(!this.showHouses)this.selectedCuspIndex=null;this.buildHouseGrid();break;
       case 'atmosphere':this.showAtmosphere=!this.showAtmosphere;break;
       case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
