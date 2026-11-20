@@ -9,6 +9,15 @@ export type SkyDomePoint = Readonly<{
   azimuthNorthEastDeg: number;
   magnitude: number | null;
   approximate: boolean;
+  eclipticLongitudeDeg:number|null;
+  eclipticLatitudeDeg:number|null;
+  rightAscensionDeg:number|null;
+  declinationDeg:number|null;
+  distanceAu:number|null;
+  longitudeSpeedDegPerDay:number|null;
+  constellation:string|null;
+  catalogId:number|null;
+  ephemerisSource:string|null;
 }>;
 /** Geometric point on the observer's celestial sphere (not a body). */
 export type SkyDomeDirection = Readonly<{
@@ -34,6 +43,13 @@ export type SkyAngle = Readonly<{
   zodiacLongitudeDeg:number;
   position:SkyDomeDirection;
 }>;
+/** Cusp ticks in the +/-8 degree ecliptic band; NOT full mundane house planes. */
+export type SkyHouseGrid = Readonly<{
+  id:string;
+  cuspLongitudesDeg:readonly number[];
+  separators:readonly (readonly SkyDomeDirection[])[];
+  labels:readonly SkyDomeDirection[];
+}>;
 export type SkyDomeData = Readonly<{
   providerId: string;
   planets: readonly SkyDomePoint[];
@@ -41,6 +57,7 @@ export type SkyDomeData = Readonly<{
   zodiacSegments: readonly SkyZodiacSegment[];
   zodiacGrid: SkyZodiacGrid;
   angles: readonly SkyAngle[];
+  houseGrids: readonly SkyHouseGrid[];
 }>;
 export type SkyDomeResult =
   | Readonly<{kind:'ready'; data:SkyDomeData}>
@@ -120,6 +137,40 @@ function angles(v:unknown):readonly SkyAngle[] {
     });
   }));
 }
+const HOUSE_SYSTEMS=new Set(['egizia','porfirio','regio-montano','koch','placido']);
+function houseGrids(v:unknown):readonly SkyHouseGrid[] {
+  const list=arr(v,5),ids=new Set<string>();
+  return Object.freeze(list.map(item=>{
+    if(!record(item)||typeof item['id']!=='string'||!HOUSE_SYSTEMS.has(item['id'])||ids.has(item['id']))
+      throw Error('Invalid sky dome protocol');
+    const id=item['id'];ids.add(id);
+    const cusps=arr(item['cuspLongitudesDeg'],12);
+    const separators=arr(item['separators'],12);
+    const labels=arr(item['labels'],12);
+    if(cusps.length!==12||separators.length!==12||labels.length!==12)
+      throw Error('Invalid sky dome protocol');
+    return Object.freeze({
+      id,
+      cuspLongitudesDeg:Object.freeze(cusps.map(x=>num(x,0,360))),
+      separators:Object.freeze(separators.map(raw=>{
+        const points=arr(raw,9);
+        if(points.length!==9)throw Error('Invalid sky dome protocol');
+        return Object.freeze(points.map(direction));
+      })),
+      labels:Object.freeze(labels.map(direction)),
+    });
+  }));
+}
+function optionalNum(v:Record<string,unknown>,key:string,min:number,max:number):number|null {
+  const value=v[key];return value===undefined||value===null?null:num(value,min,max);
+}
+function optionalString(v:Record<string,unknown>,key:string,limit=80):string|null {
+  const value=v[key];
+  if(value===undefined||value===null)return null;
+  if(typeof value!=='string'||value.length===0||value.length>limit||
+    /[\u0000-\u001f]/.test(value))throw Error('Invalid sky dome protocol');
+  return value;
+}
 function point(v:unknown,star:boolean):SkyDomePoint {
   if(!record(v)||typeof v['id']!=='string'||v['id'].length<1||v['id'].length>80||
     (star ? /[\u0000-\u001f]/.test(v['id']) : !PLANETS.has(v['id'])) ||
@@ -131,6 +182,15 @@ function point(v:unknown,star:boolean):SkyDomePoint {
     azimuthNorthEastDeg:num(v['azimuthNorthEastDeg'],0,360),
     magnitude:v['magnitude']===null?null:num(v['magnitude'],-30,30),
     approximate:v['approximate'],
+    eclipticLongitudeDeg:optionalNum(v,'eclipticLongitudeDeg',0,360),
+    eclipticLatitudeDeg:optionalNum(v,'eclipticLatitudeDeg',-90,90),
+    rightAscensionDeg:optionalNum(v,'rightAscensionDeg',0,360),
+    declinationDeg:optionalNum(v,'declinationDeg',-90,90),
+    distanceAu:optionalNum(v,'distanceAu',0,10000),
+    longitudeSpeedDegPerDay:optionalNum(v,'longitudeSpeedDegPerDay',-360,360),
+    constellation:optionalString(v,'constellation',160),
+    catalogId:optionalNum(v,'catalogId',1,10000000),
+    ephemerisSource:optionalString(v,'ephemerisSource',80),
   });
 }
 export function decodeSkyDome(raw:unknown):SkyDomeResult {
@@ -144,11 +204,12 @@ export function decodeSkyDome(raw:unknown):SkyDomeResult {
   const zodiacSegments=zodiac(raw['zodiacSegments']);
   const grid=zodiacGrid(raw['zodiacGrid']);
   const anglePoints=angles(raw['angles']);
+  const housePoints=houseGrids(raw['houseGrids']??[]);
   if(new Set(planets.map(p=>p.id)).size!==planets.length||
     !planets.some(p=>p.id==='Sun')||!planets.some(p=>p.id==='Moon')) throw Error('Invalid sky dome protocol');
   return Object.freeze({kind:'ready',data:Object.freeze({
     providerId:raw['providerId'],
-    planets:Object.freeze(planets),stars:Object.freeze(stars),zodiacSegments,zodiacGrid:grid,angles:anglePoints,
+    planets:Object.freeze(planets),stars:Object.freeze(stars),zodiacSegments,zodiacGrid:grid,angles:anglePoints,houseGrids:housePoints,
   })});
 }
 export async function requestSkyDome(transport:SkyDomeTransport,request:SkyDomeRequest):Promise<SkyDomeResult> {

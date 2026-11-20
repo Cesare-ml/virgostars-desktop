@@ -27,4 +27,18 @@ Leaflet 1.9.4 is distributed under the BSD 2-Clause License. See
 third-party/leaflet/LICENSE. The optional map displays OpenStreetMap data;
 its attribution and licence are shown on the map.
 
+Optional Cielo 3D planetary surface maps, when explicitly downloaded and
+embedded in a private build, are by Solar System Scope and licensed under
+Creative Commons Attribution 4.0 International (CC BY 4.0).
+  Credit: Solar System Scope
+  Source: https://www.solarsystemscope.com/textures/
+  License: https://creativecommons.org/licenses/by/4.0/
+The map pixels are used as 3D globe textures, with application-provided
+lighting, presentation rotation and illustrative ring geometry. This changes
+their presentation; it is not an astronomical phase or orientation model.
+The images can include artist-reconstructed areas and enhanced colors, as
+explained by the source. The default synthetic build includes no such maps.
+Keep source, license and this modification disclosure with distributable
+binaries that embed these optional images.
+
 Contributors retain applicable rights in their own contributions under CPAL.

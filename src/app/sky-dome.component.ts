@@ -5,7 +5,7 @@ import {
 } from '@angular/core';
 import * as THREE from 'three';
 import {calculateSkyDome} from './native/sky-dome';
-import type {SkyDomeData, SkyDomePoint, SkyDomeResult} from './native/sky-dome-contract';
+import type {SkyDomeData, SkyDomePoint, SkyDomeResult, SkyHouseGrid} from './native/sky-dome-contract';
 import {validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
 import {SkyDomeLens} from './sky-dome-fisheye';
 import {
@@ -15,6 +15,7 @@ import {
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 import {planetAccent, skyLightFromSun, starAppearance, labeledCatalogStars, type SkyLight} from './sky-dome-visuals';
 import {createPlanetPortrait,planetPortraitSpec} from './sky-dome-planet-portraits';
+import {REAL_PLANET_TEXTURES} from './sky-dome-real-textures';
 import {findSkyStars} from './sky-dome-star-search';
 import {skyFacingPlane} from './sky-dome-billboard';
 
@@ -31,6 +32,14 @@ const WORDS={
   it:{
     title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
     meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',starLabels:'Nomi stelle',planets:'Pianeti',
+    atmosphere:'Atmosfera',houseGrid:'Griglia delle case',houseSystem:'Domificazione',houseUnavailable:'Cuspidi non disponibili per questo metodo',
+    houseNote:'Cuspidi proiettate sull’eclittica, non superfici spaziali delle case.',
+    houseCusps:'Cuspidi delle case',houseFocus:'Punta la cuspide',
+    appearance:'Aspetto del cielo',objectDetails:'Coordinate astronomiche',longitude:'Longitudine eclittica',latitude:'Latitudine eclittica',
+    rightAscension:'Ascensione retta',declination:'Declinazione',distance:'Distanza geocentrica',
+    longitudeSpeed:'Velocità in longitudine',constellation:'Costellazione',catalogId:'ID archivio',
+    source:'Effemeridi',sign:'Segno',notAvailable:'Non disponibile',distanceUnit:' UA',speedUnit:' °/giorno',
+    realTextureNote:'Mappe planetarie Solar System Scope (CC BY 4.0); orientamento e fasi illustrativi.',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -68,6 +77,14 @@ const WORDS={
   en:{
     title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
     meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',starLabels:'Star names',planets:'Planets',
+    atmosphere:'Atmosphere',houseGrid:'House cusp grid',houseSystem:'House system',houseUnavailable:'Cusps unavailable for this method',
+    houseNote:'Ecliptic cusp projections, not spatial house boundary surfaces.',
+    houseCusps:'House cusps',houseFocus:'Point to cusp',
+    appearance:'Sky appearance',objectDetails:'Astronomical coordinates',longitude:'Ecliptic longitude',latitude:'Ecliptic latitude',
+    rightAscension:'Right ascension',declination:'Declination',distance:'Geocentric distance',
+    longitudeSpeed:'Longitude speed',constellation:'Constellation',catalogId:'Catalogue ID',
+    source:'Ephemeris',sign:'Sign',notAvailable:'Unavailable',distanceUnit:' AU',speedUnit:' °/day',
+    realTextureNote:'Planet maps by Solar System Scope (CC BY 4.0); illustrative orientation and phases.',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -116,6 +133,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   @Input({required:true}) latMicro=0;
   @Input({required:true}) lngMicro=0;
   @Input() locale:'it'|'en'='it';
+  @Input() houseSystem='egizia';
+  @Input() houseSystemName='';
+  @Output() houseSystemSelected=new EventEmitter<string>();
   /** Future natal zodiac/house/primary direction curves: never synthesized in the renderer. */
   @Input() overlays:readonly SkyOverlayPolyline[]=[];
   @Output() closed=new EventEmitter<void>();
@@ -146,6 +166,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private zodiacGroup:THREE.Group|null=null;
   private zodiacTextures:THREE.Texture[]=[];
   private zodiacGeneration=0;
+  private houseGroup:THREE.Group|null=null;
+  private houseTextures:THREE.Texture[]=[];
   private angleGroup:THREE.Group|null=null;
   private angleTextures:THREE.Texture[]=[];
   private targets:THREE.Object3D[]=[];
@@ -155,6 +177,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private data:SkyDomeData|null=null;
   status:NativeStatus='loading';
   selected:PointWithKind|null=null;
+  showAtmosphere=true;
+  showHouses=true;
+  selectedCuspIndex:number|null=null;
   showMeridian=true;
   showGrid=false;
   showEquator=false;
@@ -177,6 +202,76 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get approximateStars():boolean{return !!this.data?.stars.some(s=>s.approximate);}
   get starCount():number{return this.data?.stars.length??0;}
+  get availableHouseGrids():readonly SkyHouseGrid[]{return this.data?.houseGrids??[];}
+  get hasRealPlanetTextures():boolean{return Object.keys(REAL_PLANET_TEXTURES).length>0;}
+  get planetTextureNote():string {
+    return this.word(this.hasRealPlanetTextures?'realTextureNote':'skyLightNote');
+  }
+  get activeHouseGrid():SkyHouseGrid|null{
+    return this.data?.houseGrids.find(grid=>grid.id===this.houseSystem)??null;
+  }
+  get cuspRows():readonly {index:number;house:number;longitude:number;azimuth:number;altitude:number}[] {
+    const grid=this.activeHouseGrid;
+    if(!grid)return [];
+    return grid.cuspLongitudesDeg.map((longitude,index)=>({
+      index,house:index+1,longitude,
+      azimuth:grid.separators[index][4].azimuthNorthEastDeg,
+      altitude:grid.separators[index][4].altitudeDeg,
+    }));
+  }
+  cuspRoman(index:number):string {
+    return ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][index]??'';
+  }
+  formatCusp(longitude:number):string {
+    return (((longitude%30)+30)%30).toFixed(2)+'°';
+  }
+  cuspSign(longitude:number):string {
+    return this.signNames()[Math.floor(((longitude%360)+360)%360/30)]??'';
+  }
+  cuspGlyph(longitude:number):string {
+    return zodiacGlyphUrl(Math.floor(((longitude%360)+360)%360/30));
+  }
+  focusCusp(index:number):void {
+    const row=this.cuspRows[index];
+    if(!row||!this.showHouses)return;
+    this.selectedCuspIndex=index;
+    this.look(row.azimuth,row.altitude);
+    this.buildHouseGrid();
+    this.cd.markForCheck();
+  }
+  houseLabel(id:string):string {
+    const italian:Readonly<Record<string,string>>={
+      egizia:'Egizia',placido:'Placido',koch:'Koch','regio-montano':'Regiomontano',porfirio:'Porfirio',
+    };
+    const english:Readonly<Record<string,string>>={
+      egizia:'Egyptian / Vehlow',placido:'Placidus',koch:'Koch','regio-montano':'Regiomontanus',porfirio:'Porphyry',
+    };
+    return (this.locale==='it'?italian:english)[id]??id;
+  }
+  selectHouseSystem(event:Event):void {
+    const value=(event.target as HTMLSelectElement).value;
+    if(this.data?.houseGrids.some(grid=>grid.id===value)){
+      this.houseSystemSelected.emit(value);
+    }
+  }
+  private signNames():readonly string[]{
+    return this.locale==='it'
+      ? ['Ariete','Toro','Gemelli','Cancro','Leone','Vergine','Bilancia','Scorpione','Sagittario','Capricorno','Acquario','Pesci']
+      : ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
+  }
+  get selectedSign():string|null {
+    const longitude=this.selected?.point.eclipticLongitudeDeg;
+    if(longitude===undefined||longitude===null)return null;
+    const value=((longitude%360)+360)%360;
+    return this.signNames()[Math.floor(value/30)]??null;
+  }
+  get selectedSignImage():string {
+    const longitude=this.selected?.point.eclipticLongitudeDeg;
+    return longitude===undefined||longitude===null?'':zodiacGlyphUrl(Math.floor(((longitude%360)+360)%360/30));
+  }
+  valueText(value:number|null|undefined,suffix='°',digits=3):string {
+    return value===null||value===undefined?this.word('notAvailable'):value.toFixed(digits)+suffix;
+  }
   close():void { this.closed.emit(); }
   clearSelection():void {
     this.selected=null;
@@ -246,11 +341,20 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(changes['latMicro']&&this.scene) this.buildEquator();
     if(changes['locale']&&this.scene) this.buildCardinalLabels();
     if(changes['overlays']&&this.scene)this.buildOverlays();
+    if(changes['houseSystem']){
+      this.selectedCuspIndex=null;
+      if(this.scene)this.buildHouseGrid();
+    }
   }
   ngAfterViewInit():void {
     try {
       this.scene=new THREE.Scene();
       this.scene.background=null;
+      // Graphic volume lighting, NOT the actual physical phase angle.
+      this.scene.add(new THREE.AmbientLight(0xffffff,1.75));
+      const planetLight=new THREE.DirectionalLight(0xfff4df,2.0);
+      planetLight.position.set(-45,65,-40);
+      this.scene.add(planetLight);
       this.camera=new THREE.PerspectiveCamera(75,1,0.1,180);
       this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
       this.renderer.setClearColor(0x000000,0);
@@ -278,6 +382,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.buildCardinalLabels();
       this.buildEquator();
       this.buildZodiac();
+      this.buildHouseGrid();
       this.buildAngles();
       this.buildOverlays();
       this.buildMarkers();
@@ -317,6 +422,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.sparkleTexture=null;
     this.selectionTexture?.dispose();
     this.selectionTexture=null;
+    for(const texture of this.houseTextures)texture.dispose();
+    this.houseTextures=[];
     for(const texture of this.angleTextures)texture.dispose();
     this.angleTextures=[];
     for(const texture of this.zodiacTextures)texture.dispose();
@@ -332,9 +439,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private async load():Promise<void> {
     const ticket=++this.generation;
     if(!this.webglFailed)this.status='loading';
-    this.selected=null;this.data=null;this.clearStarQuery();
+    this.selected=null;this.selectedCuspIndex=null;this.data=null;this.clearStarQuery();
     this.buildMarkers();
     this.buildZodiac();
+    this.buildHouseGrid();
     this.buildAngles();
     this.cd.markForCheck();
     const result=await calculateSkyDome({utcIso:this.utcIso,latMicro:this.latMicro,lngMicro:this.lngMicro});
@@ -343,6 +451,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.data=result.kind==='ready'?result.data:null;
     this.buildMarkers();
     this.buildZodiac();
+    this.buildHouseGrid();
     this.buildAngles();
     this.cd.markForCheck();
   }
@@ -503,6 +612,51 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
         });
         this.zodiacTextures.push(texture);
       }
+    }
+    this.draw();
+  }
+  /**
+   * Cusp intersections for the CURRENT, natively computed house system.
+   * These small lines cross only the +/-8° ecliptic reference band; they are
+   * NOT the true spatial/mundane house surfaces.
+   */
+  private buildHouseGrid():void {
+    if(!this.scene)return;
+    if(this.houseGroup){
+      this.scene.remove(this.houseGroup);
+      this.disposeTree(this.houseGroup);
+    }
+    for(const texture of this.houseTextures)texture.dispose();
+    this.houseTextures=[];
+    const group=new THREE.Group();
+    this.scene.add(group);
+    this.houseGroup=group;
+    const grid=this.activeHouseGrid;
+    if(!this.showHouses || !grid){this.draw();return;}
+    const romans=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+    for(let index=0;index<12;index++){
+      const line=grid.separators[index];
+      const vectors=line.map(point=>this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,99.16));
+      const focused=this.selectedCuspIndex===index;
+      this.curve(vectors,focused?0xf1e5b8:(index===0||index===9?0xa8e9ce:0x75bca7),
+        focused?1:(index===0||index===9?0.83:0.58),group);
+      const label=grid.labels[index];
+      const canvas=document.createElement('canvas');
+      canvas.width=128;canvas.height=64;
+      const ctx=canvas.getContext('2d');
+      if(!ctx)continue;
+      ctx.fillStyle='rgba(12,38,37,.75)';
+      ctx.beginPath();ctx.roundRect(1,5,126,54,15);ctx.fill();
+      ctx.strokeStyle='rgba(125,215,180,.55)';
+      ctx.lineWidth=2;ctx.stroke();
+      ctx.font='600 27px sans-serif';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillStyle='#c4ebdd';
+      ctx.fillText(romans[index],64,33);
+      const texture=new THREE.CanvasTexture(canvas);
+      this.houseTextures.push(texture);
+      group.add(skyFacingPlane(texture,
+        this.vec(label.azimuthNorthEastDeg,label.altitudeDeg,98.7),5.5,2.8));
     }
     this.draw();
   }
@@ -668,15 +822,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           }
 
           const portrait=this.portraitTexture(point.id);
+          let fallbackPlane:THREE.Object3D|null=null;
           if(portrait){
-            // Main portrait faces the observer: actual altitude/azimuth is
-            // computed in Rust; colour/texture is expressly illustrative.
             const disc=skyFacingPlane(portrait,position.clone().multiplyScalar(0.998),
               spec.diameter,spec.diameter,{renderOrder:1});
             disc.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
             group.add(disc);this.targets.push(disc);
+            fallbackPlane=disc;
           }else{
-            // Canvas-unavailable fallback: never omit the real sky position.
             const fallback=new THREE.Mesh(
               new THREE.SphereGeometry(0.9,12,10),
               new THREE.MeshBasicMaterial({color:accent}),
@@ -684,12 +837,61 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             fallback.position.copy(position);
             fallback.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
             group.add(fallback);this.targets.push(fallback);
+            fallbackPlane=fallback;
+          }
+          const realMap=REAL_PLANET_TEXTURES[point.id];
+          if(realMap?.startsWith('data:image/jpeg;base64,')){
+            const globeMaterial=point.id==='Sun'
+              ? new THREE.MeshBasicMaterial({color:0xffffff})
+              : new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
+            const globe=new THREE.Mesh(
+              new THREE.SphereGeometry(spec.diameter*0.5,36,24),globeMaterial,
+            );
+            globe.position.copy(position.clone().multiplyScalar(0.998));
+            globe.quaternion.setFromUnitVectors(
+              new THREE.Vector3(0,0,1),
+              globe.position.clone().normalize().negate(),
+            );
+            globe.visible=false;
+            globe.renderOrder=1;
+            globe.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(globe);
+            let saturnRing:THREE.Mesh|null=null;
+            if(point.id==='Saturn'){
+              const geometry=new THREE.RingGeometry(spec.diameter*.52,spec.diameter*.95,72);
+              const material=new THREE.MeshBasicMaterial({
+                color:0xd3bd92,side:THREE.DoubleSide,
+                transparent:true,opacity:0.72,depthWrite:false,
+              });
+              const ring=new THREE.Mesh(geometry,material);
+              ring.position.copy(globe.position);
+              ring.quaternion.copy(globe.quaternion);
+              ring.rotateX(.38);
+              ring.visible=false;
+              group.add(ring);
+              saturnRing=ring;
+            }
+            const realTexture=loader.load(realMap,()=>{
+              if(this.destroyed||generation!==this.markerGeneration)return;
+              realTexture.colorSpace=THREE.SRGBColorSpace;
+              globeMaterial.map=realTexture;
+              globeMaterial.needsUpdate=true;
+              globe.visible=true;
+              if(saturnRing)saturnRing.visible=true;
+              if(fallbackPlane){
+                fallbackPlane.visible=false;
+                this.targets=this.targets.filter(target=>target!==fallbackPlane);
+              }
+              this.targets.push(globe);
+              this.draw();
+            },undefined,()=>{/* The illustrated portrait remains as a fallback. */});
+            this.markerTextures.push(realTexture);
           }
 
           // The official glyph is deliberately a small badge, not the body.
           const texture=loader.load(celestialGlyphUrl(point.id),()=>{
             if(this.destroyed||generation!==this.markerGeneration)return;
-            const glyph=skyFacingPlane(texture,position.clone().multiplyScalar(0.995),
+            const glyph=skyFacingPlane(texture,position.clone().multiplyScalar(0.915),
               spec.labelDiameter,spec.labelDiameter,
               {anchorX:0.10,anchorY:0.10,renderOrder:2});
             glyph.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
@@ -739,13 +941,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.updateSelectionRing();
     this.draw();
   }
-  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'zodiacGrid'|'signs'|'angles'|'ground'|'stars'|'planets'|'starLabels'):void {
+  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'zodiacGrid'|'houses'|'atmosphere'|'signs'|'angles'|'ground'|'stars'|'planets'|'starLabels'):void {
     switch(name){
       case 'meridian':this.showMeridian=!this.showMeridian;break;
       case 'grid':this.showGrid=!this.showGrid;break;
       case 'equator':this.showEquator=!this.showEquator;break;
       case 'zodiac':this.showZodiac=!this.showZodiac;this.buildZodiac();break;
       case 'zodiacGrid':this.showZodiacGrid=!this.showZodiacGrid;this.buildZodiac();break;
+      case 'houses':this.showHouses=!this.showHouses;if(!this.showHouses)this.selectedCuspIndex=null;this.buildHouseGrid();break;
+      case 'atmosphere':this.showAtmosphere=!this.showAtmosphere;break;
       case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
       case 'ground':this.showGround=!this.showGround;break;

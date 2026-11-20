@@ -1879,6 +1879,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
+  setSkyHouseSystem(systemId:string):void {
+    const system=systemId as HouseSystemId;
+    if(!this.houseSystems.includes(system) || this.houseSystem===system ||
+       this.exporting || this.calcBusy || this.destroyed)return;
+    this.houseSystem=system;
+    if(system!=='egizia')this.synastryDeflection=false;
+    // Keep the wheel and Cielo 3D consistent when returning from the dome.
+    if(this.initialized)void this.draw();
+    this.cd.markForCheck();
+  }
   /** The observer sky uses the active chart's own instant and place. */
   toggleSkyDome(): void {
     if (!this.activeChart || this.activeChart.timeUnknown || this.destroyed || this.busy || this.calcBusy) return;

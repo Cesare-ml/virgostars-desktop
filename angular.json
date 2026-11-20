@@ -52,6 +52,10 @@
                 {
                   "replace": "src/app/monomeri-data.ts",
                   "with": ".local/monomeri-data.private.ts"
+                },
+                {
+                  "replace": "src/app/sky-dome-real-textures.ts",
+                  "with": ".local/sky3d-real-textures.private.ts"
                 }
               ]
             }

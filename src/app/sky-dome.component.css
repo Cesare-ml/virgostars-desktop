@@ -21,6 +21,12 @@
     radial-gradient(ellipse 55% 42% at 13% 15%,rgba(70,50,124,.13),transparent 85%),
     linear-gradient(180deg,#040914 0%,#0a1627 55%,#1a3049 100%);
 }
+.sky3d.sky3d-no-atmosphere,
+.sky3d.sky3d-no-atmosphere.sky3d-twilight,
+.sky3d.sky3d-no-atmosphere.sky3d-daylight {
+  background:#02050b;
+}
+.sky3d-no-atmosphere .sky3d-vignette {display:none;}
 .sky3d.sky3d-twilight {
   background:
     radial-gradient(ellipse 48% 48% at 78% 82%,rgba(236,142,129,.28),transparent 85%),
@@ -215,6 +221,84 @@
   pointer-events:none;
 }
 
+
+.sky3d-accordion {
+  margin-top:10px;
+  border:1px solid rgba(192,205,240,.12);
+  border-radius:11px;
+  background:rgba(8,17,34,.27);
+  overflow:hidden;
+}
+.sky3d-accordion summary {
+  display:flex;align-items:center;justify-content:space-between;
+  gap:8px;cursor:pointer;list-style:none;
+  padding:11px 12px;
+  color:#e6eaff;font-size:11px;font-weight:710;
+  letter-spacing:.025em;
+}
+.sky3d-accordion summary::-webkit-details-marker {display:none;}
+.sky3d-accordion summary::after {
+  content:'⌄';font-size:16px;font-weight:500;
+  color:#9eaacf;transform:rotate(-90deg);
+  transition:transform .16s;
+}
+.sky3d-accordion[open] summary::after {transform:rotate(0);}
+.sky3d-accordion summary:hover {background:rgba(158,165,210,.11);}
+.sky3d-accordion summary:focus-visible {outline:2px solid #d3baff;outline-offset:-2px;}
+.sky3d-accordion > .sky3d-layer-grid {
+  margin:0 9px 10px;
+}
+.sky3d-house-label {
+  display:block;margin:9px 10px 6px;
+  color:#b5c8dd;font-size:10px;font-weight:600;
+}
+.sky3d-house-select {
+  display:block;box-sizing:border-box;width:calc(100% - 20px);min-height:34px;
+  margin:0 10px 8px;padding:7px 9px;
+  background:#18243a;border:1px solid rgba(180,214,197,.28);
+  border-radius:8px;color:#e5f6ec;font:inherit;font-size:11px;
+}
+.sky3d-house-select:focus-visible {outline:2px solid #b7e5ce;outline-offset:2px;}
+.sky3d-house-select:disabled {opacity:.55;}
+.sky3d-house-caveat {
+  margin:0 11px 11px;color:#94b6b2;font-size:9.5px;
+  line-height:1.5;
+}
+.sky3d-house-cusps {margin:0 10px 11px;border:1px solid rgba(114,199,169,.24);border-radius:9px;}
+.sky3d-house-cusps summary {
+  padding:8px 10px;color:#c2e6d9;font-size:10px;font-weight:650;
+  list-style:none;cursor:pointer;
+}
+.sky3d-house-cusps summary::-webkit-details-marker {display:none;}
+.sky3d-house-cusps summary::after {content:'⌄';float:right;color:#9cc8b9;}
+.sky3d-house-cusps summary:focus-visible {outline:2px solid #b7e5ce;outline-offset:-2px;}
+.sky3d-cusp-grid {
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:5px;padding:0 7px 7px;
+}
+.sky3d-cusp-grid button {
+  display:flex;align-items:center;gap:4px;min-width:0;
+  min-height:32px;border:1px solid rgba(161,225,202,.12);
+  border-radius:7px;background:rgba(23,53,49,.42);
+  color:#dceee7;font:inherit;font-size:9.5px;
+  padding:5px;cursor:pointer;
+}
+.sky3d-cusp-grid button img {width:15px;height:15px;object-fit:contain;}
+.sky3d-cusp-grid button:hover,.sky3d-cusp-grid button.selected {
+  background:rgba(85,141,118,.32);border-color:rgba(164,234,197,.45);
+}
+.sky3d-cusp-grid button:focus-visible {outline:2px solid #b7e5ce;outline-offset:2px;}
+.sky3d-cusp-roman {min-width:20px;font-weight:710;color:#c2f7d4;}
+.sky3d-cusp-number {margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+.sky3d-search-accordion {border-color:rgba(144,176,225,.18);}
+.sky3d-search-accordion[open] {background:rgba(20,33,55,.55);}
+.sky3d-search-content {padding:0 10px 10px;}
+.sky3d-search-content .sky3d-star-search-label {margin:4px 0 7px;}
+.sky3d-search-content .sky3d-star-results {margin-top:7px;}
+.sky3d-sign-value {display:flex;align-items:center;gap:6px;}
+.sky3d-sign-value img {width:17px;height:17px;object-fit:contain;}
+
 .sky3d-info-strip {
   position:absolute;z-index:3;right:22px;top:119px;
   display:flex;align-items:center;gap:10px;padding:9px 13px;
@@ -234,6 +318,9 @@
 .sky3d-info-separator {height:18px;border-left:1px solid rgba(176,197,230,.16);}
 .sky3d-selection {
   position:absolute;z-index:4;top:169px;right:22px;
+  max-height:calc(100% - 280px);
+  overflow-y:auto;
+  scrollbar-width:thin;
   box-sizing:border-box;width:min(265px,calc(100% - 44px));
   border:1px solid rgba(181,205,238,.23);border-radius:16px;
   padding:16px;background:rgba(7,17,33,.87);
@@ -389,7 +476,7 @@
   .sky3d-info-strip {top:108px;right:9px;padding:7px;gap:6px;}
   .sky3d-info-caption {font-size:8px;}
   .sky3d-info-strip strong {font-size:9px;}
-  .sky3d-selection {top:154px;width:min(228px,calc(100% - 190px));padding:10px;}
+  .sky3d-selection {top:154px;width:min(228px,calc(100% - 190px));padding:10px;max-height:calc(100% - 240px);}
   .sky3d-directions {bottom:52px;}
   .sky3d-directions .sky3d-allsky span:last-child {display:none;}
   .sky3d-footer {left:10px;right:10px;bottom:9px;}

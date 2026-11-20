@@ -1,4 +1,5 @@
 <section class="sky3d" [class.sky3d-twilight]="light==='twilight'" [class.sky3d-daylight]="light==='day'"
+  [class.sky3d-no-atmosphere]="!showAtmosphere"
   [attr.aria-label]="word('title')">
   <div #viewport class="sky3d-viewport" tabindex="0" role="region"
     [attr.aria-label]="word('skyHelp')" (keydown)="onKeyDown($event)"></div>
@@ -27,57 +28,91 @@
   </header>
 
   <aside class="sky3d-controls" [attr.aria-label]="word('layers')">
-    <div class="sky3d-panel-top">
+    <header class="sky3d-panel-top">
       <strong>{{word('layers')}}</strong>
       <span class="sky3d-panel-ornament" aria-hidden="true">✦</span>
-    </div>
-    <p class="sky3d-group-name">{{word('geometry')}}</p>
-    <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('geometry')">
-      <button type="button" [class.active]="showMeridian" [attr.aria-pressed]="showMeridian"
-        (click)="toggleLayer('meridian')">{{word('meridian')}}</button>
-      <button type="button" [class.active]="showGrid" [attr.aria-pressed]="showGrid"
-        (click)="toggleLayer('grid')">{{word('grid')}}</button>
-      <button type="button" [class.active]="showEquator" [attr.aria-pressed]="showEquator"
-        (click)="toggleLayer('equator')">{{word('equator')}}</button>
-      <button type="button" [class.active]="showGround" [attr.aria-pressed]="showGround"
-        (click)="toggleLayer('ground')">{{word('ground')}}</button>
-      <button type="button" [class.active]="showZodiac" [attr.aria-pressed]="showZodiac"
-        (click)="toggleLayer('zodiac')">{{word('zodiac')}}</button>
-      <button type="button" [class.active]="showSigns" [attr.aria-pressed]="showSigns"
-        (click)="toggleLayer('signs')">{{word('signs')}}</button>
-      <button type="button" [class.active]="showZodiacGrid" [attr.aria-pressed]="showZodiacGrid"
-        (click)="toggleLayer('zodiacGrid')">{{word('zodiacGrid')}}</button>
-      <button type="button" class="sky3d-layer-wide" [class.active]="showAngles" [attr.aria-pressed]="showAngles"
-        (click)="toggleLayer('angles')">{{word('angles')}} <span class="sky3d-axis-swatch" aria-hidden="true"></span></button>
-    </div>
-    <div class="sky3d-panel-divider"></div>
-    <p class="sky3d-group-name">{{word('objects')}}</p>
-    <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('objects')">
-      <button type="button" [class.active]="showStars" [attr.aria-pressed]="showStars"
-        (click)="toggleLayer('stars')">{{word('stars')}}</button>
-      <button type="button" [class.active]="showStarLabels" [disabled]="!showStars" [attr.aria-pressed]="showStarLabels"
-        (click)="toggleLayer('starLabels')">{{word('starLabels')}}</button>
-      <button type="button" [class.active]="showPlanets" [attr.aria-pressed]="showPlanets"
-        (click)="toggleLayer('planets')">{{word('planets')}}</button>
-    </div>
-    <div class="sky3d-panel-divider"></div>
-    <label class="sky3d-star-search-label" for="sky3d-star-search">{{word('findStar')}}</label>
-    <input id="sky3d-star-search" type="search" class="sky3d-star-search"
-      autocomplete="off" spellcheck="false" maxlength="60" [value]="starQuery"
-      [disabled]="!showStars || status!=='ready' || starCount===0"
-      [attr.placeholder]="word('findStarHint')"
-      (input)="onStarQuery($event)" (keydown)="onStarSearchKey($event)">
-    <ul class="sky3d-star-results" *ngIf="starQuery.length>=2 && showStars && status==='ready' && starMatches.length">
-      <li *ngFor="let star of starMatches">
-        <button type="button" (click)="focusStar(star)">
-          <span class="sky3d-star-result-name">{{star.id}}</span>
-          <span class="sky3d-star-result-alt">{{formatted(star.altitudeDeg)}}</span>
-        </button>
-      </li>
-    </ul>
-    <p class="sky3d-star-no-match" *ngIf="starQuery.length>=2 && showStars && status==='ready' && starMatches.length===0">
-      {{word('noStarMatches')}}
-    </p>
+    </header>
+    <details class="sky3d-accordion" open>
+      <summary>{{word('geometry')}}</summary>
+      <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('geometry')">
+        <button type="button" [class.active]="showMeridian" [attr.aria-pressed]="showMeridian"
+          (click)="toggleLayer('meridian')">{{word('meridian')}}</button>
+        <button type="button" [class.active]="showGrid" [attr.aria-pressed]="showGrid"
+          (click)="toggleLayer('grid')">{{word('grid')}}</button>
+        <button type="button" [class.active]="showEquator" [attr.aria-pressed]="showEquator"
+          (click)="toggleLayer('equator')">{{word('equator')}}</button>
+        <button type="button" [class.active]="showZodiac" [attr.aria-pressed]="showZodiac"
+          (click)="toggleLayer('zodiac')">{{word('zodiac')}}</button>
+        <button type="button" [class.active]="showZodiacGrid" [attr.aria-pressed]="showZodiacGrid"
+          (click)="toggleLayer('zodiacGrid')">{{word('zodiacGrid')}}</button>
+        <button type="button" [class.active]="showSigns" [attr.aria-pressed]="showSigns"
+          (click)="toggleLayer('signs')">{{word('signs')}}</button>
+        <button type="button" [class.active]="showAngles" [attr.aria-pressed]="showAngles"
+          (click)="toggleLayer('angles')">{{word('angles')}}</button>
+        <button type="button" [class.active]="showHouses" [disabled]="!activeHouseGrid"
+          [attr.aria-pressed]="showHouses" (click)="toggleLayer('houses')">{{word('houseGrid')}}</button>
+      </div>
+      <label class="sky3d-house-label" for="sky3d-house-system">{{word('houseSystem')}}</label>
+      <select id="sky3d-house-system" class="sky3d-house-select" [value]="houseSystem"
+        [disabled]="availableHouseGrids.length===0"
+        (change)="selectHouseSystem($event)">
+        <option *ngFor="let grid of availableHouseGrids" [value]="grid.id"
+          [selected]="grid.id===houseSystem">{{houseLabel(grid.id)}}</option>
+      </select>
+      <p class="sky3d-house-caveat" *ngIf="activeHouseGrid">{{word('houseNote')}}</p>
+      <details class="sky3d-house-cusps" *ngIf="activeHouseGrid && showHouses">
+        <summary>{{word('houseCusps')}}</summary>
+        <div class="sky3d-cusp-grid" role="group" [attr.aria-label]="word('houseCusps')">
+          <button type="button" *ngFor="let cusp of cuspRows"
+            [class.selected]="selectedCuspIndex===cusp.index"
+            [attr.aria-label]="word('houseFocus')+' '+cusp.house+' · '+formatCusp(cusp.longitude)+' '+cuspSign(cusp.longitude)"
+            [attr.aria-pressed]="selectedCuspIndex===cusp.index"
+            (click)="focusCusp(cusp.index)">
+            <span class="sky3d-cusp-roman">{{cuspRoman(cusp.index)}}</span>
+            <img [src]="cuspGlyph(cusp.longitude)" alt="" aria-hidden="true">
+            <span class="sky3d-cusp-number">{{formatCusp(cusp.longitude)}}</span>
+          </button>
+        </div>
+      </details>
+      <p class="sky3d-house-caveat" *ngIf="!activeHouseGrid">{{houseSystemName || houseSystem}} — {{word('houseUnavailable')}}</p>
+    </details>
+    <details class="sky3d-accordion" open>
+      <summary>{{word('appearance')}}</summary>
+      <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('appearance')">
+        <button type="button" [class.active]="showAtmosphere" [attr.aria-pressed]="showAtmosphere"
+          (click)="toggleLayer('atmosphere')">{{word('atmosphere')}}</button>
+        <button type="button" [class.active]="showGround" [attr.aria-pressed]="showGround"
+          (click)="toggleLayer('ground')">{{word('ground')}}</button>
+        <button type="button" [class.active]="showStars" [attr.aria-pressed]="showStars"
+          (click)="toggleLayer('stars')">{{word('stars')}}</button>
+        <button type="button" [class.active]="showStarLabels" [disabled]="!showStars"
+          [attr.aria-pressed]="showStarLabels" (click)="toggleLayer('starLabels')">{{word('starLabels')}}</button>
+        <button type="button" [class.active]="showPlanets" [attr.aria-pressed]="showPlanets"
+          (click)="toggleLayer('planets')">{{word('planets')}}</button>
+      </div>
+    </details>
+    <details class="sky3d-accordion sky3d-search-accordion">
+      <summary>{{word('findStar')}}</summary>
+      <div class="sky3d-search-content">
+        <label class="sky3d-star-search-label" for="sky3d-star-search">{{word('findStar')}}</label>
+        <input id="sky3d-star-search" type="search" class="sky3d-star-search"
+          autocomplete="off" spellcheck="false" maxlength="60" [value]="starQuery"
+          [disabled]="!showStars || status!=='ready' || starCount===0"
+          [attr.placeholder]="word('findStarHint')"
+          (input)="onStarQuery($event)" (keydown)="onStarSearchKey($event)">
+        <ul class="sky3d-star-results" *ngIf="starQuery.length>=2 && showStars && status==='ready' && starMatches.length">
+          <li *ngFor="let star of starMatches">
+            <button type="button" (click)="focusStar(star)">
+              <span class="sky3d-star-result-name">{{star.id}}</span>
+              <span class="sky3d-star-result-alt">{{formatted(star.altitudeDeg)}}</span>
+            </button>
+          </li>
+        </ul>
+        <p class="sky3d-star-no-match" *ngIf="starQuery.length>=2 && showStars && status==='ready' && starMatches.length===0">
+          {{word('noStarMatches')}}
+        </p>
+      </div>
+    </details>
   </aside>
 
   <div class="sky3d-info-strip" aria-live="off">
@@ -107,8 +142,41 @@
     <dl>
       <div><dt>{{word('altitude')}}</dt><dd>{{formatted(selection.point.altitudeDeg)}}</dd></div>
       <div><dt>{{word('azimuth')}}</dt><dd>{{formatted(selection.point.azimuthNorthEastDeg)}}</dd></div>
-      <div *ngIf="selection.point.magnitude!==null"><dt>{{word('starMagnitude')}}</dt>
-        <dd>{{selection.point.magnitude?.toFixed(2)}}</dd></div>
+      <div *ngIf="selection.point.eclipticLongitudeDeg!==null">
+        <dt>{{word('longitude')}}</dt><dd>{{valueText(selection.point.eclipticLongitudeDeg)}}</dd>
+      </div>
+      <div *ngIf="selection.point.eclipticLongitudeDeg!==null && selectedSign">
+        <dt>{{word('sign')}}</dt><dd class="sky3d-sign-value">
+          <img *ngIf="selectedSignImage" [src]="selectedSignImage" alt="" aria-hidden="true">
+          {{selectedSign}}</dd>
+      </div>
+      <div *ngIf="selection.point.eclipticLatitudeDeg!==null">
+        <dt>{{word('latitude')}}</dt><dd>{{valueText(selection.point.eclipticLatitudeDeg)}}</dd>
+      </div>
+      <div *ngIf="selection.point.rightAscensionDeg!==null">
+        <dt>{{word('rightAscension')}}</dt><dd>{{valueText(selection.point.rightAscensionDeg)}}</dd>
+      </div>
+      <div *ngIf="selection.point.declinationDeg!==null">
+        <dt>{{word('declination')}}</dt><dd>{{valueText(selection.point.declinationDeg)}}</dd>
+      </div>
+      <div *ngIf="selection.point.distanceAu!==null">
+        <dt>{{word('distance')}}</dt><dd>{{valueText(selection.point.distanceAu,word('distanceUnit'),6)}}</dd>
+      </div>
+      <div *ngIf="selection.point.longitudeSpeedDegPerDay!==null">
+        <dt>{{word('longitudeSpeed')}}</dt><dd>{{valueText(selection.point.longitudeSpeedDegPerDay,word('speedUnit'),4)}}</dd>
+      </div>
+      <div *ngIf="selection.point.constellation">
+        <dt>{{word('constellation')}}</dt><dd>{{selection.point.constellation}}</dd>
+      </div>
+      <div *ngIf="selection.point.magnitude!==null">
+        <dt>{{word('starMagnitude')}}</dt><dd>{{selection.point.magnitude?.toFixed(2)}}</dd>
+      </div>
+      <div *ngIf="selection.point.catalogId!==null">
+        <dt>{{word('catalogId')}}</dt><dd>{{selection.point.catalogId}}</dd>
+      </div>
+      <div *ngIf="selection.point.ephemerisSource">
+        <dt>{{word('source')}}</dt><dd>{{selection.point.ephemerisSource}}</dd>
+      </div>
     </dl>
     <p class="sky3d-approximate" *ngIf="selection.point.approximate">{{word('approximate')}}</p>
     <p class="sky3d-approximate" *ngIf="selection.point.altitudeDeg<0 && showGround">{{word('belowHorizon')}}</p>
@@ -154,7 +222,10 @@
   </div>
 
   <footer class="sky3d-footer">
-    <p>{{word('note')}} <span>{{word('skyLightNote')}}</span></p>
+    <p>{{word('note')}} <span>{{planetTextureNote}}</span>
+      <a *ngIf="hasRealPlanetTextures" href="https://www.solarsystemscope.com/textures/"
+        target="_blank" rel="noopener noreferrer">Solar System Scope · CC BY 4.0</a>
+    </p>
     <p class="sky3d-footer-count" *ngIf="status==='ready'">
       {{visiblePlanetCount}} {{word('planets')}} · {{starCount}} {{word('stars')}}
       <span *ngIf="starCount===0">{{word('noStars')}}</span>

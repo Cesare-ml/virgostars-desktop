@@ -84,6 +84,34 @@ npm run build:ui
 
 For local development with the verified original artwork, place the authorized `astrological-assets` checkout beside this repository and run `npm start` (alias: `npm run start:private`). This serves only the approved, locally staged images. A public-only checkout can instead run `npm run start:synthetic` to use synthetic checkerboard fixtures; `npm run build:ui` and `npm run tauri:build` also remain synthetic by default. For a native prototype, start the Angular server first and then use `npm run tauri:dev`, or `npm run tauri:build` to attempt an executable build. `src-tauri/tauri.conf.json` currently has `bundle.active=false`: **these commands do not produce an end-user installer**. No VirgoStars account, production service, or restricted data package is required for the synthetic build.
 
+### Cielo 3D — real planetary textures (optional offline add-on)
+
+The experimental observer sky has an atmosphere toggle, collapsible controls, detailed planetary and star coordinates, and a **house-cusp grid linked to the chart's active house system**. The grid plots intersections on the ecliptic, not complete 3D house boundary planes.
+
+To replace the illustrated planet portraits with licensed, NASA-data-derived surface maps, first run **once with an Internet connection**:
+
+```bash
+npm run sky3d:textures:download
+```
+
+Then start the private Angular frontend in one terminal:
+
+```bash
+npm start
+```
+
+Launch the native Desktop in a second terminal:
+
+```bash
+npm run tauri:dev
+```
+
+The Tauri configuration points to the existing `http://127.0.0.1:4200` frontend; it does not automatically start that server.
+
+Maps from **Solar System Scope** are licensed **CC BY 4.0** and credited in the 3D sky. This is an explicitly requested download, **not** an automatic browser/network call. Private staging verifies the cached checksums and embeds the available maps into the offline bundle. Missing or undownloadable maps retain the existing illustrated portrait. Surface rotation, phases, illumination and apparent diameters are still illustrative, not time-accurate.
+
+See [Cielo 3D: planet textures and house grids](docs/SKY_3D_REAL_PLANETS_HOUSE_GRID_2026-11-20.md) for source rights, geometric limits and outstanding validation. The current changes remain in a draft PR until Angular/Rust/Windows QA is complete.
+
 The synthetic asset generator is designed to fail closed on unexpected, modified or unapproved assets. If the local generated pack already exists, follow [Asset Pipeline](docs/ASSET_PIPELINE.md) rather than overwriting it.
 
 ## Project architecture
