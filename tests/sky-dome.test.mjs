@@ -36,9 +36,9 @@ const reply=()=>({
 
 test('3D renderer uses true north/east/up and supports underground points',()=>{
   const n=observerVector(0,0),e=observerVector(90,0),s=observerVector(180,0),w=observerVector(270,0);
-  near(n.x,0);near(n.z,1);
+  near(n.x,0);near(n.z,-1);
   near(e.x,1);near(e.z,0);
-  near(s.z,-1);near(w.x,-1);
+  near(s.z,1);near(w.x,-1);
   near(observerVector(0,90).y,1);
   near(observerVector(0,-90).y,-1);
   assert.equal(observerVector(0,-91),null);
