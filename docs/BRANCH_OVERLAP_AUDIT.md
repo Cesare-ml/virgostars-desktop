@@ -59,6 +59,45 @@ integration review and tests. Two-sided file comparisons are not a substitute
 for a merge, semantic review or upstream dependency validation. Neither
 direction performs checkout, merge, fetch or writes to the working tree.
 
+## File-versus-directory prefix candidates (read-only)
+
+Exact matching alone misses a risky Git tree shape: one branch adds a regular
+file `config`, while another adds `config/settings.json`. Their changed
+path strings differ, but both file shapes cannot coexist in a checked-out
+tree. The helper `scripts/branch-path-collisions.mjs` walks each changed
+path's slash-separated ancestors rather than comparing every pair of paths.
+The report adds **review candidates**, not guaranteed merge conflicts:
+
+- `prefixOverlapFiles` and `prefixOverlaps` identify distinct ancestor and
+  nested paths touched by **different feature branches**. Every JSON row
+  includes `ancestorPath`, `nestedPath`, `ancestorBranches` and
+  `nestedBranches`, so reviewers can identify the relevant PRs.
+- `basePrefixOverlapFiles` and `basePrefixOverlaps` compare each branch
+  with changes on `main` since their merge base. Rows contain
+  `branch`, `basePath` and `branchPath`. This check only runs when the
+  complete base-side audit is present (`baseFilesChecked=true`).
+- Exact path collisions remain under the existing `overlaps` and
+  `baseOverlaps` keys, unchanged. New prefix pairs exclude exact matches
+  to avoid double-reporting them. Plain-text output adds `PREFIX REVIEW`
+  and `BASE PREFIX REVIEW` lines; JSON consumers can ignore the new fields.
+
+### Bounded collision reporting
+
+The prefix candidate output has a **combined limit of 1,024 pairs** across
+all feature-vs-feature and feature-vs-main checks, not a per-branch allowance.
+Both helpers abort on their 1,025th candidate, and the reporter also checks
+the accumulated base-side count before returning. Exactly 1,024 pairs are
+accepted. If the cap is exceeded the command **fails closed** with
+`Too many file-directory prefix collisions; review a smaller branch batch`.
+It never publishes a truncated, deceptively low count. Split a large set of
+review refs into smaller groups; individual groups cannot certify global merge
+safety, especially when hundreds of agents are running.
+
+Neither kind of candidate proves a textual conflict, and a path mentioned
+because of a deletion or rename may no longer exist on the final branch.
+A clean prefix report **does not authorize merging**. The audit still has no
+checkout, network, GitHub API access, branch updates or filesystem writes.
+
 ## Important limitations
 
 - Shared files **may merge cleanly**. Different files **may still conflict
@@ -100,3 +139,35 @@ incomplete base-side results, and a local synthetic Git fixture in which `main`
 and only one feature branch change the same file after diverging. Run the
 focused Node test command above on a complete checkout; fixture tests alone
 do not certify merge safety or Windows/Desktop readiness.
+
+## Ancestor-path regression addition (2026-11-14)
+
+Run `node --test tests/branch-path-collisions.test.mjs` in a complete
+checkout. Five focused pure-module cases were **executed** with Node.js
+22.16.0 in a standalone local mirror: **5 passed**. Two additional cases
+exercise the committed report integration and a disposable synthetic Git
+repository (feature-vs-feature and feature-vs-main with no exact shared
+paths); these **have not yet been executed** against the complete repository
+and must pass before integration. The test suite also checks that the local
+Git command does not alter HEAD, the active branch or working tree.
+This is a developer merge-triage tool, not application runtime behavior.
+
+### Follow-up validation — bounded candidate output (2026-11-14)
+
+The committed helper's exact Git blob SHA is `ae66ec2cc96e1503e2d2d63e12b589d8beec788a`,
+matching the locally tested Node.js 22.16.0 file. The local focused helper
+suite ran **7/7 passing** cases (original five plus two limit-boundary cases).
+Four additional injected pure-report scenarios were **executed** against the
+exact GitHub-committed reporter and helper in an isolated JavaScript harness:
+cross-versus-main overflow, main-side aggregate overflow, exactly 1,024
+accepted pairs and zero-candidate behavior: **4/4 passing**.
+
+The committed test file additionally includes four new cases (two pure, two
+report integration). The *full* Node test file with disposable Git fixtures,
+the prior branch-audit tests, Angular, Rust and Windows smoke were **not** run
+in this follow-up environment. Run these from a complete checkout:
+
+```sh
+node --test tests/branch-path-collisions.test.mjs tests/branch-overlap-report.test.mjs
+npm test
+```
