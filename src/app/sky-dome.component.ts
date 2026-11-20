@@ -572,7 +572,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       map:texture,transparent:true,depthTest:true,depthWrite:false,
     }));
     sprite.position.copy(this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,98.5));
-    sprite.scale.set(this.selected.kind==='star'?6.8:9, this.selected.kind==='star'?6.8:9,1);
+    const radius=this.selected.kind==='star'?7:(planetPortraitSpec(point.id)?.diameter??9)+3;
+    sprite.scale.set(radius,radius,1);
     this.markerGroup.add(sprite);
     this.selectionRing=sprite;
     this.draw();
@@ -619,40 +620,59 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       if(this.showPlanets){
         const loader=new THREE.TextureLoader();
         for(const point of data.planets){
+          const spec=planetPortraitSpec(point.id);
+          if(!spec)continue;
           const position=this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,100);
-          const size=point.id==='Sun'?18:point.id==='Moon'?15:12;
           const accent=planetAccent(point.id);
-          // The glow is not a physically scaled planetary disk.
+          // Soft glow: not a physical angular diameter or planetary magnitude.
           const halo=new THREE.Sprite(new THREE.SpriteMaterial({
             map:this.radialTexture(),color:new THREE.Color(accent),
-            transparent:true,blending:THREE.AdditiveBlending,opacity:0.87,
+            transparent:true,blending:THREE.AdditiveBlending,opacity:0.72,
             depthTest:true,depthWrite:false,
           }));
-          halo.position.copy(position);
-          halo.scale.set(size,size,1);
+          halo.position.copy(position.clone().multiplyScalar(1.002));
+          halo.scale.set(spec.diameter*1.8,spec.diameter*1.8,1);
+          halo.renderOrder=0;
           group.add(halo);
-          const core=new THREE.Mesh(
-            new THREE.SphereGeometry(point.id==='Sun'?1.15:0.7,12,10),
-            new THREE.MeshBasicMaterial({color:accent}),
-          );
-          core.position.copy(position);
-          core.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-          group.add(core);
-          this.targets.push(core);
+
+          const portrait=this.portraitTexture(point.id);
+          if(portrait){
+            // Main portrait faces the observer: actual altitude/azimuth is
+            // computed in Rust; colour/texture is expressly illustrative.
+            const disc=new THREE.Sprite(new THREE.SpriteMaterial({
+              map:portrait,transparent:true,depthTest:true,depthWrite:false,
+            }));
+            disc.position.copy(position.clone().multiplyScalar(0.998));
+            disc.scale.set(spec.diameter,spec.diameter,1);
+            disc.renderOrder=1;
+            disc.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(disc);this.targets.push(disc);
+          }else{
+            // Canvas-unavailable fallback: never omit the real sky position.
+            const fallback=new THREE.Mesh(
+              new THREE.SphereGeometry(0.9,12,10),
+              new THREE.MeshBasicMaterial({color:accent}),
+            );
+            fallback.position.copy(position);
+            fallback.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(fallback);this.targets.push(fallback);
+          }
+
+          // The official glyph is deliberately a small badge, not the body.
           const texture=loader.load(celestialGlyphUrl(point.id),()=>{
             if(this.destroyed||generation!==this.markerGeneration)return;
-            const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+            const glyph=new THREE.Sprite(new THREE.SpriteMaterial({
               map:texture,transparent:true,depthTest:true,depthWrite:false,
             }));
-            // Overlay closer to the observer than the marker core.
-            sprite.position.copy(position.clone().multiplyScalar(0.996));
-            const side=point.id==='Sun'||point.id==='Moon'?6.0:5.0;
-            sprite.scale.set(side,side,1);
-            sprite.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-            group.add(sprite);
-            this.targets.push(sprite);
+            glyph.position.copy(position.clone().multiplyScalar(0.995));
+            glyph.center.set(0.10,0.10); // below/right corner of the portrait
+            glyph.scale.set(spec.labelDiameter,spec.labelDiameter,1);
+            glyph.renderOrder=2;
+            glyph.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(glyph);
+            this.targets.push(glyph);
             this.draw();
-          });
+          },undefined,()=>{ /* Portrait remains present without glyph artwork. */ });
           this.markerTextures.push(texture);
         }
       }
@@ -678,6 +698,21 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           group.add(dots);
           this.targets.push(dots);
         }
+        if(this.showStarLabels){
+          for(const star of labeledCatalogStars(data.stars)){
+            const texture=this.starNameTexture(star.id);
+            if(!texture)continue;
+            this.markerTextures.push(texture);
+            const label=new THREE.Sprite(new THREE.SpriteMaterial({
+              map:texture,transparent:true,depthTest:true,depthWrite:false,
+              opacity:0.89,
+            }));
+            label.position.copy(this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,99.2));
+            label.center.set(0.03,0.5);
+            label.scale.set(13,2.45,1);
+            group.add(label);
+          }
+        }
       }
     }
     this.markerGroup=group;
@@ -696,6 +731,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
       case 'ground':this.showGround=!this.showGround;break;
       case 'stars':this.showStars=!this.showStars;if(!this.showStars && this.selected?.kind==='star')this.selected=null;this.buildMarkers();break;
+      case 'starLabels':this.showStarLabels=!this.showStarLabels;this.buildMarkers();break;
       case 'planets':this.showPlanets=!this.showPlanets;if(!this.showPlanets && this.selected?.kind==='planet')this.selected=null;this.buildMarkers();break;
     }
     if(this.layerGroups.meridian)this.layerGroups.meridian.visible=this.showMeridian;
