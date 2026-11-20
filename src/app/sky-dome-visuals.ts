@@ -43,3 +43,27 @@ export function planetAccent(id:string):string {
     default:return '#d5dbea';
   }
 }
+
+/**
+ * Names are never invented. Only use actual known bright stars from the
+ * native local catalogue, deduplicated by astronomical display name.
+ */
+export function labeledCatalogStars<T extends {id:string;magnitude:number|null}>(
+  stars:readonly T[],limit=26,
+):readonly T[] {
+  if(!Number.isSafeInteger(limit)||limit<0||limit>80)return [];
+  const named=stars.filter(star=>
+    star.magnitude!==null&&Number.isFinite(star.magnitude)&&star.magnitude<=2.7&&
+    typeof star.id==='string'&&star.id.trim().length>0&&star.id.length<=80
+  );
+  named.sort((a,b)=>(a.magnitude??20)-(b.magnitude??20));
+  const result:T[]=[];
+  const seen=new Set<string>();
+  for(const star of named){
+    const key=star.id.trim().toLocaleLowerCase();
+    if(seen.has(key))continue;
+    seen.add(key);result.push(star);
+    if(result.length>=limit)break;
+  }
+  return result;
+}
