@@ -15,11 +15,20 @@ const zodiacFixture=()=>Array.from({length:12},(_,signIndex)=>({
   points:Array.from({length:31},(_,i)=>sampleDirection(0,(signIndex*30+i)%360)),
   label:sampleDirection(0,signIndex*30+15),
 }));
+const gridFixture=()=>({
+  northEdge:Array.from({length:361},(_,i)=>sampleDirection(8,i%360)),
+  southEdge:Array.from({length:361},(_,i)=>sampleDirection(-8,i%360)),
+  signDividers:Array.from({length:12},(_,i)=>Array.from({length:9},(_,j)=>
+    sampleDirection(-8+2*j,i*30))),
+  decadeTicks:Array.from({length:24},(_,i)=>Array.from({length:5},(_,j)=>
+    sampleDirection(-4+2*j,(Math.floor(i/2)*30+10+(i%2)*10)%360))),
+});
 const reply=()=>({
   protocolVersion:1,status:'ok',providerId:'virgostars_ephemeris',
   planets:[fixture('Sun',50,180),fixture('Moon',-20,90)],
   stars:[fixture('Sirius',-2,225,true,-1.44)],
   zodiacSegments:zodiacFixture(),
+  zodiacGrid:gridFixture(),
   angles:['ASC','DSC','MC','IC'].map((id,i)=>({
     id,zodiacLongitudeDeg:i*90,position:sampleDirection(i*20-30,i*90),
   })),
@@ -27,9 +36,9 @@ const reply=()=>({
 
 test('3D renderer uses true north/east/up and supports underground points',()=>{
   const n=observerVector(0,0),e=observerVector(90,0),s=observerVector(180,0),w=observerVector(270,0);
-  near(n.x,0);near(n.z,1);
+  near(n.x,0);near(n.z,-1);
   near(e.x,1);near(e.z,0);
-  near(s.z,-1);near(w.x,-1);
+  near(s.z,1);near(w.x,-1);
   near(observerVector(0,90).y,1);
   near(observerVector(0,-90).y,-1);
   assert.equal(observerVector(0,-91),null);
@@ -51,6 +60,11 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
   assert.ok(Object.isFrozen(decoded.data.zodiacSegments));
   assert.equal(decoded.data.zodiacSegments.length,12);
   assert.equal(decoded.data.zodiacSegments[0].points.length,31);
+  assert.equal(decoded.data.zodiacGrid.northEdge.length,361);
+  assert.equal(decoded.data.zodiacGrid.southEdge.length,361);
+  assert.equal(decoded.data.zodiacGrid.signDividers.length,12);
+  assert.equal(decoded.data.zodiacGrid.decadeTicks.length,24);
+  assert.ok(Object.isFrozen(decoded.data.zodiacGrid));
   assert.deepEqual(decoded.data.angles.map(a=>a.id),['ASC','DSC','MC','IC']);
   for(const mutation of [
     r=>r.planets[0].altitudeDeg=NaN,
@@ -65,6 +79,11 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
     r=>r.zodiacSegments[2].points.pop(),
     r=>r.zodiacSegments[4].label.altitudeDeg=Infinity,
     r=>r.zodiacSegments[5].points[7].azimuthNorthEastDeg=-2,
+    r=>r.zodiacGrid.northEdge.pop(),
+    r=>r.zodiacGrid.southEdge[20].altitudeDeg=100,
+    r=>r.zodiacGrid.signDividers.pop(),
+    r=>r.zodiacGrid.signDividers[2][1].azimuthNorthEastDeg=Infinity,
+    r=>r.zodiacGrid.decadeTicks[2].pop(),
     r=>r.angles.pop(),
     r=>r.angles[1].id='ASC',
     r=>r.angles[2].zodiacLongitudeDeg=Infinity,
@@ -102,10 +121,13 @@ test('Desktop chart uses separate 3D presentation, not a second synthetic natal 
   assert.match(rust,/topocentric_horizontal/);
   assert.match(rust,/zodiac_direction/);
   assert.match(rust,/SkyAngleV1/);
+  assert.match(rust,/SkyZodiacGridV1/);
+  assert.match(rust,/zodiac_latitude_direction/);
   assert.match(viewer,/buildAngles/);
   assert.match(viewer,/zodiacGlyphUrl/);
   assert.match(viewer,/data.zodiacSegments/);
   assert.match(read('src/app/sky-dome.component.html'),/toggleLayer\('zodiac'\)/);
+  assert.match(read('src/app/sky-dome.component.html'),/toggleLayer\('zodiacGrid'\)/);
   assert.match(read('src/app/sky-dome.component.html'),/toggleLayer\('angles'\)/);
   assert.match(viewer,/calculateSkyDome/);
   assert.doesNotMatch(viewer,/Math\.random\(|synthetic|fakePlanet/);

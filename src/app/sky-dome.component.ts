@@ -6,9 +6,17 @@ import {
 import * as THREE from 'three';
 import {calculateSkyDome} from './native/sky-dome';
 import type {SkyDomeData, SkyDomePoint, SkyDomeResult} from './native/sky-dome-contract';
-import {observerVector, validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
+import {validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
+import {SkyDomeLens} from './sky-dome-fisheye';
+import {
+  clampedSkyFov, normalizePitch, skyCameraFrame, skyFisheyeWorldRay,
+  skyWorldVector, SKY_FISHEYE_START_DEG,
+} from './sky-dome-projection';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
-import {planetAccent, skyLightFromSun, starAppearance, type SkyLight} from './sky-dome-visuals';
+import {planetAccent, skyLightFromSun, starAppearance, labeledCatalogStars, type SkyLight} from './sky-dome-visuals';
+import {createPlanetPortrait,planetPortraitSpec} from './sky-dome-planet-portraits';
+import {findSkyStars} from './sky-dome-star-search';
+import {skyFacingPlane} from './sky-dome-billboard';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -22,7 +30,7 @@ type PointWithKind={point:SkyDomePoint;kind:'planet'|'star'};
 const WORDS={
   it:{
     title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
-    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',planets:'Pianeti',
+    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',starLabels:'Nomi stelle',planets:'Pianeti',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -43,14 +51,23 @@ const WORDS={
     direction:'Orientamento',
     statusReady:'Posizioni astronomiche',
     starMagnitude:'Magnitudine',
-    skyHelp:'Frecce per orientarti; + e − per variare il campo visivo.',
-    skyLightNote:'Atmosfera illustrativa, non modello fisico.',
+    findStar:'Cerca una stella',
+    findStarHint:'Scrivi almeno due lettere',
+    noStarMatches:'Nessuna stella trovata nel catalogo locale',
+    belowHorizon:'Sotto l’orizzonte: disattiva Terreno per vederla.',
+    lensUnavailable:'Vista fisheye non supportata da questa GPU: prospettiva normale attiva.',
+    skyHelp:'Trascina per ruotare anche oltre lo zenit; rotellina per passare alla vista sferica.',
+    spherical:'Vista sferica',
+    perspective:'Prospettiva',
+    nadir:'Nadir',
+    allSky:'Tutto il cielo',
+    skyLightNote:'Corpi planetari illustrati: non fotografie, fasi o dimensioni fisiche.',
     backToChart:'Torna al grafico',
     noStars:'Catalogo locale delle stelle non disponibile.',
   },
   en:{
     title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
-    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',planets:'Planets',
+    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',starLabels:'Star names',planets:'Planets',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -71,8 +88,17 @@ const WORDS={
     direction:'Direction',
     statusReady:'Astronomical positions',
     starMagnitude:'Magnitude',
-    skyHelp:'Arrow keys to turn; + and − to change field of view.',
-    skyLightNote:'Illustrative atmosphere, not a physical model.',
+    findStar:'Find a star',
+    findStarHint:'Type at least two letters',
+    noStarMatches:'No matching star in the local catalogue',
+    belowHorizon:'Below the horizon: turn off Ground to see it.',
+    lensUnavailable:'Fisheye view unavailable on this GPU: normal perspective is active.',
+    skyHelp:'Drag beyond the zenith; scroll out for a spherical all-sky view.',
+    spherical:'Spherical view',
+    perspective:'Perspective',
+    nadir:'Nadir',
+    allSky:'All-sky',
+    skyLightNote:'Illustrated planetary portraits, not photos, physical phases or diameters.',
     backToChart:'Back to chart',
     noStars:'Local star catalogue unavailable.',
   },
@@ -98,17 +124,20 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private scene:THREE.Scene|null=null;
   private camera:THREE.PerspectiveCamera|null=null;
   private renderer:THREE.WebGLRenderer|null=null;
+  private skyLens:SkyDomeLens|null=null;
   private observer:ResizeObserver|null=null;
   private frame=0;
   private generation=0;
   private destroyed=false;
   private webglFailed=false;
+  fisheyeUnavailable=false;
   private markerGroup:THREE.Group|null=null;
   private markerGeneration=0;
   private markerTextures:THREE.Texture[]=[];
+  private portraitTextures=new Map<string,THREE.CanvasTexture>();
   private sparkleTexture:THREE.CanvasTexture|null=null;
   private selectionTexture:THREE.CanvasTexture|null=null;
-  private selectionRing:THREE.Sprite|null=null;
+  private selectionRing:THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>|null=null;
   private overlayGroup:THREE.Group|null=null;
   private layerGroups:Partial<Record<LayerName,THREE.Group>>={};
   private ground:THREE.Mesh|null=null;
@@ -130,11 +159,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   showGrid=false;
   showEquator=false;
   showZodiac=true;
+  showZodiacGrid=true;
   showSigns=true;
   showAngles=true;
   showGround=false;
   showStars=true;
+  showStarLabels=true;
   showPlanets=true;
+  starQuery='';
 
   word(key:keyof typeof WORDS.it):string { return WORDS[this.locale][key]; }
   bodyName(id:string):string {return NAMES[id]?.[this.locale==='it'?0:1]??id;}
@@ -156,13 +188,35 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     return skyLightFromSun(sun?.altitudeDeg??null);
   }
   get viewDirection():string {
-    const az=(this.yaw%360+360)%360;
-    const altitude=this.pitch;
-    return az.toFixed(0)+'° · '+altitude.toFixed(0)+'°';
+    const frame=skyCameraFrame(this.yaw,this.pitch);
+    return frame?frame.headingDeg.toFixed(0)+'° · '+frame.altitudeDeg.toFixed(0)+'°':'—';
   }
+  get isSpherical():boolean {return !this.fisheyeUnavailable && (this.camera?.fov??75)>=SKY_FISHEYE_START_DEG;}
   get fieldOfView():number { return Math.round(this.camera?.fov??75); }
   get visiblePlanetCount():number{return this.data?.planets.length??0;}
   get planetDock():readonly SkyDomePoint[] { return this.data?.planets??[]; }
+  get starMatches():readonly SkyDomePoint[] {
+    return this.showStars && this.status==='ready'
+      ? findSkyStars(this.data?.stars??[],this.starQuery,7):[];
+  }
+  onStarQuery(event:Event):void {
+    const input=event.target as HTMLInputElement;
+    this.starQuery=input.value.slice(0,60);
+    this.cd.markForCheck();
+  }
+  clearStarQuery():void {this.starQuery='';this.cd.markForCheck();}
+  onStarSearchKey(event:KeyboardEvent):void {
+    if(event.key==='Escape'){this.clearStarQuery();event.preventDefault();}
+  }
+  focusStar(point:SkyDomePoint):void {
+    // The result must be one of the host-supplied stars, never a local guess.
+    if(!this.showStars || this.status!=='ready' || !this.data?.stars.includes(point))return;
+    this.selected={point,kind:'star'};
+    this.look(point.azimuthNorthEastDeg,point.altitudeDeg);
+    this.updateSelectionRing();
+    this.clearStarQuery();
+    this.cd.markForCheck();
+  }
   focusPlanet(id:string):void {
     const point=this.data?.planets.find(body=>body.id===id);
     if(!point || !this.showPlanets || this.status!=='ready')return;
@@ -201,6 +255,17 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
       this.renderer.setClearColor(0x000000,0);
       this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+      // Constrain the cubemap size to the GPU's actual capability, with
+      // perspective fallback on devices that cannot support a cube target.
+      const gl=this.renderer.getContext();
+      const maximum=Number(gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE));
+      const side:256|512|1024|0=maximum>=1024?1024:maximum>=512?512:maximum>=256?256:0;
+      if(side){
+        try{this.skyLens=new SkyDomeLens(side);}
+        catch{this.fisheyeUnavailable=true;}
+      }else{
+        this.fisheyeUnavailable=true;
+      }
       this.renderer.domElement.setAttribute('aria-hidden','true');
       this.viewport.nativeElement.appendChild(this.renderer.domElement);
       this.renderer.domElement.addEventListener('pointerdown',this.pointerDown);
@@ -246,6 +311,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(this.scene)this.disposeTree(this.scene);
     for(const texture of this.markerTextures)texture.dispose();
     this.markerTextures=[];
+    for(const texture of this.portraitTextures.values())texture.dispose();
+    this.portraitTextures.clear();
     this.sparkleTexture?.dispose();
     this.sparkleTexture=null;
     this.selectionTexture?.dispose();
@@ -256,6 +323,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.zodiacTextures=[];
     for(const texture of this.compassTextures)texture.dispose();
     this.compassTextures=[];
+    this.skyLens?.dispose();
+    this.skyLens=null;
     this.renderer?.dispose();
     this.renderer?.forceContextLoss();
     this.renderer=null;this.scene=null;this.camera=null;this.targets=[];
@@ -263,7 +332,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private async load():Promise<void> {
     const ticket=++this.generation;
     if(!this.webglFailed)this.status='loading';
-    this.selected=null;this.data=null;
+    this.selected=null;this.data=null;this.clearStarQuery();
     this.buildMarkers();
     this.buildZodiac();
     this.buildAngles();
@@ -294,7 +363,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     (group??this.scene)?.add(this.line(points,color,opacity));
   }
   private vec(az:number,alt:number,r=100):THREE.Vector3 {
-    const p=observerVector(az,alt,r);
+    const p=skyWorldVector(az,alt,r);
     return new THREE.Vector3(p?.x??0,p?.y??0,p?.z??0);
   }
   private buildScaffold():void {
@@ -304,7 +373,18 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.scene.add(horizon);this.layerGroups.horizon=horizon;
 
     const meridian=new THREE.Group();
+    // Full 360° meridian: N -> zenith -> S above the horizon.
     this.curve(Array.from({length:181},(_,a)=>this.vec(a<=90?0:180,a<=90?a:180-a,99)),0xf1bd7c,0.9,meridian);
+    // S -> nadir -> N below the horizon (subdued and dashed).
+    const underground=new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(Array.from({length:181},(_,a)=>
+        this.vec(a<=90?180:0,a<=90?-a:a-180,99))),
+      new THREE.LineDashedMaterial({
+        color:0xf1bd7c,dashSize:2,gapSize:1.6,transparent:true,opacity:0.46,depthWrite:false,
+      }),
+    );
+    underground.computeLineDistances();
+    meridian.add(underground);
     this.scene.add(meridian);this.layerGroups.meridian=meridian;
 
     const grid=new THREE.Group();
@@ -341,11 +421,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(letter,64,68);
       const texture=new THREE.CanvasTexture(canvas);
       this.compassTextures.push(texture);
-      const label=new THREE.Sprite(new THREE.SpriteMaterial({
-        map:texture,transparent:true,depthTest:true,depthWrite:false,
-      }));
-      label.position.copy(this.vec(az,4,96));
-      label.scale.set(11,11,1);
+      const label=skyFacingPlane(texture,this.vec(az,4,96),11,11);
       group.add(label);
     }
     this.scene.add(group);
@@ -364,7 +440,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
         const t=i*Math.PI/180;
         return new THREE.Vector3(
           99*Math.cos(t),99*Math.sin(t)*Math.cos(latitude),
-          -99*Math.sin(t)*Math.sin(latitude));
+          99*Math.sin(t)*Math.sin(latitude));
       });
       this.curve(points,0x9a92e8,0.9,group);
     }
@@ -388,7 +464,17 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const group=new THREE.Group();
     this.scene.add(group);
     this.zodiacGroup=group;
-    if(!this.data || (!this.showZodiac && !this.showSigns)){this.draw();return;}
+    if(!this.data || (!this.showZodiac && !this.showZodiacGrid && !this.showSigns)){this.draw();return;}
+    if(this.showZodiacGrid) {
+      const grid=this.data.zodiacGrid;
+      const drawGridLine=(line:readonly {azimuthNorthEastDeg:number;altitudeDeg:number}[],color:number,opacity:number):void=>{
+        this.curve(line.map(p=>this.vec(p.azimuthNorthEastDeg,p.altitudeDeg,99.4)),color,opacity,group);
+      };
+      drawGridLine(grid.northEdge,0xdeb777,0.27);
+      drawGridLine(grid.southEdge,0xdeb777,0.27);
+      for(const line of grid.signDividers)drawGridLine(line,0xeed2a3,0.39);
+      for(const line of grid.decadeTicks)drawGridLine(line,0xe2b977,0.16);
+    }
     const loader=new THREE.TextureLoader();
     for(const sign of this.data.zodiacSegments){
       const color=sign.signIndex%2===0?0xe1bb75:0xc99f6a;
@@ -409,14 +495,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
         // Keep an unlabelled sky if an asset is missing: never substitute an emoji.
         const texture=loader.load(url,()=>{
           if(this.destroyed || generation!==this.zodiacGeneration)return;
-          const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-            map:texture,transparent:true,depthTest:true,depthWrite:false
-          }));
-          sprite.position.copy(this.vec(
+          const label=skyFacingPlane(texture,this.vec(
             sign.label.azimuthNorthEastDeg,sign.label.altitudeDeg,98.5
-          ));
-          sprite.scale.set(8,8,1);
-          group.add(sprite);
+          ),8,8);
+          group.add(label);
           this.draw();
         });
         this.zodiacTextures.push(texture);
@@ -457,12 +539,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       ctx.closePath();ctx.fill();
       const texture=new THREE.CanvasTexture(canvas);
       this.angleTextures.push(texture);
-      const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-        map:texture,transparent:true,depthTest:true,depthWrite:false,
-      }));
-      sprite.position.copy(this.vec(pos.azimuthNorthEastDeg,pos.altitudeDeg,99));
-      sprite.scale.set(11,5.5,1);
-      group.add(sprite);
+      group.add(skyFacingPlane(texture,
+        this.vec(pos.azimuthNorthEastDeg,pos.altitudeDeg,99),11,5.5));
     }
     this.draw();
   }
@@ -517,6 +595,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(!this.markerGroup)return;
     if(this.selectionRing){
       this.markerGroup.remove(this.selectionRing);
+      this.selectionRing.geometry.dispose();
       this.selectionRing.material.dispose();
       this.selectionRing=null;
     }
@@ -524,14 +603,37 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const texture=this.selectionOutline();
     if(!texture)return;
     const {point}=this.selected;
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:texture,transparent:true,depthTest:true,depthWrite:false,
-    }));
-    sprite.position.copy(this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,98.5));
-    sprite.scale.set(this.selected.kind==='star'?6.8:9, this.selected.kind==='star'?6.8:9,1);
-    this.markerGroup.add(sprite);
-    this.selectionRing=sprite;
+    const radius=this.selected.kind==='star'?7:(planetPortraitSpec(point.id)?.diameter??9)+3;
+    const ring=skyFacingPlane(texture,
+      this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,98.5),radius,radius);
+    this.markerGroup.add(ring);
+    this.selectionRing=ring;
     this.draw();
+  }
+  private portraitTexture(id:string):THREE.CanvasTexture|null {
+    const existing=this.portraitTextures.get(id);
+    if(existing)return existing;
+    const texture=createPlanetPortrait(id);
+    if(texture)this.portraitTextures.set(id,texture);
+    return texture;
+  }
+  private starNameTexture(name:string):THREE.CanvasTexture|null {
+    const canvas=document.createElement('canvas');
+    canvas.width=512;canvas.height=96;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)return null;
+    const label=name.length>28?name.slice(0,27)+'…':name;
+    ctx.font='600 31px sans-serif';
+    ctx.textBaseline='middle';ctx.textAlign='left';
+    const width=Math.min(480,ctx.measureText(label).width+25);
+    ctx.fillStyle='rgba(8,18,34,.55)';
+    ctx.beginPath();ctx.roundRect(8,13,width,68,14);ctx.fill();
+    ctx.fillStyle='#e3e9fc';
+    ctx.shadowColor='rgba(70,105,180,.55)';ctx.shadowBlur=9;
+    ctx.fillText(label,20,48,455);
+    const texture=new THREE.CanvasTexture(canvas);
+    texture.colorSpace=THREE.SRGBColorSpace;
+    return texture;
   }
   private buildMarkers():void {
     if(!this.scene)return;
@@ -550,40 +652,51 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       if(this.showPlanets){
         const loader=new THREE.TextureLoader();
         for(const point of data.planets){
+          const spec=planetPortraitSpec(point.id);
+          if(!spec)continue;
           const position=this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,100);
-          const size=point.id==='Sun'?18:point.id==='Moon'?15:12;
           const accent=planetAccent(point.id);
-          // The glow is not a physically scaled planetary disk.
-          const halo=new THREE.Sprite(new THREE.SpriteMaterial({
-            map:this.radialTexture(),color:new THREE.Color(accent),
-            transparent:true,blending:THREE.AdditiveBlending,opacity:0.87,
-            depthTest:true,depthWrite:false,
-          }));
-          halo.position.copy(position);
-          halo.scale.set(size,size,1);
-          group.add(halo);
-          const core=new THREE.Mesh(
-            new THREE.SphereGeometry(point.id==='Sun'?1.15:0.7,12,10),
-            new THREE.MeshBasicMaterial({color:accent}),
-          );
-          core.position.copy(position);
-          core.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-          group.add(core);
-          this.targets.push(core);
+          // Soft glow: not a physical angular diameter or planetary magnitude.
+          const glow=this.radialTexture();
+          if(glow){
+            const halo=skyFacingPlane(
+              glow,position.clone().multiplyScalar(1.002),
+              spec.diameter*1.8,spec.diameter*1.8,
+              {color:accent,blending:THREE.AdditiveBlending,opacity:0.72,renderOrder:0},
+            );
+            group.add(halo);
+          }
+
+          const portrait=this.portraitTexture(point.id);
+          if(portrait){
+            // Main portrait faces the observer: actual altitude/azimuth is
+            // computed in Rust; colour/texture is expressly illustrative.
+            const disc=skyFacingPlane(portrait,position.clone().multiplyScalar(0.998),
+              spec.diameter,spec.diameter,{renderOrder:1});
+            disc.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(disc);this.targets.push(disc);
+          }else{
+            // Canvas-unavailable fallback: never omit the real sky position.
+            const fallback=new THREE.Mesh(
+              new THREE.SphereGeometry(0.9,12,10),
+              new THREE.MeshBasicMaterial({color:accent}),
+            );
+            fallback.position.copy(position);
+            fallback.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(fallback);this.targets.push(fallback);
+          }
+
+          // The official glyph is deliberately a small badge, not the body.
           const texture=loader.load(celestialGlyphUrl(point.id),()=>{
             if(this.destroyed||generation!==this.markerGeneration)return;
-            const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-              map:texture,transparent:true,depthTest:true,depthWrite:false,
-            }));
-            // Overlay closer to the observer than the marker core.
-            sprite.position.copy(position.clone().multiplyScalar(0.996));
-            const side=point.id==='Sun'||point.id==='Moon'?6.0:5.0;
-            sprite.scale.set(side,side,1);
-            sprite.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-            group.add(sprite);
-            this.targets.push(sprite);
+            const glyph=skyFacingPlane(texture,position.clone().multiplyScalar(0.995),
+              spec.labelDiameter,spec.labelDiameter,
+              {anchorX:0.10,anchorY:0.10,renderOrder:2});
+            glyph.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(glyph);
+            this.targets.push(glyph);
             this.draw();
-          });
+          },undefined,()=>{ /* Portrait remains present without glyph artwork. */ });
           this.markerTextures.push(texture);
         }
       }
@@ -609,6 +722,16 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           group.add(dots);
           this.targets.push(dots);
         }
+        if(this.showStarLabels){
+          for(const star of labeledCatalogStars(data.stars)){
+            const texture=this.starNameTexture(star.id);
+            if(!texture)continue;
+            this.markerTextures.push(texture);
+            group.add(skyFacingPlane(texture,
+              this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,99.2),
+              13,2.45,{anchorX:0.03,anchorY:0.5,opacity:0.89}));
+          }
+        }
       }
     }
     this.markerGroup=group;
@@ -616,16 +739,18 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.updateSelectionRing();
     this.draw();
   }
-  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'signs'|'angles'|'ground'|'stars'|'planets'):void {
+  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'zodiacGrid'|'signs'|'angles'|'ground'|'stars'|'planets'|'starLabels'):void {
     switch(name){
       case 'meridian':this.showMeridian=!this.showMeridian;break;
       case 'grid':this.showGrid=!this.showGrid;break;
       case 'equator':this.showEquator=!this.showEquator;break;
       case 'zodiac':this.showZodiac=!this.showZodiac;this.buildZodiac();break;
+      case 'zodiacGrid':this.showZodiacGrid=!this.showZodiacGrid;this.buildZodiac();break;
       case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
       case 'ground':this.showGround=!this.showGround;break;
       case 'stars':this.showStars=!this.showStars;if(!this.showStars && this.selected?.kind==='star')this.selected=null;this.buildMarkers();break;
+      case 'starLabels':this.showStarLabels=!this.showStarLabels;this.buildMarkers();break;
       case 'planets':this.showPlanets=!this.showPlanets;if(!this.showPlanets && this.selected?.kind==='planet')this.selected=null;this.buildMarkers();break;
     }
     if(this.layerGroups.meridian)this.layerGroups.meridian.visible=this.showMeridian;
@@ -633,6 +758,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(this.layerGroups.equator)this.layerGroups.equator.visible=this.showEquator;
     if(this.ground)this.ground.visible=this.showGround;
     this.draw();
+  }
+  showAllSky():void {
+    if(!this.camera)return;
+    // A hemisphere fits into a central disc; the extra 20° exposes the
+    // opposite side for the ground/sky transitions seen in Stellarium.
+    this.camera.fov=this.fisheyeUnavailable?84:200;
+    this.camera.updateProjectionMatrix();
+    this.look(this.yaw,90);
+    this.cd.markForCheck();
   }
   resetView():void {
     if(this.camera){this.camera.fov=75;this.camera.updateProjectionMatrix();}
@@ -646,8 +780,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     switch(event.key){
       case 'ArrowLeft':this.look((this.yaw-step+360)%360,this.pitch);break;
       case 'ArrowRight':this.look((this.yaw+step)%360,this.pitch);break;
-      case 'ArrowUp':this.look(this.yaw,Math.min(85,this.pitch+step));break;
-      case 'ArrowDown':this.look(this.yaw,Math.max(-85,this.pitch-step));break;
+      case 'ArrowUp':this.look(this.yaw,this.pitch+step);break;
+      case 'ArrowDown':this.look(this.yaw,this.pitch-step);break;
       case '+':case '=':this.adjustField(-5);break;
       case '-':case '_':this.adjustField(5);break;
       case 'Home':this.resetView();break;
@@ -655,28 +789,66 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     }
     if(handled){event.preventDefault();this.cd.markForCheck();}
   }
+  zoomSky(change:number):void {
+    this.adjustField(change);
+    this.cd.markForCheck();
+  }
   private adjustField(change:number):void {
     if(!this.camera)return;
-    this.camera.fov=Math.max(28,Math.min(100,this.camera.fov+change));
-    this.camera.updateProjectionMatrix();this.draw();
+    this.camera.fov=Math.min(this.fisheyeUnavailable?84:220,clampedSkyFov(this.camera.fov+change));
+    this.camera.updateProjectionMatrix();
+    // The objects have not moved: only their display projection changes.
+    this.draw(false);
   }
   look(az:number,alt:number):void {
-    this.yaw=az;this.pitch=alt;
-    this.camera?.lookAt(this.vec(this.yaw,this.pitch,1));
-    this.draw();
+    const frame=skyCameraFrame(az,alt);
+    if(!frame)return;
+    this.yaw=((az%360)+360)%360;
+    this.pitch=normalizePitch(alt);
+    if(this.camera){
+      // Stable through both poles. Three.js camera local -Z = forward.
+      const rotation=new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(frame.right.x,frame.right.y,frame.right.z),
+        new THREE.Vector3(frame.up.x,frame.up.y,frame.up.z),
+        new THREE.Vector3(frame.back.x,frame.back.y,frame.back.z),
+      );
+      this.camera.quaternion.setFromRotationMatrix(rotation);
+      this.camera.updateMatrixWorld();
+    }
+    this.draw(false);
   }
   private resize():void {
     if(!this.camera||!this.renderer)return;
     const w=Math.max(1,this.viewport.nativeElement.clientWidth);
     const h=Math.max(1,this.viewport.nativeElement.clientHeight);
     this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w,h,false);this.draw();
+    this.renderer.setSize(w,h,false);this.draw(false);
   }
-  private draw():void {
+  private draw(sceneChanged=true):void {
+    if(sceneChanged)this.skyLens?.invalidate();
     if(!this.renderer||!this.scene||!this.camera||this.frame)return;
     this.frame=requestAnimationFrame(()=>{
       this.frame=0;
-      if(this.renderer&&this.scene&&this.camera)this.renderer.render(this.scene,this.camera);
+      if(this.renderer&&this.scene&&this.camera&&!this.webglFailed){
+        try{
+          if(this.skyLens)this.skyLens.render(this.renderer,this.scene,this.camera);
+          else this.renderer.render(this.scene,this.camera);
+        }catch{
+          if(this.skyLens){
+            // A failed cube target or shader must not erase the ordinary sky.
+            try{this.skyLens.dispose();}catch{/* GPU already lost */}
+            this.skyLens=null;
+            this.fisheyeUnavailable=true;
+            this.camera.fov=Math.min(this.camera.fov,84);
+            this.camera.updateProjectionMatrix();
+            try{this.renderer.render(this.scene,this.camera);}
+            catch{this.webglFailed=true;this.status='webgl_error';}
+          }else{
+            this.webglFailed=true;this.status='webgl_error';
+          }
+          this.cd.markForCheck();
+        }
+      }
     });
   }
   private pointerDown=(event:PointerEvent):void=>{
@@ -689,7 +861,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const dx=event.clientX-this.pointer.lastX,dy=event.clientY-this.pointer.lastY;
     if(Math.abs(event.clientX-this.pointer.x)+Math.abs(event.clientY-this.pointer.y)>5)this.pointer.dragged=true;
     this.pointer.lastX=event.clientX;this.pointer.lastY=event.clientY;
-    this.look((this.yaw-dx*0.27+360)%360,Math.max(-85,Math.min(85,this.pitch+dy*0.27)));
+    this.look(this.yaw-dx*0.27,this.pitch+dy*0.27);
     this.cd.markForCheck();
   };
   private pointerUp=(event:PointerEvent):void=>{
@@ -702,7 +874,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private wheel=(event:WheelEvent):void=>{
     event.preventDefault();
     if(!this.camera)return;
-    this.adjustField(Math.sign(event.deltaY)*4);
+    const step=(this.camera.fov>=110?8:5)*Math.sign(event.deltaY);
+    if(step!==0)this.adjustField(step);
     this.cd.markForCheck();
   };
   private contextLost=(event:Event):void=>{
@@ -717,7 +890,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       1-((event.clientY-bounds.top)/bounds.height)*2);
     const ray=new THREE.Raycaster();
     ray.params.Points.threshold=1.6;
-    ray.setFromCamera(ndc,this.camera);
+    if(this.camera.fov>=SKY_FISHEYE_START_DEG){
+      const frame=skyCameraFrame(this.yaw,this.pitch);
+      const dir=frame?skyFisheyeWorldRay(ndc.x,ndc.y,this.camera.aspect,this.camera.fov,frame):null;
+      if(!dir){this.clearSelection();return;}
+      ray.set(new THREE.Vector3(0,0,0),new THREE.Vector3(dir.x,dir.y,dir.z).normalize());
+    }else{
+      ray.setFromCamera(ndc,this.camera);
+    }
     let chosen:PointWithKind|null=null;
     for(const hit of ray.intersectObjects(this.targets,false)){
       const obj=hit.object;
@@ -726,6 +906,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       chosen=objectPoint??(stars && hit.index!==undefined ? {point:stars[hit.index],kind:'star'} : null);
       if(chosen)break;
     }
+    if(chosen && this.showGround && chosen.point.altitudeDeg<0)chosen=null;
     this.selected=chosen;
     this.updateSelectionRing();
     this.cd.markForCheck();

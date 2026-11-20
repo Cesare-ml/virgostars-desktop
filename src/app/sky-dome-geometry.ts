@@ -3,7 +3,7 @@
  * astronomy. Every astronomical object enters with a host-calculated altitude
  * and azimuth in true-North / clockwise-East convention.
  *
- * Three.js frame: +X=East, +Y=Up (zenith), +Z=North.
+ * Three.js RIGHT-HANDED frame: +X=East, +Y=Up (zenith), +Z=South; north is -Z.
  */
 export type ObserverVector = Readonly<{x:number;y:number;z:number}>;
 export type ObserverPoint = Readonly<{altitudeDeg:number;azimuthNorthEastDeg:number}>;
@@ -24,7 +24,7 @@ export function observerVector(azimuthNorthEastDeg:number, altitudeDeg:number, r
   return Object.freeze({
     x:radius*Math.cos(alt)*Math.sin(az),
     y:radius*Math.sin(alt),
-    z:radius*Math.cos(alt)*Math.cos(az),
+    z:-radius*Math.cos(alt)*Math.cos(az),
   });
 }
 export function validOverlay(line:SkyOverlayPolyline):boolean {
