@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { auditBuildPrivacy } from '../scripts/verify-build-privacy.mjs';
@@ -71,7 +71,12 @@ test('rejects a symlink directory pointing outside the output', t => withBundle(
   assert.throws(() => auditBuildPrivacy(bundle), /symbolic link/);
 }));
 
-test('rejects Windows case-insensitive output path collisions on a case-sensitive host', { skip: process.platform === 'win32' ? 'Requires a case-sensitive filesystem' : false }, () => withBundle(({ bundle, add }) => {
+test('rejects Windows case-insensitive output path collisions on a case-sensitive host', t => withBundle(({ bundle, add }) => {
+  add('assets/img/probe-case.jpg', 'probe');
+  if (existsSync(join(bundle, 'assets/img/PROBE-CASE.jpg'))) {
+    t.skip('The runner filesystem is case-insensitive; distinct case-variant names cannot coexist');
+    return;
+  }
   add('assets/img/fictional.jpg');
   add('assets/img/FICTIONAL.jpg');
   assert.throws(() => auditBuildPrivacy(bundle), /case-insensitive duplicate/);

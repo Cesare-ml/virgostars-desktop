@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const script = fileURLToPath(new URL('../scripts/updates/restore-backup.mjs', import.meta.url));
 function setup() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vs-recovery-test-'));
+  // macOS commonly aliases /var to /private/var. The recovery guard correctly
+  // refuses symlink parents: create test data below the canonical real path.
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'vs-recovery-test-'));
   const id = 'before-12345-7'; const snap = path.join(root, 'update-backups', id);
   fs.mkdirSync(path.join(snap, 'private-chart-photos-v1'), { recursive: true });
   const files = [['charts-v2.vsarchive', 'older-encrypted'], ['private-chart-photos-v1/a.vphoto', 'older-photo']];

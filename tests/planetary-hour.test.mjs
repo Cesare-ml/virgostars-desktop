@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {rendererPlanetaryHours} from '../src/app/astro/planetary-hour.ts';
-import {buildPlanetaryHours} from 'astrological-functions';
+// The pinned Functions root export omits this experimental builder.
+// Exercise its actual canonical, pinned sibling implementation without pretending
+// that the public package currently exposes the API.
+import {buildPlanetaryHours} from '../../astrological-functions/src/planetary-hours.mjs';
 
 const jd = iso => Date.parse(iso) / 86400000 + 2440587.5;
 test('planetary day uses the local weekday of sunrise, including across UTC midnight', () => {
