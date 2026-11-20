@@ -448,6 +448,32 @@ mod tests {
         }
     }
     #[test]
+    fn computed_house_cusps_are_projected_without_inventing_spatial_house_planes() {
+        let system=chart_calculation::HouseSystemV1 {
+            id:"egizia",
+            cusps_deg:core::array::from_fn(|i| f64::from(i as u32)*30.0),
+            ascendant_deg:15.0,mc_deg:285.0,armc_deg:275.0,vertex_deg:0.0,
+        };
+        let grid=house_grid(&system,23.4392911,155.0,44.0).unwrap();
+        assert_eq!(grid.id,"egizia");
+        assert_eq!(grid.cusp_longitudes_deg.len(),12);
+        assert!(grid.separators.iter().all(|line|line.len()==9));
+        assert_eq!(grid.labels.len(),12);
+        let center=grid.separators[0][4];
+        let expected=zodiac_direction(0.0,23.4392911,155.0,44.0).unwrap();
+        assert!((center.altitude_deg-expected.altitude_deg).abs()<1e-9);
+        let mut modified=system.clone();
+        modified.id="porfirio";
+        modified.cusps_deg[1]=35.0;
+        let new_grid=house_grid(&modified,23.4392911,155.0,44.0).unwrap();
+        assert_eq!(new_grid.id,"porfirio");
+        assert_eq!(new_grid.cusp_longitudes_deg[1],35.0);
+        assert_ne!(grid.separators[1][4].altitude_deg,new_grid.separators[1][4].altitude_deg);
+        modified.cusps_deg[2]=f64::NAN;
+        assert!(house_grid(&modified,23.4392911,155.0,44.0).is_none());
+    }
+
+    #[test]
     fn zodiac_grid_is_twelve_signs_with_a_didactic_ecliptic_latitude_band() {
         let grid=zodiac_grid(23.4392911,125.0,45.0).unwrap();
         assert_eq!(grid.north_edge.len(),361);
