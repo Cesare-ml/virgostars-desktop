@@ -208,7 +208,10 @@
   </div>
 
   <footer class="sky3d-footer">
-    <p>{{word('note')}} <span>{{word('skyLightNote')}}</span></p>
+    <p>{{word('note')}} <span>{{planetTextureNote}}</span>
+      <a *ngIf="hasRealPlanetTextures" href="https://www.solarsystemscope.com/textures/"
+        target="_blank" rel="noopener noreferrer">Solar System Scope · CC BY 4.0</a>
+    </p>
     <p class="sky3d-footer-count" *ngIf="status==='ready'">
       {{visiblePlanetCount}} {{word('planets')}} · {{starCount}} {{word('stars')}}
       <span *ngIf="starCount===0">{{word('noStars')}}</span>
