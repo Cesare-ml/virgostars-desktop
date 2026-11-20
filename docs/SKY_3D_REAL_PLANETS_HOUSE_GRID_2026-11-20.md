@@ -60,3 +60,14 @@ Se la cache non esiste, lo staging scrive un modulo vuoto e il cielo mantiene gl
 5. Test su hardware grafico limitato e verifica dell'assenza di fetch di rete dalla WebView per i pianeti.
 
 Questo documento descrive il codice introdotto, **non certifica un risultato scientifico o una build Windows completata**.
+
+
+## Avanzamento successivo: esplorazione delle cuspidi, coordinate stellari e download protetto
+
+- La sezione **Cuspidi delle case** visualizza i dodici valori calcolati dal metodo attivo, formattati come grado interno al segno e glifo dall'asset pack. Selezionare una cuspide orienta la camera verso il **punto centrale del separatore sulla banda eclittica restituito da Rust** ed evidenzia la sua linea. Il piano spaziale tridimensionale della casa resta **non** rappresentato: il dato geometrico disponibile è la cuspide.
+- Per le stelle con longitudine e latitudine eclittica fornite dal catalogo locale, il motore Rust ora converte le coordinate nella stessa **ascensione retta e declinazione del sistema di riferimento di data** mediante l'obliquità del calcolo corrente. Una stella marcata come approssimata conserva quel limite: è una conversione di coordinate, non una verifica indipendente della sua posizione.
+- Il downloader delle mappe JPEG legge il flusso con un limite **massimo di 3 MB per immagine anche quando il server omette Content-Length**, invece di caricare l'intera risposta in memoria. La funzione di lettura è esportata soltanto per consentire test con trasporto simulato; importare il modulo non provoca download automatici. Aggiunto il test `tests/sky-dome-download.test.mjs`.
+- Se un download fallisce, l'eventuale mappa mancante rimane sostituita da un disco illustrato; il manifesto include soltanto i file effettivamente verificati per hash.
+- **Preview nativa in due terminali:** `npm start` prepara e serve la build privata sul localhost, poi `npm run tauri:dev` avvia Tauri sulla pagina già in esecuzione. La sola chiamata Tauri non avvia automaticamente il dev server.
+
+**Verifiche non ancora effettuate:** compilazione Rust/Angular completa, tutte le suite Node e rendering reale WebView2. I controlli dei collegamenti HTML/CSS/TypeScript e dei dati del nuovo schema sono statici, non sostituiscono queste prove.
