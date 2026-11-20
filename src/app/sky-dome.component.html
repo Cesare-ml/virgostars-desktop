@@ -116,6 +116,10 @@
     <button type="button" [attr.aria-label]="word('field') + ' −'" (click)="zoomSky(-10)">+</button>
     <button type="button" [attr.aria-label]="word('field') + ' +'" (click)="zoomSky(10)">−</button>
     <span class="sky3d-directions-separator" aria-hidden="true"></span>
+    <button type="button" class="sky3d-allsky" [attr.aria-label]="word('allSky')" (click)="showAllSky()">
+      <span class="sky3d-allsky-icon" aria-hidden="true">◎</span>
+      <span>{{word('allSky')}}</span>
+    </button>
     <button type="button" class="sky3d-reset" [attr.aria-label]="word('reset')" (click)="resetView()">
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
         stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11a8.5 8.5 0 1 1 2.4 6"/><path d="M3.5 4.5V11H10"/></svg>
