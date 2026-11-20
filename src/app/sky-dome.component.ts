@@ -404,6 +404,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.data=result.kind==='ready'?result.data:null;
     this.buildMarkers();
     this.buildZodiac();
+    this.buildHouseGrid();
     this.buildAngles();
     this.cd.markForCheck();
   }
@@ -564,6 +565,49 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
         });
         this.zodiacTextures.push(texture);
       }
+    }
+    this.draw();
+  }
+  /**
+   * Cusp intersections for the CURRENT, natively computed house system.
+   * These small lines cross only the +/-8° ecliptic reference band; they are
+   * NOT the true spatial/mundane house surfaces.
+   */
+  private buildHouseGrid():void {
+    if(!this.scene)return;
+    if(this.houseGroup){
+      this.scene.remove(this.houseGroup);
+      this.disposeTree(this.houseGroup);
+    }
+    for(const texture of this.houseTextures)texture.dispose();
+    this.houseTextures=[];
+    const group=new THREE.Group();
+    this.scene.add(group);
+    this.houseGroup=group;
+    const grid=this.activeHouseGrid;
+    if(!this.showHouses || !grid){this.draw();return;}
+    const romans=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+    for(let index=0;index<12;index++){
+      const line=grid.separators[index];
+      const vectors=line.map(point=>this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,99.16));
+      this.curve(vectors,index===0||index===9?0xa8e9ce:0x75bca7,index===0||index===9?.83:.58,group);
+      const label=grid.labels[index];
+      const canvas=document.createElement('canvas');
+      canvas.width=128;canvas.height=64;
+      const ctx=canvas.getContext('2d');
+      if(!ctx)continue;
+      ctx.fillStyle='rgba(12,38,37,.75)';
+      ctx.beginPath();ctx.roundRect(1,5,126,54,15);ctx.fill();
+      ctx.strokeStyle='rgba(125,215,180,.55)';
+      ctx.lineWidth=2;ctx.stroke();
+      ctx.font='600 27px sans-serif';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillStyle='#c4ebdd';
+      ctx.fillText(romans[index],64,33);
+      const texture=new THREE.CanvasTexture(canvas);
+      this.houseTextures.push(texture);
+      group.add(skyFacingPlane(texture,
+        this.vec(label.azimuthNorthEastDeg,label.altitudeDeg,98.7),5.5,2.8));
     }
     this.draw();
   }
@@ -800,13 +844,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.updateSelectionRing();
     this.draw();
   }
-  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'zodiacGrid'|'signs'|'angles'|'ground'|'stars'|'planets'|'starLabels'):void {
+  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'zodiacGrid'|'houses'|'atmosphere'|'signs'|'angles'|'ground'|'stars'|'planets'|'starLabels'):void {
     switch(name){
       case 'meridian':this.showMeridian=!this.showMeridian;break;
       case 'grid':this.showGrid=!this.showGrid;break;
       case 'equator':this.showEquator=!this.showEquator;break;
       case 'zodiac':this.showZodiac=!this.showZodiac;this.buildZodiac();break;
       case 'zodiacGrid':this.showZodiacGrid=!this.showZodiacGrid;this.buildZodiac();break;
+      case 'houses':this.showHouses=!this.showHouses;this.buildHouseGrid();break;
+      case 'atmosphere':this.showAtmosphere=!this.showAtmosphere;break;
       case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
       case 'ground':this.showGround=!this.showGround;break;
