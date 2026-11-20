@@ -51,7 +51,7 @@ export function planetAccent(id:string):string {
 export function labeledCatalogStars<T extends {id:string;magnitude:number|null}>(
   stars:readonly T[],limit=26,
 ):readonly T[] {
-  if(!Number.isSafeInteger(limit)||limit<0||limit>80)return [];
+  if(!Number.isSafeInteger(limit)||limit<=0||limit>80)return [];
   const named=stars.filter(star=>
     star.magnitude!==null&&Number.isFinite(star.magnitude)&&star.magnitude<=2.7&&
     typeof star.id==='string'&&star.id.trim().length>0&&star.id.length<=80
