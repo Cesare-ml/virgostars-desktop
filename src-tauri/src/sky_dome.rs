@@ -295,6 +295,19 @@ mod tests {
         }
     }
     #[test]
+    fn asc_desc_and_mc_ic_ecliptic_directions_are_antipodal() {
+        let vec = |point:SkyDirectionV1| {
+            let alt=point.altitude_deg.to_radians();
+            let az=point.azimuth_north_east_deg.to_radians();
+            [alt.cos()*az.sin(),alt.cos()*az.cos(),alt.sin()]
+        };
+        for longitude in [5.0_f64,42.0,160.0,299.0] {
+            let a=vec(zodiac_direction(longitude,23.4392911,135.0,44.0).unwrap());
+            let b=vec(zodiac_direction(longitude+180.0,23.4392911,135.0,44.0).unwrap());
+            for i in 0..3 {assert!((a[i]+b[i]).abs() < 1e-9);}
+        }
+    }
+    #[test]
     fn zodiac_accounts_for_hemisphere_and_rejects_untrusted_angles() {
         let north = zodiac_direction(90.0,23.4392911,0.0,45.0).unwrap();
         let south = zodiac_direction(90.0,23.4392911,0.0,-45.0).unwrap();
