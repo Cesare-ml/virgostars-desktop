@@ -10,10 +10,22 @@ export type SkyDomePoint = Readonly<{
   magnitude: number | null;
   approximate: boolean;
 }>;
+/** Geometric point on the observer's celestial sphere (not a body). */
+export type SkyDomeDirection = Readonly<{
+  altitudeDeg:number;
+  azimuthNorthEastDeg:number;
+}>;
+/** One 30-degree tropical sign segment, projected by the native ephemeris. */
+export type SkyZodiacSegment = Readonly<{
+  signIndex:number;
+  points:readonly SkyDomeDirection[];
+  label:SkyDomeDirection;
+}>;
 export type SkyDomeData = Readonly<{
   providerId: string;
   planets: readonly SkyDomePoint[];
   stars: readonly SkyDomePoint[];
+  zodiacSegments: readonly SkyZodiacSegment[];
 }>;
 export type SkyDomeResult =
   | Readonly<{kind:'ready'; data:SkyDomeData}>
@@ -39,6 +51,27 @@ function arr(v:unknown,max:number):unknown[] {
   if(!Array.isArray(v)||v.length>max||Object.keys(v).length!==v.length||!Object.keys(v).every(k=>/^\d+$/.test(k)))throw Error('Invalid sky dome protocol');
   return v;
 }
+function direction(v:unknown):SkyDomeDirection {
+  if(!record(v))throw Error('Invalid sky dome protocol');
+  return Object.freeze({
+    altitudeDeg:num(v['altitudeDeg'],-90,90),
+    azimuthNorthEastDeg:num(v['azimuthNorthEastDeg'],0,359.99999999999994),
+  });
+}
+function zodiac(v:unknown):readonly SkyZodiacSegment[] {
+  const segments=arr(v,12);
+  if(segments.length!==12)throw Error('Invalid sky dome protocol');
+  return Object.freeze(segments.map((segment,i)=>{
+    if(!record(segment)||segment['signIndex']!==i)throw Error('Invalid sky dome protocol');
+    const positions=arr(segment['points'],31);
+    if(positions.length!==31)throw Error('Invalid sky dome protocol');
+    return Object.freeze({
+      signIndex:i,
+      points:Object.freeze(positions.map(direction)),
+      label:direction(segment['label']),
+    });
+  }));
+}
 function point(v:unknown,star:boolean):SkyDomePoint {
   if(!record(v)||typeof v['id']!=='string'||v['id'].length<1||v['id'].length>80||
     (star ? /[\u0000-\u001f]/.test(v['id']) : !PLANETS.has(v['id'])) ||
@@ -60,11 +93,12 @@ export function decodeSkyDome(raw:unknown):SkyDomeResult {
     !/^[a-z][a-z0-9_]{0,39}$/.test(raw['providerId']))throw Error('Invalid sky dome protocol');
   const planets=arr(raw['planets'],11).map(p=>point(p,false));
   const stars=arr(raw['stars'],2048).map(s=>point(s,true));
+  const zodiacSegments=zodiac(raw['zodiacSegments']);
   if(new Set(planets.map(p=>p.id)).size!==planets.length||
     !planets.some(p=>p.id==='Sun')||!planets.some(p=>p.id==='Moon')) throw Error('Invalid sky dome protocol');
   return Object.freeze({kind:'ready',data:Object.freeze({
     providerId:raw['providerId'],
-    planets:Object.freeze(planets),stars:Object.freeze(stars),
+    planets:Object.freeze(planets),stars:Object.freeze(stars),zodiacSegments,
   })});
 }
 export async function requestSkyDome(transport:SkyDomeTransport,request:SkyDomeRequest):Promise<SkyDomeResult> {
