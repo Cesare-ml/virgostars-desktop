@@ -82,6 +82,18 @@
 
   <p class="sky3d-status" role="status" *ngIf="warning">{{warning}}</p>
 
+  <nav class="sky3d-planet-dock" *ngIf="status==='ready' && showPlanets"
+    [attr.aria-label]="word('planets')">
+    <span class="sky3d-dock-label">{{word('planets')}}</span>
+    <button type="button" *ngFor="let planet of planetDock" (click)="focusPlanet(planet.id)"
+      [class.selected]="selected?.kind==='planet' && selected?.point?.id===planet.id"
+      [attr.title]="bodyName(planet.id)" [attr.aria-label]="bodyName(planet.id)"
+      [attr.aria-pressed]="selected?.kind==='planet' && selected?.point?.id===planet.id">
+      <img [src]="bodyGlyph(planet.id)" (error)="glyphMissing($event)" alt="" aria-hidden="true">
+      <span class="sky3d-dock-fallback" hidden>{{bodyName(planet.id)}}</span>
+    </button>
+  </nav>
+
   <div class="sky3d-directions" role="group" [attr.aria-label]="word('direction')">
     <button type="button" [attr.aria-label]="word('north')" (click)="look(0,20)">N</button>
     <button type="button" [attr.aria-label]="word('east')" (click)="look(90,20)">E</button>
