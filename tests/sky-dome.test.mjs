@@ -32,6 +32,15 @@ const reply=()=>({
   angles:['ASC','DSC','MC','IC'].map((id,i)=>({
     id,zodiacLongitudeDeg:i*90,position:sampleDirection(i*20-30,i*90),
   })),
+  houseGrids:[
+    {
+      id:'egizia',
+      cuspLongitudesDeg:Array.from({length:12},(_,i)=>(i*30+12)%360),
+      separators:Array.from({length:12},(_,i)=>Array.from({length:9},(_,j)=>
+        sampleDirection(-8+2*j,(i*30+12)%360))),
+      labels:Array.from({length:12},(_,i)=>sampleDirection(0,(i*30+27)%360)),
+    },
+  ],
 });
 
 test('3D renderer uses true north/east/up and supports underground points',()=>{
@@ -66,6 +75,10 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
   assert.equal(decoded.data.zodiacGrid.decadeTicks.length,24);
   assert.ok(Object.isFrozen(decoded.data.zodiacGrid));
   assert.deepEqual(decoded.data.angles.map(a=>a.id),['ASC','DSC','MC','IC']);
+  assert.equal(decoded.data.houseGrids.length,1);
+  assert.equal(decoded.data.houseGrids[0].id,'egizia');
+  assert.equal(decoded.data.houseGrids[0].separators.length,12);
+  assert.equal(decoded.data.houseGrids[0].separators[3].length,9);
   for(const mutation of [
     r=>r.planets[0].altitudeDeg=NaN,
     r=>r.planets[1].azimuthNorthEastDeg=-1,
@@ -88,11 +101,48 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
     r=>r.angles[1].id='ASC',
     r=>r.angles[2].zodiacLongitudeDeg=Infinity,
     r=>r.angles[3].position.altitudeDeg=91,
+    r=>r.houseGrids[0].id='invented',
+    r=>r.houseGrids[0].cuspLongitudesDeg.pop(),
+    r=>r.houseGrids[0].separators[4].pop(),
+    r=>r.houseGrids[0].labels[2].altitudeDeg=100,
+    r=>r.houseGrids.push({...r.houseGrids[0]}),
   ]){
     const modified=reply();mutation(modified);
     assert.throws(()=>decodeSkyDome(modified),/protocol/);
   }
 });
+test('planet and fixed-star metadata are validated and never invented in the browser',()=>{
+  const item=reply();
+  item.planets[0]={
+    ...item.planets[0],
+    eclipticLongitudeDeg:120.45,eclipticLatitudeDeg:0.001,
+    rightAscensionDeg:122.33,declinationDeg:17.5,
+    distanceAu:1.02,longitudeSpeedDegPerDay:1.02,
+    constellation:null,catalogId:null,ephemerisSource:'de441',
+  };
+  item.stars[0]={
+    ...item.stars[0],
+    eclipticLongitudeDeg:104.9,eclipticLatitudeDeg:-39.6,
+    rightAscensionDeg:null,declinationDeg:null,
+    distanceAu:null,longitudeSpeedDegPerDay:null,
+    constellation:'CMa',catalogId:93,ephemerisSource:null,
+  };
+  const decoded=decodeSkyDome(item);
+  assert.equal(decoded.kind,'ready');
+  assert.equal(decoded.data.planets[0].distanceAu,1.02);
+  assert.equal(decoded.data.stars[0].constellation,'CMa');
+  for(const modify of [
+    raw=>raw.planets[0].distanceAu=Infinity,
+    raw=>raw.planets[0].rightAscensionDeg=-1,
+    raw=>raw.stars[0].catalogId=-9,
+    raw=>raw.stars[0].constellation='x'.repeat(81),
+  ]){
+    const broken=structuredClone(item);
+    modify(broken);
+    assert.throws(()=>decodeSkyDome(broken),/protocol/);
+  }
+});
+
 test('failed or unsupported native calculation never displays fictional stars or planets',async()=>{
   const request={utcIso:'2026-11-20T13:00:00Z',latMicro:45_000_000,lngMicro:9_000_000};
   assert.deepEqual(await requestSkyDome({isNative:()=>false,invoke:()=>Promise.reject()},request),{kind:'not_native'});
