@@ -97,6 +97,8 @@ test('Desktop chart uses separate 3D presentation, not a second synthetic natal 
   assert.match(template,/<vs-sky-dome \*ngIf="view==='chart'/);
   assert.match(template,/\(click\)="toggleSkyDome\(\)"/);
   assert.match(controller,/chartPresentation: 'wheel' \| 'elements' \| 'aspects' \| 'sky3d'/);
+  assert.match(controller,/this\.mode !== 'natal'\) this\.setMode\('natal'\)/);
+  assert.match(controller,/this\.chartPresentation === 'sky3d'\) this\.chartPresentation = 'wheel'/);
   assert.match(rust,/topocentric_horizontal/);
   assert.match(rust,/zodiac_direction/);
   assert.match(rust,/SkyAngleV1/);
