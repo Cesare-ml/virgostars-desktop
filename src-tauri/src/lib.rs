@@ -2,6 +2,7 @@
 mod runtime_probe;
 mod offline_places;
 mod chart_calculation;
+mod sky_dome;
 mod archive_keys;
 mod archive_vault;
 mod chart_archive;
@@ -74,7 +75,7 @@ pub fn run() {
         })
         .manage(offline_places::PlaceSearchGate::default())
         .manage(pkce_native_registry::NativeLoginRegistry::new())
-        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update, star_link::open_star_page, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1, connected_account_ipc::desktop_chart_sync_v1, de441_operations::de441_packages])
+        .invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, sky_dome::calculate_sky_dome, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, updater::check_updates, updater::install_update, star_link::open_star_page, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1, connected_account_ipc::desktop_chart_sync_v1, de441_operations::de441_packages])
         .build(tauri::generate_context!())
         .expect("failed to build VirgoStars Desktop")
         .run(|app, event| {
