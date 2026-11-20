@@ -30,3 +30,11 @@ test('redraw resolves a selected point and the selected house system without sta
   assert.equal(monomeroForChart('Moon',data,'egizia',corpus),null);
   assert.equal(monomeroForChart('AS',data,'koch',corpus),null);
 });
+
+test('a dodecatemorion resolves its projected longitude rather than the natal longitude', () => {
+  const data={planets:{Sun:{longitude:10,dodecatemoria:{longitude:130.8}},Moon:{longitude:25}},houses:{}};
+  assert.equal(monomeroForChart('Sun',data,'egizia',corpus,true).text,'fictional 130');
+  assert.equal(monomeroForChart('Sun',data,'egizia',corpus,false).text,'fictional 10');
+  assert.equal(monomeroForChart('Moon',data,'egizia',corpus,true),null);
+  assert.equal(monomeroForChart('AS',data,'egizia',corpus,true),null);
+});

@@ -22,11 +22,12 @@ export function monomeroOnHover(current: MonomeroView | null,
 
 /** Re-resolve the selection after a chart redraw, without retaining a stale degree. */
 export function monomeroForChart(name: string, data: TemaRenderData, system: HouseSystemId,
-  corpus: readonly string[] = MONOMERI): MonomeroView | null {
+  corpus: readonly string[] = MONOMERI, projected = false): MonomeroView | null {
   const house = data.houses[system];
   const axes: Readonly<Record<string, number | undefined>> = {
     AS:house?.ascendant, DS:house?.ds, MC:house?.mc, IC:house?.ic,
   };
-  const longitude = Object.prototype.hasOwnProperty.call(axes, name) ? axes[name] : data.planets[name]?.longitude;
+  const longitude = projected ? data.planets[name]?.dodecatemoria?.longitude :
+    Object.prototype.hasOwnProperty.call(axes, name) ? axes[name] : data.planets[name]?.longitude;
   return typeof longitude === 'number' ? monomeroFor(name, longitude, corpus) : null;
 }

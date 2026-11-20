@@ -403,6 +403,52 @@ fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
     guard.as_mut().map(action)
 }
 
+fn fixed_stars_at(engine: &mut Engine, jd: f64, tt: f64, tdb: JulianDateTdb,
+    latitude_deg: f64, longitude_deg: f64) -> Result<Option<Vec<FixedStarV1>>, ProviderError> {
+            engine.require_logical_coverage(tdb)?;
+            let angles = house_angles(jd, tt, latitude_deg, longitude_deg).map_err(|_| ProviderError)?;
+            // Hipparcos I/239 HIP 32349, ICRS J1991.25; radial velocity zero is assumed.
+            let sirius = FixedStarRecord {id:102, name:"Sirius".into(), magnitude:Some(-1.44), epoch_tdb_jd:2_448_349.0625,
+                ra_deg:Some(101.28854105), dec_deg:Some(-16.71314306), pm_ra_mas_year:Some(-546.01), pm_dec_mas_year:Some(-1223.08),
+                parallax_mas:Some(379.21), radial_velocity_km_s:Some(0.0), approximate_ecliptic:None, constellation:Some("Canis Major".into()), interpretations:Default::default()};
+            let catalog = engine.stars.clone().unwrap_or_else(|| vec![sirius]);
+            if catalog.is_empty() { return Ok(None); }
+            let mut output = Vec::with_capacity(catalog.len());
+            for entry in catalog {
+                let approximate = entry.approximate_ecliptic.is_some();
+                let (ra,dec,pmra,pmdec,parallax,rv) = if let Some(p) = &entry.approximate_ecliptic {
+                    let Ok((ra,dec)) = ecliptic_to_equatorial(entry.epoch_tdb_jd,p.longitude_deg,p.latitude_deg) else {continue;};
+                    // Distance and motion unavailable in the source: an explicitly approximate distant fixed direction.
+                    (ra,dec,0.0,0.0,0.001,0.0)
+                } else { (entry.ra_deg.unwrap(),entry.dec_deg.unwrap(),entry.pm_ra_mas_year.unwrap(),entry.pm_dec_mas_year.unwrap(),
+                    entry.parallax_mas.unwrap(),entry.radial_velocity_km_s.unwrap()) };
+                let source = FixedStarCatalogEntry { epoch_tdb:JulianDateTdb(entry.epoch_tdb_jd), right_ascension_deg:ra,
+                    declination_deg:dec, proper_motion_ra_cos_dec_mas_per_year:pmra,
+                    proper_motion_dec_mas_per_year:pmdec, parallax_mas:parallax, radial_velocity_km_per_second:rv };
+                let star = if let Some(manager) = engine.multipack.as_mut() {
+                    calculate_star_with_provider(manager, source, tt, tdb, StellarSolarDeflection::PointMass)
+                } else {
+                    calculate_star_with_solar_deflection(&mut engine.ephemeris, source, tt, tdb, StellarSolarDeflection::PointMass)
+                };
+                let Ok(star) = star else { continue; };
+                let Ok((ra, dec)) = ecliptic_to_equatorial(tt, star.longitude_deg, star.latitude_deg) else { continue; };
+                let Ok(horizontal) = equatorial_to_horizontal(ra, dec, angles.armc_deg, latitude_deg) else { continue; };
+                output.push(FixedStarV1 {id:entry.id, name:entry.name, longitude_deg:star.longitude_deg,
+                    latitude_deg:star.latitude_deg, magnitude:entry.magnitude, true_altitude_deg:horizontal.true_altitude_deg, approximate,
+                    azimuth_south_west_deg:(horizontal.azimuth_north_east_deg + 180.0).rem_euclid(360.0), constellation:entry.constellation, interpretations:entry.interpretations});
+            }
+            Ok(Some(output))
+}
+
+pub(crate) fn historical_fixed_stars(jd_ut: f64, delta_t: f64, latitude_deg: f64,
+    longitude_deg: f64) -> Option<Result<Option<Vec<FixedStarV1>>, ProviderError>> {
+    use virgostars_ephemeris_core::explicit_delta_t::ut1_to_tdb_with_explicit_delta_t;
+    with_engine(|engine| {
+        let epoch = ut1_to_tdb_with_explicit_delta_t(jd_ut, delta_t, 0.0).map_err(|_| ProviderError)?;
+        fixed_stars_at(engine, jd_ut, epoch.jd_tt, epoch.jd_tdb, latitude_deg, longitude_deg)
+    })
+}
+
 /// Whether the DE441 file could be opened: without it there is no provider.
 pub fn data_available() -> bool {
     with_engine(|_| ()).is_some()
@@ -756,40 +802,8 @@ impl EphemerisProvider for VirgoStarsEphemeris {
         with_engine(|engine| {
             let jd = julian_day_ut(request);
             let tdb = engine.to_tdb(jd)?;
-            engine.require_logical_coverage(tdb)?;
             let tt = tdb_to_tt_jd(tdb.0).map_err(|_| ProviderError)?;
-            let angles = house_angles(jd, tt, request.latitude_deg, request.longitude_deg).map_err(|_| ProviderError)?;
-            // Hipparcos I/239 HIP 32349, ICRS J1991.25; radial velocity zero is assumed.
-            let sirius = FixedStarRecord {id:102, name:"Sirius".into(), magnitude:Some(-1.44), epoch_tdb_jd:2_448_349.0625,
-                ra_deg:Some(101.28854105), dec_deg:Some(-16.71314306), pm_ra_mas_year:Some(-546.01), pm_dec_mas_year:Some(-1223.08),
-                parallax_mas:Some(379.21), radial_velocity_km_s:Some(0.0), approximate_ecliptic:None, constellation:Some("Canis Major".into()), interpretations:Default::default()};
-            let catalog = engine.stars.clone().unwrap_or_else(|| vec![sirius]);
-            if catalog.is_empty() { return Ok(None); }
-            let mut output = Vec::with_capacity(catalog.len());
-            for entry in catalog {
-                let approximate = entry.approximate_ecliptic.is_some();
-                let (ra,dec,pmra,pmdec,parallax,rv) = if let Some(p) = &entry.approximate_ecliptic {
-                    let Ok((ra,dec)) = ecliptic_to_equatorial(entry.epoch_tdb_jd,p.longitude_deg,p.latitude_deg) else {continue;};
-                    // Distance and motion unavailable in the source: an explicitly approximate distant fixed direction.
-                    (ra,dec,0.0,0.0,0.001,0.0)
-                } else { (entry.ra_deg.unwrap(),entry.dec_deg.unwrap(),entry.pm_ra_mas_year.unwrap(),entry.pm_dec_mas_year.unwrap(),
-                    entry.parallax_mas.unwrap(),entry.radial_velocity_km_s.unwrap()) };
-                let source = FixedStarCatalogEntry { epoch_tdb:JulianDateTdb(entry.epoch_tdb_jd), right_ascension_deg:ra,
-                    declination_deg:dec, proper_motion_ra_cos_dec_mas_per_year:pmra,
-                    proper_motion_dec_mas_per_year:pmdec, parallax_mas:parallax, radial_velocity_km_per_second:rv };
-                let star = if let Some(manager) = engine.multipack.as_mut() {
-                    calculate_star_with_provider(manager, source, tt, tdb, StellarSolarDeflection::PointMass)
-                } else {
-                    calculate_star_with_solar_deflection(&mut engine.ephemeris, source, tt, tdb, StellarSolarDeflection::PointMass)
-                };
-                let Ok(star) = star else { continue; };
-                let Ok((ra, dec)) = ecliptic_to_equatorial(tt, star.longitude_deg, star.latitude_deg) else { continue; };
-                let Ok(horizontal) = equatorial_to_horizontal(ra, dec, angles.armc_deg, request.latitude_deg) else { continue; };
-                output.push(FixedStarV1 {id:entry.id, name:entry.name, longitude_deg:star.longitude_deg,
-                    latitude_deg:star.latitude_deg, magnitude:entry.magnitude, true_altitude_deg:horizontal.true_altitude_deg, approximate,
-                    azimuth_south_west_deg:(horizontal.azimuth_north_east_deg + 180.0).rem_euclid(360.0), constellation:entry.constellation, interpretations:entry.interpretations});
-            }
-            Ok(Some(output))
+            fixed_stars_at(engine, jd, tt, tdb, request.latitude_deg, request.longitude_deg)
         }).ok_or(ProviderError)?
     }
 
@@ -978,6 +992,15 @@ mod tests {
         if std::env::var_os("VIRGOSTARS_DE441_PATH").is_none() || std::env::var_os("VIRGOSTARS_FIXED_STARS").is_none() { return; }
         let results = VirgoStarsEphemeris.fixed_stars(&request(2000,1,1,12.0)).unwrap().unwrap();
         assert!(results.len() > 700, "most input stars should be calculable");
+        let historical = historical_fixed_stars(2_451_545.0, 63.8, 41.9, 12.5).unwrap().unwrap().unwrap();
+        assert_eq!(historical.len(), results.len());
+        let historic_sirius = historical.iter().find(|star| star.id == 102).unwrap();
+        let modern_sirius = results.iter().find(|star| star.id == 102).unwrap();
+        assert!((historic_sirius.longitude_deg - modern_sirius.longitude_deg).abs() < 0.001);
+        if std::env::var_os("VIRGOSTARS_USNO_DIR").is_some() {
+            let current = VirgoStarsEphemeris.fixed_stars(&request(2026,11,20,12.0)).unwrap().unwrap();
+            assert!(current.len() > 700);
+        }
         let sirius = results.iter().find(|star| star.id == 102).expect("Sirius");
         assert!((103.0..106.0).contains(&sirius.longitude_deg));
         assert!(!sirius.approximate && !sirius.interpretations.is_empty());

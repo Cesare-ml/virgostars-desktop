@@ -51,6 +51,7 @@ export class ReturnsPanelComponent implements OnChanges, OnDestroy {
   @Input() mapOpen = false;
   @Input() showControls = false;
   @Input() comparing = false;
+  @Input() canCompare = false;
   @Input() houseSystem: HouseSystemId = 'egizia';
   @Output() readonly chartRequested = new EventEmitter<ReturnChartRequest>();
   @Output() readonly closed = new EventEmitter<void>();

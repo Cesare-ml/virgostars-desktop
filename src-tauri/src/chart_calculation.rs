@@ -176,6 +176,15 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 
 /// Strict parser: no offsets, no leap seconds, no lenient separators.
 pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
+    validate_years(request, MIN_YEAR, MAX_YEAR)
+}
+
+/// Archive civil instants can be recalculated through the historical provider.
+pub(crate) fn validate_archive(request: &ChartRequestV1) -> Option<ValidatedRequest> {
+    validate_years(request, 1, 3000)
+}
+
+fn validate_years(request: &ChartRequestV1, min_year: i32, max_year: i32) -> Option<ValidatedRequest> {
     if request.protocol_version != PROTOCOL_VERSION
         || request.lat_micro.unsigned_abs() > MAX_LAT_MICRO as u32
         || request.lng_micro.unsigned_abs() > MAX_LNG_MICRO as u32
@@ -206,7 +215,7 @@ pub fn validate(request: &ChartRequestV1) -> Option<ValidatedRequest> {
         }
         digits(value)?
     };
-    if !(MIN_YEAR..=MAX_YEAR).contains(&year)
+    if !(min_year..=max_year).contains(&year)
         || day == 0
         || day > days_in_month(year, month)
         || hour > 23

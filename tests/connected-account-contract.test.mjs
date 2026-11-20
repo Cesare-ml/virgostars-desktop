@@ -39,7 +39,8 @@ test('v1 connected schema and decoder agree on fields and backend scope', () => 
   const write = {...connected, scope:'chart_sync:read chart_sync:groups:write'};
   assert.ok(schema.properties.scope.enum.includes(write.scope));
   assert.equal(decodeConnectedAccountResponse(write, {operation:'status',attemptId:ATTEMPT}).scope, write.scope);
-  for (const scope of ['chart_sync:read chart_sync:charts:write','chart_sync:read chart_sync:groups:write chart_sync:charts:write']) {
+  for (const scope of ['chart_sync:read chart_sync:charts:write','chart_sync:read chart_sync:groups:write chart_sync:charts:write',
+    'chart_sync:read chart_sync:charts:manage','chart_sync:read chart_sync:groups:write chart_sync:charts:write chart_sync:charts:manage']) {
     assert.ok(schema.properties.scope.enum.includes(scope));
     assert.equal(decodeConnectedAccountResponse({...connected,scope},{operation:'status',attemptId:ATTEMPT}).scope,scope);
   }

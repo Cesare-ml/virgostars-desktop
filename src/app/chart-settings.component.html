@@ -1,6 +1,23 @@
 <div class="chart-settings">
   <p class="settings-problem" role="alert" *ngIf="invalidOrb">{{t('chartsettings.orb.invalid')}}</p>
+  <p class="settings-problem" role="alert" *ngIf="invalidStars">{{t('stars.settings.invalid')}}</p>
 
+  <details class="settings-section" *ngIf="starsOnly">
+    <summary>{{t('stars.settings.title')}}</summary>
+    <p class="settings-note">{{t('stars.settings.note')}}</p>
+    <label class="star-slider"><span class="star-slider-head"><span>{{t('stars.settings.magnitude')}}</span><output>{{settings.fixedStars.magnitudeLimit === null ? t('stars.settings.all') : orbText(settings.fixedStars.magnitudeLimit)}}</output></span>
+      <input type="range" min="-10" max="20.1" step="0.1" [disabled]="disabled" [value]="settings.fixedStars.magnitudeLimit ?? 20.1" [attr.aria-valuetext]="settings.fixedStars.magnitudeLimit === null ? t('stars.settings.all') : orbText(settings.fixedStars.magnitudeLimit)" (input)="setStarMagnitude($event)" (change)="commitStarSliders()"></label>
+    <label class="settings-check"><input type="checkbox" [checked]="settings.fixedStars.includeUnknownMagnitude" [disabled]="disabled" (change)="setUnknownMagnitude($event)"><span>{{t('stars.settings.unknown')}}</span></label>
+    <label class="star-slider"><span class="star-slider-head"><span>{{t('stars.settings.longitudeOrb')}}</span><output>{{orbText(settings.fixedStars.longitudeOrb)}}°</output></span>
+      <input type="range" min="0" max="15" step="0.1" [disabled]="disabled" [value]="settings.fixedStars.longitudeOrb" [attr.aria-valuetext]="orbText(settings.fixedStars.longitudeOrb) + '°'" (input)="setStarOrb('longitudeOrb',$event)" (change)="commitStarSliders()"></label>
+    <label class="star-slider"><span class="star-slider-head"><span>{{t('stars.settings.axisOrb')}}</span><output>{{orbText(settings.fixedStars.axisOrb)}}°</output></span>
+      <input type="range" min="0" max="15" step="0.1" [disabled]="disabled" [value]="settings.fixedStars.axisOrb" [attr.aria-valuetext]="orbText(settings.fixedStars.axisOrb) + '°'" (input)="setStarOrb('axisOrb',$event)" (change)="commitStarSliders()"></label>
+    <p class="settings-note">{{t('stars.settings.orbsNote')}}</p>
+    <button type="button" class="settings-reset" [disabled]="disabled" (click)="saveStarsAsDefault()">{{t('stars.settings.save')}}</button>
+    <p class="settings-note" *ngIf="starsSaveStatus" role="status">{{t(starsSaveStatus === 'saved' ? 'stars.settings.saved' : 'stars.settings.saveFailed')}}</p>
+  </details>
+
+  <ng-container *ngIf="!starsOnly">
   <details class="settings-section">
     <summary>{{t('chartsettings.display')}}</summary>
     <label class="settings-check"><input type="checkbox" [checked]="settings.australInversion" [disabled]="disabled" (change)="setDisplayOption('australInversion',$event)"><span>{{t('chartsettings.austral')}}</span></label>
@@ -52,4 +69,5 @@
   </details>
 
   <button type="button" class="settings-reset" [disabled]="disabled" (click)="reset()">{{t('chartsettings.reset')}}</button>
+  </ng-container>
 </div>

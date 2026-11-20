@@ -42,6 +42,7 @@ export const AXIS_IDS: readonly string[] = Object.freeze(['AS', 'MC', 'DS', 'IC'
 
 export type AspectSetting = {active: boolean; orb: number | null};
 export type PointSetting = {shown: boolean; orb: number; aspects: boolean};
+export type FixedStarSettings = {magnitudeLimit: number | null; includeUnknownMagnitude: boolean; longitudeOrb: number; axisOrb: number};
 export type ChartSettings = {
   showAspects: boolean;
   australInversion: boolean;
@@ -52,6 +53,7 @@ export type ChartSettings = {
   showDecans: boolean;
   showDecades: boolean;
   showTerms: boolean;
+  fixedStars: FixedStarSettings;
   aspects: Record<AspectId, AspectSetting>;
   points: Record<PointId, PointSetting>;
 };
@@ -76,7 +78,8 @@ export function defaultChartSettings(): ChartSettings {
     points[id] = {shown: !HIDDEN_BY_DEFAULT.includes(id), orb: DEFAULT_POINT_ORB, aspects: !NO_ASPECTS_BY_DEFAULT.includes(id)};
   }
   return {showAspects: true, australInversion:false, outerWhenConjunct:false, planetOfYear:false,
-    focusAspects:false, applicationMode:'off', showDecans:false, showDecades:false, showTerms:false, aspects, points};
+    focusAspects:false, applicationMode:'off', showDecans:false, showDecades:false, showTerms:false,
+    fixedStars:{magnitudeLimit:null, includeUnknownMagnitude:true, longitudeOrb:1, axisOrb:1}, aspects, points};
 }
 
 function record(x: unknown): Record<string, unknown> | null {
@@ -102,6 +105,15 @@ export function sanitizeChartSettings(raw: unknown): ChartSettings {
     if (Object.hasOwn(source,key) && typeof source[key] === 'boolean') settings[key] = source[key];
   }
   if (Object.hasOwn(source,'applicationMode') && (source['applicationMode'] === 'off' || source['applicationMode'] === 'applying' || source['applicationMode'] === 'separating')) settings.applicationMode = source['applicationMode'];
+  const stars = record(source['fixedStars']);
+  if (stars) {
+    if (stars['magnitudeLimit'] === null) settings.fixedStars.magnitudeLimit = null;
+    else if (typeof stars['magnitudeLimit'] === 'number' && Number.isFinite(stars['magnitudeLimit']) && stars['magnitudeLimit'] >= -10 && stars['magnitudeLimit'] <= 20)
+      settings.fixedStars.magnitudeLimit = Math.round(stars['magnitudeLimit'] * 10) / 10;
+    if (typeof stars['includeUnknownMagnitude'] === 'boolean') settings.fixedStars.includeUnknownMagnitude = stars['includeUnknownMagnitude'];
+    settings.fixedStars.longitudeOrb = orbValue(stars['longitudeOrb'], 0) ?? settings.fixedStars.longitudeOrb;
+    settings.fixedStars.axisOrb = orbValue(stars['axisOrb'], 0) ?? settings.fixedStars.axisOrb;
+  }
   const aspects = record(source['aspects']);
   const points = record(source['points']);
   for (const {id} of ASPECT_DEFINITIONS) {
@@ -127,7 +139,36 @@ export interface ChartSettingsStorage {
 }
 
 export const CHART_SETTINGS_KEY = 'virgostars.desktop.chart-settings.v1';
+export const FIXED_STAR_DEFAULTS_KEY = 'virgostars.desktop.fixed-star-defaults.v1';
 const MAX_STORED_LENGTH = 8192;
+
+/** Only explicitly saved star defaults survive between application sessions. */
+export function loadFixedStarDefaults(storage: ChartSettingsStorage | null): FixedStarSettings {
+  try {
+    const raw = storage?.getItem(FIXED_STAR_DEFAULTS_KEY);
+    if (!raw || raw.length > 1024) return defaultChartSettings().fixedStars;
+    const data = record(JSON.parse(raw));
+    if (!data || data['version'] !== 1) return defaultChartSettings().fixedStars;
+    return sanitizeChartSettings({fixedStars:data['settings']}).fixedStars;
+  } catch { return defaultChartSettings().fixedStars; }
+}
+
+export function saveFixedStarDefaults(storage: ChartSettingsStorage | null, settings: FixedStarSettings): boolean {
+  try {
+    if (!storage) return false;
+    const sanitized = sanitizeChartSettings({fixedStars:settings}).fixedStars;
+    storage.setItem(FIXED_STAR_DEFAULTS_KEY, JSON.stringify({version:1, settings:sanitized}));
+    return true;
+  } catch { return false; }
+}
+
+/** Old chart-settings snapshots held automatically saved star values. They are
+ * not explicit defaults and must not override the new 1° starting values. */
+export function loadChartSettingsForSession(storage: ChartSettingsStorage | null): ChartSettings {
+  const settings = loadChartSettings(storage);
+  settings.fixedStars = loadFixedStarDefaults(storage);
+  return settings;
+}
 
 /** Unknown versions, damaged text and inaccessible storage all yield the defaults. */
 export function loadChartSettings(storage: ChartSettingsStorage | null): ChartSettings {

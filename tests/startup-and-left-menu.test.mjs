@@ -55,14 +55,15 @@ test('there is no demonstration chart: nothing is drawn without a calculated cha
   assert.match(component, /await this\.showSky\(\);/);
 });
 
-test('functions and settings open from the left menu, not from the right panel', () => {
+test('returns and settings open directly from the left menu without a Functions drawer', () => {
   const nav = html.match(/<nav class="sidebar"[\s\S]*?<\/nav>/)?.[0] ?? '';
-  for (const call of ['openFunctions()', 'openSettings()', "toggleInspectorTab('navigate')", "toggleInspectorTab('aspects')", 'showSky()', 'openArchive()', 'openNewChart()']) {
+  for (const call of ["openReturns('solar')", "openReturns('lunar')", 'openSettings()', "toggleInspectorTab('navigate')", "toggleInspectorTab('aspects')", 'showSky()', 'openArchive()', 'openNewChart()']) {
     assert.ok(nav.includes(call), call);
   }
   const inspector = html.match(/<aside class="inspector"[\s\S]*?<\/aside>/)?.[0] ?? '';
   assert.doesNotMatch(inspector, /id="tab-functions"|id="tab-settings"|vs-chart-settings|vs-returns-panel/);
-  assert.match(html, /<section class="drawer" \*ngIf="view==='functions'"/);
+  assert.doesNotMatch(nav, /openFunctions\(\)/);
+  assert.doesNotMatch(html, /view==='functions'/);
   assert.match(html, /<section class="drawer" \[hidden\]="view!=='settings'"/);
 });
 
@@ -76,10 +77,11 @@ test('planet info is one button away, on the chart; it is no longer in the left 
   assert.equal(formatSpeed(-0.0004, 'it', 3), '0');
 });
 
-test('the city search is gone from the settings', () => {
+test('settings offer an independent default city for the current sky', () => {
   const settings = html.match(/<section class="drawer" \[hidden\]="view!=='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
   assert.ok(settings.length > 200);
-  assert.doesNotMatch(settings, /vs-offline-city-picker|selectedCity|cityClock/);
+  assert.match(settings, /vs-offline-city-picker/);
+  assert.match(settings, /setReferencePlace/);
   assert.doesNotMatch(component, /selectedCity|cityClock|onCitySelected|updateCityClock/);
 });
 

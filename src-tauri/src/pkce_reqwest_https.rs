@@ -66,6 +66,41 @@ pub(crate) trait ChartCreateTransport {
     fn create_chart(&self, token_endpoint:&Url, grant:&NativeAccessGrant,
         payload:&crate::chart_archive::CreateChartPayload) -> Result<ChartCreateResult,()>;
 }
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct LifecyclePrepareResponse {contract_version:u8,sync_id:String,chart_token:String,account_sync_id:Option<String>}
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct LifecycleApplyResponse {contract_version:u8,status:String,sync_id:String,revision:String}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LifecycleErrorResponse {error:String}
+pub(crate) struct LifecyclePrepared {pub token:String,pub account_id:Option<String>}
+pub(crate) enum LifecycleResult {Applied,Conflict}
+pub(crate) trait LifecycleTransport {
+    fn prepare_lifecycle(&self,endpoint:&Url,grant:&NativeAccessGrant,remote_id:&str)->Result<LifecyclePrepared,()>;
+    fn apply_lifecycle(&self,endpoint:&Url,grant:&NativeAccessGrant,pending:&crate::chart_archive::LifecyclePending)->Result<LifecycleResult,()>;
+}
+fn parse_lifecycle_prepare(status:u16,bytes:&[u8],remote_id:&str)->Result<LifecyclePrepared,()> {
+    if status!=200 {return Err(());}
+    let response:LifecyclePrepareResponse=serde_json::from_slice(bytes).map_err(|_|())?;
+    if response.contract_version!=1 || response.sync_id!=remote_id || response.chart_token.len()!=64
+        || !response.chart_token.bytes().all(|b|b.is_ascii_digit()||(b'a'..=b'f').contains(&b))
+        || !response.account_sync_id.as_deref().is_none_or(crate::chart_archive::valid_id) {return Err(());}
+    Ok(LifecyclePrepared{token:response.chart_token,account_id:response.account_sync_id})
+}
+fn parse_lifecycle_apply(status:u16,bytes:&[u8],remote_id:&str)->Result<LifecycleResult,()> {
+    if status==409 {
+        let error:LifecycleErrorResponse=serde_json::from_slice(bytes).map_err(|_|())?;
+        return if error.error=="conflict" || error.error=="mutation_conflict" {Ok(LifecycleResult::Conflict)} else {Err(())};
+    }
+    if status!=200 {return Err(());}
+    let response:LifecycleApplyResponse=serde_json::from_slice(bytes).map_err(|_|())?;
+    if response.contract_version!=1 || response.sync_id!=remote_id || !matches!(response.status.as_str(),"applied"|"replayed")
+        || response.revision.parse::<u64>().ok().filter(|v|*v>0).is_none() {return Err(());}
+    Ok(LifecycleResult::Applied)
+}
 pub(crate) enum ChartCreateResult { Created(String), ArchiveFull }
 
 #[derive(serde::Deserialize)]
@@ -255,6 +290,42 @@ impl CivilSnapshotTransport for StagingReqwestHttps {
     }
 }
 
+impl StagingReqwestHttps {
+    fn lifecycle_request(&self,endpoint:&Url,grant:&NativeAccessGrant,body:&serde_json::Value)->Result<(u16,Zeroizing<Vec<u8>>),()> {
+        if !grant.scope().allows_chart_manage() || grant.profile_ref().is_none() || !grant.matches_token_endpoint(endpoint)
+            || grant.remaining_seconds(std::time::Instant::now())==0 {return Err(());}
+        let mut destination=valid_staging_token_endpoint(endpoint.as_str()).ok_or(())?;
+        destination.set_path("/chart-sync/v1/chart-lifecycle");
+        let json=Zeroizing::new(serde_json::to_string(body).map_err(|_|())?);
+        if json.len()>4096 {return Err(());}
+        let auth_value=Zeroizing::new(format!("Bearer {}",grant.bearer()));
+        let mut auth=HeaderValue::from_str(&auth_value).map_err(|_|())?;auth.set_sensitive(true);
+        let response=restricted_client(MAX_TOKEN_DEADLINE)?.post(destination).header(ACCEPT,"application/json")
+            .header(CONTENT_TYPE,"application/json").header(AUTHORIZATION,auth)
+            .body(Body::sized(SecretFormReader::new(&json),json.len() as u64)).send().map_err(|_|())?;
+        let status=response.status().as_u16();
+        if !matches!(status,200|409) || response.content_length().is_some_and(|n|n>MAX_SESSION_RESPONSE_BYTES) {return Err(());}
+        let kind=response.headers().get(CONTENT_TYPE).and_then(|v|v.to_str().ok()).ok_or(())?;
+        if !kind.eq_ignore_ascii_case("application/json") && !kind.eq_ignore_ascii_case("application/json; charset=utf-8") {return Err(());}
+        let mut bytes=Zeroizing::new(Vec::new());
+        response.take(MAX_SESSION_RESPONSE_BYTES+1).read_to_end(&mut bytes).map_err(|_|())?;
+        if bytes.len() as u64>MAX_SESSION_RESPONSE_BYTES {return Err(());}
+        Ok((status,bytes))
+    }
+}
+impl LifecycleTransport for StagingReqwestHttps {
+    fn prepare_lifecycle(&self,endpoint:&Url,grant:&NativeAccessGrant,remote_id:&str)->Result<LifecyclePrepared,()> {
+        if !crate::chart_archive::valid_id(remote_id) {return Err(());}
+        let (status,bytes)=self.lifecycle_request(endpoint,grant,&serde_json::json!({"operation":"prepare","syncId":remote_id}))?;
+        parse_lifecycle_prepare(status,&bytes,remote_id)
+    }
+    fn apply_lifecycle(&self,endpoint:&Url,grant:&NativeAccessGrant,p:&crate::chart_archive::LifecyclePending)->Result<LifecycleResult,()> {
+        let (status,bytes)=self.lifecycle_request(endpoint,grant,&serde_json::json!({"operation":p.operation,"syncId":p.remote_id,
+            "mutationId":p.mutation_id,"chartToken":p.chart_token,"baseAccountSyncId":p.base_account_id}))?;
+        parse_lifecycle_apply(status,&bytes,&p.remote_id)
+    }
+}
+
 impl ChartCreateTransport for StagingReqwestHttps {
     fn create_chart(&self,token_endpoint:&Url,grant:&NativeAccessGrant,payload:&crate::chart_archive::CreateChartPayload) -> Result<ChartCreateResult,()> {
         if !grant.scope().allows_chart_write() || ( !payload.groups.is_empty() && !grant.scope().allows_group_write())
@@ -411,6 +482,21 @@ impl TokenHttpTransport for StagingReqwestHttps {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lifecycle_responses_are_bounded_to_expected_identity_and_known_states() {
+        let id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let prepare=serde_json::json!({"contractVersion":1,"syncId":id,"chartToken":"a".repeat(64),"accountSyncId":null});
+        let bytes=serde_json::to_vec(&prepare).unwrap();
+        assert!(parse_lifecycle_prepare(200,&bytes,id).is_ok());
+        assert!(parse_lifecycle_prepare(200,&bytes,"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").is_err());
+        let mut bad=prepare;bad["note"]=serde_json::json!("dato fittizio");
+        assert!(parse_lifecycle_prepare(200,&serde_json::to_vec(&bad).unwrap(),id).is_err());
+        let applied=serde_json::json!({"contractVersion":1,"status":"replayed","syncId":id,"revision":"2"});
+        assert!(matches!(parse_lifecycle_apply(200,&serde_json::to_vec(&applied).unwrap(),id),Ok(LifecycleResult::Applied)));
+        assert!(matches!(parse_lifecycle_apply(409,br#"{"error":"conflict"}"#,id),Ok(LifecycleResult::Conflict)));
+        assert!(parse_lifecycle_apply(409,br#"{"error":"conflict","detail":"secret"}"#,id).is_err());
+    }
 
     #[test]
     fn account_http_client_initializes_with_updater_dependencies() {

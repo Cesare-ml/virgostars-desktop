@@ -44,6 +44,7 @@ export class NewChartComponent implements OnChanges {
   name = '';
   date = '';
   time = '12:00';
+  timeUnknown = false;
   timeZone = hostTimeZone();
   latitude = '';
   longitude = '';
@@ -66,6 +67,7 @@ export class NewChartComponent implements OnChanges {
     if (!changes['editChart'] || !this.editChart) return;
     const fields = savedChartFields(this.editChart);
     Object.assign(this, fields);
+    this.timeUnknown=!!this.editChart.unknownDate;
     const historical = this.editChart.historical;
     this.historicalMode = !!historical;
     if (historical) {
@@ -73,11 +75,11 @@ export class NewChartComponent implements OnChanges {
       this.historicalOffset = historical.civil.offset.kind;
       this.historicalOffsetSeconds = historical.civil.offset.kind === 'supplied' ? String(historical.civil.offset.secondsEast) : '0';
       this.historicalOffsetSource = historical.civil.offset.kind === 'supplied' ? historical.civil.offset.source : 'User supplied local minus UT1';
-      this.historicalDeltaT = historical.deltaT.kind;
+      this.historicalDeltaT = historical.deltaT.kind === 'espenakMeeus2006Unquantified' ? 'espenakMeeus2006' : historical.deltaT.kind;
       this.historicalDeltaTSeconds = historical.deltaT.kind === 'supplied' ? String(historical.deltaT.seconds) : '';
       this.historicalDeltaTSource = historical.deltaT.kind === 'supplied' ? historical.deltaT.source : 'User supplied';
       this.historicalCivilUncertainty = String(historical.civil.uncertaintySeconds);
-      this.historicalDeltaTUncertainty = String(historical.deltaT.uncertaintySeconds);
+      this.historicalDeltaTUncertainty = historical.deltaT.kind === 'espenakMeeus2006Unquantified' ? '' : String(historical.deltaT.uncertaintySeconds);
     }
     this.city = null;
     this.problem = null;
@@ -89,6 +91,7 @@ export class NewChartComponent implements OnChanges {
   get problemText(): string { return this.problem ? this.t(PROBLEM_KEYS[this.problem]) : ''; }
   offsetLabel(choice: CivilTimeChoice): string { return 'UTC' + formatUtcOffset(choice.offsetSeconds); }
   setHistoricalMode(event:Event):void { this.historicalMode = (event.target as HTMLInputElement).checked; this.problem=null; this.choices=[]; }
+  setTimeUnknown(event:Event):void {this.timeUnknown=(event.target as HTMLInputElement).checked;this.problem=null;this.choices=[];}
   setHistorical(field:'historicalCalendar'|'historicalOffset'|'historicalDeltaT'|'historicalOffsetSeconds'|'historicalDeltaTSeconds'|'historicalCivilUncertainty'|'historicalDeltaTUncertainty', event:Event):void {
     const value=(event.target as HTMLInputElement).value;
     if (field === 'historicalOffsetSeconds') this.historicalOffsetSource='User supplied local minus UT1';
@@ -130,17 +133,17 @@ export class NewChartComponent implements OnChanges {
   submit(selectedUtc: string | null = null): void {
     if (this.busy) return;
     const fields = {
-      name: this.name, date: this.date, time: this.time, timeZone: this.timeZone,
+      name: this.name, date: this.date, time: this.timeUnknown ? '12:00:00' : this.time, timeZone: this.timeZone,
       latitude: this.latitude, longitude: this.longitude, placeName: this.placeName,
     };
     const result = this.historicalMode ? resolveHistoricalNewChart(fields, {calendar:this.historicalCalendar,
       offset:this.historicalOffset, offsetSeconds:this.historicalOffsetSeconds, deltaT:this.historicalDeltaT,
       deltaTSeconds:this.historicalDeltaTSeconds, civilUncertaintySeconds:this.historicalCivilUncertainty,
       deltaTUncertaintySeconds:this.historicalDeltaTUncertainty, offsetSource:this.historicalOffsetSource, deltaTSource:this.historicalDeltaTSource}) :
-      resolveNewChart(fields, resolveCivilTime, selectedUtc ?? this.editChart?.utcIso ?? null);
+      resolveNewChart(fields, value => resolveCivilTime(value, {yearRange:'archive'}), selectedUtc ?? this.editChart?.utcIso ?? null);
     this.problem = result.status === 'problem' ? result.problem : null;
     this.choices = result.status === 'choice_required' ? result.choices : [];
-    if (result.status === 'ready') this.chartRequested.emit(result.input);
+    if (result.status === 'ready') this.chartRequested.emit(this.timeUnknown ? {...result.input,timeUnknown:true,unknownDate:this.date} : result.input);
     this.cd.markForCheck();
   }
 

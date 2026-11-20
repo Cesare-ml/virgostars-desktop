@@ -1,5 +1,61 @@
 # Aggiornamenti e distribuzione
 
+## Comando guidato di release: implementazione locale, pubblicazione non collaudata
+
+Da Windows, nel checkout Desktop:
+
+```powershell
+npm run release:check
+npm run release:publish
+```
+
+Il primo comando controlla soltanto prerequisiti e accessi. Il secondo prepara
+la successiva versione patch, compila il renderer e l'installer con la password
+Tauri richiesta nel terminale, genera firma e checksum, prepara la pagina web,
+crea la release GitHub, aggiorna `updates-stable` e pubblica Pages. La password
+e le credenziali GitHub restano nei processi che le usano. Usa Git Credential
+Manager e Wrangler 4.165.0 già autenticati; lo script non installa software.
+
+Richiede i checkout fratelli `virgo-stars` e `astrological-charts`, puliti e con
+il commit del renderer già disponibile su GitHub. Il checkout Desktop deve
+essere pulito: le modifiche esistenti non vengono aggiunte automaticamente.
+Lo script crea un commit di versione Desktop e lo invia su un nuovo branch
+`releases/v<versione>`; crea anche un commit locale nel sito per il manifest.
+Quel commit del sito non viene inviato automaticamente al suo repository.
+Se la versione è già usata, lo script si ferma senza sovrascriverla.
+
+La build del sito mantiene JS e CSS con hash della build precedente. Gli asset
+GitHub sono confrontati con gli SHA-256 locali prima di aggiornare il canale
+stable; il vecchio manifest viene rinominato e conservato per recupero. Lo
+stato delle fasi è sotto `.local/` e permette di riprendere un'interruzione
+eseguendo nuovamente il comando. Le note predefinite sono generiche: per
+fornirle esplicitamente usare
+`npm run release:publish -- -Notes "Descrizione della release"`.
+
+**Blocco attuale:** il controllo read-only rileva file sensibili ancora
+tracciati nel repository del sito. Le sue regole in `docs/SECURITY.md` e
+`docs/deployment/PRODUCTION_CHANGE_SAFETY.md` richiedono la bonifica prima di
+nuove pubblicazioni; lo script si ferma. L'assenza dei file tracciati non prova
+da sola la rotazione delle credenziali o la bonifica della cronologia. La
+pubblicazione completa non è stata eseguita né collaudata end-to-end.
+
+## Correzione locale del manifest 0.0.4
+
+GitHub ha pubblicato l'installer 0.0.4 sostituendo gli spazi del nome con punti,
+mentre il manifest iniziale conteneva il nome locale con spazi. Il controllo
+della versione riusciva, ma il successivo URL di download non esisteva. Il
+manifest corretto mantiene la stessa versione, la stessa firma e gli stessi
+byte dell'installer e usa il nome dell'asset effettivamente pubblicato. Gli
+utenti della 0.0.3 possono riprovare dopo la sostituzione di `latest.json` nella
+release `updates-stable`; questa correzione non modifica la firma dell'update.
+Per i manifest futuri, lo script usa nel URL il nome con i punti e conserva
+immutato il file locale da firmare. Verificare sempre il nome effettivo degli
+asset nella release prima di pubblicare il manifest.
+
+L'avviso di aggiornamento è un pulsante compatto e il download mostra una
+scheda con avanzamento. Queste modifiche dell'interfaccia sono locali e non
+sono presenti nelle versioni già pubblicate.
+
 Stato: **prototipo in revisione**. Un aggiornamento 0.0.2 → 0.0.3 è stato collaudato su Windows con installer, dati e chiavi sintetici isolati e un server HTTPS locale; non è una verifica delle release pubbliche né dei dati reali. La versione iniziale 0.0.1 non ha un updater: 0.0.2 va installata manualmente. L'updater di distribuzione non funziona finché non viene incorporata una chiave pubblica e non esistono endpoint accessibili.
 
 L'host usa `tauri-plugin-updater` 2.14.1 e richiede firma e versione firmata (`requireSignedVersion`). I due endpoint sono fissi e puntano a `latest.json` nelle release GitHub con tag `updates-stable` e `updates-beta`. L'utente sceglie il canale; stable rifiuta prerelease e Tauri accetta solo versioni superiori a quella installata. Il controllo di avvio è asincrono; solo l'azione esplicita Aggiorna scarica e installa. Gli errori non interrompono l'uso offline. Il download viene verificato dal plugin prima dell'installazione. Il programma di installazione NSIS di Tauri riavvia per impostazione predefinita.

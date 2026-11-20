@@ -150,6 +150,7 @@ pub struct ChartSyncRequest {
     source_updated_at_ms: Option<i64>,
     local_date: Option<String>,
     local_time: Option<String>,
+    lifecycle_operation: Option<String>,
 }
 
 impl ChartSyncRequest {
@@ -157,30 +158,39 @@ impl ChartSyncRequest {
         if self.protocol_version != 1 { return false; }
         let association_fields=self.local_chart_id.is_some() || self.local_updated_at_ms.is_some() || self.source_updated_at_ms.is_some();
         let civil_fields=self.local_date.is_some() || self.local_time.is_some();
+        let lifecycle_field=self.lifecycle_operation.is_some();
         match self.operation.as_str() {
             "sync" | "list" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
-                && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields,
-            "offline_list" => self.attempt_id.is_none() && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields,
+                && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields && !lifecycle_field,
+            "offline_list" => self.attempt_id.is_none() && self.chart_id.is_none() && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields && !lifecycle_field,
             "set_groups" | "offline_set_groups" => (if self.operation=="set_groups" {
                 self.attempt_id.as_deref().is_some_and(valid_attempt_id)
             } else { self.attempt_id.is_none() }) && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
                 && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
-                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !association_fields && !civil_fields,
+                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !association_fields && !civil_fields && !lifecycle_field,
             "associate" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
                 && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
                 && self.local_chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
                 && self.local_updated_at_ms.is_some_and(|v|v>=0) && self.source_updated_at_ms.is_some_and(|v|v>=0)
                 && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups)
-                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !civil_fields,
+                && self.groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && !civil_fields && !lifecycle_field,
             "queue_create" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
                 && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
                 && self.local_updated_at_ms.is_some_and(|v|v>=0) && self.local_chart_id.is_none() && self.source_updated_at_ms.is_none()
                 && self.base_groups.as_deref().is_some_and(crate::chart_archive::valid_groups) && self.groups.is_none()
                 && self.local_date.as_deref().is_some_and(crate::chart_archive::valid_civil_date)
-                && self.local_time.as_deref().is_some_and(crate::chart_archive::valid_civil_clock),
+                && self.local_time.as_deref().is_none_or(crate::chart_archive::valid_civil_clock) && !lifecycle_field,
             "cancel_rejected" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
                 && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
-                && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields,
+                && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields && !lifecycle_field,
+            "queue_lifecycle" | "prepare_lifecycle" | "commit_lifecycle" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
+                && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.source_updated_at_ms.is_some_and(|v|v>=0) && self.local_updated_at_ms.is_none() && self.local_chart_id.is_none()
+                && self.base_groups.is_none() && self.groups.is_none() && !civil_fields
+                && self.lifecycle_operation.as_deref().is_some_and(|v|matches!(v,"delete"|"setAccount")),
+            "cancel_lifecycle" => self.attempt_id.as_deref().is_some_and(valid_attempt_id)
+                && self.chart_id.as_deref().is_some_and(crate::chart_archive::valid_id)
+                && self.base_groups.is_none() && self.groups.is_none() && !association_fields && !civil_fields && !lifecycle_field,
             _ => false,
         }
     }
@@ -240,6 +250,8 @@ pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHa
                     Ok(ChartSyncReply {protocol_version:1,status:"ok",charts:Some(charts),summary:None,pending_chart_ids:Some(pending),rejected_chart_ids:Some(rejected)})
                 },
                 "sync" => {
+                    registry.sync_chart_lifecycle(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,token,&paths,&keys,&crate::pkce_reqwest_https::StagingReqwestHttps)
+                        .map_err(|_|NATIVE_UNAVAILABLE)?;
                     let summary=registry.sync_civil_charts(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,token,&paths,&keys,&crate::pkce_reqwest_https::StagingReqwestHttps)
                         .map_err(|_| NATIVE_UNAVAILABLE)?;
                     let summary=ChartSyncSummaryReply {imported:summary.imported,updated:summary.updated,
@@ -264,8 +276,26 @@ pub async fn desktop_chart_sync_v1(request: ChartSyncRequest, _app: tauri::AppHa
                 "queue_create" => {
                     let choice=crate::chart_archive::CreateChartChoice {chart_id:request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
                         updated_at_ms:request.local_updated_at_ms.ok_or(NATIVE_UNAVAILABLE)?,groups:request.base_groups.as_deref().ok_or(NATIVE_UNAVAILABLE)?,
-                        local_date:request.local_date.as_deref().ok_or(NATIVE_UNAVAILABLE)?,local_time:request.local_time.as_deref().ok_or(NATIVE_UNAVAILABLE)?,include_groups:false};
+                        local_date:request.local_date.as_deref().ok_or(NATIVE_UNAVAILABLE)?,local_time:request.local_time.as_deref(),include_groups:false};
                     let result=registry.queue_chart_create(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,&choice);
+                    let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
+                },
+                "queue_lifecycle" | "prepare_lifecycle" | "commit_lifecycle" => {
+                    let attempt=request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?;
+                    let id=request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?;
+                    let updated=request.source_updated_at_ms.ok_or(NATIVE_UNAVAILABLE)?;
+                    let operation=request.lifecycle_operation.as_deref().ok_or(NATIVE_UNAVAILABLE)?;
+                    let result=match request.operation.as_str() {
+                        "prepare_lifecycle"=>registry.prepare_chart_lifecycle(attempt,token,&paths,&keys,id,updated,operation,&crate::pkce_reqwest_https::StagingReqwestHttps),
+                        "commit_lifecycle"=>registry.commit_chart_lifecycle(attempt,&paths,&keys,id,updated,operation),
+                        _=>registry.queue_chart_lifecycle(attempt,token,&paths,&keys,id,updated,operation,&crate::pkce_reqwest_https::StagingReqwestHttps),
+                    };
+                    let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
+                    Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
+                },
+                "cancel_lifecycle" => {
+                    let result=registry.cancel_lifecycle_conflict(request.attempt_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?,&paths,&keys,request.chart_id.as_deref().ok_or(NATIVE_UNAVAILABLE)?);
                     let status=match result {Ok(())=>"ok",Err("stale")=>"stale",Err(_)=>return Err(NATIVE_UNAVAILABLE)};
                     Ok(ChartSyncReply {protocol_version:1,status,charts:None,summary:None,pending_chart_ids:None,rejected_chart_ids:None})
                 },
@@ -480,9 +510,18 @@ mod tests {
             "chartId":"11111111-1111-4111-8111-111111111111","localUpdatedAtMs":1000,
             "localDate":"2001-02-03","localTime":"05:05:06","baseGroups":[]});
         assert!(serde_json::from_value::<ChartSyncRequest>(queue.clone()).unwrap().valid());
+        let mut unknown=queue.clone(); unknown["localTime"]=serde_json::Value::Null;
+        assert!(serde_json::from_value::<ChartSyncRequest>(unknown).unwrap().valid());
         let mut invalid=queue.clone(); invalid["localTime"]=json!("25:00:00");
         assert!(!serde_json::from_value::<ChartSyncRequest>(invalid).unwrap().valid());
         let mut extra=queue; extra["profileRef"]=json!(UUID);
+        assert!(serde_json::from_value::<ChartSyncRequest>(extra).is_err());
+        let lifecycle=json!({"protocolVersion":1,"operation":"queue_lifecycle","attemptId":UUID,
+            "chartId":"11111111-1111-4111-8111-111111111111","sourceUpdatedAtMs":1000,"lifecycleOperation":"delete"});
+        assert!(serde_json::from_value::<ChartSyncRequest>(lifecycle.clone()).unwrap().valid());
+        let mut bad=lifecycle.clone();bad["lifecycleOperation"]=json!("arbitrary");
+        assert!(!serde_json::from_value::<ChartSyncRequest>(bad).unwrap().valid());
+        let mut extra=lifecycle;extra["profileRef"]=json!(UUID);
         assert!(serde_json::from_value::<ChartSyncRequest>(extra).is_err());
     }
 

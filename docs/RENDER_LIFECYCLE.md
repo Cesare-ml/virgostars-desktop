@@ -1,5 +1,15 @@
 # Renderer lifecycle — latest request wins
 
+When Kleros is active, the shared renderer keeps aspects involving a Kleros
+colored and renders other radix aspects gray and translucent. This display
+requires rebuilding the sibling `astrological-charts` library before the
+Desktop build; it does not change aspect calculations.
+
+The local Charts renderer now maintains a display-density backing buffer when
+the chart is resized, capped at twice CSS size. This sharpens the entire wheel,
+including planet degree captions, on high-density displays without changing
+the underlying positions. PNG export retains its existing independent scale.
+
 Visible outer planets and Chiron participate in aspects by default. Existing
 version-1 preferences with the original four disabled defaults are upgraded
 once; mixed selections and later explicit choices are preserved. True node and

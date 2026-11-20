@@ -16,7 +16,10 @@ if(signature.length>5000||! /^[A-Za-z0-9+/=]+$/.test(signature))throw Error('Inv
 const decoded=Buffer.from(signature,'base64').toString('utf8');
 if(!decoded.split(/\r?\n/).some(line=>line.startsWith('trusted comment:') && line.split(/\s+/).includes(`version:${version}`))) throw Error('Signature does not contain the requested signed version');
 const notes=readFileSync(flags['--notes'],'utf8');if(notes.length>4000)throw Error('Release notes too long');
-const url='https://github.com/Cesare-ml/virgostars-desktop/releases/download/'+(channel==='testing'?'test-v':'v')+encodeURIComponent(version)+'/'+encodeURIComponent(name);
+// GitHub normalizes spaces in uploaded release asset names to dots. Use the
+// public name here; the signed file contents and signature remain unchanged.
+const publicName=name.replaceAll(' ','.');
+const url='https://github.com/Cesare-ml/virgostars-desktop/releases/download/'+(channel==='testing'?'test-v':'v')+encodeURIComponent(version)+'/'+encodeURIComponent(publicName);
 const manifest={version,notes,pub_date:new Date().toISOString(),platforms:{'windows-x86_64':{signature,url}}};
 writeFileSync(flags['--output'],JSON.stringify(manifest,null,2)+'\n',{flag:'wx'});
 console.log(`Prepared ${channel} manifest for ${version}; nothing was published.`);

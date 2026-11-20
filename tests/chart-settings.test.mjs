@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ASPECT_DEFINITIONS, CHART_SETTINGS_KEY, POINT_IDS, defaultChartSettings, loadChartSettings,
-  parseOrb, sanitizeChartSettings, saveChartSettings,
+  parseOrb, sanitizeChartSettings, saveChartSettings, FIXED_STAR_DEFAULTS_KEY,
+  loadChartSettingsForSession, loadFixedStarDefaults, saveFixedStarDefaults,
 } from '../src/app/chart-settings.ts';
 
 const memory = (initial = {}) => {
@@ -61,7 +62,7 @@ test('valid values are kept field by field and everything else falls back', () =
   assert.deepEqual(settings.points.Pluto, {shown: false, orb: 2.5, aspects: true});
   assert.deepEqual(settings.points.Sun, {shown: true, orb: 6, aspects: true});
   assert.equal(settings.points.Moon.orb, 6);
-  assert.deepEqual(Object.keys(settings).sort(), ['applicationMode','aspects','australInversion','focusAspects','outerWhenConjunct','planetOfYear','points','showAspects','showDecades','showDecans','showTerms']);
+  assert.deepEqual(Object.keys(settings).sort(), ['applicationMode','aspects','australInversion','fixedStars','focusAspects','outerWhenConjunct','planetOfYear','points','showAspects','showDecades','showDecans','showTerms']);
   assert.equal(Object.keys(settings.aspects).length, 17);
   assert.equal(Object.keys(settings.points).length, POINT_IDS.length);
   assert.equal(settings.aspects.invented, undefined);
@@ -89,6 +90,37 @@ test('settings survive a save and load and are stored sanitized', () => {
   assert.deepEqual(Object.keys(stored).sort(), ['settings', 'version']);
   assert.equal(stored.settings.extra, undefined);
   assert.deepEqual(loadChartSettings(storage), settings);
+});
+
+test('fixed-star limits persist independently and invalid values fall back safely', () => {
+  const storage=memory();
+  const settings=defaultChartSettings();
+  settings.fixedStars={magnitudeLimit:2.5,includeUnknownMagnitude:false,longitudeOrb:0.4,axisOrb:2};
+  assert.equal(saveChartSettings(storage,settings),true);
+  assert.deepEqual(loadChartSettings(storage).fixedStars,settings.fixedStars);
+  assert.deepEqual(sanitizeChartSettings({fixedStars:{magnitudeLimit:99,includeUnknownMagnitude:'yes',longitudeOrb:-1,axisOrb:20}}).fixedStars,
+    defaultChartSettings().fixedStars);
+  assert.deepEqual(sanitizeChartSettings({}).fixedStars,defaultChartSettings().fixedStars);
+});
+
+test('only explicitly saved star defaults persist; old automatic values do not change 1° defaults', () => {
+  const storage=memory();
+  const old=defaultChartSettings();
+  old.fixedStars={magnitudeLimit:2.5,includeUnknownMagnitude:false,longitudeOrb:1.5,axisOrb:1.5};
+  old.showDecans=true;
+  saveChartSettings(storage,old);
+  let session=loadChartSettingsForSession(storage);
+  assert.equal(session.showDecans,true);
+  assert.deepEqual(session.fixedStars,{magnitudeLimit:null,includeUnknownMagnitude:true,longitudeOrb:1,axisOrb:1});
+  session.fixedStars={magnitudeLimit:3,includeUnknownMagnitude:false,longitudeOrb:0.4,axisOrb:2};
+  assert.deepEqual(loadChartSettingsForSession(storage).fixedStars,defaultChartSettings().fixedStars);
+  assert.equal(saveFixedStarDefaults(storage,session.fixedStars),true);
+  assert.deepEqual(loadChartSettingsForSession(storage).fixedStars,session.fixedStars);
+  session.fixedStars.axisOrb=6;
+  assert.equal(loadChartSettingsForSession(storage).fixedStars.axisOrb,2);
+  assert.equal(JSON.parse(storage.data[FIXED_STAR_DEFAULTS_KEY]).version,1);
+  assert.equal(loadFixedStarDefaults(memory({[FIXED_STAR_DEFAULTS_KEY]:'damaged'})).axisOrb,1);
+  assert.equal(saveFixedStarDefaults({getItem:()=>null,setItem:()=>{throw new Error('blocked');}},session.fixedStars),false);
 });
 
 test('unknown versions, damaged text and failing storage use defaults without throwing', () => {

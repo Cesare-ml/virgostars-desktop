@@ -59,7 +59,7 @@ test('3D sky has a responsive HUD, real native sky, keyboard controls and no inv
   assert.match(html,/\(click\)="close\(\)"/);
   const parent=read('src/app/desktop-app.component.html');
   assert.match(parent,/\(closed\)="toggleSkyDome\(\)"/);
-  assert.match(parent,/\[hidden\]="view!=='chart' \|\| chartPresentation==='sky3d'"/);
+  assert.match(parent,/\[hidden\]="\(view!=='chart' && !\(view==='returns' && returnTool==='solar'\)\) \|\| chartPresentation==='sky3d'"/);
   assert.match(ts,/focusPlanet\(id:string\):void/);
   assert.match(ts,/this\.data\?\.planets\.find\(body=>body\.id===id\)/);
   assert.match(ts,/this\.renderer=new THREE\.WebGLRenderer\(\{antialias:true,alpha:true/);
@@ -74,8 +74,8 @@ test('3D sky has a responsive HUD, real native sky, keyboard controls and no inv
 test('every copy key referenced by the planetarium template exists in both locales',()=>{
   const ts=read('src/app/sky-dome.component.ts');
   const html=read('src/app/sky-dome.component.html');
-  const it=ts.match(/\bit:\{([\s\S]*?)\n  \},\n  en:/)?.[1]??'';
-  const en=ts.match(/\ben:\{([\s\S]*?)\n  \},\n\} as const;/)?.[1]??'';
+  const it=ts.match(/\bit:\{([\s\S]*?)\r?\n  \},\r?\n  en:/)?.[1]??'';
+  const en=ts.match(/\ben:\{([\s\S]*?)\r?\n  \},\r?\n\} as const;/)?.[1]??'';
   const keys=[...html.matchAll(/word\('([^']+)'\)/g)].map(match=>match[1]);
   assert.ok(keys.length>=10);
   for(const key of keys){

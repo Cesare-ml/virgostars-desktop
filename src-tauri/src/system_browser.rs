@@ -31,7 +31,7 @@ fn approved_pkce_browser_url(candidate: &Url) -> bool {
     if valid_consent_origin(base.as_str()).is_none() { return false; }
 
     let pairs: Vec<_> = url::form_urlencoded::parse(fragment.as_bytes()).collect();
-    let expected_keys = ["client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "request_groups_write", "request_charts_write"];
+    let expected_keys = ["client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "request_groups_write", "request_charts_write", "request_charts_manage"];
     if pairs.len() != expected_keys.len() || pairs.iter().zip(expected_keys).any(|((key, _), expected)| key != expected) {
         return false;
     }
@@ -40,7 +40,7 @@ fn approved_pkce_browser_url(candidate: &Url) -> bool {
     let challenge = pairs[2].1.as_ref();
     let method = pairs[3].1.as_ref();
     let state = pairs[4].1.as_ref();
-    if client != "virgostars-desktop" || !valid_loopback_uri(redirect) || method != "S256" || pairs[5].1 != "true" || pairs[6].1 != "true" ||
+    if client != "virgostars-desktop" || !valid_loopback_uri(redirect) || method != "S256" || pairs[5].1 != "true" || pairs[6].1 != "true" || pairs[7].1 != "true" ||
         !base64url_256(challenge) || !base64url_256(state) {
         return false;
     }
@@ -54,7 +54,8 @@ fn approved_pkce_browser_url(candidate: &Url) -> bool {
         .append_pair("code_challenge_method", method)
         .append_pair("state", state)
         .append_pair("request_groups_write", "true")
-        .append_pair("request_charts_write", "true");
+        .append_pair("request_charts_write", "true")
+        .append_pair("request_charts_manage", "true");
     base.set_fragment(Some(&fields.finish()));
     base.as_str() == candidate.as_str()
 }

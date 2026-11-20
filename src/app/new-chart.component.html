@@ -1,30 +1,25 @@
 <form class="new-chart" [attr.aria-label]="t(editChart ? 'archive.edit' : 'form.title')" (submit)="$event.preventDefault(); submit()">
-  <p class="form-note" *ngIf="!editChart">{{t('form.intro')}}</p>
-
   <label class="field">
     <span>{{t('form.name')}}</span>
     <input type="text" autocomplete="off" spellcheck="false" [attr.maxlength]="maxNameLength"
       [value]="name" (input)="set('name', $event)">
   </label>
 
-  <label class="historical-toggle" *ngIf="!editChart">
-    <input type="checkbox" [checked]="historicalMode" (change)="setHistoricalMode($event)">
-    <span>{{t('form.historical')}}</span>
-  </label>
   <p class="form-note" *ngIf="historicalMode">{{t('form.historicalNote')}}</p>
 
   <div class="field-row">
     <label class="field">
       <span>{{t('form.date')}}</span>
-      <input *ngIf="!historicalMode" type="date" min="1900-01-01" max="2033-12-31" required [value]="date" (input)="set('date', $event)">
+      <input *ngIf="!historicalMode" type="date" min="0001-01-01" max="3000-12-31" required [value]="date" (input)="set('date', $event)">
       <input *ngIf="historicalMode" type="text" placeholder="-1000-03-20" required [value]="date" (input)="set('date', $event)">
     </label>
     <label class="field">
       <span>{{t('form.time')}}</span>
-      <input *ngIf="!historicalMode" type="time" step="1" required [value]="time" (input)="set('time', $event)">
-      <input *ngIf="historicalMode" type="text" placeholder="12:00:00" required [value]="time" (input)="set('time', $event)">
+      <input *ngIf="!historicalMode" type="time" step="1" [required]="!timeUnknown" [disabled]="timeUnknown" [value]="time" (input)="set('time', $event)">
+      <input *ngIf="historicalMode" type="text" placeholder="12:00:00" [required]="!timeUnknown" [disabled]="timeUnknown" [value]="time" (input)="set('time', $event)">
     </label>
   </div>
+  <label class="field" *ngIf="!historicalMode"><span><input type="checkbox" [checked]="timeUnknown" (change)="setTimeUnknown($event)"> {{t('sync.unknownTime')}}</span></label>
 
   <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false"
     (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>

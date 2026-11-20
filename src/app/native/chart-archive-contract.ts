@@ -16,6 +16,8 @@ export type ChartRecordV1 = Readonly<{
   placeName: string;
   /** Explicit local-clock input; when present, UTC and zone are empty. */
   historical?: HistoricalChartRequest & Readonly<{protocolVersion: 1}>;
+  /** Civil birth date with no known time; utcIso must be empty. */
+  unknownDate?: string;
 }>;
 
 export type SavedChartV1 = ChartRecordV1 & Readonly<{createdAtMs: number; updatedAtMs: number; groups: readonly string[]}>;
@@ -101,13 +103,20 @@ function copyGroups(value: unknown): readonly string[] | null {
 function microDegrees(x: unknown, limit: number): x is number {
   return typeof x === 'number' && Number.isSafeInteger(x) && Math.abs(x) <= limit;
 }
+function validUnknownDate(value:unknown):value is string {
+  if (typeof value!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year,month,day]=value.split('-').map(Number);
+  if (year<1 || month<1 || month>12 || day<1) return false;
+  const leap=year%4===0 && (year%100!==0 || year%400===0);
+  return day<=([31,leap?29:28,31,30,31,30,31,31,30,31,30,31][month-1]);
+}
 
 function validHistory(value:unknown, latMicro:number, lngMicro:number):boolean {
   if (!plainObject(value)) return false;
   const version=Object.getOwnPropertyDescriptor(value,'protocolVersion');
   const copy=copyHistoricalChartRequest(value);
   return !!version && version.enumerable === true && Object.hasOwn(version,'value') && version.value === 1 &&
-    !!copy && copy.latMicro === latMicro && copy.lngMicro === lngMicro;
+    !!copy && copy.deltaT.kind !== 'espenakMeeus2006Unquantified' && copy.latMicro === latMicro && copy.lngMicro === lngMicro;
 }
 
 /** The same rules the Rust side enforces, checked before anything is sent. */
@@ -115,7 +124,10 @@ export function validChartRecord(chart: ChartRecordV1): boolean {
   return plainObject(chart) &&
     typeof chart.id === 'string' && ID_PATTERN.test(chart.id) &&
     label(chart.name, 80) && label(chart.placeName, 160) &&
-    (chart.historical === undefined
+    (chart.unknownDate !== undefined
+      ? chart.historical === undefined && chart.utcIso === '' && validUnknownDate(chart.unknownDate) &&
+        typeof chart.timeZone === 'string' && chart.timeZone.length <= 120 && ZONE_PATTERN.test(chart.timeZone)
+      : chart.historical === undefined
       ? typeof chart.utcIso === 'string' && UTC_PATTERN.test(chart.utcIso) &&
         typeof chart.timeZone === 'string' && chart.timeZone.length <= 120 && ZONE_PATTERN.test(chart.timeZone)
       : chart.utcIso === '' && chart.timeZone === '' && validHistory(chart.historical, chart.latMicro, chart.lngMicro)) &&
@@ -140,6 +152,7 @@ function decodeSavedChart(raw: unknown, seen: Set<string>): SavedChartV1 {
     latMicro: field(raw, 'latMicro') as number,
     lngMicro: field(raw, 'lngMicro') as number,
     placeName: field(raw, 'placeName') as string,
+    ...(Object.hasOwn(raw,'unknownDate') ? {unknownDate:field(raw,'unknownDate') as string} : {}),
     ...(historical === undefined ? {} : {historical}),
   };
   const createdAtMs = field(raw, 'createdAtMs');

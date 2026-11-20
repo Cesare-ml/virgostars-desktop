@@ -13,6 +13,11 @@
 .settings-section > summary:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }
 .settings-reset { margin-top:14px; }
 .settings-note { margin:8px 0; font-size:12px; line-height:1.5; color:var(--vs-text-secondary); }
+.star-slider { display:grid; gap:6px; margin:14px 0; font-size:13px; color:var(--vs-text); }
+.star-slider-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.star-slider output { color:var(--vs-accent); font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.star-slider input[type="range"] { width:100%; margin:0; accent-color:var(--vs-accent); cursor:pointer; }
+.star-slider input[type="range"]:focus-visible { outline:2px solid var(--vs-focus); outline-offset:3px; border-radius:4px; }
 .settings-head,.settings-row { display:flex; align-items:center; gap:8px; }
 .settings-head { justify-content:space-between; padding-bottom:6px; border-bottom:1px solid var(--vs-border);
   font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--vs-text-secondary); }

@@ -43,6 +43,12 @@ test('all Italian and English UI labels have identical keys and nonempty text',(
   }
 });
 
+test('interface translations do not mention the legacy product name', () => {
+  for (const locale of ['it','en']) for (const [key,value] of Object.entries(STRINGS[locale])) {
+    assert.doesNotMatch(value, /regolo/i, `${locale}: ${key}`);
+  }
+});
+
 test('navigation folds only when the centre column would be narrower than the window is tall', async () => {
   const {shouldCollapseNavigation, NAV_WIDTH_PX, INSPECTOR_WIDTH_PX} = await import('../src/app/workspace-state.ts');
   // 1360x880: 1360-208-400 = 752 < 880, so the wheel would be width-limited.

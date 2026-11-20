@@ -1,13 +1,16 @@
 /** Account-scoped chart synchronization. Credentials never cross this IPC. */
 export type SyncedChart = Readonly<{
-  id:string; name:string; civilDate:string; civilTime:string|null; timeUnknown:boolean; timeZone:string|null;
+  id:string; name:string; civilDate:string; civilTime:string|null; timeUnknown:boolean; isAccountChart:boolean; timeZone:string|null;
   latMicro:number|null; lngMicro:number|null; placeName:string; groups:readonly string[];
   syncStatus:'clean'|'pending'|'conflict'|'missing'; sourceUpdatedAtMs:number;
+  lifecycleStatus:'none'|'pending'|'conflict';
 }>;
 export type SyncOperation = Readonly<{operation:'sync'|'list';attemptId:string}> |
   Readonly<{operation:'set_groups';attemptId:string;chartId:string;baseGroups:readonly string[];groups:readonly string[]}> |
   Readonly<{operation:'associate';attemptId:string;chartId:string;localChartId:string;localUpdatedAtMs:number;sourceUpdatedAtMs:number;baseGroups:readonly string[];groups:readonly string[]}> |
-  Readonly<{operation:'queue_create';attemptId:string;chartId:string;localUpdatedAtMs:number;localDate:string;localTime:string;baseGroups:readonly string[]}> |
+  Readonly<{operation:'queue_create';attemptId:string;chartId:string;localUpdatedAtMs:number;localDate:string;localTime:string|null;baseGroups:readonly string[]}> |
+  Readonly<{operation:'queue_lifecycle'|'prepare_lifecycle'|'commit_lifecycle';attemptId:string;chartId:string;sourceUpdatedAtMs:number;lifecycleOperation:'delete'|'setAccount'}> |
+  Readonly<{operation:'cancel_lifecycle';attemptId:string;chartId:string}> |
   Readonly<{operation:'cancel_rejected';attemptId:string;chartId:string}> |
   Readonly<{operation:'offline_list'}> |
   Readonly<{operation:'offline_set_groups';chartId:string;baseGroups:readonly string[];groups:readonly string[]}>;
@@ -60,17 +63,17 @@ function clock(x:unknown):x is string {
 }
 function micro(x:unknown,max:number):x is number {return typeof x==='number' && Number.isSafeInteger(x) && Math.abs(x)<=max;}
 function chart(raw:unknown):SyncedChart {
-  if (!object(raw) || !keys(raw,['id','name','civilDate','civilTime','timeUnknown','timeZone','latMicro','lngMicro','placeName','groups','syncStatus','sourceUpdatedAtMs'])) throw new Error('Invalid chart');
+  if (!object(raw) || !keys(raw,['id','name','civilDate','civilTime','timeUnknown','isAccountChart','timeZone','latMicro','lngMicro','placeName','groups','syncStatus','lifecycleStatus','sourceUpdatedAtMs'])) throw new Error('Invalid chart');
   const id=prop(raw,'id'),name=prop(raw,'name'),civilDate=prop(raw,'civilDate'),civilTime=prop(raw,'civilTime');
-  const timeUnknown=prop(raw,'timeUnknown'),timeZone=prop(raw,'timeZone'),latMicro=prop(raw,'latMicro'),lngMicro=prop(raw,'lngMicro');
-  const placeName=prop(raw,'placeName'),syncStatus=prop(raw,'syncStatus'),sourceUpdatedAtMs=prop(raw,'sourceUpdatedAtMs');
-  if (typeof id!=='string' || !ID.test(id) || !label(name,255,true) || !date(civilDate) || typeof timeUnknown!=='boolean' ||
+  const timeUnknown=prop(raw,'timeUnknown'),isAccountChart=prop(raw,'isAccountChart'),timeZone=prop(raw,'timeZone'),latMicro=prop(raw,'latMicro'),lngMicro=prop(raw,'lngMicro');
+  const placeName=prop(raw,'placeName'),syncStatus=prop(raw,'syncStatus'),lifecycleStatus=prop(raw,'lifecycleStatus'),sourceUpdatedAtMs=prop(raw,'sourceUpdatedAtMs');
+  if (typeof id!=='string' || !ID.test(id) || !label(name,255,true) || !date(civilDate) || typeof timeUnknown!=='boolean' || typeof isAccountChart!=='boolean' ||
       !(timeUnknown ? civilTime===null : clock(civilTime)) ||
       !(timeZone===null || (typeof timeZone==='string' && timeZone.length<=120 && ZONE.test(timeZone))) ||
       !((latMicro===null && lngMicro===null) || (micro(latMicro,90_000_000) && micro(lngMicro,180_000_000))) ||
-      !label(placeName,160,false) || typeof sourceUpdatedAtMs!=='number' || !Number.isSafeInteger(sourceUpdatedAtMs) || sourceUpdatedAtMs<0 || (syncStatus!=='clean' && syncStatus!=='pending' && syncStatus!=='conflict' && syncStatus!=='missing')) throw new Error('Invalid chart');
-  return Object.freeze({id,name,civilDate,civilTime:civilTime as string|null,timeUnknown,timeZone:timeZone as string|null,
-    latMicro:latMicro as number|null,lngMicro:lngMicro as number|null,placeName,groups:groups(prop(raw,'groups')),syncStatus,sourceUpdatedAtMs});
+      !label(placeName,160,false) || typeof sourceUpdatedAtMs!=='number' || !Number.isSafeInteger(sourceUpdatedAtMs) || sourceUpdatedAtMs<0 || (syncStatus!=='clean' && syncStatus!=='pending' && syncStatus!=='conflict' && syncStatus!=='missing') || (lifecycleStatus!=='none' && lifecycleStatus!=='pending' && lifecycleStatus!=='conflict')) throw new Error('Invalid chart');
+  return Object.freeze({id,name,civilDate,civilTime:civilTime as string|null,timeUnknown,isAccountChart,timeZone:timeZone as string|null,
+    latMicro:latMicro as number|null,lngMicro:lngMicro as number|null,placeName,groups:groups(prop(raw,'groups')),syncStatus,lifecycleStatus,sourceUpdatedAtMs});
 }
 export async function requestChartSync(port:SyncTransport, operation:SyncOperation):Promise<SyncResult> {
   try {
@@ -79,11 +82,14 @@ export async function requestChartSync(port:SyncTransport, operation:SyncOperati
     if (!offline && (!('attemptId' in operation) || typeof operation.attemptId!=='string' || !ATTEMPT.test(operation.attemptId))) return {kind:'unavailable'};
     let request:Record<string,unknown>={protocolVersion:1,operation:operation.operation};
     if ('attemptId' in operation) request={...request,attemptId:operation.attemptId};
-    if (operation.operation==='cancel_rejected') {
+    if (operation.operation==='cancel_rejected' || operation.operation==='cancel_lifecycle') {
       if (!ID.test(operation.chartId)) return {kind:'unavailable'};
       request={...request,chartId:operation.chartId};
+    } else if (operation.operation==='queue_lifecycle' || operation.operation==='prepare_lifecycle' || operation.operation==='commit_lifecycle') {
+      if (!ID.test(operation.chartId) || !Number.isSafeInteger(operation.sourceUpdatedAtMs) || operation.sourceUpdatedAtMs<0 || !['delete','setAccount'].includes(operation.lifecycleOperation)) return {kind:'unavailable'};
+      request={...request,chartId:operation.chartId,sourceUpdatedAtMs:operation.sourceUpdatedAtMs,lifecycleOperation:operation.lifecycleOperation};
     } else if (operation.operation==='queue_create') {
-      if (!ID.test(operation.chartId) || !Number.isSafeInteger(operation.localUpdatedAtMs) || operation.localUpdatedAtMs<0 || !date(operation.localDate) || !clock(operation.localTime)) return {kind:'unavailable'};
+      if (!ID.test(operation.chartId) || !Number.isSafeInteger(operation.localUpdatedAtMs) || operation.localUpdatedAtMs<0 || !date(operation.localDate) || !(operation.localTime===null || clock(operation.localTime))) return {kind:'unavailable'};
       request={...request,chartId:operation.chartId,localUpdatedAtMs:operation.localUpdatedAtMs,localDate:operation.localDate,localTime:operation.localTime,baseGroups:groups(operation.baseGroups)};
     } else if (operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate') {
       if (!ID.test(operation.chartId)) return {kind:'unavailable'};
@@ -97,14 +103,14 @@ export async function requestChartSync(port:SyncTransport, operation:SyncOperati
     if (!object(raw) || prop(raw,'protocolVersion')!==1) throw new Error('Invalid response');
     const status=prop(raw,'status');
     if (status==='disabled' && keys(raw,['protocolVersion','status'])) return {kind:'disabled'};
-    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate' || operation.operation==='queue_create' || operation.operation==='cancel_rejected') && status==='stale' && keys(raw,['protocolVersion','status'])) return {kind:'stale'};
+    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate' || operation.operation==='queue_create' || operation.operation==='cancel_rejected' || operation.operation==='queue_lifecycle' || operation.operation==='prepare_lifecycle' || operation.operation==='commit_lifecycle' || operation.operation==='cancel_lifecycle') && status==='stale' && keys(raw,['protocolVersion','status'])) return {kind:'stale'};
     if (status!=='ok') throw new Error('Invalid response');
-    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate' || operation.operation==='queue_create' || operation.operation==='cancel_rejected') && keys(raw,['protocolVersion','status'])) return {kind:'saved'};
+    if ((operation.operation==='set_groups' || operation.operation==='offline_set_groups' || operation.operation==='associate' || operation.operation==='queue_create' || operation.operation==='cancel_rejected' || operation.operation==='queue_lifecycle' || operation.operation==='prepare_lifecycle' || operation.operation==='commit_lifecycle' || operation.operation==='cancel_lifecycle') && keys(raw,['protocolVersion','status'])) return {kind:'saved'};
     if ((operation.operation==='list' || operation.operation==='offline_list') && keys(raw,['protocolVersion','status','charts','pendingChartIds','rejectedChartIds'])) {
       const values=prop(raw,'charts');
       if (!Array.isArray(values) || Object.getPrototypeOf(values)!==Array.prototype || values.length>5000 || Reflect.ownKeys(values).length!==values.length+1) throw new Error('Invalid response');
       const charts=Array.from({length:values.length},(_,i)=>chart(prop(values,String(i))));
-      if (new Set(charts.map(c=>c.id)).size!==charts.length) throw new Error('Duplicate chart');
+      if (new Set(charts.map(c=>c.id)).size!==charts.length || charts.filter(c=>c.isAccountChart).length>1) throw new Error('Duplicate chart');
       const ids=prop(raw,'pendingChartIds');
       if (!Array.isArray(ids) || Object.getPrototypeOf(ids)!==Array.prototype || ids.length>5000 || Reflect.ownKeys(ids).length!==ids.length+1) throw new Error('Invalid response');
       const pendingChartIds=Array.from({length:ids.length},(_,i)=>prop(ids,String(i)));

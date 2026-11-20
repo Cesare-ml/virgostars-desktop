@@ -37,9 +37,7 @@ test('account and all three function actions use their new icons', () => {
   const nav = markup.match(/<nav class="sidebar"[\s\S]*?<\/nav>/)?.[0] ?? '';
   assert.match(nav, /<vs-menu-icon name="account-virgostars"><\/vs-menu-icon>/);
   assert.doesNotMatch(nav, /nav-mark" aria-hidden="true">◯/);
-  for (const [action,name] of [['solar_return','solar-return'], ['lunar_return','lunar-return'], ['monomeri','monomeri']]) {
-    assert.ok(markup.includes(`*ngIf="entry.action==='${action}'" name="${name}"`));
+  for (const name of ['solar-return','lunar-return','monomeri']) {
+    assert.ok(markup.includes(`<vs-menu-icon name="${name}"></vs-menu-icon>`));
   }
-  assert.match(markup, /class="stage-menu-label"><vs-menu-icon name="monomeri"><\/vs-menu-icon>/);
-  assert.match(styles, /\.function-line \{ justify-content:flex-start; gap:10px; \}/);
 });

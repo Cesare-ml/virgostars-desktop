@@ -72,5 +72,8 @@ test('no setting is offered twice', () => {
   const drawer = html.match(/<section class="drawer" \*ngIf="view==='functions'"[\s\S]*?<\/section>/)?.[0] ?? '';
   assert.doesNotMatch(drawer, /vs-chart-settings|setHouseSystem|startup/);
   assert.equal((settings.match(/setHouseSystem/g) ?? []).length, 1);
-  assert.equal((html.match(/<vs-chart-settings /g) ?? []).length, 1);
+  assert.equal((settings.match(/<vs-chart-settings /g) ?? []).length, 1);
+  assert.match(html, /<vs-chart-settings \*ngIf="fixedStarToolsActive" \[starsOnly\]="true"/);
+  assert.match(settingsHtml, /<details class="settings-section" \*ngIf="starsOnly">/);
+  assert.match(settingsHtml, /<ng-container \*ngIf="!starsOnly">/);
 });

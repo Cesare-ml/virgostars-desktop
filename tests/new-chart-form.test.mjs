@@ -11,6 +11,18 @@ const FIELDS = Object.freeze({
   latitude: '44.697805', longitude: '11,805778', placeName: 'Luogo di prova',
 });
 
+test('extended-year civil inputs and stored instants keep the local date', () => {
+  for (const year of ['0800','2200']) {
+    const fields={...FIELDS,date:`${year}-03-20`,time:'12:00:00',timeZone:'Europe/Rome'};
+    const result=resolveNewChart(fields, value=>resolveCivilTime(value,{yearRange:'archive'}));
+    assert.equal(result.status,'ready');
+    const restored=savedChartFields({...result.input,id:'11111111-1111-4111-8111-111111111111',createdAtMs:1,updatedAtMs:1});
+    assert.equal(restored.date,fields.date);
+    assert.equal(restored.time,fields.time);
+    assert.equal(restored.timeZone,fields.timeZone);
+  }
+});
+
 test('a saved chart prefills its original local birth date, time and coordinates', () => {
   const chart = {
     id:'11111111-1111-4111-8111-111111111111', name:'Persona immaginaria',

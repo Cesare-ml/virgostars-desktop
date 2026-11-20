@@ -47,6 +47,28 @@ test('missing installed ephemeris coverage remains distinct from other calculati
   const result=decodeHistoricalChart({protocolVersion:1,status:'ephemeris_out_of_range'},decodeChartResponse);
   assert.equal(result.kind,'ephemeris_out_of_range');
 });
+test('historical charts can request fixed stars and retain the validated response', async () => {
+  const response=raw();
+  response.fixedStars=[{id:1,name:'Test Star',longitudeDeg:42,latitudeDeg:2,magnitude:3,
+    trueAltitudeDeg:10,azimuthSouthWestDeg:180,approximate:true,constellation:null,interpretations:{}}];
+  let sent;
+  const result=await requestHistoricalChart({isNative:()=>true,invoke:async (_command,args)=>{sent=args;return response;}},request,decodeChartResponse,true);
+  assert.equal(sent.request.includeFixedStars,true);
+  assert.equal(result.kind,'ready');
+  assert.equal(result.fixedStars[0].longitudeDeg,42);
+  assert.equal(result.fixedStars[0].approximate,true);
+});
+test('automatic navigation marks unknown uncertainty and cannot be saved as a historical record',()=>{
+  const auto = {...request, deltaT:{kind:'espenakMeeus2006Unquantified'}};
+  assert.equal(validHistoricalChartRequest(auto), true);
+  assert.equal(validChartRecord({...historicRecord(), historical:{protocolVersion:1,...auto}}), false);
+  const response = raw();
+  response.time.deltaTSource = 'Espenak-Meeus 2006';
+  response.time.deltaTUncertaintySeconds = null;
+  assert.equal(decodeHistoricalChart(response, decodeChartResponse, auto).time.deltaTUncertaintySeconds, null);
+  response.time.deltaTUncertaintySeconds = 0;
+  assert.throws(() => decodeHistoricalChart(response, decodeChartResponse, auto));
+});
 test('archive round-trips historical input without synthesizing UTC', async () => {
   const record=historicRecord();
   const saved={...record,createdAtMs:1,updatedAtMs:2};

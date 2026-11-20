@@ -89,16 +89,22 @@ pub struct NativeAccessGrant {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TokenScope { Read, ReadAndGroupWrite, ReadAndChartWrite, ReadAndBothWrites }
+pub enum TokenScope { Read, ReadAndGroupWrite, ReadAndChartWrite, ReadAndBothWrites,
+    ReadAndManage, ReadGroupAndManage, ReadChartAndManage, ReadBothAndManage }
 
 impl TokenScope {
     pub fn as_str(self) -> &'static str {
         match self { Self::Read => "chart_sync:read", Self::ReadAndGroupWrite => "chart_sync:read chart_sync:groups:write",
             Self::ReadAndChartWrite => "chart_sync:read chart_sync:charts:write",
-            Self::ReadAndBothWrites => "chart_sync:read chart_sync:groups:write chart_sync:charts:write" }
+            Self::ReadAndBothWrites => "chart_sync:read chart_sync:groups:write chart_sync:charts:write",
+            Self::ReadAndManage => "chart_sync:read chart_sync:charts:manage",
+            Self::ReadGroupAndManage => "chart_sync:read chart_sync:groups:write chart_sync:charts:manage",
+            Self::ReadChartAndManage => "chart_sync:read chart_sync:charts:write chart_sync:charts:manage",
+            Self::ReadBothAndManage => "chart_sync:read chart_sync:groups:write chart_sync:charts:write chart_sync:charts:manage" }
     }
-    pub fn allows_group_write(self) -> bool { matches!(self,Self::ReadAndGroupWrite | Self::ReadAndBothWrites) }
-    pub fn allows_chart_write(self) -> bool { matches!(self,Self::ReadAndChartWrite | Self::ReadAndBothWrites) }
+    pub fn allows_group_write(self) -> bool { matches!(self,Self::ReadAndGroupWrite | Self::ReadAndBothWrites | Self::ReadGroupAndManage | Self::ReadBothAndManage) }
+    pub fn allows_chart_write(self) -> bool { matches!(self,Self::ReadAndChartWrite | Self::ReadAndBothWrites | Self::ReadChartAndManage | Self::ReadBothAndManage) }
+    pub fn allows_chart_manage(self) -> bool { matches!(self,Self::ReadAndManage | Self::ReadGroupAndManage | Self::ReadChartAndManage | Self::ReadBothAndManage) }
 }
 
 impl NativeAccessGrant {
@@ -197,6 +203,10 @@ pub(crate) fn parse_response(response: TokenHttpResponse, now: Instant) -> Resul
         "chart_sync:read chart_sync:groups:write" => TokenScope::ReadAndGroupWrite,
         "chart_sync:read chart_sync:charts:write" => TokenScope::ReadAndChartWrite,
         "chart_sync:read chart_sync:groups:write chart_sync:charts:write" => TokenScope::ReadAndBothWrites,
+        "chart_sync:read chart_sync:charts:manage" => TokenScope::ReadAndManage,
+        "chart_sync:read chart_sync:groups:write chart_sync:charts:manage" => TokenScope::ReadGroupAndManage,
+        "chart_sync:read chart_sync:charts:write chart_sync:charts:manage" => TokenScope::ReadChartAndManage,
+        "chart_sync:read chart_sync:groups:write chart_sync:charts:write chart_sync:charts:manage" => TokenScope::ReadBothAndManage,
         _ => return Err(TokenExchangeError::InvalidResponse),
     };
     let expires_at = now.checked_add(Duration::from_secs(expires))
@@ -392,7 +402,7 @@ mod tests {
         let schema: serde_json::Value = serde_json::from_str(include_str!(
             "../../contracts/connected-account-status.v1.schema.json"
         )).unwrap();
-        assert_eq!(schema["properties"]["scope"]["enum"], serde_json::json!(["chart_sync:read", "chart_sync:read chart_sync:groups:write", "chart_sync:read chart_sync:charts:write", "chart_sync:read chart_sync:groups:write chart_sync:charts:write"]));
+        assert_eq!(schema["properties"]["scope"]["enum"], serde_json::json!(["chart_sync:read", "chart_sync:read chart_sync:groups:write", "chart_sync:read chart_sync:charts:write", "chart_sync:read chart_sync:groups:write chart_sync:charts:write", "chart_sync:read chart_sync:charts:manage", "chart_sync:read chart_sync:groups:write chart_sync:charts:manage", "chart_sync:read chart_sync:charts:write chart_sync:charts:manage", "chart_sync:read chart_sync:groups:write chart_sync:charts:write chart_sync:charts:manage"]));
         let now = Instant::now();
         let jwt = format!("{}.{}.{}", "A".repeat(43), "B".repeat(43), "C".repeat(100));
         let response = |scope: &str| TokenHttpResponse {
@@ -407,6 +417,9 @@ mod tests {
         assert!(!chart.scope().allows_group_write());
         let both=parse_response(response("chart_sync:read chart_sync:groups:write chart_sync:charts:write"),now).unwrap();
         assert!(both.scope().allows_group_write() && both.scope().allows_chart_write());
+        assert!(!both.scope().allows_chart_manage());
+        let manage=parse_response(response("chart_sync:read chart_sync:groups:write chart_sync:charts:write chart_sync:charts:manage"),now).unwrap();
+        assert!(manage.scope().allows_group_write() && manage.scope().allows_chart_write() && manage.scope().allows_chart_manage());
         assert!(matches!(parse_response(response("chart_sync:read chart_sync:notes"), now), Err(TokenExchangeError::InvalidResponse)));
         assert!(matches!(parse_response(response("charts:read"), now), Err(TokenExchangeError::InvalidResponse)));
     }

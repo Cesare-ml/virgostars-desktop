@@ -72,7 +72,7 @@ export function aspectPoints(data: TemaRenderData, points: PointSettings): Aspec
   for (const name of RENDER_POINT_ORDER) {
     if (AXES.includes(name)) {
       // Axes are always candidates; whether they are aspected is a separate setting.
-      result.push({name, longitude: axes[name], speed: null, declination: null});
+      if (Number.isFinite(axes[name])) result.push({name, longitude: axes[name], speed: null, declination: null});
       continue;
     }
     const body = data.planets[name];

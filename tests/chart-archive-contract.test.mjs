@@ -18,6 +18,17 @@ const native = reply => {
   return {calls, isNative: () => true, invoke: async (...args) => { calls.push(args); return reply(); }};
 };
 
+test('unknown birth time preserves the date without storing a fabricated instant', () => {
+  const unknown = {...saved(ID_A, 'Alfa'), utcIso:'', unknownDate:'1987-08-12'};
+  assert.ok(validChartRecord(unknown));
+  const response = {...okResponse(), charts:[unknown]};
+  assert.equal(decodeArchiveResponse(response).charts[0].unknownDate, '1987-08-12');
+  for (const bad of [{...unknown, utcIso:'1987-08-12T10:00:00Z'}, {...unknown, unknownDate:'1987-02-30'}, {...unknown, unknownDate:'nonsense'}]) {
+    assert.equal(validChartRecord(bad), false);
+    assert.throws(() => decodeArchiveResponse({...response, charts:[bad]}), /Invalid chart archive protocol/);
+  }
+});
+
 test('a native list is copied into detached frozen records', () => {
   const raw = okResponse();
   const decoded = decodeArchiveResponse(raw);

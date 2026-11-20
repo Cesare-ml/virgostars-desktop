@@ -4,9 +4,10 @@
  *
  * Hours and minutes move the instant by elapsed time. Days, months and years move the local
  * calendar date of the chart's own time zone and keep its local clock time, so a day step across a
- * daylight-saving change still lands on the same wall-clock hour. Dates outside the years 1900 to 2033
- * (astronomical numbering: year 0 is 1 BC) are refused with `null`.
+ * daylight-saving change still lands on the same wall-clock hour. The date
+ * navigator is bounded by the supported automatic historical time model.
  */
+import type {HistoricalChartRequest} from './native/historical-chart-contract';
 export type StepUnit = 'min' | 'h' | 'd';
 export type NavField = 'day' | 'month' | 'year' | 'hour' | 'minute';
 
@@ -19,8 +20,8 @@ export const STEP_ROWS: readonly StepRow[] = Object.freeze([
 ] as const);
 export const DEFAULT_STEP = Object.freeze({unit: 'min' as StepUnit, value: 4 as number});
 
-export const MIN_YEAR = 1900;
-export const MAX_YEAR = 2033;
+export const MIN_YEAR = 1;
+export const MAX_YEAR = 3000;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
@@ -78,7 +79,17 @@ const sameWall = (a: LocalParts, b: LocalParts): boolean =>
 /** Offset of the zone from UTC at an instant, in ms (east positive). */
 function offsetAt(utcMs: number, timeZone: string): number | null {
   const parts = localParts(utcMs, timeZone);
-  return parts ? utcOfParts(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - utcMs : null;
+  return parts ? utcOfParts(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - Math.floor(utcMs / 1000) * 1000 : null;
+}
+
+/** Use the city's available zone rules; historical offsets may be extrapolated. */
+export function historicalNavigationRequest(utcMs:number, timeZone:string, latMicro:number, lngMicro:number):HistoricalChartRequest | null {
+  const civil = localParts(utcMs, timeZone);
+  const offset = offsetAt(utcMs, timeZone);
+  if (!civil || offset === null || civil.year < MIN_YEAR || civil.year > MAX_YEAR) return null;
+  return {civil:{...civil, calendar:'gregorian', offset:{kind:'supplied', secondsEast:offset / 1000,
+      source:`IANA ${timeZone} (historical rules may be extrapolated)`}, uncertaintySeconds:0},
+    deltaT:{kind:'espenakMeeus2006Unquantified'}, latMicro, lngMicro};
 }
 
 /** Every instant at which the zone's clock reads `parts`: none, one, or two when the clock goes back. */
@@ -118,6 +129,23 @@ function inRange(utcMs: number | null, timeZone: string): number | null {
   if (utcMs === null || !Number.isFinite(utcMs)) return null;
   const parts = localParts(utcMs, timeZone);
   return parts && parts.year >= MIN_YEAR && parts.year <= MAX_YEAR ? utcMs : null;
+}
+
+/** Replace one displayed field, rejecting invalid calendar dates and clock readings. */
+export function setInstantField(utcMs:number, timeZone:string, field:NavField, text:string):number | null {
+  if (!/^\d+$/.test(text)) return null;
+  const value = Number(text);
+  const local = localParts(utcMs, timeZone);
+  if (!local || !Number.isSafeInteger(value)) return null;
+  const next = {...local, [field]:value};
+  if (next.year < MIN_YEAR || next.year > MAX_YEAR || next.month < 1 || next.month > 12 ||
+      next.hour < 0 || next.hour > 23 || next.minute < 0 || next.minute > 59) return null;
+  const days = new Date(utcOfParts(next.year, next.month, 0)).getUTCDate();
+  if (next.day < 1 || next.day > days) return null;
+  const instant = utcFromLocal(next, timeZone);
+  const resolved = instant === null ? null : localParts(instant, timeZone);
+  // A manually typed nonexistent wall time must not silently become another hour.
+  return resolved && sameWall(resolved, next) ? inRange(instant, timeZone) : null;
 }
 
 /** Moves one field of the chart's local date and time by one unit (or several). */

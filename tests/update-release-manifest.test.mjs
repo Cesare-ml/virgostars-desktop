@@ -9,7 +9,7 @@ import {verifyDesktopVersions} from '../scripts/verify-desktop-version.mjs';
 test('manual manifest uses the selected channel and refuses a mismatched signed version',()=>{
   const dir=mkdtempSync(join(tmpdir(),'virgostars-update-fixture-'));
   try {
-    const installer=join(dir,'fixture-setup.exe'), sig=join(dir,'fixture.sig'), notes=join(dir,'notes.txt'), out=join(dir,'latest.json');
+    const installer=join(dir,'Fixture Desktop-setup.exe'), sig=join(dir,'fixture.sig'), notes=join(dir,'notes.txt'), out=join(dir,'latest.json');
     writeFileSync(installer,'synthetic non-executable fixture');writeFileSync(notes,'Test release');
     const version=verifyDesktopVersions().version;
     const run=()=>spawnSync(process.execPath,['scripts/updates/prepare-manifest.mjs','--channel','stable','--installer',installer,'--signature',sig,'--notes',notes,'--output',out],{encoding:'utf8'});
@@ -19,10 +19,11 @@ test('manual manifest uses the selected channel and refuses a mismatched signed 
     assert.equal(run().status,0);
     const manifest=JSON.parse(readFileSync(out,'utf8'));assert.equal(manifest.version,version);
     assert.match(manifest.platforms['windows-x86_64'].url,/\/releases\/download\/v/);
+    assert.ok(manifest.platforms['windows-x86_64'].url.endsWith('/Fixture.Desktop-setup.exe'), 'manifest uses the asset name GitHub serves');
     assert.notEqual(run().status,0,'existing manifest must never be overwritten');
     rmSync(out);
     const testing=spawnSync(process.execPath,['scripts/updates/prepare-manifest.mjs','--channel','testing','--installer',installer,'--signature',sig,'--notes',notes,'--output',out],{encoding:'utf8'});
     assert.equal(testing.status,0);
     assert.match(JSON.parse(readFileSync(out,'utf8')).platforms['windows-x86_64'].url,/\/releases\/download\/test-v/);
-  } finally {for (const name of ['fixture-setup.exe','fixture.sig','notes.txt','latest.json']) rmSync(join(dir,name),{force:true});rmdirSync(dir);}
+  } finally {for (const name of ['Fixture Desktop-setup.exe','fixture.sig','notes.txt','latest.json']) rmSync(join(dir,name),{force:true});rmdirSync(dir);}
 });

@@ -12,7 +12,7 @@ const panel = html.match(/<div class="navigator"[\s\S]*?<div \*ngIf="inspectorTa
 test('"Naviga cielo" is a left-menu button that opens a panel on the right', () => {
   const nav = html.match(/<nav class="sidebar"[\s\S]*?<\/nav>/)?.[0] ?? '';
   assert.match(nav, /toggleInspectorTab\('navigate'\)/);
-  assert.match(nav, /\[disabled\]="!activeChart"/);
+  assert.match(nav, /\[disabled\]="!activeChart \|\| activeChart\.timeUnknown"/);
   assert.match(html, /\{\{t\(inspectorTitleKey\)\}\}/);
   assert.match(component, /this\.inspectorTab === 'planets' \? 'nav\.planets' : this\.inspectorTab === 'aspects' \? 'tab\.aspects' : this\.inspectorTab === 'transits' \? 'transits\.navigation' : this\.inspectorTab === 'zodiac' \? 'zodiac\.title' : 'nav\.title'/);
   assert.ok(panel.length > 800);
@@ -50,7 +50,7 @@ test('opening the navigator stops the sky from refreshing itself, and nothing mo
 });
 
 test('Salva exists only for a subject\'s chart and overwrites only after a confirmation', () => {
-  assert.match(panel, /\*ngIf="activeChart\.kind === 'chart'"[^>]*\[disabled\]="archiveBusy \|\| \(!navDirty && activeChart\.archiveId !== null\)"/);
+  assert.match(panel, /\*ngIf="activeChart\.kind === 'chart'"[^>]*\[disabled\]="archiveBusy \|\| navUsesHistoricalEstimate \|\| \(!navDirty && activeChart\.archiveId !== null\)"/);
   const ask = component.match(/askNavSave\(\): void \{[\s\S]*?\n  \}/)?.[0] ?? '';
   assert.match(ask, /chart\.kind !== 'chart'/);
   assert.match(ask, /chart\.archiveId === null\) \{ void this\.confirmNavSave\(\); return; \}/);
@@ -99,8 +99,8 @@ test('every label of the panel exists in both languages', () => {
 
 test('Naviga cielo sits first in its group of the left menu, above Aspetti, and Info pianeti is not there', () => {
   const nav = html.match(/<nav class="sidebar"[\s\S]*?<\/nav>/)?.[0] ?? '';
-  const order = ["toggleInspectorTab('navigate')", "toggleInspectorTab('aspects')", 'openFunctions()', 'openSettings()'].map(call => nav.indexOf(call));
-  assert.ok(order.every(index => index > 0), 'all four are in the left menu');
+  const order = ["toggleInspectorTab('navigate')", "toggleInspectorTab('aspects')", 'openSettings()'].map(call => nav.indexOf(call));
+  assert.ok(order.every(index => index > 0), 'all three are in the left menu');
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'in this order');
   assert.ok(!nav.includes("t('nav.planets')"));
 });

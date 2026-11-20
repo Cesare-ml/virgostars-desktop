@@ -42,15 +42,15 @@ test('scope exclusions stay listed as excluded, not as planned work', () => {
   assert.deepEqual(excluded, ['chakra', 'physiognomy']);
 });
 
-test('the component dispatches every catalog action and disables the rest', () => {
-  const component = read('src/app/desktop-app.component.ts');
+test('available tools remain reachable directly after removing the Functions menu', () => {
   const html = read('src/app/desktop-app.component.html');
-  for (const action of new Set(entries.map(entry => entry.action).filter(Boolean))) {
-    assert.match(component, new RegExp("case '" + action + "':"), action);
+  for (const action of ["openReturns('solar')", "openReturns('lunar')", 'toggleMonomeri()', 'toggleKleroi()',
+    'toggleArabicParts()', 'toggleFixedStars()', "toggleChartDisplay('showDecans')", "toggleChartDisplay('showDecades')", "toggleChartDisplay('showTerms')"]) {
+    assert.ok(html.includes(action), action);
   }
-  // Available entries are active buttons; everything else sits in a collapsed, disabled list.
-  assert.match(html, /\*ngFor="let entry of availableIn\(group\)"\s+\[disabled\]="busy \|\| calcBusy \|\| \(entry.action==='monomeri' && !monomeriAvailable\) \|\| \(entry.action==='directions' && !directionsSupported\)"/);
-  assert.doesNotMatch(html, /\*ngFor="let entry of unavailableIn\(group\)"/);
+  assert.match(html, /value="custom"/);
+  assert.match(html, /arabicHouses/);
+  assert.doesNotMatch(html, /openFunctions\(\)|view==='functions'/);
 });
 
 test('calculated exports are never named like fixture exports', () => {
@@ -67,6 +67,6 @@ test('a calculated chart is never paired with fixture overlays', () => {
   assert.doesNotMatch(component, /makeFictionalTheme|fictionalPlanets|fictionalHouses/);
   assert.match(component, /const transit = this\.mode === 'synastry' \? this\.displayChart\(this\.synastryTransitChart\)\?\.render : this\.displayedTransit\?\.render;/);
   assert.match(component, /this\.displayChart\(this\.synodChart\)\?\.render : this\.partnerChart\?\.render;/);
-  assert.match(component, /const present = AXIS_IDS\.includes\(id\) \|\| id in planets;/);
+  assert.match(component, /const present = AXIS_IDS\.includes\(id\) \? !!active && !active\.timeUnknown : id in planets;/);
   assert.match(component, /target\.att = present && setting\.shown;/);
 });

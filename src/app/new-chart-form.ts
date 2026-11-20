@@ -29,6 +29,8 @@ export type NewChartInput = Readonly<{
   lngMicro: number;
   placeName: string;
   historical?: HistoricalChartRequest & Readonly<{protocolVersion:1}>;
+  timeUnknown?: boolean;
+  unknownDate?: string;
 }>;
 
 export type NewChartProblem =
@@ -44,6 +46,8 @@ export const MAX_CHART_NAME_LENGTH = 80;
 
 /** Recover editable local birth fields from the persisted UTC instant and IANA zone. */
 export function savedChartFields(chart: SavedChartV1): NewChartFields {
+  if (chart.unknownDate) return {name:chart.name,date:chart.unknownDate,time:'12:00:00',timeZone:chart.timeZone,
+    latitude:(chart.latMicro / 1e6).toFixed(6),longitude:(chart.lngMicro / 1e6).toFixed(6),placeName:chart.placeName};
   if (chart.historical) {
     const c=chart.historical.civil, pad=(n:number)=>String(n).padStart(2,'0');
     const secondText=String(c.second).includes('e') ? c.second.toFixed(9) : String(c.second);
@@ -68,7 +72,7 @@ export function savedChartFields(chart: SavedChartV1): NewChartFields {
   const value = (key: string) => parts.find(part => part.type === key)?.value ?? '';
   return {
     name:chart.name,
-    date:`${value('year')}-${value('month')}-${value('day')}`,
+    date:`${value('year').padStart(4, '0')}-${value('month')}-${value('day')}`,
     time:`${value('hour')}:${value('minute')}:${value('second')}`,
     timeZone:chart.timeZone,
     latitude:(chart.latMicro / 1e6).toFixed(6),

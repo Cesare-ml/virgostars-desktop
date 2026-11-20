@@ -1,5 +1,16 @@
 <div class="desktop-app" #shell [attr.data-theme]="theme">
-  <vs-de441-packages *ngIf="!welcomeLoading && !welcomeVisible" [locale]="locale"></vs-de441-packages>
+  <svg class="tool-symbol-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="tool-elements" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+    <symbol id="tool-aspects" viewBox="0 0 24 24"><path d="M12 4 21 19H3Z"/><circle cx="12" cy="4" r="1.5"/><circle cx="3" cy="19" r="1.5"/><circle cx="21" cy="19" r="1.5"/></symbol>
+    <symbol id="tool-kleroi" viewBox="0 0 24 24"><path d="M12 3 20 12 12 21 4 12Z"/><circle cx="12" cy="12" r="2"/></symbol>
+    <symbol id="tool-arabic" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="tool-stars" viewBox="0 0 24 24"><path d="m12 2 2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5Z"/><path d="M19 17v4M17 19h4"/></symbol>
+    <symbol id="tool-decades" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v4M19.8 7.5l-3.5 2M19.8 16.5l-3.5-2M12 21v-4M4.2 16.5l3.5-2M4.2 7.5l3.5 2"/></symbol>
+    <symbol id="tool-decans" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 12V3M12 12l7.8 4.5M12 12l-7.8 4.5"/></symbol>
+    <symbol id="tool-terms" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM7 5v5M10 5v3M13 5v5M16 5v3M19 5v5"/></symbol>
+    <symbol id="tool-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.1"/></symbol>
+  </svg>
+  <vs-de441-packages class="de441-startup" *ngIf="!welcomeLoading && !welcomeVisible" [locale]="locale"></vs-de441-packages>
   <div class="welcome-screen" *ngIf="welcomeLoading || welcomeVisible" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     <div class="welcome-content">
       <h1 id="welcome-title"><img class="welcome-wordmark" [src]="brandWordmark" alt="VirgoStars"></h1>
@@ -44,7 +55,21 @@
       </div>
     </div>
   </div>
-  <button *ngIf="updateAvailable && view!=='settings' && !welcomeLoading && !welcomeVisible" type="button" class="update-notice" (click)="openSettings()">{{locale==='it' ? 'Aggiornamento disponibile' : 'Update available'}}</button>
+  <div class="overlay" *ngIf="view==='archive' && pendingDeleteIds.length" (keydown.escape)="cancelDeleteSaved()">
+    <div class="overlay-card" role="alertdialog" aria-modal="true" [attr.aria-label]="t(deletingOnline ? 'archive.confirmOnline' : pendingDeleteIds.length===1 ? 'archive.confirm' : 'archive.confirmMultiple')">
+      <h2>{{t(deletingOnline ? 'archive.confirmOnline' : pendingDeleteIds.length===1 ? 'archive.confirm' : 'archive.confirmMultiple')}}</h2>
+      <p *ngIf="pendingDeleteIds.length>1">{{pendingDeleteIds.length}} {{t('archive.selectedCount')}}</p>
+      <ul><li *ngFor="let name of pendingDeleteNames">{{name}}</li></ul>
+      <div class="overlay-actions">
+        <button #deleteCancel type="button" class="overlay-cancel" [disabled]="deletingSelected" (click)="cancelDeleteSaved()">{{t('archive.confirm.no')}}</button>
+        <button type="button" class="danger-control" [disabled]="archiveBusy || deletingSelected" (click)="confirmDeleteSaved()">{{t('archive.confirm.yes')}}</button>
+      </div>
+    </div>
+  </div>
+  <button *ngIf="updateAvailable && view!=='settings' && !welcomeLoading && !welcomeVisible" type="button" class="update-notice" (click)="openUpdateSettings()">
+    <span class="update-notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m-3.5-3.5L12 13l3.5-3.5"/><path d="M5 14v3.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V14"/></svg></span>
+    <span class="update-notice-label">{{locale==='it' ? 'Aggiornamento disponibile' : 'Update available'}}</span>
+  </button>
   <div class="workspace" #workspace [attr.inert]="welcomeLoading || welcomeVisible ? '' : null" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.inspector-narrow]="inspectorTab==='navigate' || inspectorTab==='transits'">
     <nav class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
@@ -69,11 +94,8 @@
             [disabled]="calcBusy" [attr.title]="t('sky.title')" (click)="showSky()">
             <span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12.55 8.5 15.5 11.45 21.3 12C15.5 12.55 12.55 15.5 12 21.3C11.45 15.5 8.5 12.55 2.7 12C8.5 11.45 11.45 8.5 12 2.7Z"/><circle cx="19.1" cy="5.2" r="1.05" fill="#F3EFFA" stroke="none"/></g></svg></span><span class="nav-label">{{t('sky.title')}}</span>
           </button>
-          <button type="button" class="nav-item" [class.selected]="view==='chart' && chartPresentation==='sky3d'"
-            [disabled]="!activeChart || calcBusy" [attr.aria-pressed]="view==='chart' && chartPresentation==='sky3d'"
-            [attr.title]="locale==='it' ? 'Cielo 3D' : '3D Sky'" (click)="toggleSkyDome()">
-            <span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-7 7-7 11 0 18M12 3c7 7 7 11 0 18M7 6l10 12"/></g></svg></span>
-            <span class="nav-label">{{locale==='it' ? 'Cielo 3D' : '3D Sky'}}</span>
+          <button type="button" class="nav-item" [disabled]="busy || calcBusy" [attr.title]="t('accountChart.title')" (click)="openAccountChart()">
+            <span class="nav-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="9" r="2.5"/><path d="M6.8 18c.6-2.8 2.5-4.3 5.2-4.3s4.6 1.5 5.2 4.3"/></svg></span><span class="nav-label">{{t('accountChart.title')}}</span>
           </button>
           <button type="button" class="nav-item" *ngFor="let item of modes"
             [class.selected]="view==='chart' && mode===item && !(isSkyActive && item==='natal')"
@@ -84,6 +106,14 @@
             <span class="nav-mark" aria-hidden="true"><svg *ngIf="item==='natal'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.25"/><path d="M12 3V8.75M12 15.25V21M3 12H8.75M15.25 12H21"/><circle cx="12" cy="12" r="1.1" fill="#F3EFFA" stroke="none"/></g></svg><svg *ngIf="item==='transits'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.35"/><path d="M4.2 9.35A8.3 8.3 0 0 1 19.5 7.75"/><path d="M16.3 7.15L19.7 7.95L20.25 4.55"/><path d="M19.8 14.8A8.3 8.3 0 0 1 4.5 16.25"/><path d="M7.7 16.85L4.3 16.05L3.75 19.45"/><circle cx="15" cy="10" r="0.95" fill="#F3EFFA" stroke="none"/></g></svg><svg *ngIf="item==='synastry'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="12" r="6.7"/><circle cx="15.2" cy="12" r="6.7"/><circle cx="8.8" cy="12" r="1.05" fill="#F3EFFA" stroke="none"/><circle cx="15.2" cy="12" r="1.05" fill="#F3EFFA" stroke="none"/></g></svg><svg *ngIf="item==='latitude'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12H21M4.3 8C8.55 10.1 15.45 10.1 19.7 8"/><path d="M4.3 16C8.55 13.9 15.45 13.9 19.7 16"/><path d="M12 3C9.45 5.2 8.4 8.1 8.4 12S9.45 18.8 12 21"/><path d="M12 3C14.55 5.2 15.6 8.1 15.6 12S14.55 18.8 12 21"/></g></svg></span>
             <span class="nav-label">{{modeLabel(item)}}</span>
           </button>
+          <button type="button" class="nav-item" [class.selected]="view==='chart' && chartPresentation==='sky3d'"
+            [disabled]="!activeChart || activeChart.timeUnknown || calcBusy" [attr.aria-pressed]="view==='chart' && chartPresentation==='sky3d'"
+            [attr.title]="locale==='it' ? 'Cielo 3D' : '3D Sky'" (click)="toggleSkyDome()">
+            <span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-7 7-7 11 0 18M12 3c7 7 7 11 0 18M7 6l10 12"/></g></svg></span>
+            <span class="nav-label">{{locale==='it' ? 'Cielo 3D' : '3D Sky'}}</span>
+          </button>
+          <button type="button" class="nav-item" [class.selected]="returnTool==='solar' && (view==='returns' || solarContextActive)" [disabled]="busy || calcBusy" [attr.title]="t('returns.solar')" (click)="openReturns('solar')"><span class="nav-mark" aria-hidden="true"><vs-menu-icon name="solar-return"></vs-menu-icon></span><span class="nav-label">{{t('returns.solar')}}</span></button>
+          <button type="button" class="nav-item" [class.selected]="returnTool==='lunar' && view==='returns'" [disabled]="busy || calcBusy" [attr.title]="t('returns.lunar')" (click)="openReturns('lunar')"><span class="nav-mark" aria-hidden="true"><vs-menu-icon name="lunar-return"></vs-menu-icon></span><span class="nav-label">{{t('returns.lunar')}}</span></button>
         </div>
         <div class="nav-separator"></div>
         <div class="nav-list">
@@ -91,7 +121,7 @@
             <span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M17.3 6.7L14.25 14.25L6.7 17.3L9.75 9.75Z"/><path d="M9.75 9.75L14.25 14.25"/><circle cx="12" cy="12" r="0.9" fill="#F3EFFA" stroke="none"/></g></svg></span><span class="nav-label">{{t('transits.navigation')}}</span>
           </button>
           <button type="button" class="nav-item" [class.selected]="!inspectorCollapsed && inspectorTab==='navigate'" [attr.title]="t('nav.title')"
-            [disabled]="!activeChart" [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='navigate'" (click)="toggleInspectorTab('navigate')">
+            [disabled]="!activeChart || activeChart.timeUnknown" [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='navigate'" (click)="toggleInspectorTab('navigate')">
             <span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M17.3 6.7L14.25 14.25L6.7 17.3L9.75 9.75Z"/><path d="M9.75 9.75L14.25 14.25"/><circle cx="12" cy="12" r="0.9" fill="#F3EFFA" stroke="none"/></g></svg></span><span class="nav-label">{{t('nav.title')}}</span>
           </button>
           <button type="button" class="nav-item" [class.selected]="!inspectorCollapsed && inspectorTab==='aspects'" [attr.title]="t('tab.aspects')"
@@ -101,15 +131,12 @@
           <button type="button" class="nav-item" [disabled]="!activeChart || busy" [class.selected]="zodiacMode==='dodecatemoria'" [attr.title]="t('zodiac.dodecatemoria')" (click)="toggleZodiacTool('dodecatemoria')"><span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12V3.4A8.6 8.6 0 0 1 16.3 4.6Z" fill="#F3EFFA" fill-opacity="0.18" stroke="none"/><circle cx="12" cy="12" r="8.6"/><path d="M12 12V3.4M12 12L16.3 4.6"/><circle cx="12" cy="12" r="1.15" fill="#F3EFFA" stroke="none"/><path d="M12.00 5.80L12.00 3.40"/><path d="M15.10 6.63L16.30 4.55"/><path d="M17.37 8.90L19.45 7.70"/><path d="M18.20 12.00L20.60 12.00"/><path d="M17.37 15.10L19.45 16.30"/><path d="M15.10 17.37L16.30 19.45"/><path d="M12.00 18.20L12.00 20.60"/><path d="M8.90 17.37L7.70 19.45"/><path d="M6.63 15.10L4.55 16.30"/><path d="M5.80 12.00L3.40 12.00"/><path d="M6.63 8.90L4.55 7.70"/><path d="M8.90 6.63L7.70 4.55"/></g></svg></span><span class="nav-label">{{t('zodiac.dodecatemoria')}}</span></button>
           <button type="button" class="nav-item" [disabled]="!activeChart || busy" [class.selected]="zodiacMode==='antiscia'" [attr.title]="t('zodiac.antiscia')" (click)="toggleZodiacTool('antiscia')"><span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.8"/><path d="M12 4.6V19.4" stroke-dasharray="2 2.3" stroke-opacity="0.8"/><path d="M7 9H17" stroke-opacity="0.55"/><circle cx="7" cy="9" r="1.65" fill="#F3EFFA" stroke="none"/><circle cx="17" cy="9" r="1.65" fill="#302A47"/></g></svg></span><span class="nav-label">{{t('zodiac.antiscia')}}</span></button>
           <button type="button" class="nav-item" [disabled]="!activeChart || busy" [class.selected]="zodiacMode==='contra-antiscia'" [attr.title]="t('zodiac.contra')" (click)="toggleZodiacTool('contra-antiscia')"><span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.8"/><path d="M4.6 12H19.4" stroke-dasharray="2 2.3" stroke-opacity="0.8"/><path d="M15 7V17" stroke-opacity="0.55"/><circle cx="15" cy="7" r="1.65" fill="#F3EFFA" stroke="none"/><circle cx="15" cy="17" r="1.65" fill="#302A47"/></g></svg></span><span class="nav-label">{{t('zodiac.contra')}}</span></button>
-          <button type="button" class="nav-item" [class.selected]="view==='functions'" [attr.title]="t('tab.functions')" (click)="openFunctions()">
-            <span class="nav-mark" aria-hidden="true">≣</span><span class="nav-label">{{t('tab.functions')}}</span>
-          </button>
-          <button type="button" class="nav-item" [class.selected]="view==='settings'" [attr.title]="t('tab.settings')" (click)="openSettings()">
-            <span class="nav-mark" aria-hidden="true">⚙</span><span class="nav-label">{{t('tab.settings')}}</span>
-          </button>
         </div>
       </div>
       <div class="sidebar-bottom">
+        <button type="button" class="nav-item" [class.selected]="view==='settings'" [attr.title]="t('tab.settings')" (click)="openSettings()">
+          <span class="nav-mark" aria-hidden="true">⚙</span><span class="nav-label">{{t('tab.settings')}}</span>
+        </button>
         <button type="button" class="nav-item" [class.selected]="view==='account'" [attr.title]="t('account.title')" (click)="openAccount()"><span class="nav-mark" aria-hidden="true"><vs-menu-icon name="account-virgostars"></vs-menu-icon></span><span class="nav-label">{{t('account.title')}}</span></button>
       </div>
     </nav>
@@ -130,6 +157,7 @@
             <img class="monomero-point" [src]="monomeroGlyphUrl(item.name)" [alt]="planetLabel(item.name)">
             <div class="monomero-position"><span>{{item.degree}}°</span><img class="monomero-sign" [src]="signGlyphUrl(item.sign)" [alt]="signName(item.sign * 30)"></div>
           </div>
+          <small *ngIf="monomeroDodecatemoria">{{t('monomeri.dodecatemoria')}}</small>
           <p>{{item.text}}</p>
         </div>
 
@@ -142,9 +170,10 @@
           </div>
           <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
           <p class="calc-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
+          <p class="calc-status" role="status" *ngIf="autoSyncWarning">{{t(autoSyncWarning)}}</p>
         </div>
 
-        <section class="drawer" *ngIf="returnTool==='lunar' && returnRadix && view==='functions'">
+        <section class="drawer" *ngIf="returnTool==='lunar' && returnRadix && view==='returns'">
           <vs-returns-panel [locale]="locale" kind="lunar" [radix]="returnRadix" [houseSystem]="houseSystem"
             [busy]="calcBusy || busy" (chartRequested)="onReturnChartRequested($event)" (closed)="closeReturns()"></vs-returns-panel>
         </section>
@@ -157,58 +186,6 @@
           [showTransaturnians]="showTransaturnians" (toggleTransaturnians)="toggleTransaturnians()"></vs-elements-view>
 
 
-
-        <div class="arabic-panel" *ngIf="arabicPartsOpen && mode==='natal' && chartPresentation==='wheel' && activeChart">
-          <button type="button" class="toolbar-button" [disabled]="busy || calcBusy" [attr.aria-label]="t('sheet.close')" (click)="toggleArabicParts()">×</button>
-          <label>{{t('arabic.group')}}
-            <select [value]="arabicPartsGroup" (change)="changeArabicGroup($event)">
-              <option value="essenziali">{{t('arabic.essential')}}</option>
-              <option *ngFor="let h of arabicHouses" [value]="h+1">Abu Ma'shar — {{t('arabic.house')}} {{h+1}}</option>
-              <option value="custom">{{t('arabic.custom')}}</option>
-            </select>
-          </label>
-          <label *ngIf="arabicPartsGroup!=='custom'">{{t('arabic.formula')}}
-            <select [value]="arabicPartsIndex" (change)="changeArabicPart($event)">
-              <option value="-1">{{t('arabic.choose')}}</option>
-              <option *ngFor="let item of arabicPartsRows; let i=index; trackBy: trackArabicPart" [value]="i">{{item.nome}} — {{item.descrizione}}</option>
-            </select>
-          </label>
-          <ng-container *ngIf="arabicPartsGroup==='custom'">
-            <label>{{t('arabic.planet')}} <select [value]="arabicCustomPlanet" (change)="changeArabicCustom($event, 'planet')">
-              <option *ngFor="let p of arabicCustomPlanets" [value]="p">{{planetLabel(p)}}</option>
-            </select></label>
-            <label>{{t('arabic.destination')}} <select [value]="arabicCustomDestination" (change)="changeArabicCustom($event, 'destination')">
-              <option value="ascendant">ASC</option><option value="ds">DS</option><option value="mc">MC</option><option value="ic">IC</option>
-              <option *ngFor="let h of arabicHouses" [value]="h">{{t('arabic.house')}} {{h+1}}</option>
-            </select></label>
-          </ng-container>
-          <span *ngIf="arabicPartsGroup!=='custom' && arabicPartsRows[arabicPartsIndex] as item">{{longitudeText(item.longitude)}}</span>
-          <small *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='loading'">{{t('arabic.newMoonLoading')}}</small>
-          <small *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='unavailable'">{{t('arabic.newMoonUnavailable')}}</small>
-        </div>
-        <div class="star-panel" *ngIf="fixedStarsEnabled && mode==='natal' && chartPresentation==='wheel' && (fixedStarsBusy || fixedStarsError || fixedStarCatalogIsSample || selectedFixedStar)" aria-live="polite">
-          <small class="star-status" *ngIf="fixedStarCatalogIsSample">{{t('stars.sample')}}</small>
-          <small class="star-status" *ngIf="fixedStarsBusy">{{t('stars.loading')}}</small>
-          <small class="star-status" *ngIf="fixedStarsError">{{t('stars.unavailable')}}</small>
-          <article class="star-card" *ngIf="selectedFixedStar as item">
-            <header class="star-card-header">
-              <span class="star-card-mark" aria-hidden="true">✦</span>
-              <div><strong>{{item.star.name}}</strong><span *ngIf="item.star.constellation">{{item.star.constellation}}</span></div>
-            </header>
-            <div class="star-card-facts">
-              <span>{{longitudeText(item.star.longitudeDeg)}}</span>
-              <span>{{t('stars.magnitude')}} <strong>{{item.star.magnitude ?? '—'}}</strong></span>
-            </div>
-            <div class="star-card-contacts" *ngIf="item.axis || item.conjunctions.length">
-              <span *ngIf="item.axis">{{t('stars.axis')}} <strong>{{item.axis}}</strong></span>
-              <span *ngIf="item.conjunctions.length">{{t('stars.conjunctions')}} <strong>{{namesOf(item.conjunctions)}}</strong></span>
-            </div>
-            <div class="star-card-interpretation" *ngFor="let interpretation of fixedStarInterpretations"><strong>{{planetLabel(interpretation.name)}}</strong><p>{{interpretation.text}}</p></div>
-            <a class="star-card-link" [href]="'https://virgostars.it/stella/' + item.star.id + '/' + item.star.name.toLowerCase()"
-              target="_blank" rel="noopener noreferrer" (click)="openFixedStarPage($event, item.star.id)">{{t('stars.website')}} <span aria-hidden="true">↗</span></a>
-            <small *ngIf="starLinkFailed" role="alert">{{t('stars.websiteFailed')}}</small>
-          </article>
-        </div>
 
         <div class="chart-toolbar chart-toolbar-left" [hidden]="view==='chart' && chartPresentation==='sky3d'" role="toolbar" [attr.aria-label]="t('chart')">
           <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
@@ -339,7 +316,7 @@
               <h3 class="panel-title">{{t('archive.session')}}</h3>
               <div class="session-chart" *ngFor="let chart of sessionCharts; trackBy:trackChart" [class.active]="chart.id===activeChartId">
                 <button type="button" class="session-open" [disabled]="calcBusy || busy"
-                  [attr.aria-current]="chart.id===activeChartId ? 'true' : null" (click)="activateChart(chart.id); closeSheet()">
+                  [attr.aria-current]="chart.id===activeChartId ? 'true' : null" (click)="openSessionNatal(chart.id)">
                   <strong>{{chartName(chart)}}</strong>
                   <span>{{chartWhen(chart)}}</span>
                   <span>{{chart.placeLabel}}</span>
@@ -353,16 +330,17 @@
 
             <div class="archive-list-head" *ngIf="!editingChart">
               <h3 class="panel-title">{{t('archive.saved.title')}} <span class="archive-heading-count">{{savedCharts.length}}</span></h3>
+              <button type="button" class="archive-action archive-danger" *ngIf="selectedArchiveIds.length" [disabled]="archiveBusy || deletingSelected" (click)="askDeleteSelected()">{{t('archive.deleteSelected')}} ({{selectedArchiveIds.length}})</button>
             </div>
             <input type="search" class="archive-search" autocomplete="off" spellcheck="false" maxlength="80"
               *ngIf="!editingChart && (savedCharts.length || syncedCharts.length)" [attr.placeholder]="t('archive.search')" [attr.aria-label]="t('archive.search')"
               [value]="archiveQuery" (input)="setArchiveQuery($event)">
-            <p class="archive-privacy" *ngIf="!editingChart">{{t('archive.photos.private')}}</p>
             <p class="inspector-hint" *ngIf="!editingChart && !savedCharts.length">{{t('archive.empty')}}</p>
             <p class="inspector-hint" *ngIf="!editingChart && savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
             <div class="archive-grid" [class.archive-list]="!showArchivePhotos" *ngIf="!editingChart">
               <article class="archive-card" *ngFor="let saved of shownSavedCharts; trackBy:trackSaved">
                 <div class="archive-card-main">
+                  <label class="archive-select"><input type="checkbox" [checked]="selectedArchiveIds.includes(saved.id)" [disabled]="archiveBusy || deletingSelected" [attr.aria-label]="t('archive.select') + ': ' + (saved.name || t('session.unnamed'))" (change)="toggleArchiveSelection(saved.id,$event)"></label>
                   <div class="archive-portrait" *ngIf="showArchivePhotos" [class.has-photo]="photoUrls[saved.id]">
                     <img *ngIf="showArchivePhotos && photoUrls[saved.id]" [src]="photoUrls[saved.id]" [alt]="t('archive.photo.alt')">
                     <span *ngIf="!photoUrls[saved.id]" aria-hidden="true">✧</span>
@@ -394,7 +372,7 @@
                 [disabled]="syncGroupBusy" (click)="prepareChartCreate(saved)">{{t('sync.create.start')}}</button>
               <div *ngIf="createCandidate?.chart?.id===saved.id && createCandidate as creation" role="group">
                 <p>{{t('sync.create.review')}}</p>
-                <p>{{creation.chart.name}} · {{creation.localDate}} · {{creation.localTime}} · {{creation.chart.timeZone}} · {{creation.chart.placeName}}</p>
+                <p>{{creation.chart.name}} · {{creation.localDate}} · {{creation.localTime ?? t('sync.unknownTime')}} · {{creation.chart.timeZone}} · {{creation.chart.placeName}}</p>
                 <p *ngIf="groupsFeatureVisible">{{t('archive.groups')}}: {{creation.chart.groups.join(', ')}}</p>
                 <p *ngIf="groupsFeatureVisible && !account.scope?.includes('chart_sync:groups:write')">{{t('sync.create.groupsLater')}}</p>
                 <button type="button" class="small-control wide" [disabled]="syncGroupBusy" (click)="confirmChartCreate()">{{t('sync.create.confirm')}}</button>
@@ -422,6 +400,7 @@
                 <div class="archive-card-actions">
                   <button type="button" class="archive-action primary" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
                   <button type="button" class="archive-action" [disabled]="archiveBusy || calcBusy" (click)="editSavedChart(saved)">{{t('archive.edit')}}</button>
+                  <button type="button" class="archive-action" [attr.aria-pressed]="accountChart?.source==='local' && accountChart?.id===saved.id" (click)="setAccountChart('local',saved.id)">{{t(accountChart?.source==='local' && accountChart?.id===saved.id ? 'accountChart.selected' : 'accountChart.set')}}</button>
                   <label *ngIf="showArchivePhotos" class="archive-action archive-file-action" [class.is-disabled]="archiveBusy || !!photoBusyId">
                     {{t(hasPrivatePhoto(saved.id) ? 'archive.photo.change' : 'archive.photo.add')}}
                     <input type="file" accept="image/jpeg,image/png,image/webp" [disabled]="archiveBusy || !!photoBusyId"
@@ -452,13 +431,17 @@
               <p class="archive-website-note" *ngIf="syncedCharts.length && !visibleSyncedCharts.length">{{t('archive.nomatch')}}</p>
               <div class="archive-website-list">
               <article class="archive-card archive-site-card" *ngFor="let chart of shownSyncedCharts; trackBy:trackSynced">
-                  <button type="button" class="archive-card-open" [disabled]="calcBusy || busy || chart.timeUnknown || !chart.civilTime || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">
+                  <label class="archive-select"><input type="checkbox" [checked]="selectedArchiveIds.includes(chart.id)" [disabled]="archiveBusy || deletingSelected" [attr.aria-label]="t('archive.select') + ': ' + chart.name" (change)="toggleArchiveSelection(chart.id,$event)"></label>
+                  <button type="button" class="archive-card-open" [disabled]="calcBusy || busy || (!chart.timeUnknown && !chart.civilTime) || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">
                     <strong>{{chart.name || t('session.unnamed')}}</strong>
                     <span>{{chart.civilDate}} · {{chart.timeUnknown ? t('sync.unknownTime') : chart.civilTime}}</span>
                     <small>{{chart.placeName}} <ng-container *ngIf="chart.timeZone">· {{chart.timeZone}}</ng-container></small>
                     <small *ngIf="chart.syncStatus!=='clean'">{{t(syncedStatusKey(chart))}}</small>
                   </button>
-                  <button type="button" class="archive-action primary" [disabled]="calcBusy || busy || chart.timeUnknown || !chart.civilTime || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">{{t('archive.open')}}</button>
+                  <button type="button" class="archive-action primary" [disabled]="calcBusy || busy || (!chart.timeUnknown && !chart.civilTime) || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">{{t('archive.open')}}</button>
+                  <button type="button" class="archive-action" [attr.aria-pressed]="accountChart?.source==='synced' && accountChart?.id===chart.id" (click)="setAccountChart('synced',chart.id)">{{t(accountChart?.source==='synced' && accountChart?.id===chart.id ? 'accountChart.selected' : 'accountChart.set')}}</button>
+                  <button type="button" class="archive-action archive-danger" [disabled]="archiveBusy || deletingSelected" [attr.aria-label]="t('archive.delete')" (click)="askDeleteSaved(chart.id)">×</button>
+                  <button type="button" class="archive-action" *ngIf="chart.lifecycleStatus==='conflict'" [disabled]="syncGroupBusy" (click)="retryLifecycleConflict(chart)">{{t('sync.manageRetryButton')}}</button>
                 <div class="archive-groups" *ngIf="groupsFeatureVisible" [attr.aria-label]="t('archive.groups')">
                   <span>{{t('archive.groups')}}:</span>
                   <span class="archive-group" *ngFor="let group of chart.groups">{{group}}
@@ -472,21 +455,10 @@
               </div>
               <button type="button" class="archive-show-more" *ngIf="visibleSyncedCharts.length > syncedVisibleLimit" (click)="showMoreSyncedCharts()">{{t('archive.more')}}</button>
             </section>
-            <div class="confirm-delete" role="alertdialog" [attr.aria-label]="t('archive.confirm')" *ngIf="!editingChart && pendingDeleteId">
-              <p>{{t('archive.confirm')}}</p>
-              <button type="button" class="danger-control" [disabled]="archiveBusy" (click)="confirmDeleteSaved()">{{t('archive.confirm.yes')}}</button>
-              <button type="button" class="small-control wide" (click)="cancelDeleteSaved()">{{t('archive.confirm.no')}}</button>
-            </div>
           </div>
         </section>
 
-        <!-- Functions: a drawer that opens from the left menu. -->
-        <section class="drawer" *ngIf="view==='functions'" [attr.aria-label]="t('tab.functions')">
-          <header class="sheet-head">
-            <h2>{{t('tab.functions')}}</h2>
-            <button type="button" class="toolbar-button" [attr.aria-label]="t('sheet.close')" [attr.title]="t('sheet.close')" (click)="closeSheet()">×</button>
-          </header>
-          <p class="calc-status" role="status" *ngIf="returnTool && calcMessage">{{t(calcMessage)}}</p>
+        <section class="drawer" *ngIf="view==='directions'" [attr.aria-label]="t('directions.title')">
           <section class="direction-panel" *ngIf="directionToolOpen" [attr.aria-label]="t('directions.title')">
             <header class="sheet-head"><h2>{{t('directions.title')}}</h2><button type="button" class="toolbar-button" [disabled]="calcBusy" [attr.aria-label]="t('sheet.close')" (click)="closeDirections()">×</button></header>
             <label class="setting-line select-line"><span>{{t('directions.method')}}</span>
@@ -501,20 +473,6 @@
             <p class="calc-status" role="status" *ngIf="calcMessage">{{t(calcMessage)}}</p>
             <button type="button" class="small-control wide" [disabled]="busy || calcBusy" (click)="applyDirection()">{{t('directions.apply')}}</button>
           </section>
-          <details class="function-group" *ngFor="let group of catalog; let first = first" [open]="first">
-            <summary>
-              <span>{{entryLabel(group)}}</span>
-              <span class="function-count">{{availableIn(group).length}}</span>
-            </summary>
-            <button type="button" class="data-line function-line" *ngFor="let entry of availableIn(group)"
-              [disabled]="busy || calcBusy || (entry.action==='monomeri' && !monomeriAvailable) || (entry.action==='directions' && !directionsSupported)"
-              [attr.title]="entry.action==='monomeri' && !monomeriAvailable ? t('monomeri.unavailable') : null" (click)="runFunction(entry)">
-              <vs-menu-icon *ngIf="entry.action==='solar_return'" name="solar-return"></vs-menu-icon>
-              <vs-menu-icon *ngIf="entry.action==='lunar_return'" name="lunar-return"></vs-menu-icon>
-              <vs-menu-icon *ngIf="entry.action==='monomeri'" name="monomeri"></vs-menu-icon>
-              <span class="function-entry-label">{{entryLabel(entry)}}</span>
-            </button>
-          </details>
         </section>
 
         <!-- Settings: a drawer that opens from the left menu. -->
@@ -569,6 +527,13 @@
             <vs-de441-packages [locale]="locale" [settingsOpen]="view==='settings'" [wizardEnabled]="false"></vs-de441-packages>
             <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
             <label class="settings-check"><input type="checkbox" [checked]="showArchivePhotos" (change)="toggleArchivePhotos()"><span>{{t('archive.photos.show')}}</span></label>
+            <p class="inspector-hint">{{t('archive.photos.private')}}</p>
+            <div class="reference-place">
+              <h3>{{t('referencePlace.title')}}</h3>
+              <p>{{referencePlace.name}} · {{referencePlace.timeZone}}</p>
+              <vs-offline-city-picker [locale]="locale" [showDemoNotes]="false" (locationSelected)="setReferencePlace($event)"></vs-offline-city-picker>
+              <p class="form-problem" role="alert" *ngIf="referencePlaceError">{{t('referencePlace.error')}}</p>
+            </div>
             <label class="setting-line select-line"><span>{{t('language')}}</span><select class="inline-select" [value]="languagePreference" (change)="setLanguage($event)"><option value="auto">{{t('language.auto')}}</option><option value="it">Italiano</option><option value="en">English</option></select></label>
             <label class="setting-line select-line"><span>{{t('settings.theme')}}</span><select class="inline-select" [value]="theme" [disabled]="busy" (change)="setUiTheme($event)"><option value="light">{{t('theme.current.light')}}</option><option value="dark">{{t('theme.current.dark')}}</option></select></label>
             </div>
@@ -580,13 +545,14 @@
               </select>
             </label>
             <ng-container *ngIf="activeChart as chart; else noChartForHouses">
-              <label class="setting-line select-line">
+              <label class="setting-line select-line" *ngIf="!chart.timeUnknown">
                 <span>{{t('houses.system')}}</span>
                 <select class="inline-select" [disabled]="busy" (change)="setHouseSystem($event)">
                   <option *ngFor="let system of houseSystems" [value]="system" [selected]="system===houseSystem">{{houseSystemLabel(system)}}</option>
                 </select>
               </label>
-              <p class="inspector-hint missing-note" *ngIf="chart.unavailableHouseSystems.length">{{t('houses.missing')}} {{systemsOf(chart.unavailableHouseSystems)}}</p>
+              <p class="inspector-hint" *ngIf="chart.timeUnknown">{{t('sync.noHouses')}}</p>
+              <p class="inspector-hint missing-note" *ngIf="!chart.timeUnknown && chart.unavailableHouseSystems.length">{{t('houses.missing')}} {{systemsOf(chart.unavailableHouseSystems)}}</p>
             </ng-container>
             <ng-template #noChartForHouses><p class="inspector-hint">{{t('houses.system')}}: {{t('inspector.nochart')}}</p></ng-template>
             </div>
@@ -613,7 +579,7 @@
           </details>
           <!-- Aspects and celestial elements are two spoilers of their own, written by the component. -->
           <vs-chart-settings *ngIf="settingsCategory==='chart'" [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy"
-            (settingsChange)="onChartSettingsChanged($event)"></vs-chart-settings>
+            (settingsChange)="onGeneralChartSettingsChanged($event)"></vs-chart-settings>
           <details class="settings-section" *ngIf="pendingSettingEntries.length">
             <summary>{{t('functions.soon')}}</summary>
             <button type="button" class="data-line function-line" *ngFor="let entry of pendingSettingEntries" disabled>
@@ -622,35 +588,96 @@
           </details>
         </section>
       </section>
-      <div class="stage-tools" [hidden]="view!=='chart' || chartPresentation==='sky3d'" [class.solar-active]="solarContextActive" role="toolbar" [attr.aria-label]="t('chart')">
-          <vs-returns-panel *ngIf="returnTool==='solar' && returnRadix" [locale]="locale" kind="solar" [radix]="returnRadix"
-            [houseSystem]="houseSystem" [busy]="calcBusy || busy" [mapOpen]="solarMapOpen" [showControls]="solarContextActive" [comparing]="mode==='synastry'"
+      <div class="stage-tools" #stageTools [hidden]="(view!=='chart' && !(view==='returns' && returnTool==='solar')) || chartPresentation==='sky3d'" [class.solar-active]="solarContextActive || (view==='returns' && returnTool==='solar')">
+      <aside class="arabic-panel" *ngIf="!fixedStarToolsActive && arabicPartsOpen && mode==='natal' && chartPresentation==='wheel' && activeChart" [attr.aria-label]="t('arabic.title')">
+        <header class="arabic-panel-head"><strong>{{t('arabic.title')}}</strong><button type="button" class="arabic-close" [disabled]="busy || calcBusy" [attr.aria-label]="t('sheet.close')" (click)="toggleArabicParts()">×</button></header>
+        <label><span>{{t('arabic.group')}}</span>
+          <select [value]="arabicPartsGroup" (change)="changeArabicGroup($event)">
+            <option value="essenziali">{{t('arabic.essential')}}</option>
+            <option *ngFor="let h of arabicHouses" [value]="h+1">{{t('arabic.house')}} {{h+1}} · Abu Ma'shar</option>
+            <option value="custom">{{t('arabic.custom')}}</option>
+          </select>
+        </label>
+        <label *ngIf="arabicPartsGroup!=='custom'"><span>{{t('arabic.formula')}}</span>
+          <select [value]="arabicPartsIndex" (change)="changeArabicPart($event)">
+            <option value="-1">{{t('arabic.choose')}}</option>
+            <option *ngFor="let item of arabicPartsRows; let i=index; trackBy: trackArabicPart" [value]="i">{{item.nome}} — {{item.descrizione}}</option>
+          </select>
+        </label>
+        <ng-container *ngIf="arabicPartsGroup==='custom'">
+          <label><span>{{t('arabic.planet')}}</span><select [value]="arabicCustomPlanet" (change)="changeArabicCustom($event, 'planet')">
+            <option *ngFor="let p of arabicCustomPlanets" [value]="p">{{planetLabel(p)}}</option>
+          </select></label>
+          <label><span>{{t('arabic.destination')}}</span><select [value]="arabicCustomDestination" (change)="changeArabicCustom($event, 'destination')">
+            <option value="ascendant">ASC</option><option value="ds">DS</option><option value="mc">MC</option><option value="ic">IC</option>
+            <option *ngFor="let h of arabicHouses" [value]="h">{{t('arabic.house')}} {{h+1}}</option>
+          </select></label>
+        </ng-container>
+        <div class="arabic-result" *ngIf="arabicPartsGroup!=='custom' && arabicPartsRows[arabicPartsIndex] as item"><strong>{{item.nome}}</strong><span>{{longitudeText(item.longitude)}}</span><small>{{item.descrizione}}</small></div>
+        <small class="arabic-note" *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='loading'">{{t('arabic.newMoonLoading')}}</small>
+        <small class="arabic-note" *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='unavailable'">{{t('arabic.newMoonUnavailable')}}</small>
+      </aside>
+      <button type="button" class="toolbar-button selected" *ngIf="fixedStarToolsActive" [disabled]="fixedStarsBusy" (click)="toggleFixedStars()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-stars"></use></svg>{{t('stars.disable')}}</button>
+      <vs-chart-settings *ngIf="fixedStarToolsActive" [starsOnly]="true" [locale]="locale" [settings]="chartSettings" [disabled]="busy || calcBusy" [starsSaveStatus]="fixedStarSaveStatus"
+        (settingsChange)="onFixedStarSettingsChanged($event)" (saveStarDefaults)="saveStarsAsDefault($event)"></vs-chart-settings>
+      <aside class="star-panel" *ngIf="fixedStarToolsActive && (fixedStarsBusy || fixedStarsError || fixedStarCatalogIsSample || selectedFixedStar)" [attr.aria-label]="t('stars.title')" aria-live="polite">
+        <small class="star-status" *ngIf="fixedStarCatalogIsSample">{{t('stars.sample')}}</small>
+        <small class="star-status" *ngIf="fixedStarsBusy">{{t('stars.loading')}}</small>
+        <small class="star-status" *ngIf="fixedStarsError">{{t('stars.unavailable')}}</small>
+        <article class="star-card" *ngIf="selectedFixedStar as item">
+          <header class="star-card-header">
+            <span class="star-card-mark" aria-hidden="true">✦</span>
+            <div><strong>{{item.star.name}}</strong><span *ngIf="item.star.constellation">{{item.star.constellation}}</span></div>
+            <button type="button" class="star-card-close" [attr.aria-label]="t('sheet.close')" (click)="fixedStarSelected=null">×</button>
+          </header>
+          <dl class="star-card-facts">
+            <div><dt>{{t('stars.longitude')}}</dt><dd>{{longitudeText(item.star.longitudeDeg)}}<small>{{latitudeText(item.star.longitudeDeg)}}</small></dd></div>
+            <div><dt>{{t('stars.azimuth')}}</dt><dd>{{starAzimuthText(item.star.azimuthSouthWestDeg)}}</dd></div>
+            <div><dt>{{t('stars.altitude')}}</dt><dd>{{latitudeText(item.star.trueAltitudeDeg)}}</dd></div>
+            <div><dt>{{t('stars.magnitude')}}</dt><dd>{{item.star.magnitude ?? '—'}}</dd></div>
+          </dl>
+          <small class="star-card-convention">{{t('stars.azimuthConvention')}}</small>
+          <div class="star-card-contacts" *ngIf="item.axis || item.conjunctions.length || item.dodecatemoriaConjunctions.length">
+            <span *ngIf="item.axis">{{t('stars.axis')}} <strong>{{item.axis}}</strong></span>
+            <span *ngIf="item.conjunctions.length">{{t('stars.conjunctions')}} <strong>{{namesOf(item.conjunctions)}}</strong></span>
+            <span *ngIf="item.dodecatemoriaConjunctions.length">{{t('stars.dodecatemoriaConjunctions')}} <strong>{{namesOf(item.dodecatemoriaConjunctions)}}</strong></span>
+          </div>
+          <div class="star-card-interpretation" *ngFor="let interpretation of fixedStarInterpretations"><strong>{{planetLabel(interpretation.name)}}<ng-container *ngIf="interpretation.projected"> · {{t('monomeri.dodecatemoria')}}</ng-container></strong><p>{{interpretation.text}}</p></div>
+          <a class="star-card-link" [href]="'https://virgostars.it/stella/' + item.star.id + '/' + item.star.name.toLowerCase()"
+            target="_blank" rel="noopener noreferrer" (click)="openFixedStarPage($event, item.star.id)">{{t('stars.website')}} <span aria-hidden="true">↗</span></a>
+          <small *ngIf="starLinkFailed" role="alert">{{t('stars.websiteFailed')}}</small>
+        </article>
+      </aside>
+      <div class="stage-tool-actions" *ngIf="!fixedStarToolsActive" role="toolbar" [attr.aria-label]="t('chart')">
+          <vs-returns-panel *ngIf="returnTool==='solar' && returnRadix && (view==='returns' || solarContextActive)" [locale]="locale" kind="solar" [radix]="returnRadix"
+            [houseSystem]="houseSystem" [busy]="calcBusy || busy" [mapOpen]="solarMapOpen" [showControls]="solarContextActive || view==='returns'" [comparing]="mode==='synastry'" [canCompare]="solarContextActive"
             (chartRequested)="onReturnChartRequested($event)" (closed)="solarMapOpen=false"
             (comparisonRequested)="toggleSolarSynastry()" (returnClosed)="closeSolarReturn()"></vs-returns-panel>
-          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
-            [class.selected]="chartPresentation==='sky3d'" [attr.aria-pressed]="chartPresentation==='sky3d'"
-            (click)="toggleSkyDome()">{{locale==='it' ? 'Cielo 3D' : '3D Sky'}}</button>
-          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && !activeChart.timeUnknown"
             [class.selected]="chartPresentation==='elements'" [attr.aria-pressed]="chartPresentation==='elements'"
-            (click)="toggleElements()">{{t('elements.button')}}</button>
+            (click)="toggleElements()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-elements"></use></svg>{{t('elements.button')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
             [class.selected]="chartPresentation==='aspects'" [attr.aria-pressed]="chartPresentation==='aspects'"
-            (click)="toggleAspects()">{{t('elements.aspectsButton')}}</button>
+            (click)="toggleAspects()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-aspects"></use></svg>{{t('elements.aspectsButton')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!monomeriAvailable || busy" [attr.title]="t(monomeriAvailable ? 'monomeri.help' : 'monomeri.unavailable')"
-            [class.selected]="monomeriEnabled" [attr.aria-pressed]="monomeriEnabled" (click)="toggleMonomeri()"><span class="stage-menu-label"><vs-menu-icon name="monomeri"></vs-menu-icon>{{t('monomeri.title')}}</span></button>
+            [class.selected]="monomeriEnabled" [attr.aria-pressed]="monomeriEnabled" (click)="toggleMonomeri()"><vs-menu-icon name="monomeri"></vs-menu-icon>{{t('monomeri.title')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!kleroiSupported || !kleroi || busy || calcBusy" [attr.title]="t(kleroiSupported ? 'kleroi.hint' : 'kleroi.unavailable')"
-            [class.selected]="kleroiEnabled" [attr.aria-pressed]="kleroiEnabled" (click)="toggleKleroi()">{{t('kleroi.title')}}</button>
+            [class.selected]="kleroiEnabled" [attr.aria-pressed]="kleroiEnabled" (click)="toggleKleroi()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-kleroi"></use></svg>{{t('kleroi.title')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!kleroi || busy || calcBusy" [class.selected]="arabicPartsOpen" [attr.aria-pressed]="arabicPartsOpen"
-            (click)="toggleArabicParts()">{{t('arabic.title')}}</button>
+            (click)="toggleArabicParts()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-arabic"></use></svg>{{t('arabic.title')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="fixedStarsBusy" [class.selected]="fixedStarsEnabled" [attr.aria-pressed]="fixedStarsEnabled"
-            (click)="toggleFixedStars()">{{t('stars.title')}}</button>
-          <button type="button" class="toolbar-button info-button" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
-            [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')">{{t('nav.planets')}}</button>
+            (click)="toggleFixedStars()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-stars"></use></svg>{{t('stars.title')}}</button>
+          <button type="button" class="toolbar-button" *ngIf="view==='chart' && activeChart && mode!=='latitude' && chartPresentation==='wheel'" [disabled]="busy || calcBusy" [class.selected]="chartSettings.showDecades" [attr.aria-pressed]="chartSettings.showDecades" (click)="toggleChartDisplay('showDecades')"><svg class="tool-icon" aria-hidden="true"><use href="#tool-decades"></use></svg>{{t('chartsettings.decades')}}</button>
+          <button type="button" class="toolbar-button" *ngIf="view==='chart' && activeChart && mode!=='latitude' && chartPresentation==='wheel'" [disabled]="busy || calcBusy" [class.selected]="chartSettings.showDecans" [attr.aria-pressed]="chartSettings.showDecans" (click)="toggleChartDisplay('showDecans')"><svg class="tool-icon" aria-hidden="true"><use href="#tool-decans"></use></svg>{{t('chartsettings.decans')}}</button>
+          <button type="button" class="toolbar-button" *ngIf="view==='chart' && activeChart && mode!=='latitude' && chartPresentation==='wheel'" [disabled]="busy || calcBusy" [class.selected]="chartSettings.showTerms" [attr.aria-pressed]="chartSettings.showTerms" [attr.title]="t('chartsettings.terms.note')" (click)="toggleChartDisplay('showTerms')"><svg class="tool-icon" aria-hidden="true"><use href="#tool-terms"></use></svg>{{locale==='it' ? 'Termini' : 'Terms'}}</button>
+          <button type="button" class="toolbar-button info-button" *ngIf="view==='chart'" [class.selected]="!inspectorCollapsed && inspectorTab==='planets'"
+            [attr.aria-pressed]="!inspectorCollapsed && inspectorTab==='planets'" (click)="toggleInspectorTab('planets')"><svg class="tool-icon" aria-hidden="true"><use href="#tool-info"></use></svg>{{t('nav.planets')}}</button>
         </div>
+      </div>
     </main>
 
     <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
@@ -660,7 +687,12 @@
       </div>
       <div class="inspector-body" id="inspector-content" aria-labelledby="inspector-title">
         <p class="inspector-hint" *ngIf="!activeChart">{{t('inspector.nochart')}}</p>
-        <div *ngIf="inspectorTab==='planets' && activeChart as chart">
+        <div *ngIf="inspectorTab==='planets' && planetInfoChart as chart">
+          <div class="settings-tabs" role="group" *ngIf="planetInfoTransitAvailable || (mode==='synastry' && partnerChart)" [attr.aria-label]="t('nav.planets')">
+            <button type="button" [class.active]="chart===activeChart" (click)="setPlanetInfoSelection('radix')">Radix</button>
+            <button type="button" *ngIf="planetInfoTransitAvailable" [class.active]="planetInfoSelection==='transit'" (click)="setPlanetInfoSelection('transit')">{{locale==='it' ? 'Transiti' : 'Transits'}}</button>
+            <button type="button" *ngIf="mode==='synastry' && partnerChart" [class.active]="planetInfoSelection==='partner'" (click)="setPlanetInfoSelection('partner')">{{locale==='it' ? 'Sinastria' : 'Synastry'}}</button>
+          </div>
           <table class="planet-table">
             <thead>
               <tr>
@@ -725,7 +757,7 @@
                 <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
                 <div class="nav-field" [class.wide]="field.key==='year'" [class.time-start]="field.key==='hour'">
                   <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (pointerdown)="holdTransitField($event, field.key, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitField($event, field.key, 1)"></button>
-                  <span class="nav-value">{{field.text}}</span>
+                  <input class="nav-value" type="text" inputmode="numeric" [attr.maxlength]="field.key==='year' ? 4 : 2" [attr.aria-label]="field.label" [value]="field.text" (focus)="$any($event.target).select()" (change)="editClockField(field.key, $event, true)" (keydown.enter)="finishClockEdit($event)">
                   <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (pointerdown)="holdTransitField($event, field.key, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickTransitField($event, field.key, -1)"></button>
                 </div>
               </ng-container>
@@ -742,7 +774,7 @@
               <div class="step-options"><button type="button" *ngFor="let value of row.values" [class.selected]="navStepUnit===row.unit && navStepValue===value" [attr.aria-pressed]="navStepUnit===row.unit && navStepValue===value" (click)="selectStep(row.unit, value)">{{value}}</button></div>
             </div>
           </div>
-          <p class="nav-status" role="status" *ngIf="transitStatus">{{t(transitStatus)}}</p>
+          <p class="nav-status" role="status" *ngIf="transitStatus">{{t(transitStatus)}} <button type="button" *ngIf="transitStatus==='calc.ephemerisRange'" (click)="openUpdateSettings()">{{locale==='it' ? 'Apri impostazioni' : 'Open settings'}}</button></p>
           <button type="button" class="small-control wide" (click)="transitNow()">{{t('nav.now')}}</button>
           <section class="transit-synods" [attr.aria-label]="t('transits.synods')">
             <h3>{{t('transits.synods')}}</h3>
@@ -788,7 +820,7 @@
                 <span class="nav-sep" *ngIf="field.sep" aria-hidden="true">{{field.sep}}</span>
                 <div class="nav-field" [class.wide]="field.key==='year'" [class.time-start]="field.key==='hour'">
                   <button type="button" class="nav-arrow up" [attr.aria-label]="t('nav.field.up') + ' ' + field.label" (pointerdown)="holdField($event, field.key, 1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event, field.key, 1)"></button>
-                  <span class="nav-value">{{field.text}}</span>
+                  <input class="nav-value" type="text" inputmode="numeric" [attr.maxlength]="field.key==='year' ? 4 : 2" [attr.aria-label]="field.label" [value]="field.text" (focus)="$any($event.target).select()" (change)="editClockField(field.key, $event)" (keydown.enter)="finishClockEdit($event)">
                   <button type="button" class="nav-arrow down" [attr.aria-label]="t('nav.field.down') + ' ' + field.label" (pointerdown)="holdField($event, field.key, -1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event, field.key, -1)"></button>
                 </div>
               </ng-container>
@@ -818,7 +850,7 @@
               </div>
             </div>
           </div>
-          <p class="nav-status" role="status" *ngIf="navStatus">{{t(navStatus)}}</p>
+          <p class="nav-status" role="status" *ngIf="navStatus">{{t(navStatus)}} <button type="button" *ngIf="navStatus==='calc.ephemerisRange'" (click)="openUpdateSettings()">{{locale==='it' ? 'Apri impostazioni' : 'Open settings'}}</button></p>
           <p class="nav-status" role="status" *ngIf="archiveMessage">{{t(archiveMessage)}}</p>
           <!-- Quiet actions: an icon and a short word, no boxes; the full name is the tooltip. -->
           <div class="nav-tools" role="group" [attr.aria-label]="t('nav.title')">
@@ -833,7 +865,7 @@
             </button>
             <!-- Only a subject's chart can be saved over; the sky of the moment has no data to overwrite. -->
             <button type="button" class="nav-tool" [class.pending]="navDirty" *ngIf="activeChart.kind === 'chart'" [attr.title]="t('nav.save')" [attr.aria-label]="t('nav.save')"
-              [disabled]="archiveBusy || (!navDirty && activeChart.archiveId !== null)" (click)="askNavSave()">
+              [disabled]="archiveBusy || navUsesHistoricalEstimate || (!navDirty && activeChart.archiveId !== null)" (click)="askNavSave()">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>
               <span>{{t('nav.save')}}</span>
             </button>
@@ -841,7 +873,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.600-5.900"/><path d="M4 4.500v5h5"/></svg>
               <span>{{t('nav.restore')}}</span>
             </button>
-            <button type="button" class="nav-tool" [attr.title]="t('nav.elective')" [attr.aria-label]="t('nav.elective')" [disabled]="archiveBusy" (click)="openElective()">
+            <button type="button" class="nav-tool" [attr.title]="t('nav.elective')" [attr.aria-label]="t('nav.elective')" [disabled]="archiveBusy || navUsesHistoricalEstimate" (click)="openElective()">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.200 6.300L21 12l-6.800 2.700L12 21l-2.200-6.300L3 12l6.800-2.700z"/></svg>
               <span>{{t('nav.elective.short')}}</span>
             </button>

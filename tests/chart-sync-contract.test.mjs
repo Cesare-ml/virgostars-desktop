@@ -4,8 +4,8 @@ import {requestChartSync} from '../src/app/native/chart-sync-contract.ts';
 
 const attemptId='123e4567-e89b-42d3-a456-426614174000';
 const item={id:'11111111-1111-4111-8111-111111111111',name:'Persona fittizia',civilDate:'1984-03-25',
-  civilTime:null,timeUnknown:true,timeZone:'Europe/Rome',latMicro:44000000,lngMicro:11000000,
-  placeName:'Luogo fittizio',groups:['Gruppo'],syncStatus:'clean',sourceUpdatedAtMs:1000};
+  civilTime:null,timeUnknown:true,isAccountChart:false,timeZone:'Europe/Rome',latMicro:44000000,lngMicro:11000000,
+  placeName:'Luogo fittizio',groups:['Gruppo'],syncStatus:'clean',lifecycleStatus:'none',sourceUpdatedAtMs:1000};
 const native=reply=>({isNative:()=>true,invoke:async()=>reply});
 
 test('keeps an unknown birth time explicitly null on imported charts',async()=>{
@@ -15,6 +15,14 @@ test('keeps an unknown birth time explicitly null on imported charts',async()=>{
   assert.equal(result.charts[0].civilTime,null);
   assert.equal(Object.hasOwn(result.charts[0],'utcIso'),false);
   assert.ok(Object.isFrozen(result.charts[0]));
+});
+
+test('the account-chart marker is returned by the owner-scoped native snapshot',async()=>{
+  const result=await requestChartSync(native({protocolVersion:1,status:'ok',charts:[{...item,isAccountChart:true}],pendingChartIds:[],rejectedChartIds:[]}),{operation:'list',attemptId});
+  assert.equal(result.kind,'list');
+  assert.equal(result.charts[0].isAccountChart,true);
+  const duplicate={...item,id:'22222222-2222-4222-8222-222222222222',isAccountChart:true};
+  assert.deepEqual(await requestChartSync(native({protocolVersion:1,status:'ok',charts:[{...item,isAccountChart:true},duplicate],pendingChartIds:[],rejectedChartIds:[]}),{operation:'list',attemptId}),{kind:'unavailable'});
 });
 
 test('rejects impossible dates, fabricated time and unexpected personal fields',async()=>{
@@ -59,10 +67,26 @@ test('creation queues only bounded local identity and civil values and exposes p
   const choice={operation:'queue_create',attemptId,chartId:item.id,localUpdatedAtMs:1000,localDate:'2001-02-03',localTime:'05:05:06',baseGroups:['A']};
   assert.deepEqual(await requestChartSync(port,choice),{kind:'saved'});
   assert.deepEqual(sent,{protocolVersion:1,...choice});
+  assert.deepEqual(await requestChartSync(port,{...choice,localTime:null}),{kind:'saved'});
+  assert.equal(sent.localTime,null);
   assert.deepEqual(await requestChartSync(port,{...choice,localTime:'27:00:00'}),{kind:'unavailable'});
   const list=await requestChartSync(native({protocolVersion:1,status:'ok',charts:[],pendingChartIds:[item.id],rejectedChartIds:[]}),{operation:'list',attemptId});
   assert.equal(list.kind,'list');
   assert.deepEqual(list.pendingChartIds,[item.id]);
   assert.deepEqual(await requestChartSync(native({protocolVersion:1,status:'ok',charts:[],pendingChartIds:[item.id,item.id],rejectedChartIds:[]}),{operation:'list',attemptId}),{kind:'unavailable'});
   assert.deepEqual(await requestChartSync(native({protocolVersion:1,status:'ok',charts:[],pendingChartIds:[item.id],rejectedChartIds:[item.id]}),{operation:'list',attemptId}),{kind:'unavailable'});
+});
+
+test('online chart operations carry only local identity and the displayed source version',async()=>{
+  let sent;
+  const port={isNative:()=>true,invoke:async(_command,args)=>{sent=args.request;return {protocolVersion:1,status:'ok'};}};
+  const operation={operation:'queue_lifecycle',attemptId,chartId:item.id,sourceUpdatedAtMs:1000,lifecycleOperation:'delete'};
+  assert.deepEqual(await requestChartSync(port,operation),{kind:'saved'});
+  assert.deepEqual(sent,{protocolVersion:1,...operation});
+  for (const stage of ['prepare_lifecycle','commit_lifecycle']) {
+    assert.deepEqual(await requestChartSync(port,{...operation,operation:stage}),{kind:'saved'});
+    assert.deepEqual(sent,{protocolVersion:1,...operation,operation:stage});
+  }
+  assert.deepEqual(await requestChartSync(port,{...operation,lifecycleOperation:'admin'}),{kind:'unavailable'});
+  assert.deepEqual(await requestChartSync(port,{operation:'cancel_lifecycle',attemptId,chartId:item.id}),{kind:'saved'});
 });

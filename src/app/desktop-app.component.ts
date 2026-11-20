@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import {
-  AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy,
+  AfterViewInit, ChangeDetectorRef, Component, ElementRef, NgZone, OnDestroy,
   ViewChild, inject
 } from '@angular/core';
 import {
@@ -12,7 +12,8 @@ import {makeDirectionPlan} from './directions-form';
 import {rendererPlanetaryHours} from './astro/planetary-hour';
 import {addExtraHouses} from './astro/extra-houses';
 import {calculateRegoloArabicParts, type RegoloPart} from 'astrological-functions/regolo-arabic-parts';
-import {calculateVirgoStarsStarContacts} from 'astrological-functions/virgostars-star-contacts';
+import {dodecatemoriaContactPoints, fixedStarChartContact, starAzimuthNorthEast, starWithinMagnitude} from './astro/fixed-star-contacts';
+import {StarAnimationRepaint} from './star-animation-repaint';
 import {moduleExport} from './module-export';
 import {
   chartSide, CHART_MARGIN_PX, CHART_MODES, commonHouseSystems, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
@@ -42,14 +43,14 @@ import { aspectPlanet, aspectSymbol } from './aspect-symbols';
 import { OfflineCityPickerComponent } from './offline-city-picker.component';
 import type { OfflinePlaceV1 } from './native/offline-places-contract';
 import {
-  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, isoFromMs, localParts, shiftInstant, stepInstant, utcFromLocal,
+  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, historicalNavigationRequest, isoFromMs, localParts, setInstantField, shiftInstant, stepInstant, utcFromLocal,
   type NavField, type StepUnit
 } from './sky-navigator';
-import {
-  DEFAULT_SKY_PLACE, loadStartupPreference, saveStartupPreference, type StartupMode, type StartupPreference
-} from './startup-preference';
+import {loadStartupPreference, saveStartupPreference, type StartupMode, type StartupPreference} from './startup-preference';
+import {loadReferencePlace, saveReferencePlace, loadAccountChart, saveAccountChart, type AccountChartReference, type ReferencePlace} from './desktop-reference-preferences';
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
+import { MenuIconComponent } from './menu-icon.component';
 import type { NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
 import { calculateHistoricalChart } from './native/historical-chart';
@@ -58,7 +59,7 @@ import {
   availableHouseSystems, buildTemaRenderData, formatLatitudeDms, formatLongitudeDms,
   formatSpeed, houseDisplay, planetRows, type HouseDisplay, type PlanetRow, type TemaRenderData
 } from './astro/tema-render-data';
-import { functionMenu, pendingSettings, type FunctionEntry, type FunctionGroup, type FunctionStatus } from './function-catalog';
+import { pendingSettings } from './function-catalog';
 import { chartArchive } from './native/chart-archive';
 import { newChartId, validChartRecord, type ArchiveFailure, type ArchiveResult, type SavedChartV1 } from './native/chart-archive-contract';
 import {preparePrivateChartPhoto} from './private-chart-photo';
@@ -73,12 +74,11 @@ import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
 import { SkyDomeComponent } from './sky-dome.component';
-import { MenuIconComponent } from './menu-icon.component';
 import { UpdatesComponent } from './updates.component';
 import { De441PackagesComponent } from './de441-packages.component';
 import {
-  ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettings, sanitizeChartSettings, saveChartSettings,
-  type ChartSettings
+  ASPECT_DEFINITIONS, AXIS_IDS, POINT_IDS, loadChartSettingsForSession, sanitizeChartSettings, saveChartSettings,
+  saveFixedStarDefaults as storeFixedStarDefaults, type ChartSettings, type FixedStarSettings
 } from './chart-settings';
 import { aspectPoints, computeAspects, computeCrossAspects, computePlanetMatrixAspects, formatOrb, type AspectRow } from './astro/aspects';
 import { ASPECT_LABEL_KEYS, POINT_LABEL_KEYS } from './point-labels';
@@ -130,9 +130,6 @@ const ARCHIVE_PHOTO_VISIBILITY_KEY = 'virgostars.desktop.private-photos-visible.
 function readPhotoVisibility(storage: {getItem(key: string): string | null} | null): boolean {
   try { return storage?.getItem(ARCHIVE_PHOTO_VISIBILITY_KEY) === 'yes'; } catch { return false; }
 }
-const STATUS_KEYS: Record<FunctionStatus,MessageKey> = {
-  available:'functions.available', planned:'functions.planned', excluded:'functions.excluded',
-};
 
 /** One calculated chart, held in memory for this session only. */
 type SessionChart = Readonly<{
@@ -143,6 +140,12 @@ type SessionChart = Readonly<{
   utcIso: string;
   timeZone: string;
   historical?: NewChartInput['historical'];
+  timeUnknown?: boolean;
+  unknownDate?: string;
+  /** Calculation-only estimate for an archived IANA civil instant. */
+  calculationHistorical?: NewChartInput['historical'];
+  /** UI-only date coordinate for an automatically calculated historical sky. */
+  navigationInstant?: number;
   /** Identity in the on-device archive; null while the chart exists only in memory. */
   archiveId: string | null;
   placeName: string;
@@ -193,7 +196,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   @ViewChild('workspace', {static:true}) readonly workspace!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('stage', {static:true}) readonly stage!: ElementRef<HTMLElement>;
+  @ViewChild('stageTools', {static:true}) private stageTools!: ElementRef<HTMLElement>;
   @ViewChild('guidePanel') private guidePanel?: ElementRef<HTMLElement>;
+  @ViewChild('deleteCancel') set deleteCancel(button:ElementRef<HTMLButtonElement> | undefined) {
+    if (button) queueMicrotask(() => { if (button.nativeElement.isConnected) button.nativeElement.focus(); });
+  }
 
   private readonly cd = inject(ChangeDetectorRef);
   readonly account = new ConnectedAccountState(connectedAccount, () => { this.onAccountChange(); this.cd.markForCheck(); });
@@ -205,12 +212,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   syncedCharts: readonly SyncedChart[] = [];
   pendingCreateIds: readonly string[] = [];
   rejectedCreateIds: readonly string[] = [];
-  createCandidate: {chart:SavedChartV1;localDate:string;localTime:string} | null = null;
+  createCandidate: {chart:SavedChartV1;localDate:string;localTime:string|null} | null = null;
   syncedAttempt: string | null = null;
   syncOfflineMode = false;
   syncBusy = false;
   syncGroupBusy = false;
   syncMessage: MessageKey | null = null;
+  autoSyncWarning: MessageKey | null = null;
   syncGroupDrafts: Record<string,string> = {};
   readonly groupsFeatureVisible = false;
   syncedVisibleLimit = 24;
@@ -270,7 +278,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const ticket=++this.syncListGeneration;
     const result=attemptId ? await chartSync({operation:'list',attemptId}) : await chartSync({operation:'offline_list'});
     if (this.destroyed || this.account.connectedAttemptId!==attemptId || generation!==this.syncGeneration || ticket!==this.syncListGeneration) return;
-    if (result.kind==='list') {this.syncedCharts=result.charts;this.pendingCreateIds=result.pendingChartIds;this.rejectedCreateIds=result.rejectedChartIds;}
+    if (result.kind==='list') {
+      this.syncedCharts=result.charts;this.pendingCreateIds=result.pendingChartIds;this.rejectedCreateIds=result.rejectedChartIds;
+      const serverAccount=result.charts.find(chart=>chart.isAccountChart);
+      if (serverAccount) {this.accountChart={source:'synced',id:serverAccount.id};saveAccountChart(this.uiPreferencesStorage,this.accountChart);}
+      else if (this.accountChart?.source==='synced') {this.accountChart=null;saveAccountChart(this.uiPreferencesStorage,null);}
+    }
     else if (!offline) this.syncMessage='sync.unavailable';
     this.cd.markForCheck();
   }
@@ -331,9 +344,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   trackSynced(_index:number,chart:SyncedChart):string { return chart.id; }
   isAssociated(id:string):boolean { return this.syncedCharts.some(chart=>chart.id===id); }
   isLocalChart(id:string):boolean { return this.savedCharts.some(chart=>chart.id===id); }
-  prepareChartCreate(chart:SavedChartV1):void {
-    this.createCandidate=null;
+  private chartCreateChoice(chart:SavedChartV1): {chart:SavedChartV1;localDate:string;localTime:string|null}|null {
     try {
+      if (chart.unknownDate && [...chart.placeName].length<=100) return {chart,localDate:chart.unknownDate,localTime:null};
       const instant=new Date(chart.utcIso);
       if (!Number.isFinite(instant.getTime()) || instant.getUTCMilliseconds()!==0 || [...chart.placeName].length>100) throw new Error('unsupported');
       const formatter=new Intl.DateTimeFormat('en-CA',{timeZone:chart.timeZone,calendar:'gregory',numberingSystem:'latn',
@@ -343,8 +356,37 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       const localTime=`${parts['hour']}:${parts['minute']}:${parts['second']}`;
       const resolved=resolveCivilTime({date:localDate,time:localTime,timeZone:chart.timeZone},{yearRange:'archive'});
       if (resolved.status!=='resolved' || resolved.choice.instantUtc!==instant.toISOString()) throw new Error('ambiguous');
-      this.createCandidate={chart,localDate,localTime};
-    } catch {this.syncMessage='sync.timeReview';}
+      return {chart,localDate,localTime};
+    } catch {return null;}
+  }
+  prepareChartCreate(chart:SavedChartV1):void {
+    this.createCandidate=this.chartCreateChoice(chart);
+    if (!this.createCandidate) this.syncMessage='sync.timeReview';
+  }
+  private async queueNewChartForAccount(id:string):Promise<void> {
+    const attemptId=this.account.connectedAttemptId;
+    if (this.destroyed) return;
+    if (!attemptId) {
+      if (this.account.hasRestorableSession) {this.autoSyncWarning='sync.autoOffline'; this.cd.markForCheck();}
+      return;
+    }
+    if (!this.account.scope?.split(' ').includes('chart_sync:charts:write')) {
+      this.autoSyncWarning=this.syncMessage='sync.chartWriteRequired';
+      this.cd.markForCheck();
+      return;
+    }
+    const chart=this.savedCharts.find(item=>item.id===id);
+    const choice=chart ? this.chartCreateChoice(chart) : null;
+    if (!choice) {this.autoSyncWarning=this.syncMessage='sync.timeReview'; this.cd.markForCheck(); return;}
+    const generation=this.syncGeneration;
+    const result=await chartSync({operation:'queue_create',attemptId,chartId:id,
+      localUpdatedAtMs:choice.chart.updatedAtMs,localDate:choice.localDate,localTime:choice.localTime,baseGroups:choice.chart.groups});
+    if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+    this.syncMessage=result.kind==='saved' ? 'sync.create.queued' : result.kind==='stale' ? 'sync.changed' : 'sync.unavailable';
+    this.autoSyncWarning=result.kind==='saved' ? null : this.syncMessage;
+    await this.loadSyncedCharts();
+    if (result.kind==='saved') {if (this.syncBusy) this.syncRequested=true; else this.scheduleSync(0);}
+    this.cd.markForCheck();
   }
   async confirmChartCreate():Promise<void> {
     const choice=this.createCandidate,attemptId=this.account.connectedAttemptId;
@@ -397,13 +439,23 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
 
   openSyncedChart(chart:SyncedChart):void {
-    if (this.calcBusy || this.exporting || chart.timeUnknown || !chart.civilTime || !chart.timeZone ||
+    if (this.calcBusy || this.exporting || !chart.timeZone ||
         chart.latMicro===null || chart.lngMicro===null) return;
-    const resolved=resolveCivilTime({date:chart.civilDate,time:chart.civilTime,timeZone:chart.timeZone});
+    if (!chart.timeUnknown && !chart.civilTime) return;
+    const generation=this.syncGeneration;
+    const time=chart.timeUnknown ? '12:00:00' : chart.civilTime!;
+    const resolved=resolveCivilTime({date:chart.civilDate,time,timeZone:chart.timeZone},{yearRange:'archive'});
     if (resolved.status!=='resolved') { this.syncMessage='sync.timeReview'; this.cd.markForCheck(); return; }
-    void this.onChartRequested({name:chart.name,utcIso:resolved.choice.instantUtc,localDate:chart.civilDate,
-      localTime:chart.civilTime,timeZone:resolved.timeZone,offsetSeconds:resolved.choice.offsetSeconds,
-      latMicro:chart.latMicro,lngMicro:chart.lngMicro,placeName:chart.placeName},null,false);
+    const utcIso = resolved.choice.instantUtc;
+    void this.onChartRequested({name:chart.name,utcIso,localDate:chart.civilDate,
+      localTime:time,timeZone:resolved.timeZone,offsetSeconds:resolved.choice.offsetSeconds,
+      timeUnknown:chart.timeUnknown,unknownDate:chart.timeUnknown ? chart.civilDate : undefined,
+      latMicro:chart.latMicro,lngMicro:chart.lngMicro,placeName:chart.placeName},null,false,generation).then(() => {
+        const active=this.activeChart;
+        if (!this.destroyed && generation===this.syncGeneration && this.view==='archive' && this.calcMessage==='calc.ready' && active &&
+            active.utcIso===utcIso && active.latMicro===chart.latMicro && active.lngMicro===chart.lngMicro)
+          this.openArchiveNatal(active);
+      });
   }
 
   async loadGroupConflicts(): Promise<void> {
@@ -449,6 +501,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private readonly renderer = new GraficoRenderService();
   private resizeObserver?: ResizeObserver;
+  private readonly zone = inject(NgZone);
+  private readonly motionPreference = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  private readonly fixedStarsRepaint = new StarAnimationRepaint(
+    tick => this.zone.runOutsideAngular(() => setInterval(tick, 50)), timer => clearInterval(timer),
+    () => !this.destroyed && this.initialized && this.ready && !this.busy && !this.exporting &&
+      !document.hidden && !this.reducedMotion && this.view === 'chart' && this.mode === 'natal' &&
+      this.chartPresentation === 'wheel' && this.fixedStarsEnabled,
+    () => this.renderer.render(),
+  );
   private initialized = false;
   private planetaryHourTicket = 0;
   private planetaryHourTimer: ReturnType<typeof setTimeout> | null = null;
@@ -477,6 +539,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   readonly monomeriAvailable = monomeriAvailable;
   monomeriEnabled = false;
   monomero: MonomeroView | null = null;
+  monomeroDodecatemoria = false;
   readonly guideSteps = GETTING_STARTED_STEPS;
   guideVisible = shouldShowGettingStarted(this.uiPreferencesStorage);
   guideStep = 0;
@@ -520,6 +583,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   groupDrafts: Record<string, string> = {};
   /** What the window shows at start; read from this device's preferences. */
   startup: StartupPreference = loadStartupPreference(this.uiPreferencesStorage);
+  referencePlace: ReferencePlace = loadReferencePlace(this.uiPreferencesStorage);
+  accountChart: AccountChartReference | null = loadAccountChart(this.uiPreferencesStorage);
+  referencePlaceError = false;
   // Calculated charts live in memory only: no disk, no account, no network.
   sessionCharts: SessionChart[] = [];
   activeChartId: number | null = null;
@@ -543,10 +609,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   calcBusy = false;
   updateAvailable = false;
   calcMessage: MessageKey | null = null;
-  /** The Functions drawer: groups with something to run first, the rest in one closed list. */
-  private readonly menu = functionMenu();
-  readonly catalog = this.menu.active;
-  readonly pendingCatalog = this.menu.pending;
   /** Settings of the old menu that are not built yet. */
   readonly pendingSettingEntries = pendingSettings();
   private transitChart: SessionChart | null = null;
@@ -572,6 +634,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private calcTicket = 0;
   private nextChartId = 1;
   private rowsCache: {chartId: number; system: HouseSystemId; rows: PlanetRow[]} | null = null;
+  planetInfoSelection: 'radix' | 'transit' | 'partner' = 'radix';
   // Charts saved in the local SQLite archive (inputs only, recalculated when opened).
   savedCharts: readonly SavedChartV1[] = [];
   /** Photo bytes never enter savedCharts, storage preferences, sync DTOs or the cloud. */
@@ -588,12 +651,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private photoLoadingIds = new Map<string, number>();
   archiveBusy = false;
   archiveMessage: MessageKey | null = null;
-  pendingDeleteId: string | null = null;
+  selectedArchiveIds: readonly string[] = [];
+  pendingDeleteIds: readonly string[] = [];
+  private preparedDeleteVersions = new Map<string,number>();
+  deletingSelected = false;
   /** The plain-text file of the first prototype is still on disk next to the encrypted archive. */
   legacyPresent = false;
   pendingLegacyRemoval = false;
   // Aspects, orbs and points: device-only display preferences, no personal data.
-  chartSettings: ChartSettings = loadChartSettings(this.uiPreferencesStorage);
+  chartSettings: ChartSettings = loadChartSettingsForSession(this.uiPreferencesStorage);
+  private savedFixedStarDefaults: FixedStarSettings = {...this.chartSettings.fixedStars};
+  fixedStarSaveStatus: 'saved'|'failed'|null = null;
   private aspectCache: {chartId: number; settings: ChartSettings; rows: AspectRow[]} | null = null;
   private matrixAspectCache: {chartId: number; data: TemaRenderData; settings: ChartSettings; outer: boolean; rows: AspectRow[]} | null = null;
   private crossAspectCache: {from: SessionChart; to: SessionChart; mode: 'transits' | 'synastry'; settings: ChartSettings; rows: AspectRow[]} | null = null;
@@ -713,8 +781,26 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.rowsCache = null;
     if (this.zodiacPoint !== 'tutti' && !this.zodiacPointAvailable(this.zodiacPoint)) this.zodiacPoint = 'tutti';
     // Best effort: a failed write never blocks the chart.
-    saveChartSettings(this.uiPreferencesStorage, this.chartSettings);
+    saveChartSettings(this.uiPreferencesStorage, {...this.chartSettings, fixedStars:this.savedFixedStarDefaults});
     if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  onGeneralChartSettingsChanged(next: ChartSettings): void {
+    this.onChartSettingsChanged({...next, fixedStars:this.chartSettings.fixedStars});
+  }
+  onFixedStarSettingsChanged(next: ChartSettings): void {
+    if (this.destroyed || this.exporting) return;
+    this.chartSettings = {...this.chartSettings, fixedStars:sanitizeChartSettings(next).fixedStars};
+    this.fixedStarSaveStatus = null;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  saveStarsAsDefault(settings: FixedStarSettings): void {
+    if (this.destroyed || this.exporting) return;
+    const sanitized = sanitizeChartSettings({fixedStars:settings}).fixedStars;
+    const saved = storeFixedStarDefaults(this.uiPreferencesStorage, sanitized);
+    if (saved) this.savedFixedStarDefaults = {...sanitized};
+    this.fixedStarSaveStatus = saved ? 'saved' : 'failed';
     this.cd.markForCheck();
   }
   get activeChart(): SessionChart | null {
@@ -723,7 +809,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   get kleroi(): Readonly<Record<string, number>> | null {
     const chart = this.activeChart;
     const fn: unknown = moduleExport(astrologyPackage, 'calculateVirgoStarsKleroi');
-    if (!chart || typeof fn !== 'function') return null;
+    if (!chart || chart.timeUnknown || typeof fn !== 'function') return null;
     const p = chart.data.planets;
     if (!p['Sun'] || !p['Moon']) return null;
     try {
@@ -790,16 +876,33 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   toggleArabicParts(): void {
     this.arabicPartsOpen = !this.arabicPartsOpen;
     this.arabicPartsIndex = -1;
-    if (this.arabicPartsOpen) { this.kleroiEnabled = false; this.directionChart = null; }
+    if (this.arabicPartsOpen) { this.kleroiEnabled = false; this.directionChart = null; this.stageTools.nativeElement.scrollTop = 0; }
     if (this.arabicPartsOpen && (this.arabicPartsGroup === '4' || this.arabicPartsGroup === '8')) void this.loadArabicNewMoon();
     if (this.initialized) void this.draw();
   }
   async toggleFixedStars(): Promise<void> {
     this.fixedStarsEnabled = !this.fixedStarsEnabled;
     this.fixedStarSelected = null;
+    this.stageTools.nativeElement.scrollTop = 0;
+    if (!this.fixedStarsEnabled) this.setFixedStarsAnimation(false);
     if (this.fixedStarsEnabled) await this.loadFixedStars();
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
+  }
+  get fixedStarToolsActive(): boolean {
+    return this.view === 'chart' && this.mode === 'natal' && this.chartPresentation === 'wheel' &&
+      this.fixedStarsEnabled && !!this.activeChart;
+  }
+  private get reducedMotion(): boolean {
+    return this.motionPreference?.matches ?? false;
+  }
+  /** Repaint the existing renderer animation without rebuilding its scene. */
+  private setFixedStarsAnimation(enabled: boolean): void {
+    if (!enabled || this.destroyed || this.reducedMotion) {
+      this.fixedStarsRepaint.stop();
+      return;
+    }
+    this.fixedStarsRepaint.start();
   }
   private async loadFixedStars(): Promise<void> {
     const chart = this.activeChart;
@@ -808,27 +911,28 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.fixedStarsResult?.key === key) return;
     const ticket = ++this.fixedStarsTicket;
     this.fixedStarsBusy = true; this.fixedStarsError = false;
-    const result = await calculateChart({utcIso:chart.utcIso, latMicro:chart.latMicro, lngMicro:chart.lngMicro, includeFixedStars:true});
+    const historical = chart.historical ?? chart.calculationHistorical;
+    const result = historical ? await calculateHistoricalChart(historical, true) :
+      await calculateChart({utcIso:chart.utcIso, latMicro:chart.latMicro, lngMicro:chart.lngMicro, includeFixedStars:true});
     if (this.destroyed || ticket !== this.fixedStarsTicket || !this.activeChart || this.planetaryHourKey(this.activeChart) !== key) return;
     this.fixedStarsBusy = false;
-    if (result.kind !== 'ready' || !result.fixedStars) { this.fixedStarsError = true; this.fixedStarsResult = null; }
+    if (result.kind !== 'ready' || !result.fixedStars?.length) { this.fixedStarsError = true; this.fixedStarsResult = null; }
     else this.fixedStarsResult = {key, stars:result.fixedStars};
     if (this.initialized && this.fixedStarsEnabled) void this.draw();
     this.cd.markForCheck();
   }
-  get fixedStarContacts(): readonly {star:FixedStarV1; conjunctions:readonly string[]; axis:string | null; longitude:number}[] {
+  get fixedStarContacts(): readonly {star:FixedStarV1; conjunctions:readonly string[]; dodecatemoriaConjunctions:readonly string[]; axis:string | null; longitude:number}[] {
     const chart = this.activeChart, stored = this.fixedStarsResult;
     if (!this.fixedStarsEnabled || !chart || stored?.key !== this.planetaryHourKey(chart)) return [];
-    const house = chart.data.houses[this.houseSystem];
-    if (!house) return [];
+    const house = chart.data.houses[this.houseSystem] ?? null;
     const points:Record<string,number> = {};
     for (const [name, p] of Object.entries(chart.data.planets)) if (this.chartSettings.points[name as keyof typeof this.chartSettings.points]?.shown) points[name] = p.longitude;
+    const projected = this.zodiacMode === 'dodecatemoria'
+      ? dodecatemoriaContactPoints(chart.data,this.chartSettings.points,this.zodiacPoint) : {};
     return stored.stars.flatMap(star => {
-      const found = calculateVirgoStarsStarContacts({longitudeDeg:star.longitudeDeg, trueAltitudeDeg:star.trueAltitudeDeg,
-        azimuthDeg:star.azimuthSouthWestDeg, points});
-      if (!found.axis && !found.conjunctions.length) return [];
-      const axes:Record<string,number> = {AS:house.ascendant, DS:house.ds, MC:house.mc, IC:house.ic};
-      return [{star, conjunctions:found.conjunctions, axis:found.axis, longitude:found.axis ? axes[found.axis] : star.longitudeDeg}];
+      if (!starWithinMagnitude(star, this.chartSettings.fixedStars)) return [];
+      const contact = fixedStarChartContact(star, points, projected, house, this.chartSettings.fixedStars);
+      return contact ? [contact] : [];
     });
   }
   get selectedFixedStar(): ReturnType<DesktopAppComponent['fixedStarAt']> { return this.fixedStarAt(this.fixedStarSelected); }
@@ -837,13 +941,18 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return this.fixedStarsResult?.stars.length === 1 && this.fixedStarsResult.stars[0].id === 102 &&
       Object.keys(this.fixedStarsResult.stars[0].interpretations).length === 0;
   }
-  get fixedStarInterpretations(): readonly {name:string; text:string}[] {
+  get fixedStarInterpretations(): readonly {name:string; text:string; projected:boolean}[] {
     const item = this.selectedFixedStar;
     if (!item) return [];
-    return [...item.conjunctions, ...(item.axis ? [item.axis] : [])].flatMap(name => {
+    const ordinary = [...item.conjunctions, ...(item.axis ? [item.axis] : [])].flatMap(name => {
       const value = item.star.interpretations[name];
-      return value ? [{name, text:value}] : [];
+      return value ? [{name, text:value, projected:false}] : [];
     });
+    const projected = item.dodecatemoriaConjunctions.flatMap(name => {
+      const value = item.star.interpretations[name];
+      return value ? [{name, text:value, projected:true}] : [];
+    });
+    return [...ordinary,...projected];
   }
 
   starLinkFailed = false;
@@ -911,12 +1020,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   aspectSymbolOf(aspect:string): string { return aspectSymbol(aspect); }
   aspectPlanetOf(aspect:string): string | null { return aspectPlanet(aspect); }
-  availableIn(group: FunctionGroup): FunctionEntry[] { return group.entries.filter(entry => entry.status === 'available'); }
-  unavailableIn(group: FunctionGroup): FunctionEntry[] { return group.entries.filter(entry => entry.status !== 'available'); }
   chartName(chart: SessionChart): string {
     return chart.kind === 'sky' ? this.t('sky.title') : chart.name || this.t('session.unnamed');
   }
-  chartWhen(chart: {utcIso: string; timeZone: string; historical?: NewChartInput['historical']}): string {
+  chartWhen(chart: {utcIso: string; timeZone: string; historical?: NewChartInput['historical']; unknownDate?:string}): string {
+    if (chart.unknownDate) return `${chart.unknownDate} · ${this.t('sync.unknownTime')} · ${this.t('sync.noonReference')}`;
     if (chart.historical) {
       const c=chart.historical.civil, pad=(n:number)=>String(n).padStart(2,'0');
       const year=c.year <= 0 ? `${1-c.year} ${this.locale === 'it' ? 'a.C.' : 'BCE'}` : String(c.year);
@@ -934,13 +1042,29 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }
   }
   get planetRowsView(): PlanetRow[] {
-    const chart = this.activeChart;
+    const chart = this.planetInfoChart;
     if (!chart) return [];
     const cache = this.rowsCache;
     if (cache && cache.chartId === chart.id && cache.system === this.houseSystem) return cache.rows;
     const rows = planetRows(chart.data, this.houseSystem);
     this.rowsCache = {chartId:chart.id, system:this.houseSystem, rows};
     return rows;
+  }
+  get planetInfoChart(): SessionChart | null {
+    if (this.planetInfoSelection === 'transit') {
+      return (this.mode === 'transits' ? this.displayedTransit :
+        this.mode === 'synastry' ? this.displayChart(this.synastryTransitChart) : null) ?? this.activeChart;
+    }
+    if (this.planetInfoSelection === 'partner' && this.mode === 'synastry') return this.partnerChart ?? this.activeChart;
+    return this.activeChart;
+  }
+  get planetInfoTransitAvailable(): boolean {
+    return this.mode === 'transits' ? !!this.displayedTransit : this.mode === 'synastry' && !!this.synastryTransitChart;
+  }
+  setPlanetInfoSelection(selection: 'radix' | 'transit' | 'partner'): void {
+    this.planetInfoSelection = selection;
+    this.rowsCache = null;
+    this.cd.markForCheck();
   }
   get houseSystems(): HouseSystemId[] {
     const chart = this.activeChart;
@@ -951,8 +1075,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   /** The four angles lead the planet table; they have no speed or latitude, and the Ascendant and Descendant no house. */
   get angleRows(): ReadonlyArray<{id:string; fallback:string; longitude:number; house:number | null}> {
-    const data = this.activeChart?.data;
-    if (!data) return [];
+    const data = this.planetInfoChart?.data;
+    if (!data || !Object.keys(data.houses).length) return [];
     return [
       {id:'AS', fallback:'ASC', longitude:data.as, house:null},
       {id:'DS', fallback:'DSC', longitude:data.ds, house:null},
@@ -977,6 +1101,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   longitudeText(longitude:number): string { return formatLongitudeDms(longitude, this.locale); }
   latitudeText(latitude:number): string { return formatLatitudeDms(latitude); }
+  starAzimuthText(azimuthSouthWestDeg:number): string { return formatLatitudeDms(starAzimuthNorthEast(azimuthSouthWestDeg)); }
   speedText(speed:number): string { return formatSpeed(speed, this.locale); }
   latitudeSpeedText(speed:number): string { return formatSpeed(speed, this.locale, 3); }
   houseOf(house:number | null): HouseDisplay | null { return house === null ? null : houseDisplay(house); }
@@ -984,7 +1109,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const key = HOUSE_SYSTEM_KEYS[system];
     return key ? this.t(key) : (EXTRA_HOUSE_LABELS[system]?.[this.locale === 'it' ? 0 : 1] ?? system);
   }
-  statusLabel(status:FunctionStatus): string { return this.t(STATUS_KEYS[status]); }
   entryLabel(entry:{it:string; en:string}): string { return this.locale === 'it' ? entry.it : entry.en; }
   signName(longitude:number): string {
     return this.t(SIGN_KEYS[Math.min(11, Math.max(0, Math.floor(longitude / 30)))]);
@@ -996,18 +1120,43 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   trackChart(_index:number, chart:SessionChart): number { return chart.id; }
 
   private async computeChart(input: NewChartInput, archiveId: string | null = null, kind: 'chart' | 'sky' = 'chart'): Promise<SessionChart | MessageKey> {
-    const result = input.historical ? await calculateHistoricalChart(input.historical) :
+    let calculationHistorical = input.historical;
+    const instant = Date.parse(input.utcIso);
+    const utcYear = new Date(instant).getUTCFullYear();
+    if (!calculationHistorical && (utcYear < 1900 || utcYear > 2033)) {
+      const request = historicalNavigationRequest(instant, input.timeZone, input.latMicro, input.lngMicro);
+      if (!request) return 'calc.invalid';
+      calculationHistorical = {protocolVersion:1, ...request};
+    }
+    let result = calculationHistorical ? await calculateHistoricalChart(calculationHistorical) :
       await calculateChart({utcIso:input.utcIso, latMicro:input.latMicro, lngMicro:input.lngMicro});
+    // A USNO table can end within its last calendar year; retry that instant
+    // using the same explicit estimate used by the extended navigator.
+    if (!calculationHistorical && result.kind === 'out_of_range') {
+      const request = historicalNavigationRequest(instant, input.timeZone, input.latMicro, input.lngMicro);
+      if (request) {
+        const estimated = await calculateHistoricalChart(request);
+        if (estimated.kind === 'ready') {
+          calculationHistorical = {protocolVersion:1, ...request};
+        }
+        result = estimated;
+      }
+    }
     if (result.kind !== 'ready') return result.kind === 'time_source_out_of_range' ? 'calc.historicalRange' : result.kind === 'ephemeris_out_of_range' ? 'calc.ephemerisRange' : CALCULATION_FAILURES[result.kind];
     const displayTime = input.historical ? this.chartWhen(input) : input.utcIso;
-    const data = buildTemaRenderData(result.chart, displayTime);
-    if (!data) return 'calc.nohouses';
-    const gauquelin = await addExtraHouses(data, result.chart, result.provider, input.utcIso, input.latMicro, input.lngMicro);
+    const calculatedData = buildTemaRenderData(result.chart, displayTime);
+    if (!calculatedData) return 'calc.nohouses';
+    // Noon is a calculation reference only; never expose its angles or houses.
+    const data = input.timeUnknown ? {...calculatedData, houses:{}, as:NaN, ds:NaN, mc:NaN, ic:NaN} : calculatedData;
+    const gauquelin = input.timeUnknown || calculationHistorical?.deltaT.kind === 'espenakMeeus2006Unquantified' ? null :
+      await addExtraHouses(data, result.chart, result.provider, input.utcIso, input.latMicro, input.lngMicro);
     const sources = new Set(result.chart.bodies.map(body => body.ephemerisSource));
     const onlySource = sources.size === 1 ? [...sources][0] : null;
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
     return {
       id:this.nextChartId++, kind, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone, historical:input.historical,
+      timeUnknown:input.timeUnknown, unknownDate:input.unknownDate,
+      calculationHistorical:input.historical ? undefined : calculationHistorical,
       archiveId, placeName:input.placeName,
       placeLabel:input.placeName ? input.placeName + ' (' + coordinates + ')' : coordinates,
       latMicro:input.latMicro, lngMicro:input.lngMicro,
@@ -1030,7 +1179,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     await this.onChartRequested(input, null, this.autoSave);
     if (!this.destroyed && this.calcMessage === 'calc.ready') this.closeSheet();
   }
-  async onChartRequested(input: NewChartInput, archiveId: string | null = null, saveToArchive = false): Promise<void> {
+  async onChartRequested(input: NewChartInput, archiveId: string | null = null, saveToArchive = false, expectedSyncGeneration?:number): Promise<void> {
     if (this.destroyed) return;
     const ticket = ++this.calcTicket;
     this.calcBusy = true;
@@ -1039,17 +1188,23 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (saveToArchive && archiveId === null) {
       const newId = newChartId();
       const saved = await this.runArchive({operation:'save', chart:{
-        id:newId, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
+        id:newId, name:input.name, utcIso:input.timeUnknown ? '' : input.utcIso, timeZone:input.timeZone,
+        unknownDate:input.timeUnknown ? input.unknownDate : undefined,
         latMicro:input.latMicro, lngMicro:input.lngMicro, placeName:input.placeName,
         historical:input.historical,
       }}, 'archive.saved');
-      if (saved) archiveId = newId;
+      if (saved) {archiveId = newId; void this.queueNewChartForAccount(newId);}
       if (this.destroyed || ticket !== this.calcTicket) return;
     }
     const chart = await this.computeChart(input, archiveId);
     // Only the latest request may change what is on screen.
     if (this.destroyed || ticket !== this.calcTicket) return;
     this.calcBusy = false;
+    if (expectedSyncGeneration !== undefined && expectedSyncGeneration !== this.syncGeneration) {
+      this.calcMessage = null;
+      this.cd.markForCheck();
+      return;
+    }
     if (typeof chart === 'string') {
       this.calcMessage = chart;
     } else {
@@ -1066,6 +1221,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.natalAspectFocus = null;
     this.zodiacPoint = 'tutti';
     this.activeChartId = chart ? chart.id : null;
+    if (chart?.timeUnknown && this.chartPresentation === 'elements') this.chartPresentation = 'wheel';
     this.schedulePlanetaryHour(chart);
     this.fixedStarSelected = null;
     if (!chart) { ++this.fixedStarsTicket; this.fixedStarsBusy = false; }
@@ -1084,7 +1240,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.inspectorTab === 'navigate' && !this.inspectorCollapsed) this.initNav();
   }
   private planetaryHourKey(chart: SessionChart): string {
-    return `${chart.id}|${chart.utcIso}|${chart.latMicro}|${chart.lngMicro}|${chart.timeZone}`;
+    return `${chart.id}|${chart.utcIso}|${chart.latMicro}|${chart.lngMicro}|${chart.timeZone}|${JSON.stringify(chart.historical ?? chart.calculationHistorical ?? null)}`;
   }
   private schedulePlanetaryHour(chart: SessionChart | null): void {
     const ticket = ++this.planetaryHourTicket;
@@ -1092,7 +1248,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.planetaryHourTimer = null;
     this.planetaryHour = null;
     const build = moduleExport(astrologyPackage, 'buildPlanetaryHours');
-    if (!chart || chart.kind !== 'chart' || typeof build !== 'function') return;
+    if (!chart || chart.timeUnknown || chart.kind !== 'chart' || typeof build !== 'function') return;
     const key = this.planetaryHourKey(chart);
     this.planetaryHourTimer = setTimeout(() => {
       this.planetaryHourTimer = null;
@@ -1119,7 +1275,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     else if (this.mode === 'synastry' && !this.partnerChart) this.setMode('natal');
     this.cd.markForCheck();
   }
-  /** The sky of this moment, cast at the place of the chosen start chart or, failing that, at the default place. */
+  /** The sky of this moment always uses the independently configured place. */
   async showSky(silent = false): Promise<void> {
     if (this.calcBusy || this.exporting || this.destroyed) return;
     // A silent refresh never takes over: a request the user makes meanwhile wins.
@@ -1130,10 +1286,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.view = 'chart';
       this.cd.markForCheck();
     }
-    const saved = this.savedCharts.find(item => item.id === this.startup.chartId);
-    const place = saved
-      ? {name:saved.placeName, latMicro:saved.latMicro, lngMicro:saved.lngMicro, timeZone:saved.timeZone}
-      : DEFAULT_SKY_PLACE;
+    const place = this.referencePlace;
     const chart = await this.computeChart({
       name:'', utcIso:new Date().toISOString(), localDate:'', localTime:'', timeZone:place.timeZone,
       offsetSeconds:0, latMicro:place.latMicro, lngMicro:place.lngMicro, placeName:place.name,
@@ -1159,11 +1312,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   // ---- Naviga cielo -------------------------------------------------------------------------------
   private initNav(): void {
     const chart = this.activeChart;
-    const utcMs = chart ? Date.parse(chart.utcIso) : Number.NaN;
+    const utcMs = chart ? chart.navigationInstant ?? Date.parse(chart.utcIso) : Number.NaN;
     this.navConfirmSave = false;
     this.cityChangeOpen = false;
     this.navStatus = null;
-    if (!chart || !Number.isFinite(utcMs)) { this.nav = null; return; }
+    if (!chart || chart.timeUnknown || !Number.isFinite(utcMs)) { this.nav = null; return; }
     const point: NavPoint = {utcMs, latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone, placeName:chart.placeName};
     this.nav = {chartId:chart.id, base:point, current:point};
     this.navShown = point;
@@ -1191,6 +1344,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return a.utcMs !== b.utcMs || a.latMicro !== b.latMicro || a.lngMicro !== b.lngMicro || a.timeZone !== b.timeZone;
   }
   stepUnitLabel(unit: StepUnit): string { return this.t(NAV_UNIT_LABELS[unit]); }
+  private navigationInput(point:NavPoint, name:string):NewChartInput | null {
+    const local = localParts(point.utcMs, point.timeZone);
+    if (!local) return null;
+    const utcYear = new Date(point.utcMs).getUTCFullYear();
+    const historical = local.year < 1900 || local.year > 2033 || utcYear < 1900 || utcYear > 2033;
+    const request = historical ? historicalNavigationRequest(point.utcMs, point.timeZone, point.latMicro, point.lngMicro) : null;
+    if (historical && !request) return null;
+    return {name, utcIso:historical ? '' : isoFromMs(point.utcMs), localDate:'', localTime:'', timeZone:point.timeZone,
+      offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName,
+      ...(request ? {historical:{protocolVersion:1 as const, ...request}} : {})};
+  }
+  get navUsesHistoricalEstimate():boolean {
+    const point = this.nav?.current;
+    return !!point && !!this.navigationInput(point, '')?.historical;
+  }
   /** True when the clock moved; false at the edge of the supported years or with nothing to move. */
   private moveNav(next: number | null): boolean {
     const nav = this.nav;
@@ -1206,13 +1374,23 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const point = this.nav?.current;
     return point ? this.moveNav(shiftInstant(point.utcMs, point.timeZone, field, delta)) : false;
   }
+  editClockField(field:NavField, event:Event, transit = false):void {
+    const input = event.target as HTMLInputElement;
+    const point = transit ? this.transitNav?.current : this.nav?.current;
+    if (!point) return;
+    const next = setInstantField(point.utcMs, point.timeZone, field, input.value.trim());
+    if (transit) this.moveTransit(next); else this.moveNav(next);
+    const current = transit ? this.transitNav?.current : this.nav?.current;
+    input.value = current ? fieldTexts(current.utcMs, current.timeZone)?.[field] ?? '' : '';
+  }
+  finishClockEdit(event:Event):void { (event.target as HTMLInputElement).blur(); }
   stepNav(direction: 1 | -1): boolean {
     const point = this.nav?.current;
     return point ? this.moveNav(stepInstant(point.utcMs, point.timeZone, this.navStepUnit, this.navStepValue, direction)) : false;
   }
   /**
    * Pressing a move button steps once at once and, while it stays pressed, keeps stepping, so the planets can be
-   * watched moving. The pointer is captured, so letting go anywhere stops it; reaching the edge of the years 1900–2033 stops it too.
+   * watched moving. The pointer is captured, so letting go anywhere stops it.
    */
   private beginHold(event: PointerEvent, move: () => boolean): void {
     if (event.button !== 0) return;
@@ -1286,6 +1464,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.scheduleNavRecompute();
   }
   private scheduleNavRecompute(): void {
+    // A request already in flight must not redraw the old time while a new
+    // field value is waiting for its debounce timer.
+    ++this.navTicket;
     if (this.navTimer !== null) clearTimeout(this.navTimer);
     this.navTimer = setTimeout(() => { this.navTimer = null; void this.recomputeNav(); }, NAV_RECOMPUTE_MS);
     this.cd.markForCheck();
@@ -1297,10 +1478,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!nav || !chart || chart.id !== nav.chartId || this.destroyed) return;
     const ticket = ++this.navTicket;
     const point = nav.current;
-    const next = await this.computeChart({
-      name:chart.name, utcIso:isoFromMs(point.utcMs), localDate:'', localTime:'', timeZone:point.timeZone,
-      offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName,
-    }, chart.archiveId, chart.kind);
+    const input = this.navigationInput(point, chart.name);
+    const next = input ? await this.computeChart(input, chart.archiveId, chart.kind) : 'nav.limit';
     if (this.destroyed || ticket !== this.navTicket || this.nav?.chartId !== chart.id) return;
     if (typeof next === 'string') {
       // The chart on screen stays as it was, so the clock goes back to it and a held button stops: a clock
@@ -1312,7 +1491,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.navStatus = null;
       this.navShown = point;
       // Same identity, new data: the partner, the returns and the navigator keep pointing at it.
-      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id} : item);
+      this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...next, id:chart.id, navigationInstant:point.utcMs} : item);
       this.schedulePlanetaryHour({...next, id:chart.id});
       this.fixedStarSelected = null;
       if (this.fixedStarsEnabled) void this.loadFixedStars();
@@ -1329,7 +1508,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** Overwriting a saved chart's data asks first; a chart not saved yet is simply saved. */
   askNavSave(): void {
     const chart = this.activeChart;
-    if (!chart || chart.kind !== 'chart' || !this.nav) return;
+    if (!chart || chart.kind !== 'chart' || !this.nav || this.navUsesHistoricalEstimate) return;
     if (chart.archiveId === null) { void this.confirmNavSave(); return; }
     this.navConfirmSave = true;
     this.cd.markForCheck();
@@ -1341,7 +1520,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   async confirmNavSave(): Promise<void> {
     const chart = this.activeChart;
     const nav = this.nav;
-    if (!chart || chart.kind !== 'chart' || !nav || this.archiveBusy) return;
+    if (!chart || chart.kind !== 'chart' || !nav || this.archiveBusy || this.navUsesHistoricalEstimate) return;
     this.navConfirmSave = false;
     const archiveId = chart.archiveId ?? newChartId();
     const point = nav.current;
@@ -1358,7 +1537,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openElective(): void {
     const nav = this.nav;
-    if (!nav) return;
+    if (!nav || this.navUsesHistoricalEstimate) return;
     this.electiveName = defaultElectiveName(this.t('nav.elective.default'), nav.current.utcMs, nav.current.timeZone);
     this.electiveInvalid = false;
     this.electiveOpen = true;
@@ -1380,7 +1559,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   /** A new chart for the navigated instant and place, saved in the archive under the name given. */
   async confirmElective(): Promise<void> {
     const nav = this.nav;
-    if (!nav || this.archiveBusy) return;
+    if (!nav || this.archiveBusy || this.navUsesHistoricalEstimate) return;
     const point = nav.current;
     const record = {
       id:newChartId(), name:this.electiveName.trim(), utcIso:isoFromMs(point.utcMs), timeZone:point.timeZone,
@@ -1411,10 +1590,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const saved = this.startup.mode === 'natal-transits'
       ? this.savedCharts.find(item => item.id === this.startup.chartId) : undefined;
     if (saved) {
-      await this.onChartRequested({
-        name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
-        offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName, historical:saved.historical,
-      }, saved.id);
+      const input=this.savedChartInput(saved);
+      if (input) await this.onChartRequested(input, saved.id);
       if (this.destroyed) return;
       if (this.activeChart) { await this.showTransits(); return; }
     }
@@ -1432,6 +1609,65 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.startup = {mode:this.startup.mode, chartId:id};
     saveStartupPreference(this.uiPreferencesStorage, this.startup);
     this.cd.markForCheck();
+  }
+  setReferencePlace(place: OfflinePlaceV1): void {
+    if (!place.timeZone) { this.referencePlaceError=true; this.cd.markForCheck(); return; }
+    const candidate={name:place.name,latMicro:place.latMicro,lngMicro:place.lngMicro,timeZone:place.timeZone};
+    if (!saveReferencePlace(this.uiPreferencesStorage,candidate)) { this.referencePlaceError=true; this.cd.markForCheck(); return; }
+    this.referencePlace=candidate;
+    this.referencePlaceError=false;
+    if (this.isSkyActive) { ++this.calcTicket; this.calcBusy=false; void this.showSky(true); }
+    this.cd.markForCheck();
+  }
+  async setAccountChart(source:'local'|'synced', id:string): Promise<void> {
+    if (!(source==='local' ? this.savedCharts : this.syncedCharts).some(chart=>chart.id===id)) return;
+    const attemptId=this.account.connectedAttemptId;
+    if (attemptId) {
+      if (this.syncBusy || this.syncGroupBusy) {this.syncMessage='sync.running';this.cd.markForCheck();return;}
+      if (!this.account.scope?.split(' ').includes('chart_sync:charts:manage')) {this.syncMessage='sync.manageRequired';this.cd.markForCheck();return;}
+      const generation=this.syncGeneration;
+      this.syncGroupBusy=true;this.cd.markForCheck();
+      try {
+        let remote=this.syncedCharts.find(chart=>chart.id===id);
+        if (!remote && source==='local') {
+          const local=this.savedCharts.find(chart=>chart.id===id),choice=local && this.chartCreateChoice(local);
+          if (!choice || !this.account.scope?.split(' ').includes('chart_sync:charts:write')) {this.syncMessage='sync.chartWriteRequired';return;}
+          if (!this.pendingCreateIds.includes(id)) {
+            const queued=await chartSync({operation:'queue_create',attemptId,chartId:id,localUpdatedAtMs:choice.chart.updatedAtMs,
+              localDate:choice.localDate,localTime:choice.localTime,baseGroups:choice.chart.groups});
+            if (queued.kind!=='saved') {this.syncMessage=queued.kind==='stale'?'sync.changed':'sync.unavailable';return;}
+          }
+          await this.syncNow();
+          if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+          remote=this.syncedCharts.find(chart=>chart.id===id);
+        }
+        if (!remote || remote.syncStatus!=='clean') {this.syncMessage='sync.changed';return;}
+        const result=await chartSync({operation:'queue_lifecycle',attemptId,chartId:id,sourceUpdatedAtMs:remote.sourceUpdatedAtMs,lifecycleOperation:'setAccount'});
+        if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+        if (result.kind!=='saved') {this.syncMessage=result.kind==='stale'?'sync.changed':'sync.unavailable';return;}
+        this.syncMessage='sync.manageQueued';await this.syncNow();
+        if (this.syncedCharts.some(chart=>chart.id===id && chart.lifecycleStatus==='conflict')) this.syncMessage='sync.manageConflict';
+      } finally {if(generation===this.syncGeneration) this.syncGroupBusy=false;this.cd.markForCheck();}
+      return;
+    }
+    if (source==='synced') {this.syncMessage='sync.manageRequired';this.cd.markForCheck();return;}
+    const reference:AccountChartReference={source,id};
+    if (!saveAccountChart(this.uiPreferencesStorage,reference)) return;
+    this.accountChart=reference;
+    if (source==='local') { this.startup={...this.startup,chartId:id}; saveStartupPreference(this.uiPreferencesStorage,this.startup); }
+    this.cd.markForCheck();
+  }
+  openAccountChart(): void {
+    const ref=this.accountChart;
+    if (!ref) { this.openArchive(); return; }
+    if (ref.source==='local') {
+      const chart=this.savedCharts.find(item=>item.id===ref.id);
+      if (chart) { this.openArchive(); this.openSavedChart(chart); return; }
+    } else {
+      const chart=this.syncedCharts.find(item=>item.id===ref.id);
+      if (chart) { this.openArchive(); this.openSyncedChart(chart); return; }
+    }
+    this.openArchive();
   }
   /** Keep the radix visible while selecting or changing the second chart. */
   openSynastryPicker(): void {
@@ -1513,11 +1749,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!this.activeChart || !this.directionsSupported || this.busy || this.calcBusy || this.exporting) return;
     this.directionToolOpen = true;
     this.returnTool = null;
-    this.view = 'functions';
+    this.view = 'directions';
     this.cd.markForCheck();
   }
   closeDirections(): void {
     this.directionToolOpen = false;
+    if (this.view === 'directions') this.view = 'chart';
     this.cd.markForCheck();
   }
   setDirectionDate(event: Event): void { this.directionDate = (event.target as HTMLInputElement).value; }
@@ -1642,22 +1879,19 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
-  /** View the same chart's observer sky. The Rust command supplies all astronomical positions. */
+  /** The observer sky uses the active chart's own instant and place. */
   toggleSkyDome(): void {
-    if (!this.activeChart || this.destroyed || this.busy || this.calcBusy) return;
+    if (!this.activeChart || this.activeChart.timeUnknown || this.destroyed || this.busy || this.calcBusy) return;
     this.view = 'chart';
-    if (this.chartPresentation === 'sky3d') {
-      this.chartPresentation = 'wheel';
-    } else {
-      // An observer sky depicts the active chart's own instant. Do not silently
-      // pretend a natal sky contains the planets of a transit or synastry overlay.
+    if (this.chartPresentation === 'sky3d') this.chartPresentation = 'wheel';
+    else {
       if (this.mode !== 'natal') this.setMode('natal');
       this.chartPresentation = 'sky3d';
     }
     this.cd.markForCheck();
   }
   toggleElements(): void {
-    if (!this.activeChart || this.destroyed) return;
+    if (!this.activeChart || this.activeChart.timeUnknown || this.destroyed) return;
     this.chartPresentation = this.chartPresentation === 'elements' ? 'wheel' : 'elements';
     this.cd.markForCheck();
   }
@@ -1755,16 +1989,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const nav = this.transitNav, natal = this.activeChart;
     if (!nav || !natal || natal.id !== nav.chartId || this.mode !== 'transits') return;
     const point = nav.current;
-    const chart = await this.computeChart({name:'', utcIso:isoFromMs(point.utcMs), localDate:'', localTime:'',
-      timeZone:point.timeZone, offsetSeconds:0, latMicro:point.latMicro, lngMicro:point.lngMicro, placeName:point.placeName});
+    const input = this.navigationInput(point, '');
+    const chart = input ? await this.computeChart(input) : 'nav.limit';
     if (this.destroyed || ticket !== this.transitTicket || this.activeChartId !== natal.id || this.mode !== 'transits') return;
     if (typeof chart === 'string') {
       this.transitStatus = chart;
       this.stopHold();
       if (this.transitNav && this.transitChart) this.transitNav = {...this.transitNav,
-        current:{...this.transitNav.current, utcMs:Date.parse(this.transitChart.utcIso)}};
+        current:{...this.transitNav.current, utcMs:this.transitChart.navigationInstant ?? Date.parse(this.transitChart.utcIso)}};
     } else {
-      this.transitChart = chart;
+      this.transitChart = {...chart, navigationInstant:point.utcMs};
       this.crossAspectCache = null;
       if (this.synodReference === 'transit') void this.refreshSynods();
       if (this.initialized) void this.draw();
@@ -1909,12 +2143,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.archiveBusy) return;
     const archiveId = chart.archiveId ?? newChartId();
     const saved = await this.runArchive({operation:'save', chart:{
-      id:archiveId, name:chart.name, utcIso:chart.utcIso, timeZone:chart.timeZone,
+      id:archiveId, name:chart.name, utcIso:chart.timeUnknown ? '' : chart.utcIso, timeZone:chart.timeZone,
+      unknownDate:chart.timeUnknown ? chart.unknownDate : undefined,
       latMicro:chart.latMicro, lngMicro:chart.lngMicro, placeName:chart.placeName,
       historical:chart.historical,
     }}, 'archive.saved');
     if (saved) {
       this.sessionCharts = this.sessionCharts.map(item => item.id === chart.id ? {...item, archiveId} : item);
+      if (chart.archiveId === null) void this.queueNewChartForAccount(archiveId);
       this.cd.markForCheck();
     }
   }
@@ -2044,7 +2280,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const original = this.editingChart;
     if (!original || this.archiveBusy) return;
     const ok = await this.runArchive({operation:'save', chart:{
-      id:original.id, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone,
+      id:original.id, name:input.name, utcIso:input.timeUnknown ? '' : input.utcIso, timeZone:input.timeZone,
+      unknownDate:input.timeUnknown ? input.unknownDate : undefined,
       latMicro:input.latMicro, lngMicro:input.lngMicro, placeName:input.placeName,
       historical:input.historical,
     }}, 'archive.edited');
@@ -2055,32 +2292,97 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.autoSave = (event.target as HTMLInputElement).checked;
     this.cd.markForCheck();
   }
+  private savedChartInput(saved:SavedChartV1):NewChartInput | null {
+    let utcIso=saved.utcIso;
+    if (saved.unknownDate) {
+      const noon=resolveCivilTime({date:saved.unknownDate,time:'12:00:00',timeZone:saved.timeZone},{yearRange:'archive'});
+      if (noon.status!=='resolved') return null;
+      utcIso=noon.choice.instantUtc;
+    }
+    return {name:saved.name, utcIso, localDate:saved.unknownDate ?? '', localTime:saved.unknownDate ? '12:00:00' : '', timeZone:saved.timeZone,
+      timeUnknown:!!saved.unknownDate, unknownDate:saved.unknownDate,
+      offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName, historical:saved.historical};
+  }
   openSavedChart(saved: SavedChartV1): void {
     if (this.calcBusy || this.exporting) return;
+    const input=this.savedChartInput(saved);
+    if (!input) { this.archiveMessage='sync.timeReview'; this.cd.markForCheck(); return; }
+    const utcIso=input.utcIso;
     const open = this.sessionCharts.find(chart => chart.archiveId === saved.id &&
-      chart.name === saved.name && chart.utcIso === saved.utcIso && chart.timeZone === saved.timeZone &&
+      chart.name === saved.name && chart.utcIso === utcIso && chart.timeZone === saved.timeZone && chart.unknownDate===saved.unknownDate &&
       JSON.stringify(chart.historical ?? null) === JSON.stringify(saved.historical ?? null) &&
       chart.latMicro === saved.latMicro && chart.lngMicro === saved.lngMicro && chart.placeName === saved.placeName);
-    if (open) { this.activateChart(open.id); this.closeSheet(); return; }
+    if (open) { this.openArchiveNatal(open); return; }
     const previousIds = this.sessionCharts.filter(chart => chart.archiveId === saved.id).map(chart => chart.id);
-    void this.onChartRequested({
-      name:saved.name, utcIso:saved.utcIso, localDate:'', localTime:'', timeZone:saved.timeZone,
-      offsetSeconds:0, latMicro:saved.latMicro, lngMicro:saved.lngMicro, placeName:saved.placeName, historical:saved.historical,
-    }, saved.id).then(() => {
-      if (!this.destroyed && this.calcMessage === 'calc.ready') {
+    void this.onChartRequested(input, saved.id).then(() => {
+      const active=this.activeChart;
+      if (!this.destroyed && this.view==='archive' && this.calcMessage === 'calc.ready' && active?.archiveId===saved.id) {
         this.sessionCharts = this.sessionCharts.filter(chart => !previousIds.includes(chart.id));
         if (previousIds.includes(this.partnerChartId ?? -1)) this.partnerChartId = null;
         if (previousIds.includes(this.returnRadix?.chartId ?? -1)) this.closeReturns();
-        this.closeSheet();
+        this.openArchiveNatal(active);
       }
     });
   }
-  askDeleteSaved(id: string): void {
-    this.pendingDeleteId = id;
+  openSessionNatal(id:number): void {
+    const chart=this.sessionCharts.find(item=>item.id===id);
+    if (chart && !this.calcBusy && !this.busy && !this.exporting) this.openArchiveNatal(chart);
+  }
+  private openArchiveNatal(chart:SessionChart): void {
+    this.mode='natal';
+    this.chartPresentation='wheel';
+    this.zodiacMode=null;
+    this.monomeriEnabled=false;
+    this.monomero=null;
+    this.monomeroDodecatemoria=false;
+    this.synastryPickerOpen=false;
+    this.returnTool=null;
+    this.returnRadix=null;
+    this.solarMapOpen=false;
+    this.solarReturnChartId=null;
+    this.closeSheet();
+    this.showChart(chart);
     this.cd.markForCheck();
   }
+  askDeleteSaved(id: string): void { void this.prepareDeleteSaved([id]); }
+  private async prepareDeleteSaved(ids:readonly string[]):Promise<void> {
+    if (this.deletingSelected || this.archiveBusy || this.syncBusy) return;
+    this.deletingSelected=true;
+    this.preparedDeleteVersions.clear();
+    try {
+      const attemptId=this.account.connectedAttemptId, generation=this.syncGeneration;
+      let selected=ids.filter(id=>this.savedCharts.some(chart=>chart.id===id) || this.syncedCharts.some(chart=>chart.id===id));
+      if (selected.some(id=>this.syncedCharts.some(chart=>chart.id===id))) {
+        if (!attemptId || !this.account.scope?.split(' ').includes('chart_sync:charts:manage')) {this.archiveMessage='sync.manageRequired';return;}
+        await this.syncNow();
+        if (this.destroyed || generation!==this.syncGeneration || this.syncMessage!=='sync.complete') return;
+        for (const id of selected) {
+          const chart=this.syncedCharts.find(item=>item.id===id);
+          if (!chart) {
+            if (!this.savedCharts.some(item=>item.id===id)) {this.archiveMessage='sync.changed';return;}
+            continue;
+          }
+          if (chart.syncStatus!=='clean' || chart.lifecycleStatus!=='none') {this.archiveMessage='sync.changed';return;}
+          const result=await chartSync({operation:'prepare_lifecycle',attemptId,chartId:id,sourceUpdatedAtMs:chart.sourceUpdatedAtMs,lifecycleOperation:'delete'});
+          if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+          if (result.kind!=='saved') {this.archiveMessage=result.kind==='stale'?'sync.changed':'sync.unavailable';return;}
+          this.preparedDeleteVersions.set(id,chart.sourceUpdatedAtMs);
+        }
+        await this.syncNow();
+        if (this.destroyed || generation!==this.syncGeneration || this.syncMessage!=='sync.complete') return;
+        for (const [id,version] of this.preparedDeleteVersions) {
+          const chart=this.syncedCharts.find(item=>item.id===id);
+          if (!chart || chart.sourceUpdatedAtMs!==version || chart.syncStatus!=='clean' || chart.lifecycleStatus!=='none') {this.archiveMessage='sync.changed';return;}
+        }
+        selected=[...selected.filter(id=>!this.syncedCharts.find(c=>c.id===id)?.isAccountChart),...selected.filter(id=>this.syncedCharts.find(c=>c.id===id)?.isAccountChart)];
+      }
+      this.pendingDeleteIds=selected;
+    } finally {this.deletingSelected=false;this.cd.markForCheck();}
+  }
   cancelDeleteSaved(): void {
-    this.pendingDeleteId = null;
+    if (this.deletingSelected) return;
+    this.pendingDeleteIds = [];
+    this.preparedDeleteVersions.clear();
     this.cd.markForCheck();
   }
   askRemoveLegacy(): void {
@@ -2099,18 +2401,79 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   /** Permanent: runs only after the explicit confirmation step. */
   async confirmDeleteSaved(): Promise<void> {
-    const id = this.pendingDeleteId;
-    if (!id || this.archiveBusy) return;
-    this.pendingDeleteId = null;
-    const deleted = await this.runArchive({operation:'delete', id}, 'archive.deleted');
-    if (deleted) {
+    const ids = [...this.pendingDeleteIds];
+    if (!ids.length || this.archiveBusy || this.deletingSelected) return;
+    this.deletingSelected=true;
+    let queuedOnline=false;
+    const initialGeneration=this.syncGeneration;
+    try {
+    for (const id of ids) {
+      const online=this.syncedCharts.find(chart=>chart.id===id);
+      if (online) {
+        const attemptId=this.account.connectedAttemptId;
+        if (!attemptId || !this.account.scope?.split(' ').includes('chart_sync:charts:manage')) {
+          this.archiveMessage='sync.manageRequired';this.pendingDeleteIds=[];return;
+        }
+        const generation=this.syncGeneration;
+        const version=this.preparedDeleteVersions.get(id);
+        if (version===undefined) {this.archiveMessage='sync.changed';this.pendingDeleteIds=[];return;}
+        const result=await chartSync({operation:'commit_lifecycle',attemptId,chartId:id,sourceUpdatedAtMs:version,lifecycleOperation:'delete'});
+        if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+        if (result.kind!=='saved') {this.archiveMessage=result.kind==='stale'?'sync.changed':'sync.unavailable';this.pendingDeleteIds=[];return;}
+        queuedOnline=true;
+        this.selectedArchiveIds=this.selectedArchiveIds.filter(item=>item!==id);
+        this.pendingDeleteIds=this.pendingDeleteIds.filter(item=>item!==id);
+        await this.syncNow();
+        if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+        if (this.syncMessage!=='sync.complete') {this.pendingDeleteIds=[];return;}
+        queuedOnline=false;
+        if (this.syncedCharts.some(chart=>chart.id===id && chart.lifecycleStatus==='conflict')) {
+          this.archiveMessage='sync.manageConflict';this.pendingDeleteIds=[];return;
+        }
+        continue;
+      }
+      const deleted = await this.runArchive({operation:'delete', id}, 'archive.deleted');
+      if (!deleted || this.destroyed) { this.pendingDeleteIds=[]; this.cd.markForCheck(); return; }
+      this.selectedArchiveIds=this.selectedArchiveIds.filter(item=>item!==id);
+      this.pendingDeleteIds=this.pendingDeleteIds.filter(item=>item!==id);
+      if (this.accountChart?.source==='local' && this.accountChart.id===id) {
+        this.accountChart=null; saveAccountChart(this.uiPreferencesStorage,null);
+      }
+      if (this.startup.chartId===id) { this.startup={mode:'sky',chartId:null}; saveStartupPreference(this.uiPreferencesStorage,this.startup); }
       this.releasePhotoUrls();
-      if (this.showArchivePhotos) void this.loadVisiblePhotos();
-      // The chart stays open in this session, but is no longer a saved one.
       this.sessionCharts = this.sessionCharts.map(item => item.archiveId === id ? {...item, archiveId:null} : item);
-      await this.loadSyncedCharts();
+    }
+    if (this.showArchivePhotos) void this.loadVisiblePhotos();
+    await this.loadSyncedCharts();
+    this.cd.markForCheck();
+    } finally {
+      this.deletingSelected=false;
+      if (queuedOnline && !this.destroyed && initialGeneration===this.syncGeneration) {this.archiveMessage='sync.manageQueued';if(this.syncBusy)this.syncRequested=true;else this.scheduleSync(0);}
       this.cd.markForCheck();
     }
+  }
+  toggleArchiveSelection(id:string, event:Event):void {
+    if (!this.savedCharts.some(chart=>chart.id===id) && !this.syncedCharts.some(chart=>chart.id===id)) return;
+    const checked=(event.target as HTMLInputElement).checked;
+    this.selectedArchiveIds=checked ? [...new Set([...this.selectedArchiveIds,id])] : this.selectedArchiveIds.filter(item=>item!==id);
+    this.cd.markForCheck();
+  }
+  askDeleteSelected():void {
+    void this.prepareDeleteSaved(this.selectedArchiveIds);
+  }
+  get deletingOnline():boolean {return this.pendingDeleteIds.some(id=>this.syncedCharts.some(chart=>chart.id===id));}
+  get pendingDeleteNames():string[] {return this.pendingDeleteIds.map(id=>this.syncedCharts.find(c=>c.id===id)?.name ?? this.savedCharts.find(c=>c.id===id)?.name ?? id);}
+  async retryLifecycleConflict(chart:SyncedChart):Promise<void> {
+    const attemptId=this.account.connectedAttemptId;
+    if (!attemptId || this.syncGroupBusy || chart.lifecycleStatus!=='conflict') return;
+    const generation=this.syncGeneration;
+    this.syncGroupBusy=true;
+    try {
+      const result=await chartSync({operation:'cancel_lifecycle',attemptId,chartId:chart.id});
+      if (this.destroyed || generation!==this.syncGeneration || this.account.connectedAttemptId!==attemptId) return;
+      if (result.kind==='saved') {await this.syncNow();if(this.syncMessage==='sync.complete') this.syncMessage='sync.manageRetry';}
+      else this.syncMessage=result.kind==='stale'?'sync.changed':'sync.unavailable';
+    } finally {if(generation===this.syncGeneration) this.syncGroupBusy=false;this.cd.markForCheck();}
   }
   /** Returns start from a calculated chart; without one, point the user to the chart form. */
   openReturns(kind: ReturnKind): void {
@@ -2130,7 +2493,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.returnTool = kind;
     this.solarMapOpen = false;
     this.solarReturnChartId = null;
-    this.view = 'functions';
+    this.view = 'returns';
     this.cd.markForCheck();
   }
   closeReturns(): void {
@@ -2203,62 +2566,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.releasePhotoUrls();
     this.cd.markForCheck();
   }
-  runFunction(entry: FunctionEntry): void {
-    switch (entry.action) {
-      case 'archive': this.openArchive(); break;
-      case 'solar_return': this.openReturns('solar'); break;
-      case 'aspect_table': this.closeSheet(); this.openInspector('aspects'); break;
-      case 'chart_settings': this.openSettings(); break;
-      case 'applications': this.openSettings(); break;
-      case 'austral': this.toggleChartDisplay('australInversion'); break;
-      case 'outer_conjunct': this.toggleChartDisplay('outerWhenConjunct'); break;
-      case 'planet_year': this.toggleChartDisplay('planetOfYear'); break;
-      case 'aspect_focus': this.toggleChartDisplay('focusAspects'); break;
-      case 'decans': this.toggleChartDisplay('showDecans'); break;
-      case 'decades': this.toggleChartDisplay('showDecades'); break;
-      case 'terms': this.toggleChartDisplay('showTerms'); break;
-      case 'dodecatemoria': this.openZodiacTool('dodecatemoria'); break;
-      case 'antiscia': this.openZodiacTool('antiscia'); break;
-      case 'contra_antiscia': this.openZodiacTool('contra-antiscia'); break;
-      case 'monomeri': {
-        this.closeSheet();
-        const redraw = this.mode !== 'natal';
-        this.mode = 'natal';
-        this.chartPresentation = 'wheel';
-        this.toggleMonomeri();
-        if (redraw && this.initialized) void this.draw();
-        break;
-      }
-      case 'lunar_return': this.openReturns('lunar'); break;
-      case 'new_chart': this.openNewChart(); break;
-      case 'now_chart': void this.showSky(); break;
-      case 'session_charts': this.openArchive(); break;
-      case 'house_system': case 'planet_info': this.closeSheet(); this.openInspector('planets'); break;
-      case 'mode_natal': this.closeSheet(); this.setMode('natal'); break;
-      case 'mode_transits': this.closeSheet(); this.setMode('transits'); break;
-      case 'mode_synastry': this.closeSheet(); this.setMode('synastry'); break;
-      case 'synastry_transits': this.closeSheet(); void this.toggleSynastryTransits(); break;
-      case 'synastry_swap': this.closeSheet(); this.swapSynastryCharts(); break;
-      case 'synastry_deflection': this.closeSheet(); this.toggleSynastryDeflection(); break;
-      case 'kleroi': this.closeSheet(); this.toggleKleroi(); break;
-      case 'fixed_stars': this.closeSheet(); this.mode = 'natal'; this.chartPresentation = 'wheel'; void this.toggleFixedStars(); break;
-      case 'arabic_parts': case 'arabic_abu': case 'arabic_custom':
-        this.closeSheet();
-        if (this.activeChart && this.kleroi) {
-          this.mode = 'natal'; this.chartPresentation = 'wheel'; this.kleroiEnabled = false; this.directionChart = null;
-          this.arabicPartsOpen = true; this.arabicPartsIndex = -1;
-          this.arabicPartsGroup = entry.action === 'arabic_parts' ? 'essenziali' : entry.action === 'arabic_abu' ? '1' : 'custom';
-          if (this.initialized) void this.draw();
-        }
-        break;
-      case 'directions': this.openDirections(); break;
-      case 'mode_latitude': this.closeSheet(); this.setMode('latitude'); break;
-    }
-  }
-  openFunctions(): void {
-    this.view = this.view === 'functions' ? 'chart' : 'functions';
-    this.cd.markForCheck();
-  }
   toggleChartDisplay(key:'australInversion'|'outerWhenConjunct'|'planetOfYear'|'focusAspects'|'showDecans'|'showDecades'|'showTerms'): void {
     if (!this.activeChart || this.busy || this.exporting) return;
     this.closeSheet();
@@ -2266,6 +2573,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   openSettings(): void {
     this.view = this.view === 'settings' ? 'chart' : 'settings';
+    this.cd.markForCheck();
+  }
+  openUpdateSettings(): void {
+    this.settingsCategory = 'app';
+    this.view = 'settings';
     this.cd.markForCheck();
   }
 
@@ -2319,7 +2631,12 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
       this.renderer.setFixedStarHoverListener(id => {
-        if (id !== null && this.fixedStarsEnabled && !this.destroyed) {this.fixedStarSelected = id; this.cd.markForCheck();}
+        if (id !== null && this.fixedStarsEnabled && !this.destroyed && id !== this.fixedStarSelected) {
+          this.fixedStarSelected = id;
+          this.starLinkFailed = false;
+          this.stageTools.nativeElement.scrollTop = 0;
+          this.cd.markForCheck();
+        }
       });
       this.renderer.setNatalPlanetHoverListener(value => {
         if (!value || this.destroyed || this.view !== 'chart' || this.mode !== 'natal' ||
@@ -2329,6 +2646,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
           const selected = monomeroOnHover(this.monomero,value);
           if (selected && selected !== this.monomero) {
             this.monomero = selected;
+            this.monomeroDodecatemoria = value.projection === 'dodecatemoria';
             this.renderer.setNatalAspectsVisible(false);
             this.cd.markForCheck();
           }
@@ -2390,6 +2708,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.setFixedStarsAnimation(false);
     ++this.fixedStarsTicket;
     ++this.arabicNewMoonTicket;
     ++this.planetaryHourTicket;
@@ -2469,13 +2788,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   toggleMonomeri(): void {
     if (!this.monomeriAvailable || !this.initialized || this.busy) return;
-    const clearZodiac = !this.monomeriEnabled && this.zodiacMode !== null;
+    const clearZodiac = !this.monomeriEnabled && this.zodiacMode !== null && this.zodiacMode !== 'dodecatemoria';
     if (clearZodiac) this.zodiacMode = null;
     this.monomeriEnabled = !this.monomeriEnabled;
     if (this.monomeriEnabled) {
       this.renderer.setNatalAspectsVisible(false);
     } else {
       this.monomero = null;
+      this.monomeroDodecatemoria = false;
       this.renderer.setNatalAspectsVisible(true);
       if (this.chartSettings.focusAspects && this.initialized) void this.draw();
     }
@@ -2488,7 +2808,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.chartPresentation = 'wheel';
     if (this.mode === 'transits') this.cancelTransitNavigation();
     this.mode = 'natal';
-    if (this.monomeriEnabled) this.toggleMonomeri();
+    if (this.monomeriEnabled && mode !== 'dodecatemoria') this.toggleMonomeri();
+    this.monomero = null;
+    this.monomeroDodecatemoria = false;
     this.zodiacMode = mode;
     this.zodiacPoint = 'tutti';
     this.openInspector('zodiac');
@@ -2498,6 +2820,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.busy || !this.activeChart) return;
     if (this.zodiacMode !== mode) { this.openZodiacTool(mode); return; }
     this.zodiacMode = null;
+    this.monomero = null;
+    this.monomeroDodecatemoria = false;
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -2518,6 +2842,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setZodiacPoint(name:string): void {
     if (this.busy || !this.zodiacMode || (name !== 'tutti' && !this.zodiacPointAvailable(name))) return;
     this.zodiacPoint = name;
+    if (this.monomeroDodecatemoria) { this.monomero = null; this.monomeroDodecatemoria = false; }
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
   }
@@ -2555,8 +2880,6 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setMode(mode:ChartMode): void {
     if (this.view !== 'chart') { this.view = 'chart'; this.cd.markForCheck(); }
     if(this.busy) return;
-    // Mode selection always returns to the astrological wheel, even when the
-    // selected mode is unchanged; this prevents an observer-sky/time mismatch.
     if (this.chartPresentation === 'sky3d') this.chartPresentation = 'wheel';
     if (mode === 'natal' && this.mode === 'natal' && this.directionChart) { this.clearDirection(); return; }
     // "Tema natale" while the sky is on screen means the last subject's chart, or the archive to choose one.
@@ -2673,7 +2996,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if (!target) continue;
       const setting = settings.points[id];
       // A point the provider did not compute is never drawn from a default.
-      const present = AXIS_IDS.includes(id) || id in planets;
+      const present = AXIS_IDS.includes(id) ? !!active && !active.timeUnknown : id in planets;
       target.att = present && setting.shown;
       target.orb = setting.orb;
       target.aspVerso = present && setting.aspects;
@@ -2703,7 +3026,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       if (partLots) for (const [name, longitude] of Object.entries(partLots)) natal.planets[name] = {longitude};
       if (parts) natal.partiArabe = parts;
       if (stars.length) (natal as TemaRender & {fixedStars:unknown}).fixedStars = stars.map(item => ({
-        id:item.star.id, longitude:item.longitude, magnitude:item.star.magnitude ?? 3, axisContact:!!item.axis}));
+        id:item.star.id, longitude:item.longitude, magnitude:item.star.magnitude ?? 3, axisContact:!!item.axis && !this.reducedMotion}));
       if (hour) natal.orePlanetarie = hour;
     }
     return [natal,
@@ -2717,6 +3040,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const args = this.chartArguments();
     if (!args) {
       this.busy=false; this.ready=false; this.error='';
+      this.setFixedStarsAnimation(false);
       this.monomero = null;
       this.cd.markForCheck();
       return;
@@ -2732,7 +3056,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       // Do not show an obsolete request as ready (or clear the current spinner).
       if(this.drawGeneration.isCurrent(ticket)) {
         if (this.monomero && this.activeChart) {
-          this.monomero = monomeroForChart(this.monomero.name, this.activeChart.data, this.houseSystem);
+          this.monomero = monomeroForChart(this.monomero.name, this.activeChart.data, this.houseSystem, undefined, this.monomeroDodecatemoria);
         }
         if (this.monomeriEnabled && this.mode === 'natal') this.renderer.setNatalAspectsVisible(false);
         if (this.mode === 'transits' || this.mode === 'synastry') {
@@ -2740,6 +3064,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
           this.drawTransitFocus();
         }
         this.ready=true;
+        this.setFixedStarsAnimation(this.mode === 'natal' && this.fixedStarsEnabled &&
+          this.chartPresentation === 'wheel' && this.fixedStarContacts.some(item => !!item.axis));
         this.status='chart.ready';
         if (this.activeChart) this.status='chart.ready.real';
       }

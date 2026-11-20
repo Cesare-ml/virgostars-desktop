@@ -113,7 +113,7 @@ export function verifyTauriSecurityConfig(config) {
     config.app.windows.every(window => isObject(window) &&
       Object.keys(window).length === REVIEWED_WINDOW_FIELDS.length &&
       REVIEWED_WINDOW_FIELDS.every(field => Object.hasOwn(window, field)) &&
-      window.userAgent === 'VirgoStarsDesktop/0.0.2 (+https://virgostars.it)'),
+      window.userAgent === 'VirgoStarsDesktop/0.0.4 (+https://virgostars.it)'),
     'unreviewed native window option or number of windows');
   // Restrict every application option, not just the native window shape.
   // Future Tauri options (even when set to false) require source review.

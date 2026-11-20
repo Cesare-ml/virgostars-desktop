@@ -10,7 +10,7 @@ export class ConnectedAccountState {
   persistent = false;
   /** Native confirmed a stored credential exists; it is not proof of an online session. */
   hasRestorableSession = false;
-  scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | 'chart_sync:read chart_sync:charts:write' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:write' | null = null;
+  scope: import('./connected-account-contract').ConnectedAccountScope | null = null;
   private attemptId: string | null = null;
   private generation = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;

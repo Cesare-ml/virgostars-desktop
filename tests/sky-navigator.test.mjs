@@ -1,12 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, isoFromMs, localParts, shiftInstant, stepInstant, utcFromLocal,
+  DEFAULT_STEP, STEP_ROWS, defaultElectiveName, fieldTexts, historicalNavigationRequest, isoFromMs, localParts, setInstantField, shiftInstant, stepInstant, utcFromLocal,
 } from '../src/app/sky-navigator.ts';
 
 const ROME = 'Europe/Rome';
 const utc = iso => Date.parse(iso);
 const wall = (ms, zone = ROME) => { const p = localParts(ms, zone); return [p.year, p.month, p.day, p.hour, p.minute, p.second].join(','); };
+
+test('typed fields update the selected local date without accepting invalid values', () => {
+  const instant = utc('2024-02-29T11:05:12Z');
+  assert.equal(wall(setInstantField(instant, ROME, 'hour', '15')), '2024,2,29,15,5,12');
+  assert.equal(wall(setInstantField(instant, ROME, 'minute', '09')), '2024,2,29,12,9,12');
+  assert.equal(wall(setInstantField(instant, ROME, 'day', '28')), '2024,2,28,12,5,12');
+  assert.equal(setInstantField(instant, ROME, 'year', '2023'), null);
+  assert.equal(setInstantField(instant, ROME, 'month', '13'), null);
+  assert.equal(setInstantField(instant, ROME, 'minute', '60'), null);
+  assert.equal(setInstantField(instant, ROME, 'hour', ''), null);
+  assert.equal(setInstantField(instant, ROME, 'year', '2024x'), null);
+  assert.equal(setInstantField(utc('2024-03-31T00:30:00Z'), ROME, 'hour', '2'), null);
+});
 
 test('the steps offered are minutes, hours and days, with 4 minutes selected first', () => {
   assert.deepEqual(STEP_ROWS.map(row => row.unit), ['min', 'h', 'd']);
@@ -65,16 +78,29 @@ test('a step goes forwards or backwards by the chosen amount and unit', () => {
   assert.equal(stepInstant(start, ROME, 'min', 1.5, 1), null);
 });
 
-test('moving outside the years 1900 to 2033 is refused, never wrapped', () => {
-  assert.equal(shiftInstant(utc('2033-12-31T10:00:00Z'), ROME, 'day', 1), null);
-  assert.equal(shiftInstant(utc('2033-06-15T10:00:00Z'), ROME, 'year', 1), null);
-  assert.equal(shiftInstant(utc('1900-01-01T12:00:00Z'), 'UTC', 'day', -1), null);
-  assert.equal(shiftInstant(utc('1900-01-01T12:00:00Z'), 'UTC', 'year', -1), null);
-  assert.equal(shiftInstant(utc('2033-12-31T23:30:00Z'), 'UTC', 'minute', 60), null);
+test('historical and future dates navigate until the automatic model limits', () => {
+  assert.notEqual(shiftInstant(utc('2033-12-31T10:00:00Z'), ROME, 'day', 1), null);
+  assert.notEqual(shiftInstant(utc('1900-01-01T12:00:00Z'), 'UTC', 'year', -1), null);
+  assert.equal(shiftInstant(utc('0001-01-01T12:00:00Z'), 'UTC', 'day', -1), null);
+  assert.equal(shiftInstant(utc('3000-12-31T23:30:00Z'), 'UTC', 'minute', 60), null);
   assert.notEqual(shiftInstant(utc('2033-12-30T10:00:00Z'), ROME, 'day', 1), null);
   assert.notEqual(shiftInstant(utc('1900-01-02T12:00:00Z'), 'UTC', 'day', -1), null);
   assert.equal(shiftInstant(utc('2026-01-01T00:00:00Z'), 'Not/AZone', 'day', 1), null);
   assert.equal(shiftInstant(utc('2026-01-01T00:00:00Z'), ROME, 'day', 1.5), null);
+});
+
+test('historical navigation preserves the reference city clock and declares unknown model uncertainty', () => {
+  const ms = utc('0800-06-15T12:05:00Z');
+  const local = localParts(ms, ROME);
+  const request = historicalNavigationRequest(ms, ROME, 41900000, 12500000);
+  assert.equal(request.civil.year, 800);
+  assert.equal(request.civil.hour, local.hour);
+  assert.equal(request.civil.minute, local.minute);
+  assert.equal(request.civil.offset.kind, 'supplied');
+  assert.match(request.civil.offset.source, /Europe\/Rome/);
+  assert.deepEqual(request.deltaT, {kind:'espenakMeeus2006Unquantified'});
+  assert.equal(setInstantField(utc('2026-06-15T12:00:00Z'), ROME, 'year', '800') !== null, true);
+  assert.equal(setInstantField(utc('2026-06-15T12:00:00Z'), ROME, 'year', '2200') !== null, true);
 });
 
 test('the clock of the panel shows two digits for each field and four for the year', () => {

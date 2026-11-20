@@ -79,6 +79,34 @@ Browser production consent is deployed; Desktop release and real end-to-end
 verification remain outstanding. The proposed journey and API below describe
 the target, not capabilities proven in production.
 
+Local changes support opening imported and locally saved unknown-time charts
+on the natal wheel. Positions use local noon and are labeled approximate; houses
+and axes are omitted. Local archive schema version 9 stores the unknown date
+without storing noon as the birth instant. Earlier archives upgrade in memory
+and are rewritten only on a successful write; older app versions cannot read
+an archive after it has been upgraded and written. The Desktop reads the account
+chart from the owner-scoped server snapshot. With the independently consented
+`chart_sync:charts:manage` grant, account selection and online deletion enter
+an encrypted profile-bound outbox. Uncertain requests replay the same mutation
+ID; conflicts keep local data and require refresh and a new confirmation.
+Online deletion prepares its server preconditions before the confirmation
+dialog, refreshes the displayed chart list, and queues the operation only
+after the user confirms. Prepared preconditions are ephemeral and expire.
+Synced deletion removes the selected local copy only after the server confirms;
+other devices retain missing copies for review. The default sky location is a
+device preference. The companion server and consent page were deployed on
+20 November 2026; this Desktop code is not yet a release, and the complete
+authenticated journey against production remains unverified.
+The create outbox accepts newly saved unknown-time charts with a null civil
+time and null instant, preserving the existing profile-bound retry protocol.
+This path has synthetic tests but has not yet been verified with a real account.
+When connected with chart-create permission, newly
+saved eligible local charts are queued for upload using the existing encrypted,
+profile-bound outbox. An unavailable account, missing permission, unsupported
+date or ambiguous time can prevent queuing; those cases retain the local chart
+and are reported. Existing local charts are not bulk uploaded or matched by
+name. The new automatic path has not been verified with a real account.
+
 ## Required user journey
 1. **First online login:** open trusted VirgoStars identity flow in the system browser using OAuth 2 Authorization Code + PKCE (or a rigorously reviewed desktop-safe equivalent). Register this installation with a per-device identifier; obtain only account-scoped privileges.
 2. **Download initial snapshot:** after server authorization, import only the signed-in user's allowed entities into a local transaction. Protect keys with OS secure storage; show download/progress/retry.

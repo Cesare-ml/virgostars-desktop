@@ -1,11 +1,13 @@
 {
   "name": "virgostars-desktop",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "private": true,
   "description": "Open-source-ready experimental VirgoStars desktop Angular workstation with synthetic Astrological Charts renderer",
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "release:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/updates/publish-release.ps1 -CheckOnly",
+    "release:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/updates/publish-release.ps1",
     "verify:version": "node scripts/verify-desktop-version.mjs",
     "verify:translations": "node scripts/verify-translations.mjs",
     "verify:ipc": "node scripts/verify-native-ipc.mjs",

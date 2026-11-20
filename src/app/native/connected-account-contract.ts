@@ -15,10 +15,17 @@ export type ConnectedAccountOperation =
   | Readonly<{ operation: 'disconnect'; attemptId: string }>
   | Readonly<{ operation: 'signout'; attemptId: string }>;
 
+export type ConnectedAccountScope = 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | 'chart_sync:read chart_sync:charts:write' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:write' |
+  'chart_sync:read chart_sync:charts:manage' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:manage' |
+  'chart_sync:read chart_sync:charts:write chart_sync:charts:manage' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:write chart_sync:charts:manage';
+const CONNECTED_SCOPES:readonly string[] = ['chart_sync:read','chart_sync:read chart_sync:groups:write',
+  'chart_sync:read chart_sync:charts:write','chart_sync:read chart_sync:groups:write chart_sync:charts:write',
+  'chart_sync:read chart_sync:charts:manage','chart_sync:read chart_sync:groups:write chart_sync:charts:manage',
+  'chart_sync:read chart_sync:charts:write chart_sync:charts:manage','chart_sync:read chart_sync:groups:write chart_sync:charts:write chart_sync:charts:manage'];
 export type ConnectedAccountResult =
   | Readonly<{ kind: 'disabled' | 'not_native' | 'native_unavailable' | 'idle' }>
   | Readonly<{ kind: 'pending'; attemptId: string; expiresInSeconds: number }>
-  | Readonly<{ kind: 'connected'; attemptId: string; scope: 'chart_sync:read' | 'chart_sync:read chart_sync:groups:write' | 'chart_sync:read chart_sync:charts:write' | 'chart_sync:read chart_sync:groups:write chart_sync:charts:write'; persistent?: boolean }>
+  | Readonly<{ kind: 'connected'; attemptId: string; scope: ConnectedAccountScope; persistent?: boolean }>
   | Readonly<{ kind: 'denied' | 'expired' | 'offline' | 'cancelled' | 'disconnected' | 'failed'; attemptId: string }>;
 
 export interface ConnectedAccountTransport {
@@ -86,8 +93,8 @@ export function decodeConnectedAccountResponse(
     const hasPersistence = Object.hasOwn(raw,'persistent');
     const persistence = hasPersistence ? ownData(raw,'persistent') : undefined;
     if (hasPersistence && typeof persistence !== 'boolean') throw new Error(ERROR);
-    if (scope === 'chart_sync:read' || scope === 'chart_sync:read chart_sync:groups:write' || scope === 'chart_sync:read chart_sync:charts:write' || scope === 'chart_sync:read chart_sync:groups:write chart_sync:charts:write') {
-      return Object.freeze({kind: 'connected', attemptId, scope, ...(typeof persistence === 'boolean' ? {persistent:persistence} : {})});
+    if (typeof scope==='string' && CONNECTED_SCOPES.includes(scope)) {
+      return Object.freeze({kind: 'connected', attemptId, scope:scope as ConnectedAccountScope, ...(typeof persistence === 'boolean' ? {persistent:persistence} : {})});
     }
   }
   if (status === 'denied' || status === 'expired' || status === 'offline' || status === 'cancelled' || status === 'disconnected' || status === 'failed') {

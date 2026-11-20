@@ -11,7 +11,7 @@
   <div class="solar-current-place"><span>{{locale==='it' ? 'Luogo della rivoluzione' : 'Return location'}}</span><strong>{{placeName || '—'}}</strong><small>{{timeZone}}</small></div>
   <vs-offline-city-picker [locale]="locale" [selectedPlace]="city" [showDemoNotes]="false" [hideSelectedStatus]="true" (locationSelected)="onCitySelected($event)" (locationEdited)="onCityEdited()"></vs-offline-city-picker>
   <button type="button" class="solar-action" [disabled]="busy || !previewInstant || !placeName.trim()" (click)="castSelectedReturn()">{{t('returns.cast')}}</button>
-  <button type="button" class="solar-action" [disabled]="busy" [attr.aria-pressed]="comparing" (click)="comparisonRequested.emit()">{{t('returns.withRadix')}}</button>
+  <button type="button" class="solar-action" [disabled]="busy || !canCompare" [attr.aria-pressed]="comparing" (click)="comparisonRequested.emit()">{{t('returns.withRadix')}}</button>
   <p class="returns-message" role="status" *ngIf="message">{{t(message)}}</p>
 </section>
 <section *ngIf="kind==='solar' && mapOpen" class="solar-map" [attr.aria-label]="t(titleKey)">
