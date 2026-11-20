@@ -14,17 +14,23 @@ const fallbacks = new Map([
   ['webview2-com-sys@0.39.1', 'webview2-MIT.txt'],
   ['webview2-com-macros@0.8.1', 'webview2-MIT.txt'],
 ]);
+const namedTarget = process.argv.length === 4 && process.argv[2] === '--target' ? process.argv[3] : null;
+if ((process.argv.length !== 2 && namedTarget === null) ||
+    (namedTarget !== null && !['x86_64-pc-windows-msvc', 'aarch64-apple-darwin', 'x86_64-apple-darwin'].includes(namedTarget)))
+  throw Error('Usage: prepare-release-notices.mjs [--target x86_64-pc-windows-msvc|aarch64-apple-darwin|x86_64-apple-darwin]');
+const target = namedTarget ?? 'x86_64-pc-windows-msvc';
+const platformLabel = target.includes('apple') ? 'macOS' : 'Windows';
 const cargo = spawnSync('cargo', ['metadata', '--offline', '--locked', '--format-version', '1',
-  '--filter-platform', 'x86_64-pc-windows-msvc', '--manifest-path', 'src-tauri/Cargo.toml'],
+  '--filter-platform', target, '--manifest-path', 'src-tauri/Cargo.toml'],
   {encoding:'utf8', maxBuffer:32 * 1024 * 1024});
-if (cargo.error || cargo.status !== 0) throw Error('Could not resolve the offline, locked Windows Cargo dependency graph.');
+if (cargo.error || cargo.status !== 0) throw Error('Could not resolve the offline, locked Cargo dependency graph for the requested platform.');
 const metadata = JSON.parse(cargo.stdout);
 const packages = [...metadata.packages].sort((a,b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 const filename = name => /^(license|licence|copying|notice)([._-]|$)/i.test(name);
 const localLicenseFiles = dir => readdirSync(dir, {withFileTypes:true})
   .filter(entry => entry.isFile() && filename(entry.name)).map(entry => join(dir, entry.name)).sort();
-const sections = ['Windows Cargo dependency notices',
-  'This inventory conservatively includes the resolved Windows dependency graph, including build-time dependencies.'];
+const sections = [platformLabel + ' Cargo dependency notices',
+  'This inventory conservatively includes the resolved '+platformLabel+' dependency graph, including build-time dependencies.'];
 for (const pkg of packages) {
   const key = `${pkg.name}@${pkg.version}`;
   let dir = dirname(pkg.manifest_path);
@@ -62,4 +68,4 @@ const resources = {
   '../.local/release-licenses/gsap-notice.txt':'licenses/gsap-notice.txt',
 };
 writeFileSync(join(out, 'tauri-license.conf.json'), JSON.stringify({bundle:{resources}}, null, 2) + '\n');
-console.log(`Prepared notices for ${packages.length} Windows Cargo packages and the built frontend.`);
+console.log('Prepared notices for '+packages.length+' '+platformLabel+' Cargo packages and the built frontend.');

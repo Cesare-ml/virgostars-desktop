@@ -1,5 +1,7 @@
 # VirgoStars Desktop
 
+> **Build snapshot for macOS 0.0.4 (not `main`):** this dedicated branch starts at the immutable `v0.0.4` source tag (`cbaf7d02`) and adds only the Mac build workflow, packaging helpers and synchronized `0.0.4` manifests. It does not include later features on `main`. The existing Windows release/tag remain unchanged. GitHub Actions may generate unsigned, synthetic-artwork DMGs for testing; they are not notarized or official releases.
+
 **An experimental, free and open-source desktop workspace for astrology.**
 
 [License: CPAL-1.0](LICENSE) · [Contributing](docs/CONTRIBUTING.md) · [Roadmap](docs/ROADMAP.md) · [Security](docs/SECURITY_AND_PRIVACY.md)
