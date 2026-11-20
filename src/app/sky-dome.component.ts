@@ -590,7 +590,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     for(let index=0;index<12;index++){
       const line=grid.separators[index];
       const vectors=line.map(point=>this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,99.16));
-      this.curve(vectors,index===0||index===9?0xa8e9ce:0x75bca7,index===0||index===9?.83:.58,group);
+      this.curve(vectors,index===0||index===9?0xa8e9ce:0x75bca7,(index===0||index===9)?0.83:0.58,group);
       const label=grid.labels[index];
       const canvas=document.createElement('canvas');
       canvas.width=128;canvas.height=64;
