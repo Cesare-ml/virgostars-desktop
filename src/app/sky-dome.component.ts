@@ -391,7 +391,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
         const texture=loader.load(url,()=>{
           if(this.destroyed || generation!==this.zodiacGeneration)return;
           const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-            map:texture,transparent:true,depthTest:false,depthWrite:false
+            map:texture,transparent:true,depthTest:true,depthWrite:false
           }));
           sprite.position.copy(this.vec(
             sign.label.azimuthNorthEastDeg,sign.label.altitudeDeg,98.5
