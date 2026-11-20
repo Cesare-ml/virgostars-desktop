@@ -69,6 +69,12 @@
             [disabled]="calcBusy" [attr.title]="t('sky.title')" (click)="showSky()">
             <span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="#F3EFFA" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12.55 8.5 15.5 11.45 21.3 12C15.5 12.55 12.55 15.5 12 21.3C11.45 15.5 8.5 12.55 2.7 12C8.5 11.45 11.45 8.5 12 2.7Z"/><circle cx="19.1" cy="5.2" r="1.05" fill="#F3EFFA" stroke="none"/></g></svg></span><span class="nav-label">{{t('sky.title')}}</span>
           </button>
+          <button type="button" class="nav-item" [class.selected]="view==='chart' && chartPresentation==='sky3d'"
+            [disabled]="!activeChart || calcBusy" [attr.aria-pressed]="view==='chart' && chartPresentation==='sky3d'"
+            [attr.title]="locale==='it' ? 'Cielo 3D' : '3D Sky'" (click)="toggleSkyDome()">
+            <span class="nav-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-7 7-7 11 0 18M12 3c7 7 7 11 0 18M7 6l10 12"/></g></svg></span>
+            <span class="nav-label">{{locale==='it' ? 'Cielo 3D' : '3D Sky'}}</span>
+          </button>
           <button type="button" class="nav-item" *ngFor="let item of modes"
             [class.selected]="view==='chart' && mode===item && !(isSkyActive && item==='natal')"
             [disabled]="busy || calcBusy"
@@ -112,7 +118,11 @@
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')"
         [style.background-color]="(view==='chart' || view==='settings') && chartPresentation==='wheel' && activeChart ? chartBackground : null"
         [class.chart-dark]="(view==='chart' || view==='settings') && chartPresentation==='wheel' && activeChart && (chartSkin==='dark' || chartSkin==='dark-bn')">
-        <canvas #canvas class="chart-canvas" aria-hidden="true"></canvas>
+        <canvas #canvas class="chart-canvas" aria-hidden="true" [style.visibility]="view==='chart' && chartPresentation==='sky3d' ? 'hidden' : null"></canvas>
+        <vs-sky-dome *ngIf="view==='chart' && chartPresentation==='sky3d' && activeChart"
+          [utcIso]="activeChart.utcIso" [latMicro]="activeChart.latMicro"
+          [lngMicro]="activeChart.lngMicro" [locale]="locale"
+          (closed)="toggleSkyDome()"></vs-sky-dome>
         <div class="monomero-overlay monomero-tip" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'"
           *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel' && monomeriEnabled && !monomero && !busy" role="status">{{t('monomeri.help')}}</div>
         <div class="monomero-overlay" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'" *ngIf="view==='chart' && mode==='natal' && chartPresentation==='wheel' && !busy && monomero as item" aria-live="polite">
@@ -123,7 +133,7 @@
           <p>{{item.text}}</p>
         </div>
 
-        <div class="stage-info" *ngIf="view==='chart' && activeChart">
+        <div class="stage-info" *ngIf="view==='chart' && activeChart && chartPresentation!=='sky3d'">
           <h1>{{stageTitle}}</h1>
           <p class="stage-subject" *ngIf="!isSkyActive">{{subjectTitle}}</p>
           <p class="stage-caption">{{subjectCaption}}</p>
@@ -140,7 +150,7 @@
         </section>
 
         <!-- A light DOM view of the same calculated longitudes, never a second wheel renderer. -->
-        <vs-elements-view *ngIf="view==='chart' && activeChart && chartPresentation!=='wheel'"
+        <vs-elements-view *ngIf="view==='chart' && activeChart && (chartPresentation==='elements' || chartPresentation==='aspects')"
           [data]="activeChart.data" [houseSystem]="houseSystem" [locale]="locale"
           [theme]="theme" [aspects]="matrixAspectRows" [presentation]="chartPresentation==='aspects' ? 'aspects' : 'elements'"
           [showDodecatemoria]="showDodecatemoria" (toggleDodecatemoria)="toggleDodecatemoria()"
@@ -200,7 +210,7 @@
           </article>
         </div>
 
-        <div class="chart-toolbar chart-toolbar-left" role="toolbar" [attr.aria-label]="t('chart')">
+        <div class="chart-toolbar chart-toolbar-left" [hidden]="view==='chart' && chartPresentation==='sky3d'" role="toolbar" [attr.aria-label]="t('chart')">
           <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.out')" (click)="zoom(-1)">−</button>
           <button type="button" class="toolbar-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" [attr.aria-label]="t('zoom.in')" (click)="zoom(1)">+</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="chartPresentation==='wheel'" [disabled]="!ready||busy" (click)="fitChart()">{{t('zoom.fit')}}</button>
@@ -212,7 +222,7 @@
             <span class="sky-dot" aria-hidden="true"></span><span aria-hidden="true">{{skyLive ? '⏸︎' : '▶︎'}}</span>
           </button>
         </div>
-        <div class="chart-toolbar chart-toolbar-right">
+        <div class="chart-toolbar chart-toolbar-right" [hidden]="view==='chart' && chartPresentation==='sky3d'">
           <span class="status-message" role="status" *ngIf="chartPresentation==='wheel'" [class.quiet]="status !== 'exporting' && status !== 'exported'">{{t(status)}}</span>
           <button type="button" class="toolbar-button fit-button" *ngIf="activeChart && activeChart.kind === 'chart' && activeChart.archiveId === null"
             [disabled]="archiveBusy || calcBusy" (click)="saveActiveChart()">{{t('chart.save')}}</button>
@@ -612,11 +622,14 @@
           </details>
         </section>
       </section>
-      <div class="stage-tools" [hidden]="view!=='chart'" [class.solar-active]="solarContextActive" role="toolbar" [attr.aria-label]="t('chart')">
+      <div class="stage-tools" [hidden]="view!=='chart' || chartPresentation==='sky3d'" [class.solar-active]="solarContextActive" role="toolbar" [attr.aria-label]="t('chart')">
           <vs-returns-panel *ngIf="returnTool==='solar' && returnRadix" [locale]="locale" kind="solar" [radix]="returnRadix"
             [houseSystem]="houseSystem" [busy]="calcBusy || busy" [mapOpen]="solarMapOpen" [showControls]="solarContextActive" [comparing]="mode==='synastry'"
             (chartRequested)="onReturnChartRequested($event)" (closed)="solarMapOpen=false"
             (comparisonRequested)="toggleSolarSynastry()" (returnClosed)="closeSolarReturn()"></vs-returns-panel>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
+            [class.selected]="chartPresentation==='sky3d'" [attr.aria-pressed]="chartPresentation==='sky3d'"
+            (click)="toggleSkyDome()">{{locale==='it' ? 'Cielo 3D' : '3D Sky'}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart"
             [class.selected]="chartPresentation==='elements'" [attr.aria-pressed]="chartPresentation==='elements'"
             (click)="toggleElements()">{{t('elements.button')}}</button>

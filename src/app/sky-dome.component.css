@@ -1,0 +1,343 @@
+:host {
+  display:block;
+  position:absolute;
+  inset:0;
+  z-index:5;
+  min-width:0;
+  min-height:0;
+  font-family:inherit;
+  color:#f0f4ff;
+}
+.sky3d {
+  position:relative;
+  isolation:isolate;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  font-size:12px;
+  color:#f0f4ff;
+  background:
+    radial-gradient(ellipse 58% 44% at 78% 83%,rgba(91,129,155,.17),transparent 90%),
+    radial-gradient(ellipse 55% 42% at 13% 15%,rgba(70,50,124,.13),transparent 85%),
+    linear-gradient(180deg,#040914 0%,#0a1627 55%,#1a3049 100%);
+}
+.sky3d.sky3d-twilight {
+  background:
+    radial-gradient(ellipse 48% 48% at 78% 82%,rgba(236,142,129,.28),transparent 85%),
+    radial-gradient(ellipse 80% 50% at 10% 0%,rgba(28,39,100,.27),transparent 80%),
+    linear-gradient(180deg,#07172d 0%,#172b51 52%,#585a74 100%);
+}
+.sky3d.sky3d-daylight {
+  background:
+    radial-gradient(ellipse 60% 50% at 80% 84%,rgba(215,235,236,.35),transparent 90%),
+    linear-gradient(180deg,#183a62 0%,#3d6a95 54%,#7babbf 100%);
+}
+.sky3d-viewport { position:absolute; inset:0; z-index:0; cursor:grab; touch-action:none; outline:none; }
+.sky3d-viewport:active { cursor:grabbing; }
+.sky3d-viewport:focus-visible { outline:2px solid #cfb8ff; outline-offset:-4px; }
+.sky3d-viewport canvas { display:block; width:100%; height:100%; }
+.sky3d-vignette {
+  position:absolute;
+  z-index:1;
+  inset:0;
+  pointer-events:none;
+  background:radial-gradient(ellipse 88% 82% at 50% 43%,transparent 32%,rgba(2,7,20,.29) 100%);
+}
+.sky3d-header {
+  position:absolute;
+  z-index:3;
+  top:0;left:0;right:0;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:22px;
+  padding:23px 27px 35px;
+  pointer-events:none;
+  background:linear-gradient(180deg,rgba(3,9,23,.72),rgba(3,9,23,.38) 67%,transparent);
+}
+.sky3d-identity { min-width:0; }
+.sky3d-eyebrow {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  font-size:10px;
+  color:#b9c9e6;
+  font-weight:720;
+  letter-spacing:.19em;
+  text-transform:uppercase;
+}
+.sky3d-spark {
+  display:inline-block;
+  width:10px;height:10px;
+  flex:0 0 auto;
+  background:#d8c5ff;
+  clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);
+  filter:drop-shadow(0 0 5px rgba(192,164,255,.52));
+}
+.sky3d-header h2 { margin:10px 0 5px; font-size:clamp(23px,2.35vw,32px); font-weight:680; letter-spacing:-.045em; line-height:1.05; }
+.sky3d-header p { margin:0; font-size:11px; color:#aebed7; font-weight:450; }
+.sky3d-header-actions {
+  display:flex;align-items:flex-start;justify-content:flex-end;gap:12px;
+}
+.sky3d-epoch { text-align:right; font-variant-numeric:tabular-nums; padding-top:2px; }
+.sky3d-exit {
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  flex:none;min-height:32px;padding:6px 10px;
+  border:1px solid rgba(180,199,234,.25);border-radius:10px;
+  background:rgba(24,39,67,.65);color:#e0d7ff;
+  font:inherit;font-size:10px;font-weight:650;
+  pointer-events:auto;cursor:pointer;
+}
+.sky3d-exit svg {width:15px;height:15px;}
+.sky3d-exit:hover {background:rgba(69,70,125,.75);color:#fff;}
+.sky3d-exit:focus-visible {outline:2px solid #d3baff;outline-offset:2px;}
+.sky3d-epoch-date { color:#edf2ff; font-weight:650; letter-spacing:.015em; }
+.sky3d-epoch-place { margin-top:5px; color:#a9bcd6; font-size:11px; }
+.sky3d-computation {
+  display:inline-flex; align-items:center; gap:7px;
+  margin-top:10px; padding:5px 9px;
+  border:1px solid rgba(166,210,206,.23); border-radius:99px;
+  background:rgba(10,39,51,.35); color:#b3e5d9; font-size:10px; font-weight:600;
+}
+.sky3d-computation-dot {
+  width:6px;height:6px;border-radius:50%;background:#7ed9c1;
+  box-shadow:0 0 9px rgba(107,240,197,.58);
+}
+.sky3d-controls {
+  position:absolute;
+  z-index:3;
+  top:148px;
+  left:20px;
+  box-sizing:border-box;
+  width:224px;
+  max-height:calc(100% - 240px);
+  overflow-y:auto;overflow-x:hidden;
+  border:1px solid rgba(192,205,240,.14);
+  border-radius:16px;
+  padding:14px;
+  background:rgba(10,18,35,.70);
+  box-shadow:0 14px 43px rgba(2,5,16,.26);
+  backdrop-filter:blur(18px);
+  scrollbar-width:thin;
+}
+.sky3d-panel-top { display:flex;align-items:center;justify-content:space-between;gap:8px; }
+.sky3d-panel-top strong { font-weight:690;font-size:12px;letter-spacing:.01em; }
+.sky3d-panel-ornament {color:#ae96df;font-size:15px;opacity:.8;line-height:1;}
+.sky3d-group-name {
+  margin:15px 0 8px;
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.15em;
+  font-weight:720;
+  color:#94a9c8;
+}
+.sky3d-layer-grid { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px; }
+.sky3d-layer-grid button {
+  position:relative;display:flex;align-items:center;gap:6px;
+  justify-content:flex-start;min-width:0;min-height:33px;
+  box-sizing:border-box;padding:7px 9px;
+  border:1px solid rgba(192,205,240,.11);
+  border-radius:8px;
+  background:rgba(154,170,210,.055);
+  color:#acb9cf;
+  font:inherit;font-size:10.5px;font-weight:560;text-align:left;
+  line-height:1.15;cursor:pointer;
+  transition:background-color .17s,border-color .17s,color .17s;
+}
+.sky3d-layer-grid button:before {
+  display:block;content:'';
+  flex:0 0 6px;width:6px;height:6px;border:1px solid #67768e;border-radius:50%;
+  background:transparent;
+}
+.sky3d-layer-grid button.active {
+  background:rgba(139,119,190,.20);
+  border-color:rgba(196,170,235,.35);
+  color:#f7f3ff;
+}
+.sky3d-layer-grid button.active:before {
+  border-color:#c8aeff;background:#c8aeff;
+  box-shadow:0 0 7px rgba(199,177,253,.4);
+}
+.sky3d-layer-grid button:hover { background:rgba(158,165,210,.17);color:#fff; }
+.sky3d-layer-grid button:focus-visible,.sky3d-directions button:focus-visible,.sky3d-dismiss:focus-visible {
+  outline:2px solid #d3baff;outline-offset:2px;
+}
+.sky3d-layer-grid button.sky3d-layer-wide { grid-column:span 2;justify-content:space-between; }
+.sky3d-axis-swatch {
+  display:inline-block;width:33px;height:3px;border-radius:3px;
+  background:linear-gradient(90deg,#f6ca58 0 25%,#79dca2 25% 50%,#ba94eb 50% 75%,#dfc5ff 75% 100%);
+}
+.sky3d-panel-divider {margin:15px 0 3px;border-top:1px solid rgba(196,209,240,.12);}
+.sky3d-info-strip {
+  position:absolute;z-index:3;right:22px;top:119px;
+  display:flex;align-items:center;gap:10px;padding:9px 13px;
+  border:1px solid rgba(190,208,236,.14);border-radius:11px;
+  background:rgba(8,19,37,.57);backdrop-filter:blur(12px);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.sky3d-info-caption {font-size:9px;letter-spacing:.04em;color:#a3b6cd;}
+.sky3d-info-strip strong {font-size:11px;color:#e9f3ff;}
+.sky3d-info-separator {height:18px;border-left:1px solid rgba(176,197,230,.16);}
+.sky3d-selection {
+  position:absolute;z-index:4;top:169px;right:22px;
+  box-sizing:border-box;width:min(265px,calc(100% - 44px));
+  border:1px solid rgba(181,205,238,.23);border-radius:16px;
+  padding:16px;background:rgba(7,17,33,.87);
+  box-shadow:0 18px 54px rgba(1,7,16,.36);
+  backdrop-filter:blur(22px);
+}
+.sky3d-selection-header {display:flex;align-items:center;gap:12px;padding-right:18px;}
+.sky3d-selection-header small {
+  display:block;color:#99aecb;font-size:9px;text-transform:uppercase;
+  font-weight:700;letter-spacing:.13em;
+}
+.sky3d-selection-header h3 {
+  margin:4px 0 0;font-size:17px;font-weight:650;line-height:1.15;
+  overflow-wrap:anywhere;
+}
+.sky3d-selection-mark {
+  display:grid;place-items:center;flex:0 0 47px;
+  width:47px;height:47px;border-radius:14px;
+  border:1px solid rgba(213,199,242,.23);
+  background:radial-gradient(circle at 35% 25%,rgba(128,111,189,.35),rgba(37,43,78,.58));
+}
+.sky3d-selection-mark img {width:30px;height:30px;object-fit:contain;}
+.sky3d-star-mark {
+  width:9px;height:9px;border-radius:50%;background:#f1f4ff;
+  box-shadow:0 0 9px 3px rgba(214,228,255,.45),0 0 19px 8px rgba(191,208,240,.19);
+}
+.sky3d-dismiss {
+  position:absolute;top:8px;right:9px;width:29px;height:29px;
+  border:0;border-radius:7px;background:transparent;color:#a7b6cc;
+  font:inherit;font-size:20px;cursor:pointer;
+}
+.sky3d-dismiss:hover {background:rgba(196,209,243,.12);color:#fff;}
+.sky3d-selection dl {margin:15px 0 0;display:grid;gap:2px;}
+.sky3d-selection dl div {display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-top:1px solid rgba(169,186,219,.10);}
+.sky3d-selection dt {color:#9dacc4;font-weight:450;}
+.sky3d-selection dd {margin:0;font-weight:700;font-variant-numeric:tabular-nums;}
+.sky3d-approximate {margin:11px 0 0;font-size:10px;line-height:1.5;color:#e9d3a9;}
+.sky3d-status {
+  position:absolute;z-index:3;top:50%;left:50%;transform:translate(-50%,-50%);
+  box-sizing:border-box;width:min(400px,calc(100% - 40px));
+  border:1px solid rgba(181,205,238,.28);border-radius:15px;
+  padding:20px;background:rgba(8,17,35,.90);backdrop-filter:blur(16px);
+  text-align:center;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.28);
+}
+.sky3d-planet-dock {
+  position:absolute;
+  z-index:3;
+  left:50%;
+  bottom:116px;
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  gap:5px;
+  box-sizing:border-box;
+  max-width:min(780px,calc(100% - 32px));
+  padding:7px 9px;
+  overflow-x:auto;
+  border:1px solid rgba(192,205,238,.17);
+  border-radius:15px;
+  background:rgba(7,17,35,.76);
+  box-shadow:0 12px 40px rgba(0,0,0,.22);
+  backdrop-filter:blur(18px);
+  scrollbar-width:thin;
+}
+.sky3d-dock-label {
+  margin:0 8px 0 4px;
+  flex:none;
+  color:#94a8c4;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  font-size:9px;
+  font-weight:720;
+}
+.sky3d-planet-dock button {
+  display:grid;
+  place-items:center;
+  flex:0 0 38px;
+  width:38px;
+  height:37px;
+  padding:6px;
+  box-sizing:border-box;
+  border:1px solid transparent;
+  border-radius:10px;
+  background:transparent;
+  color:#e9eaff;
+  cursor:pointer;
+}
+.sky3d-planet-dock button img { width:24px;height:24px;object-fit:contain; }
+.sky3d-planet-dock button:hover {background:rgba(170,161,221,.16);border-color:rgba(206,193,243,.20);}
+.sky3d-planet-dock button.selected {
+  background:rgba(130,109,199,.28);
+  border-color:rgba(210,191,255,.49);
+  box-shadow:inset 0 0 14px rgba(167,137,235,.12);
+}
+.sky3d-planet-dock button:focus-visible {outline:2px solid #d3baff;outline-offset:2px;}
+.sky3d-dock-fallback {font-size:9px;line-height:1;text-align:center;word-break:break-word;}
+.sky3d-dock-fallback[hidden] {display:none;}
+.sky3d-directions {
+  position:absolute;z-index:3;bottom:59px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:5px;padding:7px;
+  border:1px solid rgba(187,203,234,.18);border-radius:14px;
+  background:rgba(10,18,34,.75);
+  box-shadow:0 12px 40px rgba(0,0,0,.23);
+  backdrop-filter:blur(16px);
+}
+.sky3d-directions button {
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-width:37px;height:33px;padding:0 10px;
+  border:0;border-radius:9px;background:transparent;
+  color:#d9e3f3;font:inherit;font-size:11px;font-weight:690;cursor:pointer;
+}
+.sky3d-directions button:hover {background:rgba(165,177,219,.19);color:#fff;}
+.sky3d-directions-separator {height:23px;margin:0 4px;border-left:1px solid rgba(185,200,230,.17);}
+.sky3d-directions .sky3d-reset {color:#c7b2eb;}
+.sky3d-reset svg {width:15px;height:15px;}
+.sky3d-footer {
+  position:absolute;z-index:3;bottom:12px;left:20px;right:20px;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+  pointer-events:none;color:#acbcd2;
+}
+.sky3d-footer p {margin:0;font-size:9px;line-height:1.4;max-width:55%;}
+.sky3d-footer p span {color:#a8c3d2;}
+.sky3d-footer .sky3d-footer-count {text-align:right;font-variant-numeric:tabular-nums;}
+@media(max-width:1000px) {
+  .sky3d-controls {width:194px;left:12px;top:140px;padding:11px;}
+  .sky3d-info-strip {right:12px;top:113px;}
+  .sky3d-selection {right:12px;}
+  .sky3d-header {padding:18px;}
+}
+@media(max-width:690px) {
+  .sky3d-planet-dock {bottom:105px;max-width:calc(100% - 20px);padding:5px;}
+  .sky3d-dock-label {display:none;}
+  .sky3d-planet-dock button {flex-basis:34px;width:34px;height:34px;}
+  .sky3d-header {padding:15px;gap:9px;}
+  .sky3d-eyebrow {font-size:8px;}
+  .sky3d-header h2 {margin-top:7px;}
+  .sky3d-header p {display:none;}
+  .sky3d-epoch-date {font-size:10px;}
+  .sky3d-header-actions {gap:5px;}
+  .sky3d-exit {padding:6px;min-width:30px;}
+  .sky3d-exit span {display:none;}
+  .sky3d-controls {top:106px;max-height:calc(100% - 215px);width:165px;left:10px;padding:9px;}
+  .sky3d-layer-grid button {font-size:9px;padding:5px;min-height:31px;}
+  .sky3d-info-strip {top:108px;right:9px;padding:7px;gap:6px;}
+  .sky3d-info-caption {font-size:8px;}
+  .sky3d-info-strip strong {font-size:9px;}
+  .sky3d-selection {top:154px;width:min(228px,calc(100% - 190px));padding:10px;}
+  .sky3d-directions {bottom:52px;}
+  .sky3d-footer {left:10px;right:10px;bottom:9px;}
+  .sky3d-footer p {font-size:8px;}
+  .sky3d-footer p span {display:none;}
+}
+@media(max-height:580px) {
+  .sky3d-planet-dock {bottom:83px;}
+  .sky3d-controls {top:104px;max-height:calc(100% - 185px);}
+  .sky3d-directions {bottom:37px;}
+  .sky3d-footer {display:none;}
+}
+@media(prefers-reduced-motion:reduce) {
+  .sky3d-layer-grid button {transition:none;}
+}

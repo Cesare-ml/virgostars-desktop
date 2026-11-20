@@ -1,0 +1,126 @@
+<section class="sky3d" [class.sky3d-twilight]="light==='twilight'" [class.sky3d-daylight]="light==='day'"
+  [attr.aria-label]="word('title')">
+  <div #viewport class="sky3d-viewport" tabindex="0" role="region"
+    [attr.aria-label]="word('skyHelp')" (keydown)="onKeyDown($event)"></div>
+  <div class="sky3d-vignette" aria-hidden="true"></div>
+
+  <header class="sky3d-header">
+    <div class="sky3d-identity">
+      <div class="sky3d-eyebrow"><span class="sky3d-spark" aria-hidden="true"></span>{{word('eyebrow')}}</div>
+      <h2>{{word('title')}}</h2>
+      <p>{{word('hint')}}</p>
+    </div>
+    <div class="sky3d-header-actions">
+      <div class="sky3d-epoch">
+        <div class="sky3d-epoch-date">{{dateLabel}}</div>
+        <div class="sky3d-epoch-place">{{(latMicro / 1000000).toFixed(3)}}° · {{(lngMicro / 1000000).toFixed(3)}}°</div>
+        <div class="sky3d-computation" *ngIf="status==='ready'">
+          <span class="sky3d-computation-dot" aria-hidden="true"></span>{{word('statusReady')}}
+        </div>
+      </div>
+      <button type="button" class="sky3d-exit" (click)="close()" [attr.aria-label]="word('backToChart')">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+          stroke-linecap="round" stroke-linejoin="round"><path d="M18 12H5m0 0 6-6m-6 6 6 6"/></svg>
+        <span>{{word('backToChart')}}</span>
+      </button>
+    </div>
+  </header>
+
+  <aside class="sky3d-controls" [attr.aria-label]="word('layers')">
+    <div class="sky3d-panel-top">
+      <strong>{{word('layers')}}</strong>
+      <span class="sky3d-panel-ornament" aria-hidden="true">✦</span>
+    </div>
+    <p class="sky3d-group-name">{{word('geometry')}}</p>
+    <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('geometry')">
+      <button type="button" [class.active]="showMeridian" [attr.aria-pressed]="showMeridian"
+        (click)="toggleLayer('meridian')">{{word('meridian')}}</button>
+      <button type="button" [class.active]="showGrid" [attr.aria-pressed]="showGrid"
+        (click)="toggleLayer('grid')">{{word('grid')}}</button>
+      <button type="button" [class.active]="showEquator" [attr.aria-pressed]="showEquator"
+        (click)="toggleLayer('equator')">{{word('equator')}}</button>
+      <button type="button" [class.active]="showGround" [attr.aria-pressed]="showGround"
+        (click)="toggleLayer('ground')">{{word('ground')}}</button>
+      <button type="button" [class.active]="showZodiac" [attr.aria-pressed]="showZodiac"
+        (click)="toggleLayer('zodiac')">{{word('zodiac')}}</button>
+      <button type="button" [class.active]="showSigns" [attr.aria-pressed]="showSigns"
+        (click)="toggleLayer('signs')">{{word('signs')}}</button>
+      <button type="button" class="sky3d-layer-wide" [class.active]="showAngles" [attr.aria-pressed]="showAngles"
+        (click)="toggleLayer('angles')">{{word('angles')}} <span class="sky3d-axis-swatch" aria-hidden="true"></span></button>
+    </div>
+    <div class="sky3d-panel-divider"></div>
+    <p class="sky3d-group-name">{{word('objects')}}</p>
+    <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('objects')">
+      <button type="button" [class.active]="showStars" [attr.aria-pressed]="showStars"
+        (click)="toggleLayer('stars')">{{word('stars')}}</button>
+      <button type="button" [class.active]="showPlanets" [attr.aria-pressed]="showPlanets"
+        (click)="toggleLayer('planets')">{{word('planets')}}</button>
+    </div>
+  </aside>
+
+  <div class="sky3d-info-strip" aria-live="off">
+    <span class="sky3d-info-caption">{{word('direction')}}</span>
+    <strong>{{viewDirection}}</strong>
+    <span class="sky3d-info-separator" aria-hidden="true"></span>
+    <span class="sky3d-info-caption">{{word('field')}}</span>
+    <strong>{{fieldOfView}}°</strong>
+  </div>
+
+  <article class="sky3d-selection" *ngIf="selected as selection">
+    <button type="button" class="sky3d-dismiss" [attr.aria-label]="word('close')" (click)="clearSelection()">×</button>
+    <div class="sky3d-selection-header">
+      <div class="sky3d-selection-mark">
+        <img *ngIf="selection.kind==='planet'" [src]="bodyGlyph(selection.point.id)" alt="" aria-hidden="true">
+        <span *ngIf="selection.kind==='star'" class="sky3d-star-mark" aria-hidden="true"></span>
+      </div>
+      <div>
+        <small>{{selection.kind==='star' ? word('stars') : word('planets')}}</small>
+        <h3>{{selection.kind==='planet' ? bodyName(selection.point.id) : selection.point.id}}</h3>
+      </div>
+    </div>
+    <dl>
+      <div><dt>{{word('altitude')}}</dt><dd>{{formatted(selection.point.altitudeDeg)}}</dd></div>
+      <div><dt>{{word('azimuth')}}</dt><dd>{{formatted(selection.point.azimuthNorthEastDeg)}}</dd></div>
+      <div *ngIf="selection.point.magnitude!==null"><dt>{{word('starMagnitude')}}</dt>
+        <dd>{{selection.point.magnitude?.toFixed(2)}}</dd></div>
+    </dl>
+    <p class="sky3d-approximate" *ngIf="selection.point.approximate">{{word('approximate')}}</p>
+  </article>
+
+  <p class="sky3d-status" role="status" *ngIf="warning">{{warning}}</p>
+
+  <nav class="sky3d-planet-dock" *ngIf="status==='ready' && showPlanets"
+    [attr.aria-label]="word('planets')">
+    <span class="sky3d-dock-label">{{word('planets')}}</span>
+    <button type="button" *ngFor="let planet of planetDock" (click)="focusPlanet(planet.id)"
+      [class.selected]="selected?.kind==='planet' && selected?.point?.id===planet.id"
+      [attr.title]="bodyName(planet.id)" [attr.aria-label]="bodyName(planet.id)"
+      [attr.aria-pressed]="selected?.kind==='planet' && selected?.point?.id===planet.id">
+      <img [src]="bodyGlyph(planet.id)" (error)="glyphMissing($event)" alt="" aria-hidden="true">
+      <span class="sky3d-dock-fallback" hidden>{{bodyName(planet.id)}}</span>
+    </button>
+  </nav>
+
+  <div class="sky3d-directions" role="group" [attr.aria-label]="word('direction')">
+    <button type="button" [attr.aria-label]="word('north')" (click)="look(0,20)">N</button>
+    <button type="button" [attr.aria-label]="word('east')" (click)="look(90,20)">E</button>
+    <button type="button" [attr.aria-label]="word('south')" (click)="look(180,20)">S</button>
+    <button type="button" [attr.aria-label]="word('west')" (click)="look(270,20)">{{locale==='it' ? 'O' : 'W'}}</button>
+    <button type="button" [attr.aria-label]="word('zenith')" (click)="look(180,85)">↑</button>
+    <span class="sky3d-directions-separator" aria-hidden="true"></span>
+    <button type="button" class="sky3d-reset" [attr.aria-label]="word('reset')" (click)="resetView()">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11a8.5 8.5 0 1 1 2.4 6"/><path d="M3.5 4.5V11H10"/></svg>
+      <span>{{word('reset')}}</span>
+    </button>
+  </div>
+
+  <footer class="sky3d-footer">
+    <p>{{word('note')}} <span>{{word('skyLightNote')}}</span></p>
+    <p class="sky3d-footer-count" *ngIf="status==='ready'">
+      {{visiblePlanetCount}} {{word('planets')}} · {{starCount}} {{word('stars')}}
+      <span *ngIf="starCount===0">{{word('noStars')}}</span>
+      <span *ngIf="approximateStars">{{word('approximate')}}</span>
+    </p>
+  </footer>
+</section>
