@@ -55,3 +55,13 @@ Il precedente meridiano N→Zenit→S copriva solo 180°. Ora la seconda semicir
 5. Rivalutare la risoluzione cubemap e la qualità dello shader su GPU con poche risorse prima di estendere alla versione mobile.
 
 Questa funzione non aggiunge un paesaggio realistico o una Via Lattea fotografica: quelli richiederebbero risorse e verifiche separate, e non devono mascherare la precisione astronomica del sistema.
+
+
+## Rafforzamento del renderer — aggiornamento del 20/11
+
+- Le immagini dei pianeti, i glifi, i nomi delle stelle, le etichette degli angoli e i cardinali ora usano **piani tangenti orientati verso il centro della sfera** (`sky-dome-billboard.ts`) invece di `THREE.Sprite`: l'orientamento rimane costante quando la CubeCamera cambia faccia, riducendo le discontinuità sul fisheye.
+- La lente sceglie una risoluzione di **256, 512 o 1024 px per faccia**, in funzione del limite `MAX_CUBE_MAP_TEXTURE_SIZE` dichiarato dalla GPU. L'utente non deve intervenire per adattare il valore.
+- Se il cubemap o lo shader falliscono, il rendering fa **fallback alla prospettiva normale ≤84°** invece di impostare un campo >180° su una PerspectiveCamera non adatta. L'interfaccia segnala esplicitamente il limite hardware. Un vero context-loss WebGL resta un errore separato.
+- `tests/sky-dome-billboard.test.mjs` verifica orientamento e geometria radiale ai poli e negli ottanti, incluse ancore dei piccoli glifi; i controlli di dimensione/fallback sono inclusi nei test della proiezione.
+- **Non ancora verificato su Windows:** continuità della texture, orientamento dei piani nel cubemap, qualità delle immagini e comportamento del fallback su una GPU con limiti reali.
+
