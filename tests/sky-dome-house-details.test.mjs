@@ -17,6 +17,15 @@ test('house cusp grid tracks the active Desktop domification and never guesses s
   assert.match(viewer,/this\.data\?\.houseGrids\.find\(grid=>grid\.id===this\.houseSystem\)/);
   assert.match(viewer,/grid\.separators\[index\]/);
   assert.match(viewer,/grid\.labels\[index\]/);
+  assert.match(viewer,/get cuspRows\(\)/);
+  assert.match(viewer,/grid\.cuspLongitudesDeg\.map/);
+  assert.match(viewer,/grid\.separators\[index\]\[4\]/);
+  assert.match(viewer,/focusCusp\(index:number\):void/);
+  assert.match(viewer,/this\.look\(row\.azimuth,row\.altitude\)/);
+  assert.match(viewer,/this\.selectedCuspIndex=index/);
+  assert.match(html,/\(click\)="focusCusp\(cusp\.index\)"/);
+  assert.match(html,/word\('houseCusps'\)/);
+
   assert.match(html,/\(click\)="toggleLayer\('houses'\)"/);
   assert.match(html,/\(change\)="selectHouseSystem\(\$event\)"/);
   assert.match(html,/word\('houseNote'\)/);
