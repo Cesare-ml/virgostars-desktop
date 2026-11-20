@@ -18,6 +18,9 @@ jobs:
     # The macOS ARM64 and Intel labels are standard GitHub-hosted runners.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
     strategy:
       fail-fast: false
       matrix:
