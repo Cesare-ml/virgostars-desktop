@@ -39,6 +39,13 @@ for (const pkg of packages) {
     for (let i=0; i<3 && !files.length; i++) { dir=dirname(dir); files=localLicenseFiles(dir); }
   }
   if (!files.length && fallbacks.has(key)) files = [join(fallbackDir, fallbacks.get(key))];
+  // Published objc2/block2 crate archives sometimes omit the repository-root
+  // license file. Only those exact upstream-owned crates with an SPDX MIT
+  // alternative may use this reviewed MIT text; all other missing licenses fail.
+  const objcFamily = pkg.name === 'block2' || pkg.name === 'objc2' || pkg.name.startsWith('objc2-');
+  const hasMitOption = /(?:^|[^A-Za-z0-9-])MIT(?:$|[^A-Za-z0-9-])/.test(pkg.license ?? '');
+  if (!files.length && target.includes('apple') && objcFamily && hasMitOption)
+    files = [join(fallbackDir, 'objc2-MIT-reviewed.txt')];
   if (!files.length) throw Error(`No license text found for ${key}; review the dependency before release.`);
   sections.push(`\n${'='.repeat(72)}\n${key}\nDeclared license: ${pkg.license || 'project license'}`);
   if (key === 'tauri-plugin@2.7.4') sections.push('Copyright 2019-2024 Tauri Programme within The Commons Conservancy.');
