@@ -644,12 +644,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           const position=this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,100);
           const accent=planetAccent(point.id);
           // Soft glow: not a physical angular diameter or planetary magnitude.
-          const halo=skyFacingPlane(
-            this.radialTexture(),position.clone().multiplyScalar(1.002),
-            spec.diameter*1.8,spec.diameter*1.8,
-            {color:accent,blending:THREE.AdditiveBlending,opacity:0.72,renderOrder:0},
-          );
-          group.add(halo);
+          const glow=this.radialTexture();
+          if(glow){
+            const halo=skyFacingPlane(
+              glow,position.clone().multiplyScalar(1.002),
+              spec.diameter*1.8,spec.diameter*1.8,
+              {color:accent,blending:THREE.AdditiveBlending,opacity:0.72,renderOrder:0},
+            );
+            group.add(halo);
+          }
 
           const portrait=this.portraitTexture(point.id);
           if(portrait){
