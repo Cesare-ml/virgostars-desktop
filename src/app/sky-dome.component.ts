@@ -179,6 +179,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(!this.webglFailed)this.status='loading';
     this.selected=null;this.data=null;
     this.buildMarkers();
+    this.buildZodiac();
     this.cd.markForCheck();
     const result=await calculateSkyDome({utcIso:this.utcIso,latMicro:this.latMicro,lngMicro:this.lngMicro});
     if(this.destroyed||ticket!==this.generation)return;
