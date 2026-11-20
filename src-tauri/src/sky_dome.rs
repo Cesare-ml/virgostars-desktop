@@ -26,6 +26,16 @@ pub struct HorizontalObject {
     pub azimuth_north_east_deg: f64,
     pub magnitude: Option<f64>,
     pub approximate: bool,
+    pub ecliptic_longitude_deg: Option<f64>,
+    pub ecliptic_latitude_deg: Option<f64>,
+    pub right_ascension_deg: Option<f64>,
+    pub declination_deg: Option<f64>,
+    /// Geocentric distance, not heliocentric orbital radius.
+    pub distance_au: Option<f64>,
+    pub longitude_speed_deg_per_day: Option<f64>,
+    pub constellation: Option<String>,
+    pub catalog_id: Option<u32>,
+    pub ephemeris_source: Option<String>,
 }
 
 /// A geometric direction on the observer's sphere, not a physical body.
@@ -57,6 +67,16 @@ pub struct SkyZodiacGridV1 {
     pub decade_ticks: Vec<Vec<SkyDirectionV1>>,
 }
 
+/// Ecliptic cusp intersections for ONE computed house system.
+#[derive(Debug,Clone,Serialize,PartialEq)]
+#[serde(rename_all="camelCase")]
+pub struct SkyHouseGridV1 {
+    pub id: &'static str,
+    pub cusp_longitudes_deg: Vec<f64>,
+    pub separators: Vec<Vec<SkyDirectionV1>>,
+    pub labels: Vec<SkyDirectionV1>,
+}
+
 /// The calculated ecliptic intersection directions at the four chart angles.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +98,7 @@ pub struct SkyDomeV1 {
     pub zodiac_segments: Vec<SkyZodiacSegmentV1>,
     pub zodiac_grid: Option<SkyZodiacGridV1>,
     pub angles: Vec<SkyAngleV1>,
+    pub house_grids: Vec<SkyHouseGridV1>,
 }
 
 /// Vector conversion with an oblate Earth and observer at sea level. RA and
@@ -223,8 +244,40 @@ fn zodiac_segments(
     Some(output)
 }
 
+/// Only the ecliptic intersections are represented. These lines MUST NOT be
+/// described as full mundane house planes, which differ by house method.
+fn house_grid(
+    house:&chart_calculation::HouseSystemV1,
+    true_obliquity_deg:f64,armc_deg:f64,latitude_deg:f64,
+)-> Option<SkyHouseGridV1> {
+    let mut separators=Vec::with_capacity(12);
+    let mut labels=Vec::with_capacity(12);
+    for index in 0..12 {
+        let longitude=house.cusps_deg[index];
+        if !longitude.is_finite() {return None;}
+        let mut line=Vec::with_capacity(9);
+        for step in 0..=8 {
+            line.push(zodiac_latitude_direction(
+                longitude,f64::from(step)*2.0-8.0,
+                true_obliquity_deg,armc_deg,latitude_deg
+            )?);
+        }
+        separators.push(line);
+        let next=house.cusps_deg[(index+1)%12];
+        if !next.is_finite(){return None;}
+        let arc=(next-longitude).rem_euclid(360.0);
+        if arc<0.001 || arc>=180.0{return None;}
+        labels.push(zodiac_direction(longitude+arc/2.0,
+            true_obliquity_deg,armc_deg,latitude_deg)?);
+    }
+    Some(SkyHouseGridV1 {
+        id:house.id,cusp_longitudes_deg:house.cusps_deg.to_vec(),
+        separators,labels
+    })
+}
+
 fn failure(status: &'static str) -> SkyDomeV1 {
-    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![], zodiac_grid:None, angles:vec![] }
+    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![], zodiac_grid:None, angles:vec![], house_grids:vec![] }
 }
 
 pub fn respond(
@@ -254,6 +307,9 @@ pub fn respond(
     let Some(zodiac_grid) = zodiac_grid(
         context.true_obliquity_deg,armc,latitude
     ) else {return failure("calculation_failed");};
+    let house_grids=chart.houses.iter().filter_map(|system|
+        house_grid(system,context.true_obliquity_deg,armc,latitude)
+    ).collect();
     let mut angles = Vec::with_capacity(4);
     for (id,longitude) in [
         ("ASC",house.ascendant_deg),
@@ -277,6 +333,14 @@ pub fn respond(
             planets.push(HorizontalObject {
                 id:body.id.to_string(),altitude_deg:alt,azimuth_north_east_deg:az,
                 magnitude:None,approximate:false,
+                ecliptic_longitude_deg:Some(body.longitude_deg),
+                ecliptic_latitude_deg:Some(body.latitude_deg),
+                right_ascension_deg:Some(body.right_ascension_deg),
+                declination_deg:Some(body.declination_deg),
+                distance_au:Some(body.distance_au),
+                longitude_speed_deg_per_day:Some(body.longitude_speed),
+                constellation:None,catalog_id:None,
+                ephemeris_source:Some(body.ephemeris_source.to_owned()),
             });
         }
     }
@@ -287,13 +351,19 @@ pub fn respond(
         HorizontalObject {
             id:s.name,altitude_deg:s.true_altitude_deg,
             azimuth_north_east_deg:(s.azimuth_south_west_deg+180.0).rem_euclid(360.0),
-            magnitude:s.magnitude,approximate:s.approximate
+            magnitude:s.magnitude,approximate:s.approximate,
+            ecliptic_longitude_deg:Some(s.longitude_deg),
+            ecliptic_latitude_deg:Some(s.latitude_deg),
+            right_ascension_deg:None,declination_deg:None,
+            distance_au:None,longitude_speed_deg_per_day:None,
+            constellation:s.constellation,catalog_id:Some(s.id),
+            ephemeris_source:None,
         }
     ).collect();
     SkyDomeV1 {
         protocol_version:1,status:"ok",
         provider_id:calculated.provider.map(|p|p.id.to_string()),
-        planets,stars,zodiac_segments,zodiac_grid:Some(zodiac_grid),angles,
+        planets,stars,zodiac_segments,zodiac_grid:Some(zodiac_grid),angles,house_grids,
     }
 }
 
@@ -336,7 +406,8 @@ mod tests {
         });
         assert_eq!(reply.status,"provider_unavailable");
         assert!(reply.planets.is_empty() && reply.stars.is_empty()
-            && reply.zodiac_segments.is_empty() && reply.zodiac_grid.is_none() && reply.angles.is_empty());
+            && reply.zodiac_segments.is_empty() && reply.zodiac_grid.is_none()
+            && reply.angles.is_empty() && reply.house_grids.is_empty());
     }
     #[test]
     fn zodiac_is_twelve_contiguous_real_ecliptic_arcs() {
