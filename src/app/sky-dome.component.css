@@ -285,6 +285,7 @@
 .sky3d-dock-fallback {font-size:9px;line-height:1;text-align:center;word-break:break-word;}
 .sky3d-dock-fallback[hidden] {display:none;}
 .sky3d-directions {
+  max-width:calc(100% - 20px);overflow-x:auto;scrollbar-width:thin;
   position:absolute;z-index:3;bottom:59px;left:50%;transform:translateX(-50%);
   display:flex;align-items:center;gap:5px;padding:7px;
   border:1px solid rgba(187,203,234,.18);border-radius:14px;
@@ -300,6 +301,13 @@
 }
 .sky3d-directions button:hover {background:rgba(165,177,219,.19);color:#fff;}
 .sky3d-directions-separator {height:23px;margin:0 4px;border-left:1px solid rgba(185,200,230,.17);}
+.sky3d-directions .sky3d-allsky {
+  color:#eed9ff;
+  border:1px solid rgba(199,168,241,.36);
+  background:rgba(142,105,184,.16);
+  font-weight:700;
+}
+.sky3d-allsky-icon {font-size:19px;line-height:1;font-weight:450;}
 .sky3d-directions .sky3d-reset {color:#c7b2eb;}
 .sky3d-reset svg {width:15px;height:15px;}
 .sky3d-footer {
@@ -335,6 +343,7 @@
   .sky3d-info-strip strong {font-size:9px;}
   .sky3d-selection {top:154px;width:min(228px,calc(100% - 190px));padding:10px;}
   .sky3d-directions {bottom:52px;}
+  .sky3d-directions .sky3d-allsky span:last-child {display:none;}
   .sky3d-footer {left:10px;right:10px;bottom:9px;}
   .sky3d-footer p {font-size:8px;}
   .sky3d-footer p span {display:none;}
