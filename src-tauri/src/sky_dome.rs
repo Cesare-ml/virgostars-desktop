@@ -41,6 +41,15 @@ pub struct SkyZodiacSegmentV1 {
     pub label: SkyDirectionV1,
 }
 
+/// The calculated ecliptic intersection directions at the four chart angles.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkyAngleV1 {
+    pub id: &'static str,
+    pub zodiac_longitude_deg: f64,
+    pub position: SkyDirectionV1,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SkyDomeV1 {
@@ -51,6 +60,7 @@ pub struct SkyDomeV1 {
     pub planets: Vec<HorizontalObject>,
     pub stars: Vec<HorizontalObject>,
     pub zodiac_segments: Vec<SkyZodiacSegmentV1>,
+    pub angles: Vec<SkyAngleV1>,
 }
 
 /// Vector conversion with an oblate Earth and observer at sea level. RA and
@@ -145,7 +155,7 @@ fn zodiac_segments(
 }
 
 fn failure(status: &'static str) -> SkyDomeV1 {
-    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![] }
+    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![], angles:vec![] }
 }
 
 pub fn respond(
@@ -160,10 +170,11 @@ pub fn respond(
     let calculated = chart_calculation::respond(provider,&request);
     if calculated.status != "ok" { return failure(calculated.status); }
     let Some(chart) = calculated.chart else { return failure("calculation_failed"); };
-    let Some(armc) = chart.houses.first().map(|h|h.armc_deg) else {
-        // No longitude of the local meridian was provided; never invent one.
+    let Some(house) = chart.houses.first() else {
+        // No local meridian or chart axes: never invent one.
         return failure("calculation_failed");
     };
+    let armc = house.armc_deg;
     let latitude = f64::from(request.lat_micro) / 1e6;
     let Some(ref context) = chart.house_angle_context else {
         return failure("calculation_failed");
@@ -171,6 +182,21 @@ pub fn respond(
     let Some(zodiac_segments) = zodiac_segments(
         context.true_obliquity_deg, armc, latitude
     ) else { return failure("calculation_failed"); };
+    let mut angles = Vec::with_capacity(4);
+    for (id,longitude) in [
+        ("ASC",house.ascendant_deg),
+        ("DSC",(house.ascendant_deg+180.0).rem_euclid(360.0)),
+        ("MC",house.mc_deg),
+        ("IC",(house.mc_deg+180.0).rem_euclid(360.0)),
+    ] {
+        if !longitude.is_finite() || !(0.0..360.0).contains(&longitude) {
+            return failure("calculation_failed");
+        }
+        let Some(position)=zodiac_direction(
+            longitude,context.true_obliquity_deg,armc,latitude
+        ) else {return failure("calculation_failed");};
+        angles.push(SkyAngleV1 {id,zodiac_longitude_deg:longitude,position});
+    }
     let mut planets = Vec::new();
     for body in chart.bodies {
         if !PHYSICAL_BODIES.contains(&body.id) { continue; }
@@ -196,7 +222,7 @@ pub fn respond(
     SkyDomeV1 {
         protocol_version:1,status:"ok",
         provider_id:calculated.provider.map(|p|p.id.to_string()),
-        planets,stars,zodiac_segments,
+        planets,stars,zodiac_segments,angles,
     }
 }
 
@@ -238,7 +264,7 @@ mod tests {
             include_fixed_stars:false,
         });
         assert_eq!(reply.status,"provider_unavailable");
-        assert!(reply.planets.is_empty() && reply.stars.is_empty());
+        assert!(reply.planets.is_empty() && reply.stars.is_empty() && reply.zodiac_segments.is_empty() && reply.angles.is_empty());
     }
     #[test]
     fn zodiac_is_twelve_contiguous_real_ecliptic_arcs() {
