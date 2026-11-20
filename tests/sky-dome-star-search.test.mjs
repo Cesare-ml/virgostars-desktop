@@ -23,7 +23,7 @@ test('search only returns catalogue entries and ranks exact/prefix above substri
   const exact=findSkyStars(catalog,'SIRIUS');
   assert.equal(exact[0].id,'Sirius');
   assert.deepEqual(findSkyStars(catalog,'TRI'),[]);
-  assert.equal(findSkyStars(catalog,'ika',8).length,1);
+  assert.equal(findSkyStars(catalog,'ica',8).length,1);
 });
 
 test('diacritic-tolerant case folding is bounded and search cannot create a star',()=>{
