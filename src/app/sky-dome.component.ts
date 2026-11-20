@@ -33,7 +33,18 @@ const WORDS={
     calculation_failed:'Non è stato possibile calcolare il cielo per questo istante.',
     unavailable:'Il calcolo del cielo 3D non è disponibile.',
     webgl_error:'WebGL non disponibile sulla scheda grafica o in questa finestra.',
-    note:'Altitudine geometrica (senza rifrazione). Gli astri sono simbolici, non in scala angolare.',
+    note:'Coordinate geometriche senza rifrazione · dimensioni degli astri non in scala.',
+    eyebrow:'OSSERVATORIO CELESTE',
+    layers:'Livelli del cielo',
+    geometry:'Geometria',
+    objects:'Corpi celesti',
+    reset:'Reimposta',
+    field:'Campo visivo',
+    direction:'Orientamento',
+    statusReady:'Posizioni astronomiche',
+    starMagnitude:'Magnitudine',
+    skyHelp:'Frecce per orientarti; + e − per variare il campo visivo.',
+    skyLightNote:'Atmosfera illustrativa, non modello fisico.',
     noStars:'Catalogo locale delle stelle non disponibile.',
   },
   en:{
@@ -49,7 +60,18 @@ const WORDS={
     calculation_failed:'Could not calculate the sky for this instant.',
     unavailable:'The 3D sky calculation is unavailable.',
     webgl_error:'WebGL is unavailable on this device or in this window.',
-    note:'Geometric altitude (no refraction). Body markers are symbolic, not to angular scale.',
+    note:'Geometric coordinates without refraction · body markers not to angular scale.',
+    eyebrow:'CELESTIAL OBSERVATORY',
+    layers:'Sky layers',
+    geometry:'Geometry',
+    objects:'Celestial bodies',
+    reset:'Reset view',
+    field:'Field of view',
+    direction:'Direction',
+    statusReady:'Astronomical positions',
+    starMagnitude:'Magnitude',
+    skyHelp:'Arrow keys to turn; + and − to change field of view.',
+    skyLightNote:'Illustrative atmosphere, not a physical model.',
     noStars:'Local star catalogue unavailable.',
   },
 } as const;
@@ -131,6 +153,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get fieldOfView():number { return Math.round(this.camera?.fov??75); }
   get visiblePlanetCount():number{return this.data?.planets.length??0;}
+  get dateLabel():string {
+    const instant=new Date(this.utcIso);
+    if(!Number.isFinite(instant.getTime()))return this.utcIso;
+    try {
+      return new Intl.DateTimeFormat(this.locale==='it'?'it-IT':'en-GB',{
+        dateStyle:'medium',timeStyle:'short',timeZone:'UTC',
+      }).format(instant)+' UTC';
+    }catch{return this.utcIso;}
+  }
 
   ngOnChanges(changes:SimpleChanges):void {
     if(changes['utcIso']||changes['latMicro']||changes['lngMicro']) void this.load();
@@ -141,9 +172,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   ngAfterViewInit():void {
     try {
       this.scene=new THREE.Scene();
-      this.scene.background=new THREE.Color('#08111f');
+      this.scene.background=null;
       this.camera=new THREE.PerspectiveCamera(75,1,0.1,180);
-      this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'low-power'});
+      this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
+      this.renderer.setClearColor(0x000000,0);
       this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
       this.renderer.domElement.setAttribute('aria-hidden','true');
       this.viewport.nativeElement.appendChild(this.renderer.domElement);
@@ -578,6 +610,32 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(this.ground)this.ground.visible=this.showGround;
     this.draw();
   }
+  resetView():void {
+    if(this.camera){this.camera.fov=75;this.camera.updateProjectionMatrix();}
+    this.look(180,24);
+    this.cd.markForCheck();
+  }
+  onKeyDown(event:KeyboardEvent):void {
+    if(event.ctrlKey||event.metaKey||event.altKey)return;
+    const step=event.shiftKey?15:5;
+    let handled=true;
+    switch(event.key){
+      case 'ArrowLeft':this.look((this.yaw-step+360)%360,this.pitch);break;
+      case 'ArrowRight':this.look((this.yaw+step)%360,this.pitch);break;
+      case 'ArrowUp':this.look(this.yaw,Math.min(85,this.pitch+step));break;
+      case 'ArrowDown':this.look(this.yaw,Math.max(-85,this.pitch-step));break;
+      case '+':case '=':this.adjustField(-5);break;
+      case '-':case '_':this.adjustField(5);break;
+      case 'Home':this.resetView();break;
+      default:handled=false;
+    }
+    if(handled){event.preventDefault();this.cd.markForCheck();}
+  }
+  private adjustField(change:number):void {
+    if(!this.camera)return;
+    this.camera.fov=Math.max(28,Math.min(100,this.camera.fov+change));
+    this.camera.updateProjectionMatrix();this.draw();
+  }
   look(az:number,alt:number):void {
     this.yaw=az;this.pitch=alt;
     this.camera?.lookAt(this.vec(this.yaw,this.pitch,1));
@@ -619,8 +677,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private wheel=(event:WheelEvent):void=>{
     event.preventDefault();
     if(!this.camera)return;
-    this.camera.fov=Math.max(28,Math.min(100,this.camera.fov+Math.sign(event.deltaY)*4));
-    this.camera.updateProjectionMatrix();this.draw();
+    this.adjustField(Math.sign(event.deltaY)*4);
+    this.cd.markForCheck();
   };
   private contextLost=(event:Event):void=>{
     event.preventDefault();this.webglFailed=true;this.status='webgl_error';this.cd.markForCheck();
