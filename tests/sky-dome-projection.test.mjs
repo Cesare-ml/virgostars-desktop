@@ -101,6 +101,10 @@ test('3D renderer uses one cached cubemap and a coherent fisheye pick ray',()=>{
   assert.match(viewer,/normalizePitch\(alt\)/);
   assert.match(viewer,/skyWorldVector\(az,alt,r\)/);
   assert.match(viewer,/this\.skyLens\?\.dispose\(\)/);
+  assert.match(lens,/constructor\(size:256\|512\|1024=1024\)/);
+  assert.match(viewer,/MAX_CUBE_MAP_TEXTURE_SIZE/);
+  assert.match(viewer,/this\.fisheyeUnavailable=true/);
+  assert.match(html,/word\('lensUnavailable'\)/);
   assert.match(html,/word\(isSpherical \? 'spherical' : 'perspective'\)/);
   assert.match(html,/\(click\)="look\(180,-90\)"/);
   assert.match(html,/\(click\)="zoomSky\(10\)"/);
