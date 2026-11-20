@@ -438,6 +438,51 @@ mod tests {
     fn horizontal(ra:f64,dec:f64,distance:f64,armc:f64,lat:f64)->(f64,f64) {
         topocentric_horizontal(ra,dec,distance,armc,lat).unwrap()
     }
+    fn phase_body(
+        id:&'static str,ra:f64,declination:f64,distance:f64
+    )->chart_calculation::BodyPositionV1 {
+        chart_calculation::BodyPositionV1 {
+            id,
+            longitude_deg:ra,
+            latitude_deg:0.0,
+            distance_au:distance,
+            longitude_speed:0.0,
+            latitude_speed:0.0,
+            distance_speed:0.0,
+            right_ascension_deg:ra,
+            declination_deg:declination,
+            ephemeris_source:"fixture",
+        }
+    }
+    #[test]
+    fn lunar_fraction_matches_new_full_and_quarter_geometry() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        let new_moon=phase_body("Moon",0.0,0.0,0.00257);
+        let full_moon=phase_body("Moon",180.0,0.0,0.00257);
+        let quarter=phase_body("Moon",90.0,0.0,0.00257);
+        let first=lunar_illumination_fraction(&sun,&new_moon).unwrap();
+        let full=lunar_illumination_fraction(&sun,&full_moon).unwrap();
+        let quarter_fraction=lunar_illumination_fraction(&sun,&quarter).unwrap();
+        assert!(first<1e-8);
+        assert!(full>1.0-1e-8);
+        assert!(quarter_fraction>0.49 && quarter_fraction<0.51);
+        assert!(first<quarter_fraction && quarter_fraction<full);
+    }
+    #[test]
+    fn lunar_fraction_rejects_invalid_distance_and_non_finite_angles() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        let moon=phase_body("Moon",30.0,0.0,0.00257);
+        assert!(lunar_illumination_fraction(&sun,&moon).is_some());
+        assert!(lunar_illumination_fraction(
+            &phase_body("Sun",0.0,0.0,0.0),&moon
+        ).is_none());
+        assert!(lunar_illumination_fraction(
+            &sun,&phase_body("Moon",f64::NAN,0.0,0.00257)
+        ).is_none());
+        assert!(lunar_illumination_fraction(
+            &sun,&phase_body("Moon",45.0,91.0,0.00257)
+        ).is_none());
+    }
     #[test]
     fn observer_azimuth_is_zero_north_ninety_east_and_zenith_above() {
         let (alt,_) = horizontal(0.0,0.0,1.0,0.0,0.0);
