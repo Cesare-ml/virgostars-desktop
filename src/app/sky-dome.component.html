@@ -146,10 +146,10 @@
         <dt>{{word('declination')}}</dt><dd>{{valueText(selection.point.declinationDeg)}}</dd>
       </div>
       <div *ngIf="selection.point.distanceAu!==null">
-        <dt>{{word('distance')}}</dt><dd>{{valueText(selection.point.distanceAu,' UA',6)}}</dd>
+        <dt>{{word('distance')}}</dt><dd>{{valueText(selection.point.distanceAu,word('distanceUnit'),6)}}</dd>
       </div>
       <div *ngIf="selection.point.longitudeSpeedDegPerDay!==null">
-        <dt>{{word('longitudeSpeed')}}</dt><dd>{{valueText(selection.point.longitudeSpeedDegPerDay,' °/giorno',4)}}</dd>
+        <dt>{{word('longitudeSpeed')}}</dt><dd>{{valueText(selection.point.longitudeSpeedDegPerDay,word('speedUnit'),4)}}</dd>
       </div>
       <div *ngIf="selection.point.constellation">
         <dt>{{word('constellation')}}</dt><dd>{{selection.point.constellation}}</dd>
