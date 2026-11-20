@@ -26,6 +26,9 @@ pub struct HorizontalObject {
     pub azimuth_north_east_deg: f64,
     pub magnitude: Option<f64>,
     pub approximate: bool,
+    /// Moon only: approximate illuminated fraction based on the ephemeris
+    /// geocentric Sun-Moon vectors and distances. Not a rendered phase angle.
+    pub illuminated_fraction: Option<f64>,
     pub ecliptic_longitude_deg: Option<f64>,
     pub ecliptic_latitude_deg: Option<f64>,
     pub right_ascension_deg: Option<f64>,
@@ -284,6 +287,43 @@ fn house_grid(
     })
 }
 
+/// Approximate lunar illumination derived from actual apparent geocentric
+/// equatorial directions and distances (AU). This is NOT inferred from a
+/// zodiac-sign count, calendar phase label or synthetic angular position.
+fn geocentric_vector(body:&chart_calculation::BodyPositionV1)->Option<[f64;3]> {
+    let [ra,dec,distance]=[
+        body.right_ascension_deg,body.declination_deg,body.distance_au
+    ];
+    if ![ra,dec,distance].iter().all(|v|v.is_finite())
+        || dec.abs()>90.0 || distance<=0.0 {return None;}
+    let ra=ra.to_radians();
+    let dec=dec.to_radians();
+    Some([
+        distance*dec.cos()*ra.cos(),
+        distance*dec.cos()*ra.sin(),
+        distance*dec.sin(),
+    ])
+}
+fn lunar_illumination_fraction(
+    sun:&chart_calculation::BodyPositionV1,
+    moon:&chart_calculation::BodyPositionV1,
+)->Option<f64> {
+    let s=geocentric_vector(sun)?;
+    let m=geocentric_vector(moon)?;
+    let from_moon_to_sun=[s[0]-m[0],s[1]-m[1],s[2]-m[2]];
+    let from_moon_to_earth=[-m[0],-m[1],-m[2]];
+    let dot=(0..3).map(|i|from_moon_to_sun[i]*from_moon_to_earth[i])
+        .sum::<f64>();
+    let len_s=from_moon_to_sun.iter().map(|v|v*v).sum::<f64>().sqrt();
+    let len_e=from_moon_to_earth.iter().map(|v|v*v).sum::<f64>().sqrt();
+    if len_s<=0.0||len_e<=0.0||!len_s.is_finite()||!len_e.is_finite(){
+        return None;
+    }
+    let cos_phase=(dot/(len_s*len_e)).clamp(-1.0,1.0);
+    let fraction=(1.0+cos_phase)*0.5;
+    fraction.is_finite().then_some(fraction)
+}
+
 fn failure(status: &'static str) -> SkyDomeV1 {
     SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![], zodiac_grid:None, angles:vec![], house_grids:vec![] }
 }
@@ -332,6 +372,13 @@ pub fn respond(
         ) else {return failure("calculation_failed");};
         angles.push(SkyAngleV1 {id,zodiac_longitude_deg:longitude,position});
     }
+    let lunar_fraction=match (
+        chart.bodies.iter().find(|body|body.id=="Sun"),
+        chart.bodies.iter().find(|body|body.id=="Moon")
+    ){
+        (Some(sun),Some(moon))=>lunar_illumination_fraction(sun,moon),
+        _=>None,
+    };
     let mut planets = Vec::new();
     for body in chart.bodies {
         if !PHYSICAL_BODIES.contains(&body.id) { continue; }
@@ -341,6 +388,7 @@ pub fn respond(
             planets.push(HorizontalObject {
                 id:body.id.to_string(),altitude_deg:alt,azimuth_north_east_deg:az,
                 magnitude:None,approximate:false,
+                illuminated_fraction:if body.id=="Moon"{lunar_fraction}else{None},
                 ecliptic_longitude_deg:Some(body.longitude_deg),
                 ecliptic_latitude_deg:Some(body.latitude_deg),
                 right_ascension_deg:Some(body.right_ascension_deg),
@@ -363,6 +411,7 @@ pub fn respond(
             id:s.name,altitude_deg:s.true_altitude_deg,
             azimuth_north_east_deg:(s.azimuth_south_west_deg+180.0).rem_euclid(360.0),
             magnitude:s.magnitude,approximate:s.approximate,
+            illuminated_fraction:None,
             ecliptic_longitude_deg:Some(s.longitude_deg),
             ecliptic_latitude_deg:Some(s.latitude_deg),
             right_ascension_deg:star_ra,declination_deg:star_dec,
