@@ -76,6 +76,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private frame=0;
   private generation=0;
   private destroyed=false;
+  private webglFailed=false;
   private markerGroup:THREE.Group|null=null;
   private overlayGroup:THREE.Group|null=null;
   private layerGroups:Partial<Record<LayerName,THREE.Group>>={};
@@ -137,6 +138,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.observer.observe(this.viewport.nativeElement);
       this.resize();
     }catch {
+      this.webglFailed=true;
       this.status='webgl_error';
       this.cd.markForCheck();
     }
@@ -165,12 +167,13 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   private async load():Promise<void> {
     const ticket=++this.generation;
-    this.status='loading';this.selected=null;this.data=null;
+    if(!this.webglFailed)this.status='loading';
+    this.selected=null;this.data=null;
     this.buildMarkers();
     this.cd.markForCheck();
     const result=await calculateSkyDome({utcIso:this.utcIso,latMicro:this.latMicro,lngMicro:this.lngMicro});
     if(this.destroyed||ticket!==this.generation)return;
-    this.status=result.kind;
+    this.status=this.webglFailed?'webgl_error':result.kind;
     this.data=result.kind==='ready'?result.data:null;
     this.buildMarkers();
     this.cd.markForCheck();
@@ -385,7 +388,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.camera.updateProjectionMatrix();this.draw();
   };
   private contextLost=(event:Event):void=>{
-    event.preventDefault();this.status='webgl_error';this.cd.markForCheck();
+    event.preventDefault();this.webglFailed=true;this.status='webgl_error';this.cd.markForCheck();
   };
   private pick(event:PointerEvent):void {
     if(!this.camera||!this.renderer)return;
