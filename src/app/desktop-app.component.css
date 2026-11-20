@@ -109,6 +109,7 @@
 .stage-tools.solar-active { flex-basis:220px; }
 .stage-tools .toolbar-button { flex:none; width:100%; min-height:38px; border:0; border-radius:8px; background:transparent; color:var(--vs-text-secondary); font-weight:600; text-align:left; }
 .stage-tools .toolbar-button:hover,.stage-tools .toolbar-button.selected { background:var(--vs-surface-muted); color:var(--vs-accent); }
+.stage-menu-label { display:flex; align-items:center; gap:8px; }
 .arabic-panel { position:absolute; right:14px; top:55px; z-index:4; display:grid; gap:8px; padding:12px;
   max-width:min(360px,80%); background:var(--vs-surface); color:var(--vs-text); border:1px solid var(--vs-border); border-radius:8px; }
 .arabic-panel label { display:grid; gap:3px; font-size:12px; }
@@ -423,6 +424,8 @@ button.data-line:hover,button.data-line.active { background:var(--vs-surface-mut
 .panel-title.first { margin-top:4px; }
 .aspect-line em { font-style:normal; color:var(--vs-text-secondary); }
 .aspect-motion { color:var(--vs-text-secondary); font-weight:700; }
+.function-line { justify-content:flex-start; gap:10px; }
+.function-entry-label { flex:1; }
 .function-line:disabled { color:var(--vs-text-secondary); }
 .function-status { flex:0 0 auto; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
   padding:2px 6px; border-radius:6px; border:1px solid var(--vs-border); color:var(--vs-text-secondary); }
