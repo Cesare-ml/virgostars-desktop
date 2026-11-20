@@ -55,6 +55,7 @@ const WORDS={
     findStarHint:'Scrivi almeno due lettere',
     noStarMatches:'Nessuna stella trovata nel catalogo locale',
     belowHorizon:'Sotto l’orizzonte: disattiva Terreno per vederla.',
+    lensUnavailable:'Vista fisheye non supportata da questa GPU: prospettiva normale attiva.',
     skyHelp:'Trascina per ruotare anche oltre lo zenit; rotellina per passare alla vista sferica.',
     spherical:'Vista sferica',
     perspective:'Prospettiva',
@@ -91,6 +92,7 @@ const WORDS={
     findStarHint:'Type at least two letters',
     noStarMatches:'No matching star in the local catalogue',
     belowHorizon:'Below the horizon: turn off Ground to see it.',
+    lensUnavailable:'Fisheye view unavailable on this GPU: normal perspective is active.',
     skyHelp:'Drag beyond the zenith; scroll out for a spherical all-sky view.',
     spherical:'Spherical view',
     perspective:'Perspective',
@@ -128,6 +130,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private generation=0;
   private destroyed=false;
   private webglFailed=false;
+  fisheyeUnavailable=false;
   private markerGroup:THREE.Group|null=null;
   private markerGeneration=0;
   private markerTextures:THREE.Texture[]=[];
@@ -188,7 +191,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const frame=skyCameraFrame(this.yaw,this.pitch);
     return frame?frame.headingDeg.toFixed(0)+'° · '+frame.altitudeDeg.toFixed(0)+'°':'—';
   }
-  get isSpherical():boolean {return (this.camera?.fov??75)>=SKY_FISHEYE_START_DEG;}
+  get isSpherical():boolean {return !this.fisheyeUnavailable && (this.camera?.fov??75)>=SKY_FISHEYE_START_DEG;}
   get fieldOfView():number { return Math.round(this.camera?.fov??75); }
   get visiblePlanetCount():number{return this.data?.planets.length??0;}
   get planetDock():readonly SkyDomePoint[] { return this.data?.planets??[]; }
@@ -252,7 +255,17 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
       this.renderer.setClearColor(0x000000,0);
       this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
-      this.skyLens=new SkyDomeLens();
+      // Constrain the cubemap size to the GPU's actual capability, with
+      // perspective fallback on devices that cannot support a cube target.
+      const gl=this.renderer.getContext();
+      const maximum=Number(gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE));
+      const side:256|512|1024|0=maximum>=1024?1024:maximum>=512?512:maximum>=256?256:0;
+      if(side){
+        try{this.skyLens=new SkyDomeLens(side);}
+        catch{this.fisheyeUnavailable=true;}
+      }else{
+        this.fisheyeUnavailable=true;
+      }
       this.renderer.domElement.setAttribute('aria-hidden','true');
       this.viewport.nativeElement.appendChild(this.renderer.domElement);
       this.renderer.domElement.addEventListener('pointerdown',this.pointerDown);
@@ -750,7 +763,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(!this.camera)return;
     // A hemisphere fits into a central disc; the extra 20° exposes the
     // opposite side for the ground/sky transitions seen in Stellarium.
-    this.camera.fov=200;
+    this.camera.fov=this.fisheyeUnavailable?84:200;
     this.camera.updateProjectionMatrix();
     this.look(this.yaw,90);
     this.cd.markForCheck();
@@ -782,7 +795,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   private adjustField(change:number):void {
     if(!this.camera)return;
-    this.camera.fov=clampedSkyFov(this.camera.fov+change);
+    this.camera.fov=Math.min(this.fisheyeUnavailable?84:220,clampedSkyFov(this.camera.fov+change));
     this.camera.updateProjectionMatrix();
     // The objects have not moved: only their display projection changes.
     this.draw(false);
@@ -821,7 +834,18 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           if(this.skyLens)this.skyLens.render(this.renderer,this.scene,this.camera);
           else this.renderer.render(this.scene,this.camera);
         }catch{
-          this.webglFailed=true;this.status='webgl_error';
+          if(this.skyLens){
+            // A failed cube target or shader must not erase the ordinary sky.
+            try{this.skyLens.dispose();}catch{/* GPU already lost */}
+            this.skyLens=null;
+            this.fisheyeUnavailable=true;
+            this.camera.fov=Math.min(this.camera.fov,84);
+            this.camera.updateProjectionMatrix();
+            try{this.renderer.render(this.scene,this.camera);}
+            catch{this.webglFailed=true;this.status='webgl_error';}
+          }else{
+            this.webglFailed=true;this.status='webgl_error';
+          }
           this.cd.markForCheck();
         }
       }
