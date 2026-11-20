@@ -31,8 +31,23 @@ export function temporaryIconPng(size=64) {
   return Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',header),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))]);
 }
 export function temporaryIconIco(png=temporaryIconPng()) {
+  // The ICO directory's dimensions must match the embedded PNG; Windows may
+  // otherwise misread icons at different UI scaling factors. Check only the
+  // minimal generator-owned PNG header/trailer contract, not all IDAT pixels.
+  if (!Buffer.isBuffer(png) || png.length < 45 || png.length > 1_048_576 ||
+      !png.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')) ||
+      png.readUInt32BE(8) !== 13 || png.toString('ascii',12,16) !== 'IHDR' ||
+      !png.subarray(-12).equals(Buffer.from('0000000049454e44ae426082','hex'))) {
+    throw new Error('Unsupported temporary icon PNG');
+  }
+  const size = png.readUInt32BE(16);
+  if (![32,64,128].includes(size) || png.readUInt32BE(20) !== size ||
+      png[24] !== 8 || png[25] !== 6 || png[26] !== 0 || png[27] !== 0 || png[28] !== 0 ||
+      png.readUInt32BE(29) !== chunk('IHDR',png.subarray(16,29)).readUInt32BE(21)) {
+    throw new Error('Unsupported temporary icon PNG');
+  }
   const head=Buffer.alloc(22);head.writeUInt16LE(1,2);head.writeUInt16LE(1,4);
-  head[6]=64;head[7]=64;head[8]=0;head[9]=0;head.writeUInt16LE(1,10);head.writeUInt16LE(32,12);
+  head[6]=size;head[7]=size;head[8]=0;head[9]=0;head.writeUInt16LE(1,10);head.writeUInt16LE(32,12);
   head.writeUInt32LE(png.length,14);head.writeUInt32LE(22,18);
   return Buffer.concat([head,png]);
 }
