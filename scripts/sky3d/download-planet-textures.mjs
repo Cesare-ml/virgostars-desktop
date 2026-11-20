@@ -22,8 +22,33 @@ async function download(id,name) {
   const mime=response.headers.get('content-type')||'';
   assert(mime.startsWith('image/jpeg')||mime.startsWith('image/jpg')||
     mime.startsWith('application/octet-stream'),'Unexpected media type: '+id);
-  const bytes=Buffer.from(await response.arrayBuffer());
-  assert(bytes.length>5000&&bytes.length<3_000_000,'Unsafe or unsupported JPEG size: '+id);
+  // Bound the decoded stream as well as the declared Content-Length. Some
+  // servers omit the header or send compressed responses; arrayBuffer()
+  // would otherwise accept an arbitrarily large asset into memory.
+  const MAX_BYTES=3_000_000;
+  const advertised=response.headers.get('content-length');
+  if(advertised!==null){
+    const advertisedSize=Number(advertised);
+    assert(Number.isSafeInteger(advertisedSize)&&advertisedSize<=MAX_BYTES,
+      'Oversized declared image for '+id);
+  }
+  assert(response.body,'Missing response body for '+id);
+  const reader=response.body.getReader();
+  const chunks=[];
+  let total=0;
+  try{
+    while(true){
+      const {done,value}=await reader.read();
+      if(done)break;
+      total+=value.byteLength;
+      assert(total<=MAX_BYTES,'Oversized downloaded image for '+id);
+      chunks.push(Buffer.from(value));
+    }
+  }finally{
+    reader.cancel().catch(()=>{});
+  }
+  const bytes=Buffer.concat(chunks,total);
+  assert(bytes.length>5000&&bytes.length<=MAX_BYTES,'Unsafe or unsupported JPEG size: '+id);
   assert(bytes[0]===255&&bytes[1]===216&&bytes[bytes.length-2]===255&&bytes[bytes.length-1]===217,
     'Incomplete or invalid JPEG: '+id);
   return {id,name,bytes,sha256:sha256(bytes)};
