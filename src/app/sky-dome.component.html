@@ -60,6 +60,24 @@
       <button type="button" [class.active]="showPlanets" [attr.aria-pressed]="showPlanets"
         (click)="toggleLayer('planets')">{{word('planets')}}</button>
     </div>
+    <div class="sky3d-panel-divider"></div>
+    <label class="sky3d-star-search-label" for="sky3d-star-search">{{word('findStar')}}</label>
+    <input id="sky3d-star-search" type="search" class="sky3d-star-search"
+      autocomplete="off" spellcheck="false" maxlength="60" [value]="starQuery"
+      [disabled]="!showStars || status!=='ready' || starCount===0"
+      [attr.placeholder]="word('findStarHint')"
+      (input)="onStarQuery($event)" (keydown)="onStarSearchKey($event)">
+    <ul class="sky3d-star-results" *ngIf="starQuery.length>=2 && showStars && status==='ready' && starMatches.length">
+      <li *ngFor="let star of starMatches">
+        <button type="button" (click)="focusStar(star)">
+          <span class="sky3d-star-result-name">{{star.id}}</span>
+          <span class="sky3d-star-result-alt">{{formatted(star.altitudeDeg)}}</span>
+        </button>
+      </li>
+    </ul>
+    <p class="sky3d-star-no-match" *ngIf="starQuery.length>=2 && showStars && status==='ready' && starMatches.length===0">
+      {{word('noStarMatches')}}
+    </p>
   </aside>
 
   <div class="sky3d-info-strip" aria-live="off">
@@ -93,6 +111,7 @@
         <dd>{{selection.point.magnitude?.toFixed(2)}}</dd></div>
     </dl>
     <p class="sky3d-approximate" *ngIf="selection.point.approximate">{{word('approximate')}}</p>
+    <p class="sky3d-approximate" *ngIf="selection.point.altitudeDeg<0 && showGround">{{word('belowHorizon')}}</p>
   </article>
 
   <p class="sky3d-status" role="status" *ngIf="warning">{{warning}}</p>
