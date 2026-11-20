@@ -4,6 +4,8 @@
 
 > **Update 2026-11-15 — five commands.** The reviewed registry now also contains `chart_calculation::calculate_chart`, `chart_archive::chart_archive` and `return_search::find_returns`, each with its own protocol (`chart-calculation-contract.ts`, `chart-archive-contract.ts`, `return-search-contract.ts`) and adapter (`chart-calculation.ts`, `chart-archive.ts`, `return-search.ts`) under `src/app/native/`. Where the text below says "two" commands, protocols or adapters, read five. See the sections at the end, [VirgoStars-Ephemeris provider](VIRGOSTARS_EPHEMERIS_PROVIDER.md), [Chart archive](CHART_ARCHIVE.md) and [Returns](RETURNS.md).
 
+> **Update 2026-11-20 — Cielo 3D:** The feature branch adds one additional *read-only* command, `sky_dome::calculate_sky_dome`, with `src/app/native/sky-dome-contract.ts` and an audited adapter. It reuses the validated chart provider; the WebView cannot submit a data path or network URL. The command, test fixture and fail-closed allowlist must move together. See [SKY_3D_OBSERVER_MVP_2026-11-20.md](SKY_3D_OBSERVER_MVP_2026-11-20.md). The historical two/five-command description below predates later additions to the registry.
+
 ## Why this gate exists
 
 VirgoStars Desktop's synthetic prototype has exactly two intentionally local Tauri commands: `desktop_runtime_info` (read-only capability probe) and `search_offline_places` (read-only SQLite/FTS5 place search). A change to Rust's command registry, the TypeScript transport contracts or Tauri privileges must not be mistaken for a harmless UI refactor.
