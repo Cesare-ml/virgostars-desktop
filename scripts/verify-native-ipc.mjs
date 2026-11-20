@@ -6,9 +6,9 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'chart_archive', 'find_returns', 'synod_events', 'calculate_historical_planet', 'calculate_historical_planet_calendar', 'calculate_historical_chart', 'open_star_page', 'desktop_connected_account_v1', 'desktop_group_conflicts_v1', 'desktop_chart_sync_v1', 'de441_packages']);
-const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'chart_archive::chart_archive', 'return_search::find_returns', 'synod_events::synod_events', 'historical_planets::calculate_historical_planet', 'historical_planets::calculate_historical_planet_calendar', 'historical_chart::calculate_historical_chart', 'star_link::open_star_page', 'connected_account_ipc::desktop_connected_account_v1', 'connected_account_ipc::desktop_group_conflicts_v1', 'connected_account_ipc::desktop_chart_sync_v1', 'de441_operations::de441_packages']);
-const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts', 'src/app/native/synod-events.ts', 'src/app/native/historical-planets.ts', 'src/app/native/historical-calendar.ts', 'src/app/native/historical-chart.ts', 'src/app/native/star-link.ts', 'src/app/native/connected-account.ts', 'src/app/native/group-conflicts.ts', 'src/app/native/chart-sync.ts', 'src/app/native/de441-packages.ts']);
+const NATIVE_COMMANDS = Object.freeze(['desktop_runtime_info', 'search_offline_places', 'calculate_chart', 'calculate_sky_dome', 'chart_archive', 'find_returns', 'synod_events', 'calculate_historical_planet', 'calculate_historical_planet_calendar', 'calculate_historical_chart', 'open_star_page', 'desktop_connected_account_v1', 'desktop_group_conflicts_v1', 'desktop_chart_sync_v1', 'de441_packages']);
+const NATIVE_HANDLERS = Object.freeze(['runtime_probe::desktop_runtime_info', 'offline_places::search_offline_places', 'chart_calculation::calculate_chart', 'sky_dome::calculate_sky_dome', 'chart_archive::chart_archive', 'return_search::find_returns', 'synod_events::synod_events', 'historical_planets::calculate_historical_planet', 'historical_planets::calculate_historical_planet_calendar', 'historical_chart::calculate_historical_chart', 'star_link::open_star_page', 'connected_account_ipc::desktop_connected_account_v1', 'connected_account_ipc::desktop_group_conflicts_v1', 'connected_account_ipc::desktop_chart_sync_v1', 'de441_operations::de441_packages']);
+const ADAPTERS = Object.freeze(['src/app/native/runtime.ts', 'src/app/native/offline-places.ts', 'src/app/native/chart-calculation.ts', 'src/app/native/sky-dome.ts', 'src/app/native/chart-archive.ts', 'src/app/native/return-search.ts', 'src/app/native/synod-events.ts', 'src/app/native/historical-planets.ts', 'src/app/native/historical-calendar.ts', 'src/app/native/historical-chart.ts', 'src/app/native/star-link.ts', 'src/app/native/connected-account.ts', 'src/app/native/group-conflicts.ts', 'src/app/native/chart-sync.ts', 'src/app/native/de441-packages.ts']);
 const FRONTEND_EXTENSIONS = /\.(?:ts|tsx|js|mjs)$/;
 
 function assert(ok, message) { if (!ok) throw new Error(message); }
@@ -58,7 +58,7 @@ export function auditNativeIpc(sources) {
   }
   // The presence of one approved call must not mask a second, unreviewed IPC.
   // Bracket notation is also a native invoke call and requires review.
-  for(const contract of [sources.runtimeContract,sources.placesContract,sources.chartContract,sources.archiveContract,sources.returnContract,sources.synodContract,sources.historicalContract,sources.historicalCalendarContract,sources.historicalChartContract,sources.starLinkContract,sources.accountContract,sources.conflictsContract,sources.syncContract,sources.packageContract]) {
+  for(const contract of [sources.runtimeContract,sources.placesContract,sources.chartContract,sources.skyContract,sources.archiveContract,sources.returnContract,sources.synodContract,sources.historicalContract,sources.historicalCalendarContract,sources.historicalChartContract,sources.starLinkContract,sources.accountContract,sources.conflictsContract,sources.syncContract,sources.packageContract]) {
     assert(typeof contract==='string', 'Missing reviewed native protocol');
     const calls=[...contract.matchAll(/(?:\.\s*invoke|\[\s*['"]invoke['"]\s*\])\s*(?:\?\.)?\s*\(/g)];
     assert(calls.length===1, 'Unexpected protocol native invocation count');
@@ -66,6 +66,7 @@ export function auditNativeIpc(sources) {
   assert(/invoke\(['"]desktop_runtime_info['"]\)/.test(sources.runtimeContract), 'Runtime contract command mismatch');
   assert(/invoke\(['"]search_offline_places['"]\s*,/.test(sources.placesContract), 'Places contract command mismatch');
   assert(/invoke\(['"]calculate_chart['"]\s*,/.test(sources.chartContract), 'Chart contract command mismatch');
+  assert(/invoke\(['"]calculate_sky_dome['"]\s*,/.test(sources.skyContract), 'Sky dome contract command mismatch');
   assert(/invoke\(['"]chart_archive['"]\s*,/.test(sources.archiveContract), 'Archive contract command mismatch');
   assert(/invoke\(['"]find_returns['"]\s*,/.test(sources.returnContract), 'Return search contract command mismatch');
   assert(/invoke\(['"]synod_events['"]\s*,/.test(sources.synodContract), 'Synod contract command mismatch');
@@ -140,7 +141,7 @@ export function auditCheckout(root=ROOT) {
     assert(!Object.hasOwn(rustModules,moduleName), 'Ambiguous Rust module filename');
     rustModules[moduleName]=read(path);
   }
-  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','chart_archive','return_search','synod_events','historical_planets','historical_chart','star_link','connected_account_ipc','de441_operations']) {
+  for(const moduleName of ['runtime_probe','offline_places','chart_calculation','sky_dome','chart_archive','return_search','synod_events','historical_planets','historical_chart','star_link','connected_account_ipc','de441_operations']) {
     assert(Object.hasOwn(rustModules,moduleName), 'Missing reviewed Rust command module');
   }
   return auditNativeIpc({
@@ -149,6 +150,7 @@ export function auditCheckout(root=ROOT) {
     runtimeContract:read('src/app/native/runtime-protocol.ts'),
     placesContract:read('src/app/native/offline-places-contract.ts'),
     chartContract:read('src/app/native/chart-calculation-contract.ts'),
+    skyContract:read('src/app/native/sky-dome-contract.ts'),
     archiveContract:read('src/app/native/chart-archive-contract.ts'),
     returnContract:read('src/app/native/return-search-contract.ts'),
     synodContract:read('src/app/native/synod-events-contract.ts'),
