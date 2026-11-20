@@ -50,3 +50,13 @@ Aggiunto un livello `Nomi stelle`, disattivabile, che etichetta un sottoinsieme 
 6. Prima di definire i pianeti «fotografici», integrare immagini NASA/JPL o di altre fonti con approvazione espressa della licenza, attributi e pacchetto offline. L'implementazione attuale non incorpora fotografie astronomiche.
 
 Nessuna GitHub Action eseguita dal branch in questo passaggio.
+
+
+## Ricerca offline nelle stelle fisse — aggiornamento del 20/11
+
+- Aggiunta al pannello una ricerca testuale **per nome** sulle sole stelle ricevute dal comando Rust per il luogo e l'istante attivi.
+- `sky-dome-star-search.ts` cerca senza connessione, con confronto case/accent-insensitive, input massimo 60 caratteri e massimo sette risultati mostrati, ordinando prima nomi esatti e prefissi, poi magnitudine.
+- Selezionare un risultato ruota la camera verso l'altezza/azimut reale e apre la scheda dell'astro. Per le stelle sotto l'orizzonte, con il terreno attivo viene indicato come mostrare la direzione nascosta.
+- Nessuna posizione stellare viene stimata o generata dal frontend; l'assenza di un catalogo reale rimane dichiarata e non viene colmata con stelle decorative.
+- `tests/sky-dome-star-search.test.mjs` aggiunge casi di ricerca, sicurezza e appartenenza al catalogo. Alcune verifiche isolate della ricerca sono state eseguite con Node 22, **non** una compilazione completa del Desktop.
+
