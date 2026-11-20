@@ -264,6 +264,8 @@
   margin:0 11px 11px;color:#94b6b2;font-size:9.5px;
   line-height:1.5;
 }
+.sky3d-search-accordion {border-color:rgba(144,176,225,.18);}
+.sky3d-search-accordion[open] {background:rgba(20,33,55,.55);}
 .sky3d-search-content {padding:0 10px 10px;}
 .sky3d-search-content .sky3d-star-search-label {margin:4px 0 7px;}
 .sky3d-search-content .sky3d-star-results {margin-top:7px;}
