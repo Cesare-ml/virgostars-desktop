@@ -7,11 +7,12 @@ import {auditNativeIpc, auditCheckout} from '../scripts/verify-native-ipc.mjs';
 
 function fixture() {
   return {
-    entry:'tauri::Builder::default().invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, star_link::open_star_page, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1, connected_account_ipc::desktop_chart_sync_v1, de441_operations::de441_packages])',
+    entry:'tauri::Builder::default().invoke_handler(tauri::generate_handler![runtime_probe::desktop_runtime_info, offline_places::search_offline_places, chart_calculation::calculate_chart, sky_dome::calculate_sky_dome, chart_archive::chart_archive, return_search::find_returns, synod_events::synod_events, historical_planets::calculate_historical_planet, historical_planets::calculate_historical_planet_calendar, historical_chart::calculate_historical_chart, star_link::open_star_page, connected_account_ipc::desktop_connected_account_v1, connected_account_ipc::desktop_group_conflicts_v1, connected_account_ipc::desktop_chart_sync_v1, de441_operations::de441_packages])',
     rustModules:{
       runtime_probe:'#[tauri::command]\npub fn desktop_runtime_info() {}',
       offline_places:'#[tauri::command]\npub async fn search_offline_places() {}',
       chart_calculation:'#[tauri::command]\npub fn calculate_chart() {}',
+      sky_dome:'#[tauri::command]\npub fn calculate_sky_dome() {}',
       chart_archive:'#[tauri::command]\npub fn chart_archive() {}',
       return_search:'#[tauri::command]\npub fn find_returns() {}',
       synod_events:'#[tauri::command]\npub async fn synod_events() {}',
@@ -24,6 +25,7 @@ function fixture() {
     runtimeContract:"async function run(port) { return port.invoke('desktop_runtime_info'); }",
     placesContract:"async function search(port) { return port.invoke('search_offline_places', {query:'A'}); }",
     chartContract:"async function chart(port) { return port.invoke('calculate_chart', {request:{}}); }",
+    skyContract:"async function dome(port) { return port.invoke('calculate_sky_dome', {request:{}}); }",
     archiveContract:"async function archive(port) { return port.invoke('chart_archive', {request:{}}); }",
     returnContract:"async function returns(port) { return port.invoke('find_returns', {request:{}}); }",
     synodContract:"async function synods(port) { return port.invoke('synod_events', {request:{}}); }",
@@ -39,6 +41,7 @@ function fixture() {
       'src/app/native/runtime.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command)=>invoke<unknown>(command);",
       'src/app/native/offline-places.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/chart-calculation.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
+      'src/app/native/sky-dome.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/chart-archive.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/return-search.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
       'src/app/native/synod-events.ts':"import {invoke, isTauri} from '@tauri-apps/api/core'; const port=(command,args)=>invoke<unknown>(command,args);",
@@ -58,7 +61,7 @@ function fixture() {
 
 test('reviewed read-only registry and restricted adapters pass',()=>{
   const checked=auditNativeIpc(fixture());
-  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
+  assert.deepEqual(checked.commands,['desktop_runtime_info','search_offline_places','calculate_chart','calculate_sky_dome','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
 });
 test('extra native command cannot enter without a conscious allowlist review',()=>{
   const f=fixture();f.entry=f.entry.replace('de441_operations::de441_packages]', 'de441_operations::de441_packages, account::read_token]');
@@ -79,7 +82,7 @@ test('missing Rust command function fails',()=>{
   assert.throws(()=>auditNativeIpc(f),/Unregistered/);
 });
 test('renamed Angular native commands fail the exact cross-language contract',()=>{
-  const commandOf={runtimeContract:'desktop_runtime_info',placesContract:'search_offline_places',chartContract:'calculate_chart',archiveContract:'chart_archive',returnContract:'find_returns',synodContract:'synod_events',historicalContract:'calculate_historical_planet',historicalCalendarContract:'calculate_historical_planet_calendar',historicalChartContract:'calculate_historical_chart',accountContract:'desktop_connected_account_v1',conflictsContract:'desktop_group_conflicts_v1',syncContract:'desktop_chart_sync_v1',packageContract:'de441_packages'};
+  const commandOf={runtimeContract:'desktop_runtime_info',placesContract:'search_offline_places',chartContract:'calculate_chart',skyContract:'calculate_sky_dome',archiveContract:'chart_archive',returnContract:'find_returns',synodContract:'synod_events',historicalContract:'calculate_historical_planet',historicalCalendarContract:'calculate_historical_planet_calendar',historicalChartContract:'calculate_historical_chart',accountContract:'desktop_connected_account_v1',conflictsContract:'desktop_group_conflicts_v1',syncContract:'desktop_chart_sync_v1',packageContract:'de441_packages'};
   for(const which of Object.keys(commandOf)){
     const f=fixture();f[which]=f[which].replace(commandOf[which],'unreviewed_native_method');
     assert.throws(()=>auditNativeIpc(f),/contract command mismatch/);
@@ -181,7 +184,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       ...f.tsFiles,
       'src/main.ts':'export const demo = true;',
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','calculate_sky_dome','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
     for(const [path,content] of [
       ['src/main.ts',"import('@tauri-apps/api/core');"],
       ['src/app/misc/native.tsx',"import {invoke} from '@tauri-apps/api/core';"],
@@ -192,7 +195,7 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
       assert.throws(()=>auditCheckout(root),/Unexpected Tauri import/,path);
       write(path,'export const ok = true;');
     }
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','calculate_sky_dome','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
     // In Tauri 2 an empty capabilities array still auto-loads capability files.
     // An unexpected JSON/TOML permission file must fail closed.
     for(const name of ['unexpected.json','unexpected.toml','readme.txt']) {
@@ -205,13 +208,13 @@ test('checkout audit scans entrypoint and nested JavaScript/TypeScript sources',
     mkdirSync(join(root,'src-tauri/capabilities','nested'));
     assert.throws(()=>auditCheckout(root),/auto-discovered capability files/);
     rmSync(join(root,'src-tauri/capabilities','nested'),{recursive:true});
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','calculate_sky_dome','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
     // A command in a newly added nested Rust file must not evade the audit.
     write('src-tauri/src/features/new_command.rs',
       '#[tauri::command]\npub fn reveal_secret() {}');
     assert.throws(()=>auditCheckout(root),/Unregistered native command/);
     write('src-tauri/src/features/new_command.rs','pub fn helper() {}');
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','calculate_sky_dome','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
 
     // Distinct Rust files with identical basenames are ambiguous in the flat
     // module-name inventory and must be reviewed rather than silently merged.
@@ -279,7 +282,7 @@ test('changing Tauri build.rs from its reviewed build-only form fails closed',()
       'src/app/native/de441-packages-contract.ts':f.packageContract,
       ...f.tsFiles,
     })) write(path,content);
-    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
+    assert.deepEqual(auditCheckout(root).commands,['desktop_runtime_info','search_offline_places','calculate_chart','calculate_sky_dome','chart_archive','find_returns','synod_events','calculate_historical_planet','calculate_historical_planet_calendar','calculate_historical_chart','open_star_page','desktop_connected_account_v1','desktop_group_conflicts_v1','desktop_chart_sync_v1','de441_packages']);
     write('src-tauri/build.rs','fn main() { tauri_build::try_build(custom_attributes()); }');
     assert.throws(()=>auditCheckout(root),/build configuration changed/);
   } finally {rmSync(root,{recursive:true,force:true});}
