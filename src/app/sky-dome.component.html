@@ -18,6 +18,8 @@
       (click)="toggleLayer('zodiac')">{{word('zodiac')}}</button>
     <button type="button" [class.active]="showSigns" [attr.aria-pressed]="showSigns"
       (click)="toggleLayer('signs')">{{word('signs')}}</button>
+    <button type="button" [class.active]="showAngles" [attr.aria-pressed]="showAngles"
+      (click)="toggleLayer('angles')">{{word('angles')}}</button>
     <button type="button" [class.active]="showGround" [attr.aria-pressed]="showGround"
       (click)="toggleLayer('ground')">{{word('ground')}}</button>
     <button type="button" [class.active]="showStars" [attr.aria-pressed]="showStars"
