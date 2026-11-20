@@ -24,6 +24,23 @@ pub struct HorizontalObject {
     pub approximate: bool,
 }
 
+/// A geometric direction on the observer's sphere, not a physical body.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkyDirectionV1 {
+    pub altitude_deg: f64,
+    pub azimuth_north_east_deg: f64,
+}
+
+/// A 30-degree tropical zodiac arc projected using the true obliquity of date.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkyZodiacSegmentV1 {
+    pub sign_index: u8,
+    pub points: Vec<SkyDirectionV1>,
+    pub label: SkyDirectionV1,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SkyDomeV1 {
@@ -33,6 +50,7 @@ pub struct SkyDomeV1 {
     pub provider_id: Option<String>,
     pub planets: Vec<HorizontalObject>,
     pub stars: Vec<HorizontalObject>,
+    pub zodiac_segments: Vec<SkyZodiacSegmentV1>,
 }
 
 /// Vector conversion with an oblate Earth and observer at sea level. RA and
@@ -70,8 +88,64 @@ fn topocentric_horizontal(
     (altitude.is_finite() && azimuth.is_finite()).then_some((altitude,azimuth))
 }
 
+/// An infinitely distant direction, expressed in true-equator-of-date
+/// coordinates, transformed into the observer's geometric horizon.
+fn celestial_horizontal(
+    ra_deg: f64, dec_deg: f64, armc_deg: f64, latitude_deg: f64,
+) -> Option<SkyDirectionV1> {
+    if ![ra_deg, dec_deg, armc_deg, latitude_deg].iter().all(|x| x.is_finite())
+        || dec_deg.abs() > 90.0 || latitude_deg.abs() > 90.0 { return None; }
+    let h = (armc_deg - ra_deg).to_radians();
+    let dec = dec_deg.to_radians();
+    let lat = latitude_deg.to_radians();
+    let east = -dec.cos() * h.sin();
+    let north = dec.sin() * lat.cos() - dec.cos() * h.cos() * lat.sin();
+    let up = dec.sin() * lat.sin() + dec.cos() * h.cos() * lat.cos();
+    let altitude = up.atan2(east.hypot(north)).to_degrees();
+    let azimuth = east.atan2(north).to_degrees().rem_euclid(360.0);
+    (altitude.is_finite() && azimuth.is_finite()).then_some(SkyDirectionV1 {
+        altitude_deg:altitude, azimuth_north_east_deg:azimuth,
+    })
+}
+
+/// Tropical 0° is the true equinox of date. Zodiac intervals are measured
+/// along the true ecliptic, never by dividing the horizon into twelve.
+fn zodiac_direction(
+    ecliptic_longitude_deg:f64, true_obliquity_deg:f64,
+    armc_deg:f64, latitude_deg:f64,
+) -> Option<SkyDirectionV1> {
+    if !ecliptic_longitude_deg.is_finite() || !true_obliquity_deg.is_finite()
+        || !(0.0..90.0).contains(&true_obliquity_deg) { return None; }
+    let longitude = ecliptic_longitude_deg.to_radians();
+    let obliquity = true_obliquity_deg.to_radians();
+    let x = longitude.cos();
+    let y = longitude.sin() * obliquity.cos();
+    let z = longitude.sin() * obliquity.sin();
+    let ra = y.atan2(x).to_degrees().rem_euclid(360.0);
+    let dec = z.atan2(x.hypot(y)).to_degrees();
+    celestial_horizontal(ra,dec,armc_deg,latitude_deg)
+}
+
+fn zodiac_segments(
+    true_obliquity_deg:f64, armc_deg:f64, latitude_deg:f64,
+) -> Option<Vec<SkyZodiacSegmentV1>> {
+    let mut output = Vec::with_capacity(12);
+    for sign_index in 0_u8..12 {
+        let start = f64::from(sign_index) * 30.0;
+        let mut points = Vec::with_capacity(31);
+        for degree in 0..=30 {
+            points.push(zodiac_direction(
+                start + f64::from(degree),true_obliquity_deg,armc_deg,latitude_deg
+            )?);
+        }
+        let label = zodiac_direction(start+15.0,true_obliquity_deg,armc_deg,latitude_deg)?;
+        output.push(SkyZodiacSegmentV1 {sign_index,points,label});
+    }
+    Some(output)
+}
+
 fn failure(status: &'static str) -> SkyDomeV1 {
-    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![] }
+    SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![] }
 }
 
 pub fn respond(
@@ -91,6 +165,12 @@ pub fn respond(
         return failure("calculation_failed");
     };
     let latitude = f64::from(request.lat_micro) / 1e6;
+    let Some(ref context) = chart.house_angle_context else {
+        return failure("calculation_failed");
+    };
+    let Some(zodiac_segments) = zodiac_segments(
+        context.true_obliquity_deg, armc, latitude
+    ) else { return failure("calculation_failed"); };
     let mut planets = Vec::new();
     for body in chart.bodies {
         if !PHYSICAL_BODIES.contains(&body.id) { continue; }
@@ -116,7 +196,7 @@ pub fn respond(
     SkyDomeV1 {
         protocol_version:1,status:"ok",
         provider_id:calculated.provider.map(|p|p.id.to_string()),
-        planets,stars,
+        planets,stars,zodiac_segments,
     }
 }
 
@@ -159,6 +239,40 @@ mod tests {
         });
         assert_eq!(reply.status,"provider_unavailable");
         assert!(reply.planets.is_empty() && reply.stars.is_empty());
+    }
+    #[test]
+    fn zodiac_is_twelve_contiguous_real_ecliptic_arcs() {
+        let zodiac = zodiac_segments(23.4392911, 0.0, 0.0).unwrap();
+        assert_eq!(zodiac.len(), 12);
+        assert!(zodiac.iter().enumerate().all(|(i,sign)|
+            usize::from(sign.sign_index) == i && sign.points.len() == 31
+        ));
+        // Aries 0° is the zenith at the equator, at sidereal angle zero.
+        assert!((zodiac[0].points[0].altitude_deg-90.0).abs() < 1e-9);
+        // Cancer 0° has declination +obliquity and lies on this horizon.
+        let northern_solstice = zodiac[3].points[0];
+        assert!(northern_solstice.altitude_deg.abs() < 1e-8);
+        assert!((northern_solstice.azimuth_north_east_deg - (90.0-23.4392911)).abs() < 1e-8);
+        // At the zenith azimuth itself is undefined: compare 3D unit vectors.
+        let vec = |p:SkyDirectionV1| {
+            let a=p.altitude_deg.to_radians();
+            let z=p.azimuth_north_east_deg.to_radians();
+            [a.cos()*z.sin(),a.cos()*z.cos(),a.sin()]
+        };
+        for i in 0..12 {
+            let end = vec(zodiac[i].points[30]);
+            let next = vec(zodiac[(i+1)%12].points[0]);
+            for j in 0..3 {assert!((end[j]-next[j]).abs() < 1e-8);}
+        }
+    }
+    #[test]
+    fn zodiac_accounts_for_hemisphere_and_rejects_untrusted_angles() {
+        let north = zodiac_direction(90.0,23.4392911,0.0,45.0).unwrap();
+        let south = zodiac_direction(90.0,23.4392911,0.0,-45.0).unwrap();
+        assert!((north.altitude_deg-south.altitude_deg).abs() > 30.0);
+        assert!(zodiac_direction(10.0,f64::NAN,0.0,0.0).is_none());
+        assert!(zodiac_segments(23.439,f64::NAN,0.0).is_none());
+        assert!(zodiac_segments(23.439,0.0,91.0).is_none());
     }
     #[test]
     fn invalid_vectors_do_not_produce_rendered_points() {
