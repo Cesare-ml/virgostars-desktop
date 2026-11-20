@@ -21,3 +21,9 @@ Il run 44783480637 è fallito prima di Rust/Tauri in `npm test` (13 fail ARM64 /
 ## Secondo tentativo — gate IPC
 
 Nel run 44786607615, `npm test` ARM64 ha superato 1080 test, 0 falliti e 2 saltati. Il successivo gate `verify:ipc` ha respinto lo snapshot perché il valore SHA-256 fissato per `src-tauri/build.rs` non corrispondeva più al codice effettivo già presente nel tag v0.0.4. Il file reale (835 byte) contiene solo il caricamento opzionale del catalogo stelle su `OUT_DIR` e `tauri_build::build()`, senza plugin o IPC aggiuntivi. È stato letto e il suo SHA-256 confermato (`5b5317f84fdde87bbea8a2e2f7719e1453c195ea386d17643806bf9f3d626565`); viene aggiornata **solo l'impronta pin**, lasciando inalterati tutti i controlli su plugin, comandi, adapter e capabilities.
+
+## Terzo tentativo e dipendenze API pubbliche
+
+Run 44787065295: 1080 test riusciti, 0 falliti, due skipped; IPC gate superato, ma Angular non compila perché i package pubblici pinati non esportano le API richieste dallo snapshot Windows 0.0.4 (Regolo grouped Arabic parts, star contacts, SolarReturnStripComponent e opzioni/interazioni renderer più recenti). Questo ramo **non finge** la presenza di questi calcoli. La prima build Mac usa un gate *fail-closed* per le parti arabe e i contatti stellari, disabilitando l'interfaccia corrispondente e mostrando che non è disponibile; non crea longitudes o contatti. La tabella di anteprima rivoluzione mostra soltanto posizioni/cuspidi già calcolate dal motore senza simulare il componente 3D upstream. Le opzioni renderer mancanti non vengono passate al vecchio Charts. Questo intervento è **esclusivo della build Mac sperimentale** e non deve essere pubblicato come release funzionalmente equivalente a Windows.
+
+Per ripristinare la parità occorrono contratti upstream pubblicati e testati di `astrological-functions` e `astrological-charts`, compresa la verifica del rendering delle stelle fisse e dei segni/assi sinastria.

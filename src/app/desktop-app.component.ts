@@ -11,8 +11,7 @@ import * as astrologyPackage from 'astrological-functions';
 import {makeDirectionPlan} from './directions-form';
 import {rendererPlanetaryHours} from './astro/planetary-hour';
 import {addExtraHouses} from './astro/extra-houses';
-import {calculateRegoloArabicParts, type RegoloPart} from 'astrological-functions/regolo-arabic-parts';
-import {calculateVirgoStarsStarContacts} from 'astrological-functions/virgostars-star-contacts';
+import {calculateRegoloArabicParts, calculateVirgoStarsStarContacts, type RegoloPart} from './astro/mac-only-unavailable';
 import {moduleExport} from './module-export';
 import {
   chartSide, CHART_MARGIN_PX, CHART_MODES, commonHouseSystems, shouldCollapseNavigation, SKY_REFRESH_MS, type ChartMode, type InspectorTab, type UiTheme, type WorkspaceView
@@ -526,6 +525,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   synastryPickerOpen = false;
   readonly synastryDeflectionSupported = moduleExport(chartsPackage, 'SYNASTRY_DEFLECTION_VERSION') === 1;
   readonly synastryHouses = [1,2,3,4,5,6,7,8,9,10,11,12];
+  // Explicitly unavailable in this isolated Mac source preview: upstream APIs do not exist.
+  readonly advancedPartsSupported = false;
+  readonly fixedStarContactsSupported = false;
   synastryDeflection = false;
   synastryDeflectionHouse = 1;
   readonly directionsSupported = typeof moduleExport(astrologyPackage, 'calculateRegoloDirection') === 'function' &&
@@ -742,6 +744,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   get arabicParts(): {essenziali:readonly RegoloPart[]; abumashar:readonly (readonly RegoloPart[])[]} | null {
+    if (!this.advancedPartsSupported) return null;
     const chart = this.activeChart;
     const house = chart?.data.houses[this.houseSystem];
     if (!chart || !house) return null;
@@ -816,6 +819,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   get fixedStarContacts(): readonly {star:FixedStarV1; conjunctions:readonly string[]; axis:string | null; longitude:number}[] {
+    if (!this.fixedStarContactsSupported) return [];
     const chart = this.activeChart, stored = this.fixedStarsResult;
     if (!this.fixedStarsEnabled || !chart || stored?.key !== this.planetaryHourKey(chart)) return [];
     const house = chart.data.houses[this.houseSystem];
@@ -2303,7 +2307,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       GestoreImmagini.configurePublicAssetsBase('/assets/');
       this.fitStage();
       this.renderer.inizializzaGraficoRender(this.canvas,{x:800,y:800});
-      this.renderer.setFixedStarHoverListener(id => {
+      (this.renderer as GraficoRenderService & {setFixedStarHoverListener?: (listener:((id:number|null)=>void)|null)=>void})
+        .setFixedStarHoverListener?.((id:number|null) => {
         if (id !== null && this.fixedStarsEnabled && !this.destroyed) {this.fixedStarSelected = id; this.cd.markForCheck();}
       });
       this.renderer.setNatalPlanetHoverListener(value => {
@@ -2588,8 +2593,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     options.nascondiAssiDuplicati = true;
     options.mostraDirezioneMotoMC = true;
     options.mostraAssiTransiti = this.mode === 'transits';
-    options.mostraAssiSinastria = this.mode === 'synastry';
-    options.latitudiniDistanzaCamera = 3.25;
+    // These two options are absent from the public Charts API in this Mac preview.
+    // Do not assign unknown options and imply the renderer supports them.
     options.temaGrafico = this.theme;
     const active = this.activeChart;
     options.settaggi.transaturnini_se_congiunti = this.chartSettings.outerWhenConjunct;

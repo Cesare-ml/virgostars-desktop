@@ -1,5 +1,5 @@
 import {CommonModule} from '@angular/common';
-import {SolarReturnStripComponent, type SolarReturnStripData} from 'grafici-astrologici';
+import {SolarReturnStripComponent, type SolarReturnStripData} from './solar-return-strip.component';
 import {
   ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject,
 } from '@angular/core';

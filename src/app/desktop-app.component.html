@@ -176,7 +176,8 @@
           <small *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='loading'">{{t('arabic.newMoonLoading')}}</small>
           <small *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='unavailable'">{{t('arabic.newMoonUnavailable')}}</small>
         </div>
-        <div class="star-panel" *ngIf="fixedStarsEnabled && mode==='natal' && chartPresentation==='wheel' && (fixedStarsBusy || fixedStarsError || fixedStarCatalogIsSample || selectedFixedStar)" aria-live="polite">
+        <div class="star-panel" *ngIf="fixedStarsEnabled && mode==='natal' && chartPresentation==='wheel' && (!fixedStarContactsSupported || fixedStarsBusy || fixedStarsError || fixedStarCatalogIsSample || selectedFixedStar)" aria-live="polite">
+          <small class="star-status" *ngIf="!fixedStarContactsSupported">{{locale==='it' ? 'Contatti con stelle fisse non disponibili in questa build Mac di prova.' : 'Fixed-star contacts are unavailable in this Mac test build.'}}</small>
           <small class="star-status" *ngIf="fixedStarCatalogIsSample">{{t('stars.sample')}}</small>
           <small class="star-status" *ngIf="fixedStarsBusy">{{t('stars.loading')}}</small>
           <small class="star-status" *ngIf="fixedStarsError">{{t('stars.unavailable')}}</small>
@@ -630,7 +631,7 @@
             [disabled]="!kleroiSupported || !kleroi || busy || calcBusy" [attr.title]="t(kleroiSupported ? 'kleroi.hint' : 'kleroi.unavailable')"
             [class.selected]="kleroiEnabled" [attr.aria-pressed]="kleroiEnabled" (click)="toggleKleroi()">{{t('kleroi.title')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
-            [disabled]="!kleroi || busy || calcBusy" [class.selected]="arabicPartsOpen" [attr.aria-pressed]="arabicPartsOpen"
+            [disabled]="!advancedPartsSupported || !kleroi || busy || calcBusy" [class.selected]="arabicPartsOpen" [attr.aria-pressed]="arabicPartsOpen"
             (click)="toggleArabicParts()">{{t('arabic.title')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="fixedStarsBusy" [class.selected]="fixedStarsEnabled" [attr.aria-pressed]="fixedStarsEnabled"
