@@ -31,7 +31,7 @@ Use `npm start` for Angular UI work when the verified original `../astrological-
 - Keep astronomy calculations in the Rust provider; don't duplicate them in UI code.
 - State commands run, environment, test counts, missing coverage and known blockers.
 - Never commit authentication tokens, API keys, original personal birth records, unreviewed artwork, privately distributed city catalogs or external astronomical kernels.
-- Do not enable GitHub Actions, perform automatic deployments, merge to main, or publish a release without explicit maintainer approval.
+- The maintainer authorized a single **manual-only** macOS DMG GitHub Action (`workflow_dispatch`, read-only, unsigned build artifacts). Do not enable automatic GitHub Actions triggers, perform automatic deployments, merge to main or publish a release without explicit maintainer approval.
 
 ## Licensing and credits
 
