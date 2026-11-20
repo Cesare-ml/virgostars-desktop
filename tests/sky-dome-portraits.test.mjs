@@ -47,7 +47,9 @@ test('3D markers use original generated portraits and approved asset glyphs in d
   assert.match(source,/const portrait=this\.portraitTexture\(point\.id\)/);
   assert.match(source,/createPlanetPortrait\(id\)/);
   assert.match(source,/celestialGlyphUrl\(point\.id\)/);
-  assert.match(source,/glyph\.scale\.set\(spec\.labelDiameter,spec\.labelDiameter,1\)/);
+  assert.match(source,/spec\.labelDiameter,spec\.labelDiameter/);
+  assert.match(source,/anchorX:0\.10,anchorY:0\.10/);
+  assert.match(source,/skyFacingPlane\(portrait/);
   assert.match(source,/label\.position\.copy\(this\.vec\(star\.azimuthNorthEastDeg/);
   assert.match(html,/toggleLayer\('starLabels'\)/);
   assert.match(html,/toggleLayer\('zodiacGrid'\)/);
