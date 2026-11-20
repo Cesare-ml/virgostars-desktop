@@ -158,6 +158,21 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get fieldOfView():number { return Math.round(this.camera?.fov??75); }
   get visiblePlanetCount():number{return this.data?.planets.length??0;}
+  get planetDock():readonly SkyDomePoint[] { return this.data?.planets??[]; }
+  focusPlanet(id:string):void {
+    const point=this.data?.planets.find(body=>body.id===id);
+    if(!point || !this.showPlanets || this.status!=='ready')return;
+    this.selected={point,kind:'planet'};
+    this.look(point.azimuthNorthEastDeg,Math.max(-85,Math.min(85,point.altitudeDeg)));
+    this.updateSelectionRing();
+    this.cd.markForCheck();
+  }
+  glyphMissing(event:Event):void {
+    const img=event.target as HTMLImageElement;
+    img.hidden=true;
+    const label=img.nextElementSibling as HTMLElement|null;
+    if(label)label.hidden=false;
+  }
   get dateLabel():string {
     const instant=new Date(this.utcIso);
     if(!Number.isFinite(instant.getTime()))return this.utcIso;
