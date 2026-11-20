@@ -532,7 +532,6 @@
             <vs-de441-packages [locale]="locale" [settingsOpen]="view==='settings'" [wizardEnabled]="false"></vs-de441-packages>
             <button type="button" class="settings-guide" (click)="openGuide()">{{t('guide.open')}}</button>
             <label class="settings-check"><input type="checkbox" [checked]="showArchivePhotos" (change)="toggleArchivePhotos()"><span>{{t('archive.photos.show')}}</span></label>
-            <p class="inspector-hint">{{t('archive.photos.private')}}</p>
             <div class="reference-place">
               <h3>{{t('referencePlace.title')}}</h3>
               <p>{{referencePlace.name}} · {{referencePlace.timeZone}}</p>
