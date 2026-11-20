@@ -12,8 +12,8 @@ const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 const DIRECTORY=resolve(ROOT,'.local/sky3d/textures');
 function sha256(bytes){return createHash('sha256').update(bytes).digest('hex');}
 function assert(ok,message){if(!ok)throw Error(message);}
-async function download(id,name) {
-  const response=await fetch(TEXTURE_SOURCE+name,{
+export async function download(id,name,request=fetch) {
+  const response=await request(TEXTURE_SOURCE+name,{
     redirect:'error',
     signal:AbortSignal.timeout(30000),
     headers:{Accept:'image/jpeg'},
@@ -87,4 +87,9 @@ async function main(){
   console.log('Saved '+downloaded.length+' maps; '+failures.length+' unavailable. Private builds stay offline.');
   if(failures.length)console.warn('Illustrated fallback for: '+failures.join(', '));
 }
-main().catch(error=>{console.error('Planet texture download failed:',error.message);process.exitCode=1;});
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  main().catch(error=>{
+    console.error('Planet texture download failed:',error.message);
+    process.exitCode=1;
+  });
+}
