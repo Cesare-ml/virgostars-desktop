@@ -662,6 +662,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(this.ground)this.ground.visible=this.showGround;
     this.draw();
   }
+  showAllSky():void {
+    if(!this.camera)return;
+    // A hemisphere fits into a central disc; the extra 20° exposes the
+    // opposite side for the ground/sky transitions seen in Stellarium.
+    this.camera.fov=200;
+    this.camera.updateProjectionMatrix();
+    this.look(this.yaw,90);
+    this.cd.markForCheck();
+  }
   resetView():void {
     if(this.camera){this.camera.fov=75;this.camera.updateProjectionMatrix();}
     this.look(180,24);
