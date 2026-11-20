@@ -162,6 +162,10 @@
       <div *ngIf="selection.point.distanceAu!==null">
         <dt>{{word('distance')}}</dt><dd>{{valueText(selection.point.distanceAu,word('distanceUnit'),6)}}</dd>
       </div>
+      <div *ngIf="selection.point.illuminatedFraction!==null">
+        <dt>{{word('illuminatedFraction')}}</dt>
+        <dd>{{percentText(selection.point.illuminatedFraction)}}</dd>
+      </div>
       <div *ngIf="selection.point.longitudeSpeedDegPerDay!==null">
         <dt>{{word('longitudeSpeed')}}</dt><dd>{{valueText(selection.point.longitudeSpeedDegPerDay,word('speedUnit'),4)}}</dd>
       </div>
@@ -178,6 +182,7 @@
         <dt>{{word('source')}}</dt><dd>{{selection.point.ephemerisSource}}</dd>
       </div>
     </dl>
+    <p class="sky3d-approximate" *ngIf="selection.point.illuminatedFraction!==null">{{word('illuminatedFractionNote')}}</p>
     <p class="sky3d-approximate" *ngIf="selection.point.approximate">{{word('approximate')}}</p>
     <p class="sky3d-approximate" *ngIf="selection.point.altitudeDeg<0 && showGround">{{word('belowHorizon')}}</p>
   </article>
