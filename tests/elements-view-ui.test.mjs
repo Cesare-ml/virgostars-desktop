@@ -8,7 +8,7 @@ test('Elementi and Aspetti independently swap central presentation without destr
   const html=read('src/app/desktop-app.component.html');
   const source=read('src/app/desktop-app.component.ts');
   assert.match(html, /<canvas #canvas class="chart-canvas"/);
-  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && (chartPresentation==='elements' || chartPresentation==='aspects')"/);
+  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && \(chartPresentation==='elements' \|\| chartPresentation==='aspects'\)"/);
   assert.match(html, /\(click\)="toggleElements\(\)"/);
   assert.match(html, /\[attr\.aria-pressed\]="chartPresentation==='elements'"/);
   assert.match(html, /\(click\)="toggleAspects\(\)"/);
