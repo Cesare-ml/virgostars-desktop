@@ -8,10 +8,18 @@ const near=(value,expected)=>assert.ok(Math.abs(value-expected)<1e-10,`expected 
 const fixture=(id,alt,az,approximate=false,magnitude=null)=>({
   id,altitudeDeg:alt,azimuthNorthEastDeg:az,approximate,magnitude,
 });
+const sampleDirection=(altitudeDeg,azimuthNorthEastDeg)=>({altitudeDeg,azimuthNorthEastDeg});
+const zodiacFixture=()=>Array.from({length:12},(_,signIndex)=>({
+  signIndex,
+  // Fixtures test the IPC schema; they are not astronomical predictions.
+  points:Array.from({length:31},(_,i)=>sampleDirection(0,signIndex*30+i)),
+  label:sampleDirection(0,signIndex*30+15),
+}));
 const reply=()=>({
   protocolVersion:1,status:'ok',providerId:'virgostars_ephemeris',
   planets:[fixture('Sun',50,180),fixture('Moon',-20,90)],
   stars:[fixture('Sirius',-2,225,true,-1.44)],
+  zodiacSegments:zodiacFixture(),
 });
 
 test('3D renderer uses true north/east/up and supports underground points',()=>{
@@ -37,6 +45,9 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
   assert.equal(decoded.kind,'ready');
   assert.equal(decoded.data.stars[0].approximate,true);
   assert.ok(Object.isFrozen(decoded.data.planets));
+  assert.ok(Object.isFrozen(decoded.data.zodiacSegments));
+  assert.equal(decoded.data.zodiacSegments.length,12);
+  assert.equal(decoded.data.zodiacSegments[0].points.length,31);
   for(const mutation of [
     r=>r.planets[0].altitudeDeg=NaN,
     r=>r.planets[1].azimuthNorthEastDeg=-1,
@@ -45,6 +56,11 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
     r=>r.planets[0].id='Invented planet',
     r=>r.planets.splice(1,1),
     r=>r.protocolVersion=2,
+    r=>r.zodiacSegments.pop(),
+    r=>r.zodiacSegments[3].signIndex=0,
+    r=>r.zodiacSegments[2].points.pop(),
+    r=>r.zodiacSegments[4].label.altitudeDeg=Infinity,
+    r=>r.zodiacSegments[5].points[7].azimuthNorthEastDeg=-2,
   ]){
     const modified=reply();mutation(modified);
     assert.throws(()=>decodeSkyDome(modified),/protocol/);
@@ -74,6 +90,10 @@ test('Desktop chart uses separate 3D presentation, not a second synthetic natal 
   assert.match(template,/\(click\)="toggleSkyDome\(\)"/);
   assert.match(controller,/chartPresentation: 'wheel' \| 'elements' \| 'aspects' \| 'sky3d'/);
   assert.match(rust,/topocentric_horizontal/);
+  assert.match(rust,/zodiac_direction/);
+  assert.match(viewer,/zodiacGlyphUrl/);
+  assert.match(viewer,/data.zodiacSegments/);
+  assert.match(read('src/app/sky-dome.component.html'),/toggleLayer\('zodiac'\)/);
   assert.match(viewer,/calculateSkyDome/);
   assert.doesNotMatch(viewer,/Math\.random\(|synthetic|fakePlanet/);
 });
