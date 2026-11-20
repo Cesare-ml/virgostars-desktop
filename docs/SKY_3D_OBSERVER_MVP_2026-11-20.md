@@ -4,7 +4,7 @@
 
 ## Product concept
 
-An offline-first interactive celestial dome for the observer at the active chart's location and instant. It complements, but does not replace, the existing astrological wheel. Initial controls: horizon, meridian, geographic N/E/S/W orientation, celestial equator, optional horizontal grid, terrain occlusion, stars, real apparent planet positions, selection to inspect geometric altitude/azimuth, mouse panning and zoom.
+An offline-first interactive celestial dome for the observer at the active chart's location and instant. It complements, but does not replace, the existing astrological wheel. Initial controls: horizon, meridian, geographic N/E/S/W orientation, celestial equator, **true tropical ecliptic and twelve separate 30° zodiac arcs**, optional horizontal grid, terrain occlusion, stars, real apparent planet positions, selection to inspect geometric altitude/azimuth, mouse panning and zoom.
 
 **One astronomical source:** The versioned, read-only Tauri command `calculate_sky_dome` calls the existing VirgoStars-Ephemeris provider via `chart_calculation::respond`, including its validated fixed-star catalogue response. There is no browser calculation of ephemerides, remote sky API, fabricated star field, or automatic fallback to a different engine. Three.js only plots already computed horizontal coordinates on the celestial sphere.
 
@@ -18,6 +18,16 @@ An offline-first interactive celestial dome for the observer at the active chart
 - The command currently requires a house-system result to obtain ARMC; polar/unsupported configurations fail closed. A future ephemeris-level sidereal primitive will decouple the celestial frame from house availability.
 - This first contract follows the *modern chart* UTC input restrictions (1900–2033, with stricter actual ΔT/data availability). Historic charts are **not** silently mapped to a modern instant.
 
+## Zodiac/ecliptic implementation
+
+The Rust `calculate_sky_dome` response now also supplies `zodiacSegments`: **exactly 12 ordered segments, each with 31 computed direction points and one midpoint**. These are longitude intervals [0°,30°], [30°,60°], etc. in the *true ecliptic/equinox of date*. The host uses `houseAngleContext.trueObliquityDeg` and `ARMC` from the same calculated chart, rotates the ecliptic-of-date unit vector into the true equatorial frame, then computes local geometric altitude and north-through-east azimuth for each ecliptic direction. The markers are points at infinite astronomical distance, unlike topocentric physical bodies.
+
+Angular wrap at 360° is handled as an actual spherical vector: the azimuth becomes mathematically indeterminate at the zenith/nadir, so numerical QA compares unit vectors rather than azimuth equality at those singularities. This layer is not a precessional/sidereal zodiac switch; no sidereal offset is silently applied.
+
+The WebView validates the received 12×31 points and draws the arcs, 30° boundaries and sign images from `/assets/img/simboli-bianchi/segni/` using the approved `zodiacGlyphUrl` helper. The **Eclittica** and **Segni** toggles can be switched independently. No emoji glyphs or local JS astronomy are used; missing glyph assets are omitted. All textures, geometries and stale-request artefacts are cleaned up when the layer changes or the component unmounts.
+
+This new zodiac geometry is implemented **but not yet compiled or native-smoke-tested**. It remains in the draft PR pending WebView2 rendering and independent astronomical comparison.
+
 ## Rendering and performance
 
 - `SkyDomeComponent` is created only when the user opens Cielo 3D, and destroyed when they leave. Camera starts looking South/24° up; users can drag, scroll to zoom, select a planet/star, or use cardinal buttons.
@@ -27,9 +37,9 @@ An offline-first interactive celestial dome for the observer at the active chart
 
 ## Planned didactic layers (not implemented)
 
-The rendering boundary already defines `SkyOverlayPolyline` with `kind`, `provenance` and validated horizontal points. In this version *no* zodiac, house or true-primary-direction polyline is generated. The intent:
+The rendering boundary already defines `SkyOverlayPolyline` with `kind`, `provenance` and validated horizontal points. The first native-calculated zodiac arcs are now implemented. **House boundaries and true primary directions are not implemented.** Planned additions:
 
-1. **Zodiac/ecliptic:** ecliptic great circle/obliquity plus 12 accurately calculated 30° intervals, ecliptic-of-date frame and precisely defined Aries origin, with sign glyphs exclusively from the approved VirgoStars assets. Optional zodiac latitude visualizations.
+1. **Zodiac/ecliptic extensions:** visualize zodiacal latitude/offsets, selectable tropical-versus-explicitly-converted other frameworks if ever requested, sign-boundary hover/details, rising/setting intersections and frame metadata. The first tropical 12-segment arc and approved glyphs are now implemented.
 2. **Houses in the sky:** project each house system's **actual geometrical boundaries** in the celestial frame, *not* evenly spaced azimuth sectors and not merely 12 ecliptic cusp points. Name the domification and explicitly mark systems undefined at polar latitudes. Validate Regiomontanus/Campanus/Placidus independently.
 3. **True primary directions:** separate from existing `SIMPLIFIED_PRIMARY` or symbolic solar-arc directions. Define the historical doctrine and computational method first: promissor/significator, semi-arc, pole of the significator, right/oblique ascension, direct/converse, arc/time key, zodiacal versus mundane directions, under/above horizon, latitude, precession and calendar/time scales. Produce an explicit mathematical arc and a progression on the *natal* celestial frame; never treat the progressed longitude as a physically observed planet or confuse primary directions with transits. Show 3D geometrical constructions and an audit table for every result. Cross-validate with reference examples before enabling.
 4. Future common infrastructure belongs in **VirgoStars-Ephemeris (Rust)** for astronomy and **astrological-functions** for house/doctrinal algorithms; Three.js remains a renderer.
@@ -37,7 +47,7 @@ The rendering boundary already defines `SkyOverlayPolyline` with `kind`, `proven
 ## Next acceptance gates
 
 - Run `npm test`, `npm run verify:ipc`, `npm run build:ui` on the complete checkout; run `cargo test` and `cargo check` for relevant Desktop features. No CI or GitHub Actions are triggered by this branch.
-- Launch native Windows build with configured DE441; compare Sun, Moon, Mercury and stars for multiple latitudes/longitudes, horizon rise/set, near poles, southern hemisphere, longitude wrapping, year boundaries, day/night and changing local sidereal time. Record reference conventions and residuals.
+- Launch native Windows build with configured DE441; compare Sun, Moon, Mercury, stars, **ecliptic arc and all sign boundaries** for multiple latitudes/longitudes, horizon rise/set, near poles, southern hemisphere, longitude wrapping, year boundaries, day/night and changing local sidereal time. Record reference conventions and residuals.
 - Test WebView2 context-loss and low-power GPU, 738-star local catalogue, missing/approximate catalogue, browser-only preview, navigation of live-sky versus natal chart, and clean canvas teardown.
 - Extend a fully validated spherical-coordinate API in VirgoStars-Ephemeris, including configurable observer elevation and refraction (optional) before broad release.
 - Verify licences/provenance for bundled star catalogues, artwork, landscape and any third-party sky assets. Stellarium graphics/code are **not** copied.
