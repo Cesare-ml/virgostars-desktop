@@ -8,6 +8,10 @@ use crate::chart_calculation::{self, ChartRequestV1};
 const AU_KM: f64 = 149_597_870.7;
 const EARTH_EQUATORIAL_RADIUS_KM: f64 = 6_378.137;
 const WGS84_FLATTENING: f64 = 1.0 / 298.257_223_563;
+fn circle_degrees(value:f64)->f64 {
+    let result=value.rem_euclid(360.0);
+    if result >= 360.0 {0.0} else {result}
+}
 const PHYSICAL_BODIES: [&str; 11] = [
     "Sun", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn",
     "Uranus", "Neptune", "Pluto", "Chiron",
@@ -94,7 +98,7 @@ fn topocentric_horizontal(
     let north = z * lat.cos() - x * lat.sin();
     let up = z * lat.sin() + x * lat.cos();
     let altitude = up.atan2(east.hypot(north)).to_degrees();
-    let azimuth = east.atan2(north).to_degrees().rem_euclid(360.0);
+    let azimuth = circle_degrees(east.atan2(north).to_degrees());
     (altitude.is_finite() && azimuth.is_finite()).then_some((altitude,azimuth))
 }
 
@@ -112,7 +116,7 @@ fn celestial_horizontal(
     let north = dec.sin() * lat.cos() - dec.cos() * h.cos() * lat.sin();
     let up = dec.sin() * lat.sin() + dec.cos() * h.cos() * lat.cos();
     let altitude = up.atan2(east.hypot(north)).to_degrees();
-    let azimuth = east.atan2(north).to_degrees().rem_euclid(360.0);
+    let azimuth = circle_degrees(east.atan2(north).to_degrees());
     (altitude.is_finite() && azimuth.is_finite()).then_some(SkyDirectionV1 {
         altitude_deg:altitude, azimuth_north_east_deg:azimuth,
     })
@@ -131,7 +135,7 @@ fn zodiac_direction(
     let x = longitude.cos();
     let y = longitude.sin() * obliquity.cos();
     let z = longitude.sin() * obliquity.sin();
-    let ra = y.atan2(x).to_degrees().rem_euclid(360.0);
+    let ra = circle_degrees(y.atan2(x).to_degrees());
     let dec = z.atan2(x.hypot(y)).to_degrees();
     celestial_horizontal(ra,dec,armc_deg,latitude_deg)
 }
@@ -189,9 +193,8 @@ pub fn respond(
         ("MC",house.mc_deg),
         ("IC",(house.mc_deg+180.0).rem_euclid(360.0)),
     ] {
-        if !longitude.is_finite() || !(0.0..360.0).contains(&longitude) {
-            return failure("calculation_failed");
-        }
+        if !longitude.is_finite() { return failure("calculation_failed"); }
+        let longitude = circle_degrees(longitude);
         let Some(position)=zodiac_direction(
             longitude,context.true_obliquity_deg,armc,latitude
         ) else {return failure("calculation_failed");};
