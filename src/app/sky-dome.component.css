@@ -205,6 +205,15 @@
 .sky3d-star-result-name {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:600;}
 .sky3d-star-result-alt {flex:none;font-size:10px;color:#a5b7d0;font-variant-numeric:tabular-nums;}
 .sky3d-star-no-match {margin:9px 0 2px;font-size:10px;line-height:1.5;color:#aebdd6;}
+.sky3d-fisheye-warning {
+  position:absolute;z-index:4;right:18px;bottom:174px;
+  box-sizing:border-box;max-width:min(280px,45%);
+  margin:0;padding:10px 12px;
+  border:1px solid rgba(231,189,130,.34);border-radius:10px;
+  background:rgba(36,27,32,.86);
+  color:#f0d4ad;font-size:10px;line-height:1.5;
+  pointer-events:none;
+}
 
 .sky3d-info-strip {
   position:absolute;z-index:3;right:22px;top:119px;
@@ -363,6 +372,7 @@
   .sky3d-header {padding:18px;}
 }
 @media(max-width:690px) {
+  .sky3d-fisheye-warning {right:8px;bottom:152px;max-width:46%;padding:7px;font-size:9px;}
   .sky3d-planet-dock {bottom:105px;max-width:calc(100% - 20px);padding:5px;}
   .sky3d-dock-label {display:none;}
   .sky3d-planet-dock button {flex-basis:34px;width:34px;height:34px;}
