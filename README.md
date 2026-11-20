@@ -17,7 +17,7 @@ npm run qa:education-demo
 npm run qa:education-demo -- --run --only QA-02,QA-03 --out .local/education-demo-qa.json
 ```
 
-Il primo comando esegue solo il preflight; il secondo avvia i test selezionati dai checkout locali **già preparati**, senza installare pacchetti, scaricare effemeridi, avviare GitHub Actions o inviare comunicazioni. Il report distingue test passati, falliti, bloccati e gate manuali. **Una verifica automatica positiva non certifica la demo o una release.** Per prerequisiti, matrice dei 14 casi e interpretazione degli stati vedi [Educational Demo QA](docs/EDUCATIONAL_DEMO_QA.md).
+Il primo comando esegue solo il preflight; il secondo avvia i test selezionati dai checkout locali **già preparati**, senza installare pacchetti dal runner, scaricare effemeridi dal runner, avviare GitHub Actions o inviare comunicazioni. I comandi Cargo usano **`--offline --locked`**; gli eventuali test Node preesistenti potrebbero però aprire connessioni di rete autonomamente: per una garanzia di isolamento eseguirli in un ambiente con rete disabilitata. Il report distingue test passati, falliti, bloccati e gate manuali. **Una verifica automatica positiva non certifica la demo o una release.** Per prerequisiti, matrice dei 14 casi e interpretazione degli stati vedi [Educational Demo QA](docs/EDUCATIONAL_DEMO_QA.md).
 
 ## Build macOS on GitHub Actions · Compila Mac senza avere un Mac
 
