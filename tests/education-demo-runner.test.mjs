@@ -122,3 +122,32 @@ test('no sibling test files cannot be mistaken for passing QA',()=>{
     assert.match(p.stdout,/BLOCKED_ENV/);
   } finally {w.cleanup()}
 });
+
+test('Rust targeted checks show explicit offline and locked flags in the dry-run report',()=>{
+  const w=workspace();
+  try {
+    const dest=join(w.base,'rust-offline.json');
+    const p=invoke('--root',w.root,'--only','QA-01','--out',dest);
+    assert.equal(p.status,0,p.stderr);
+    const result=JSON.parse(readFileSync(dest,'utf8'));
+    const rustChecks=result.cases[0].checks.filter(c=>c.repo==='ephemeris');
+    assert.equal(rustChecks.length,2);
+    for(const c of rustChecks){
+      assert.match(c.command,/^cargo test --offline --locked /);
+      assert.equal(c.status,'BLOCKED_ENV');
+    }
+  } finally {w.cleanup();}
+});
+
+test('all 14 cases are explicit and no missing checkout is reported as passed',()=>{
+  const w=workspace();
+  try {
+    const dest=join(w.base,'full-dry.json');
+    const p=invoke('--root',w.root,'--out',dest);
+    assert.equal(p.status,0,p.stderr);
+    const result=JSON.parse(readFileSync(dest,'utf8'));
+    assert.deepEqual(result.cases.map(c=>c.id),Array.from({length:14},(_,i)=>'QA-'+String(i+1).padStart(2,'0')));
+    assert.equal(result.cases[10].status,'BLOCKED_CAPABILITY');
+    assert.ok(result.cases.every(c=>c.status!=='AUTOMATED_PARTIAL_MANUAL_REQUIRED'));
+  } finally {w.cleanup();}
+});
