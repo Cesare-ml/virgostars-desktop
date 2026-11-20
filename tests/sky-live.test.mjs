@@ -23,7 +23,7 @@ test('a refresh only touches a running, idle sky and never overrides the user', 
   }
   // A silent refresh keeps the current ticket, so any request made meanwhile wins, and it shows no message.
   assert.match(component, /const ticket = silent \? this\.calcTicket : \+\+this\.calcTicket;/);
-  assert.match(component, /if \(silent && \(!this\.isSkyActive \|\| this\.mode !== 'natal'\)\) return;/);
+  assert.match(component, /if \(silent && \(!this\.isSkyActive \|\| this\.mode !== 'natal' \|\| this\.ascensionsOpen \|\| this\.radixSynodsOpen \|\| this\.seasonsOpen \|\| this\.apogeeOpen\)\) return;/);
   assert.match(component, /if \(!silent\) this\.calcMessage = chart;/);
 });
 

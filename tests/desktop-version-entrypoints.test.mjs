@@ -28,9 +28,10 @@ test('every npm Tauri command fails closed on version drift before doing other w
 
 test('native build entrypoints retain their original offline bundle and Tauri gates', () => {
   for (const name of TAURI_ENTRYPOINTS.filter(name => name !== 'tauri:dev')) {
-    assert.match(scripts[name], /npm run build:ui(?::private)? && npm run prepare:icon && tauri build/, name);
+    assert.match(scripts[name], /npm run build:ui(?::private)? && npm run prepare:icon && npm run events:prepare:local && tauri build/, name);
+    assert.match(scripts[name], /--config \.local\/event-ephemeris\/tauri-events\.conf\.json$/, name);
   }
-  assert.match(scripts['tauri:dev'], /verify-tauri-security-config\.mjs && npm run prepare:icon && node scripts\/run-tauri-with-local-stars\.mjs dev$/);
+  assert.match(scripts['tauri:dev'], /verify-tauri-security-config\.mjs && npm run prepare:icon && npm run events:prepare:local && node scripts\/run-tauri-with-local-stars\.mjs dev$/);
 });
 
 test('city-catalog builds verify the version before starting a fetch or resource bundling', () => {
@@ -38,7 +39,7 @@ test('city-catalog builds verify the version before starting a fetch or resource
     const line = scripts[name];
     assert.ok(line.indexOf('verify:version') < line.indexOf('places:fetch:windows'), name);
     assert.ok(line.indexOf('places:fetch:windows') < line.indexOf('verify:places-override'), name);
-    assert.match(line, /tauri build --config \.local\/places\/tauri-places\.conf\.json$/);
+    assert.match(line, /tauri build --config \.local\/places\/tauri-places\.conf\.json --config \.local\/event-ephemeris\/tauri-events\.conf\.json$/);
   }
 });
 

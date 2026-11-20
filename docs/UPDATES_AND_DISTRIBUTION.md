@@ -2,6 +2,15 @@
 
 ## Comando guidato di release: implementazione locale, pubblicazione non collaudata
 
+Su richiesta del proprietario, `npm run release:publish -- -DesktopOnly`
+pubblica la release Desktop e aggiorna `updates-stable` senza leggere,
+modificare o pubblicare il sito. La modalità è registrata nello stato di
+avanzamento e deve essere ripetuta quando si riprende una release interrotta.
+`-PrepareOnly` si ferma prima della firma e della pubblicazione: prepara la
+versione e il branch remoto, compila il renderer e scrive le note, così la
+firma può essere eseguita in un PowerShell interattivo. La modalità completa
+continua ad applicare il proprio preflight del sito.
+
 Da Windows, nel checkout Desktop:
 
 ```powershell

@@ -2,7 +2,9 @@
 # Run explicitly from a trusted interactive Windows PowerShell session.
 param(
   [switch]$CheckOnly,
-  [string]$Notes = ''
+  [string]$Notes = '',
+  [switch]$DesktopOnly,
+  [switch]$PrepareOnly
 )
 $ErrorActionPreference = 'Stop'
 $desktop = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -15,6 +17,7 @@ $stateFile = Join-Path $desktop '.local\release-pipeline.json'
 $webFile = Join-Path $website 'frontend\src\app\components\virgostars-desktop\desktop-release.ts'
 $webDist = Join-Path $website 'dist\virgostars.it\browser'
 $headers = $null
+if ($CheckOnly -and $PrepareOnly) { throw 'Usa CheckOnly oppure PrepareOnly, non entrambi.' }
 
 function Native([string]$name, [string[]]$arguments) {
   & $name @arguments
@@ -70,24 +73,28 @@ function Write-Utf8([string]$path, [string]$value) {
 }
 
 Set-Location -LiteralPath $desktop
-if (-not (Test-Path -LiteralPath $website -PathType Container) -or -not (Test-Path -LiteralPath $charts -PathType Container)) { throw 'Servono i checkout fratelli virgo-stars e astrological-charts.' }
+if (-not (Test-Path -LiteralPath $charts -PathType Container)) { throw 'Serve il checkout fratello astrological-charts.' }
+if (-not $DesktopOnly -and -not (Test-Path -LiteralPath $website -PathType Container)) { throw 'Serve il checkout fratello virgo-stars.' }
 Auth-Github
 $repoInfo = Github 'GET' "$api/repos/$repository"
 if (-not $repoInfo.permissions.push) { throw 'La credenziale GitHub non ha permesso di scrittura sul repository Desktop.' }
 $stable = Github 'GET' "$api/repos/$repository/releases/tags/updates-stable"
-$env:CLOUDFLARE_ACCOUNT_ID = 'e7585de9131cd71bc008af5d61847a0e'
-Push-Location $website
-try {
-  $projects = & npm.cmd exec --offline -- $wrangler pages project list --json
-  if ($LASTEXITCODE -ne 0) { throw 'Accesso al progetto Cloudflare Pages non disponibile.' }
-  $pages = @(($projects -join "`n") | ConvertFrom-Json | Where-Object { $_.'Project Name' -ceq 'virgostars' -and $_.'Project Domains' -match 'virgostars\.pages\.dev' })
-  if ($pages.Count -ne 1) { throw 'Progetto Pages virgostars non trovato nel conto previsto.' }
-} finally { Pop-Location }
+if (-not $DesktopOnly) {
+  $env:CLOUDFLARE_ACCOUNT_ID = 'e7585de9131cd71bc008af5d61847a0e'
+  Push-Location $website
+  try {
+    $projects = & npm.cmd exec --offline -- $wrangler pages project list --json
+    if ($LASTEXITCODE -ne 0) { throw 'Accesso al progetto Cloudflare Pages non disponibile.' }
+    $pages = @(($projects -join "`n") | ConvertFrom-Json | Where-Object { $_.'Project Name' -ceq 'virgostars' -and $_.'Project Domains' -match 'virgostars\.pages\.dev' })
+    if ($pages.Count -ne 1) { throw 'Progetto Pages virgostars non trovato nel conto previsto.' }
+  } finally { Pop-Location }
+}
 if ($CheckOnly) {
   $null = Release-Asset $stable 'latest.json'
-  Write-Output 'Connessione GitHub e Wrangler disponibili. Nessuna pubblicazione eseguita.'
-  Security-Preflight
-  Clean $desktop 'Desktop'; Clean $charts 'Grafica'; Clean $website 'Sito'
+  if ($DesktopOnly) { Write-Output 'Connessione GitHub disponibile. Sito escluso. Nessuna pubblicazione eseguita.' }
+  else { Write-Output 'Connessione GitHub e Wrangler disponibili. Nessuna pubblicazione eseguita.'; Security-Preflight }
+  Clean $desktop 'Desktop'; Clean $charts 'Grafica'
+  if (-not $DesktopOnly) { Clean $website 'Sito' }
   Write-Output 'Checkout puliti: pronti per la preparazione.'
   exit 0
 }
@@ -95,12 +102,15 @@ if ($CheckOnly) {
 if (Test-Path -LiteralPath $stateFile -PathType Leaf) {
   $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
   if ($state.schema -ne 1 -or $state.desktop -cne $desktop -or $state.website -cne $website -or $state.charts -cne $charts -or $state.version -notmatch '^\d+\.\d+\.\d+$') { throw 'Stato release non valido: non proseguo.' }
+  if ([bool]$state.desktopOnly -ne [bool]$DesktopOnly) { throw 'La modalità di rilascio non coincide con quella salvata: riprendi con gli stessi parametri.' }
   if ($state.phase -notin @('prepared','versioned','source-pushed','built','web-built','web-committed','creating-draft','draft','uploaded','published','updater-publishing','updater-published','site-published','complete')) { throw 'Fase release non riconosciuta: non proseguo.' }
+  if ($PrepareOnly -and $state.phase -notin @('prepared','versioned','source-pushed')) { throw 'La release è già oltre la preparazione: PrepareOnly non pubblica e non la riprende.' }
   Write-Output "Ripresa release v$($state.version) dalla fase $($state.phase)."
 } else {
   $null = Release-Asset $stable 'latest.json'
-  Security-Preflight
-  Clean $desktop 'Desktop'; Clean $charts 'Grafica'; Clean $website 'Sito'
+  if (-not $DesktopOnly) { Security-Preflight }
+  Clean $desktop 'Desktop'; Clean $charts 'Grafica'
+  if (-not $DesktopOnly) { Clean $website 'Sito' }
   $version = (& node 'scripts/updates/release-version.mjs' '--next')
   if ($LASTEXITCODE -ne 0 -or $version -notmatch '^\d+\.\d+\.\d+$') { throw 'Versione non valida.' }
   $tag = "v$version"
@@ -119,11 +129,14 @@ if (Test-Path -LiteralPath $stateFile -PathType Leaf) {
   }
   $chartCommit = (Invoke-Git $charts @('rev-parse','HEAD') | Select-Object -First 1).Trim()
   $null = Github 'GET' "$api/repos/Cesare-ml/astrological-charts/commits/$chartCommit"
-  $snapshot = Join-Path $desktop ".local\release-$version-web-assets"
-  $live = Invoke-WebRequest -Uri ("https://virgostars.pages.dev/?release-preflight=" + [Guid]::NewGuid().ToString('N')) -UseBasicParsing -TimeoutSec 30
-  $main = [regex]::Match($live.Content, 'main-[A-Z0-9]{8,}\.js').Value
-  Native 'node' @('scripts/updates/release-site-assets.mjs','snapshot',$webDist,$snapshot,$main)
-  $state = [pscustomobject]@{schema=1;desktop=$desktop;website=$website;charts=$charts;version=$version;phase='prepared';chartCommit=$chartCommit;snapshot=$snapshot;releaseId=0;installer='';assetName='';sha256='';sigHash='';manifestHash='';oldStableId=0}
+  $snapshot = ''
+  if (-not $DesktopOnly) {
+    $snapshot = Join-Path $desktop ".local\release-$version-web-assets"
+    $live = Invoke-WebRequest -Uri ("https://virgostars.pages.dev/?release-preflight=" + [Guid]::NewGuid().ToString('N')) -UseBasicParsing -TimeoutSec 30
+    $main = [regex]::Match($live.Content, 'main-[A-Z0-9]{8,}\.js').Value
+    Native 'node' @('scripts/updates/release-site-assets.mjs','snapshot',$webDist,$snapshot,$main)
+  }
+  $state = [pscustomobject]@{schema=1;desktop=$desktop;website=$website;charts=$charts;desktopOnly=[bool]$DesktopOnly;version=$version;phase='prepared';chartCommit=$chartCommit;snapshot=$snapshot;releaseId=0;installer='';assetName='';sha256='';sigHash='';manifestHash='';oldStableId=0}
   Save-State $state
 }
 $version = $state.version
@@ -165,6 +178,10 @@ if ($state.phase -eq 'source-pushed') {
     $summary = if ($Notes.Trim()) { $Notes.Trim() } else { "Aggiornamento VirgoStars Desktop $version." }
     Write-Utf8 $notesPath ("VirgoStars Desktop $version — anteprima Windows`n`n$summary`n")
   }
+  if ($PrepareOnly) {
+    Write-Output "Preparazione $tag completata. Esegui scripts/updates/build-release-interactive.ps1 in PowerShell per firmare l'installer, poi riprendi con gli stessi parametri di modalità."
+    exit 0
+  }
   if (-not (Test-Path -LiteralPath $manifestPath)) {
     $existingInstallers = @(Get-ChildItem -LiteralPath 'src-tauri\target\release\bundle\nsis' -File -Filter "*$version*x64-setup.exe" -ErrorAction SilentlyContinue)
     if ($existingInstallers.Count -eq 0) {
@@ -197,6 +214,11 @@ if ($state.phase -eq 'source-pushed') {
   $state.manifestHash=(Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
   $state.phase='built'; Save-State $state
 }
+# BEGIN TESTABLE DESKTOP-ONLY BUILT TRANSITION
+if ($state.phase -eq 'built' -and $DesktopOnly) {
+  $state.phase='web-committed'; Save-State $state
+}
+# END TESTABLE DESKTOP-ONLY BUILT TRANSITION
 if ($state.phase -eq 'built') {
   $status = @(Invoke-Git $website @('status','--porcelain','--untracked-files=normal'))
   if (@($status | Where-Object { $_ -notmatch '^ M frontend/src/app/components/virgostars-desktop/desktop-release\.ts$' }).Count) { throw 'Il checkout del sito contiene altre modifiche: la build non verrà pubblicata.' }
@@ -296,6 +318,12 @@ if ($state.phase -eq 'updater-publishing') {
   }
 }
 # END TESTABLE STABLE MANIFEST TRANSITION
+# BEGIN TESTABLE DESKTOP-ONLY COMPLETE TRANSITION
+if ($state.phase -eq 'updater-published' -and $DesktopOnly) {
+  $state.phase='complete'; Save-State $state
+  Write-Output "Release $tag pubblicata e updater aggiornato. Il sito non è stato modificato."
+}
+# END TESTABLE DESKTOP-ONLY COMPLETE TRANSITION
 if ($state.phase -eq 'updater-published') {
   Security-Preflight
   Clean $website 'Sito'

@@ -1,5 +1,10 @@
 # VirgoStars Desktop — proposed system architecture
 
+**Local update, 2026-11-20:** Desktop installer preparation now includes the
+owner-requested recorded-event archive, verified by a pinned digest and block
+checks. This integration does not certify dataset completeness or constitute a
+published release. See [Render lifecycle](RENDER_LIFECYCLE.md).
+
 Status: **DESIGN WITH ISOLATED UNVERIFIED RENDERER SPIKE** (2026-11-10). Spike 001 packages the upstream Angular demo as synthetic content for a minimal Tauri host, but does not implement the final desktop application or integrate native ephemerides, accounts or persistence.
 
 ## Product principles

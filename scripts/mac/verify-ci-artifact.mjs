@@ -6,6 +6,7 @@ import {createReadStream, lstatSync, readFileSync, statSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DOWNLOADS, macTarget} from './release-common.mjs';
+import {EVENT_ARCHIVE_SHA256} from '../prepare-local-event-archive.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -19,6 +20,7 @@ export function validateCiReport(report, {version, arch, commit}) {
       report.releaseEligible!==false ||
       report.datasets?.cityArchiveSha256!==DOWNLOADS.cities.sha256 ||
       report.datasets?.de441BaseSha256!==DOWNLOADS.de441.sha256 ||
+      report.datasets?.eventArchiveSha256!==EVENT_ARCHIVE_SHA256 ||
       !Array.isArray(report.artifacts) || report.artifacts.length!==1 ||
       report.artifacts[0]?.file!==expected ||
       !/^[a-f0-9]{64}$/.test(report.artifacts[0]?.sha256??'') ||

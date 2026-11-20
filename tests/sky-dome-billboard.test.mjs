@@ -30,8 +30,8 @@ test('the tiny glyph anchor places it beside the centre of the planet',()=>{
   const plane=skyFacingPlane(null,position,3,3,{anchorX:0.1,anchorY:0.1,opacity:0.7,renderOrder:2});
   plane.geometry.computeBoundingBox();
   const box=plane.geometry.boundingBox;
-  near((box.min.x+box.max.x)/2,1.2);
-  near((box.min.y+box.max.y)/2,1.2);
+  assert.ok(Math.abs((box.min.x+box.max.x)/2-1.2)<1e-6);
+  assert.ok(Math.abs((box.min.y+box.max.y)/2-1.2)<1e-6);
   assert.equal(plane.material.opacity,0.7);
   assert.equal(plane.renderOrder,2);
   plane.geometry.dispose();plane.material.dispose();

@@ -10,6 +10,11 @@ import * as chartsPackage from 'grafici-astrologici';
 import * as astrologyPackage from 'astrological-functions';
 import {makeDirectionPlan} from './directions-form';
 import {rendererPlanetaryHours} from './astro/planetary-hour';
+import {axisContactError, axisSamplerForBody, findAxisEvent, type AxisName} from './astro/axis-events';
+import {findSeasonIngress} from './astro/season-events';
+import {findApogeeConjunctions} from './astro/apogee-events';
+import {chakraSectorDescription} from './chakra-sectors';
+import {enableKleroiAspects, isKlerosSelected} from './astro/kleroi-aspects';
 import {addExtraHouses} from './astro/extra-houses';
 import {calculateRegoloArabicParts, type RegoloPart} from 'astrological-functions/regolo-arabic-parts';
 import {dodecatemoriaContactPoints, fixedStarChartContact, starAzimuthNorthEast, starWithinMagnitude} from './astro/fixed-star-contacts';
@@ -54,7 +59,8 @@ import { MenuIconComponent } from './menu-icon.component';
 import type { NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
 import { calculateHistoricalChart } from './native/historical-chart';
-import type { ChartCalculationResult, ChartProviderV1, FixedStarV1, HouseSystemId } from './native/chart-calculation-contract';
+import type {HistoricalChartResult} from './native/historical-chart-contract';
+import type { ChartCalculationResult, ChartProviderV1, ChartSnapshotV1, FixedStarV1, HouseSystemId } from './native/chart-calculation-contract';
 import {
   availableHouseSystems, buildTemaRenderData, formatLatitudeDms, formatLongitudeDms,
   formatSpeed, houseDisplay, planetRows, type HouseDisplay, type PlanetRow, type TemaRenderData
@@ -515,6 +521,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private planetaryHourTicket = 0;
   private planetaryHourTimer: ReturnType<typeof setTimeout> | null = null;
   private planetaryHour: {key: string; value: NonNullable<ReturnType<typeof rendererPlanetaryHours>>} | null = null;
+  planetaryHoursOpen = false;
+  planetaryHoursLoading = false;
   private destroyed = false;
   private readonly drawGeneration = new RenderGeneration();
   private exporting = false;
@@ -551,6 +559,42 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   chartPresentation: 'wheel' | 'elements' | 'aspects' | 'sky3d' = 'wheel';
   showDodecatemoria = false;
   kleroiEnabled = false;
+  kleroiFilter: 'all' | 'principal' | 'planetary' = 'all';
+  ascensionsOpen = false;
+  ascensionsBusy = false;
+  ascensionsError = false;
+  ascensionsBody = 'Mars';
+  ascensionsAxis:AxisName = 'AS';
+  readonly ascensionsBodies = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto','Chiron',
+    'mean Node','mean Node Sud','true Node','true Node Sud','mean Apogee','mean Perigee','osc. Apogee','osc. Perigee'];
+  readonly ascensionsAxes:readonly AxisName[] = ['AS','MC','DS','IC'];
+  private ascensionsBase:SessionChart|null = null;
+  private ascensionsPreviewId:number|null = null;
+  private ascensionsTicket = 0;
+  get ascensionsDisplayed():boolean {return this.ascensionsPreviewId!==null && this.activeChartId===this.ascensionsPreviewId;}
+  radixSynodsOpen = false;
+  radixSynodsLoading = false;
+  radixSynodsError = false;
+  radixSynodsRecords:readonly SynodRecord[] = [];
+  radixSynodsBody = 'Mars';
+  radixSynodsPhase = 0;
+  readonly radixSynodsBodies=['Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto'];
+  readonly radixSynodsPhases=['D1','R2','R3','D4'];
+  seasonsOpen = false;
+  seasonYear = new Date().getFullYear();
+  seasonIndex = 0;
+  readonly seasonNamesIt = ['Primavera','Estate','Autunno','Inverno'];
+  readonly seasonNamesEn = ['Spring','Summer','Autumn','Winter'];
+  chakraOpen = false;
+  chakraSelected = 'Ajna';
+  chakraSector:number|null = null;
+  readonly chakras = ['Ajna','Vishuddha','Anahata','Manipura','Muladhara','Swadhisthana'];
+  apogeeOpen = false;
+  apogeeBusy = false;
+  apogeeError = false;
+  apogeeLongitudes:readonly number[] = [];
+  private apogeeTicket = 0;
+  private apogeeChartId:number|null = null;
   arabicPartsOpen = false;
   fixedStarsEnabled = false;
   fixedStarsBusy = false;
@@ -827,6 +871,177 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.kleroiEnabled = !this.kleroiEnabled;
     if (this.initialized) void this.draw();
     this.cd.markForCheck();
+  }
+  setKleroiFilter(filter:'all'|'principal'|'planetary'):void {
+    if (this.kleroiFilter===filter || this.busy || this.calcBusy || this.exporting) return;
+    this.kleroiFilter=filter;
+    if (this.initialized && this.kleroiEnabled) void this.draw();
+    this.cd.markForCheck();
+  }
+  toggleChakra():void {
+    this.chakraOpen=!this.chakraOpen;
+    this.chakraSector=null;
+    if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  selectChakra(value:string):void {
+    if (!this.chakras.includes(value)) return;
+    this.chakraSelected=value;
+    this.chakraSector=null;
+    if (this.initialized && this.chakraOpen) void this.draw();
+  }
+  async toggleApogee():Promise<void> {
+    if (this.apogeeOpen) {++this.apogeeTicket;this.apogeeOpen=false;this.apogeeBusy=false;this.apogeeLongitudes=[];if(this.initialized) void this.draw();return;}
+    const chart=this.activeChart;
+    if (!chart) return;
+    const ticket=++this.apogeeTicket;
+    this.apogeeOpen=true;this.apogeeBusy=true;this.apogeeError=false;this.apogeeChartId=chart.id;this.cd.markForCheck();
+    try {
+      const values=await findApogeeConjunctions(async instant=>{
+        if (this.destroyed || ticket!==this.apogeeTicket || this.activeChartId!==chart.id) throw new Error('cancelled');
+        const snapshot=await this.eventSnapshot(chart,instant);
+        const sun=snapshot.bodies.find(body=>body.id==='Sun'),apogee=snapshot.bodies.find(body=>body.id==='osc. Apogee');
+        if (!sun || !apogee) throw new Error('position unavailable');
+        return {sun:sun.longitudeDeg,apogee:apogee.longitudeDeg};
+      },Date.parse(chart.utcIso));
+      if (!this.destroyed && ticket===this.apogeeTicket) {this.apogeeLongitudes=values;if(this.initialized) void this.draw();}
+    } catch {if (!this.destroyed && ticket===this.apogeeTicket) this.apogeeError=true;}
+    finally {if (!this.destroyed && ticket===this.apogeeTicket) {this.apogeeBusy=false;this.cd.markForCheck();}}
+  }
+  toggleAscensions():void {
+    if (this.ascensionsOpen) {
+      this.closeEventTool();
+    } else {
+      if (this.radixSynodsOpen || this.seasonsOpen) this.closeEventTool();
+      if (!this.activeChart || this.activeChart.timeUnknown || !Number.isFinite(Date.parse(this.activeChart.utcIso))) return;
+      this.ascensionsBase=this.activeChart;this.ascensionsOpen=true;this.ascensionsError=false;
+    }
+    this.cd.markForCheck();
+  }
+  private closeEventTool():void {
+    const base=this.ascensionsBase,preview=this.ascensionsPreviewId;
+    ++this.ascensionsTicket;this.ascensionsOpen=false;this.radixSynodsOpen=false;this.seasonsOpen=false;this.ascensionsBusy=false;this.radixSynodsLoading=false;
+    this.ascensionsBase=null;this.ascensionsPreviewId=null;
+    if (preview!==null) this.sessionCharts=this.sessionCharts.filter(chart=>chart.id!==preview);
+    if (base && this.activeChartId===preview) this.showChart(base);
+  }
+  private clearEventPreview():void {
+    const base=this.ascensionsBase,preview=this.ascensionsPreviewId;
+    if (preview===null) return;
+    this.ascensionsPreviewId=null;
+    this.sessionCharts=this.sessionCharts.filter(chart=>chart.id!==preview);
+    if (base && this.activeChartId===preview) this.showChart(base);
+  }
+  changeAscensionBody(value:string):void {
+    if (!this.ascensionsBodies.includes(value)) return;
+    ++this.ascensionsTicket;this.ascensionsBusy=false;
+    this.ascensionsBody=value;this.clearEventPreview();void this.calculateAscension(value,this.ascensionsAxis);
+  }
+  changeAscensionAxis(value:string):void {
+    if (!this.ascensionsAxes.includes(value as AxisName)) return;
+    ++this.ascensionsTicket;this.ascensionsBusy=false;
+    this.ascensionsAxis=value as AxisName;this.clearEventPreview();void this.calculateAscension(this.ascensionsBody,value);
+  }
+  private async showEventPreview(base:SessionChart,instant:number,name:string,ticket:number,
+    validate?:(chart:SessionChart)=>boolean):Promise<void> {
+    if (this.destroyed || ticket!==this.ascensionsTicket || this.view!=='chart') return;
+    const preview=await this.computeChart({name,utcIso:isoFromMs(instant),localDate:'',localTime:'',
+      timeZone:base.timeZone,offsetSeconds:0,latMicro:base.latMicro,lngMicro:base.lngMicro,placeName:base.placeName});
+    if (this.destroyed || ticket!==this.ascensionsTicket || this.view!=='chart') return;
+    if (typeof preview==='string') throw new Error('chart unavailable');
+    if (validate && !validate(preview)) throw new Error('event contact is not present in the chart');
+    if (this.ascensionsPreviewId!==null) this.sessionCharts=this.sessionCharts.filter(chart=>chart.id!==this.ascensionsPreviewId);
+    this.ascensionsPreviewId=preview.id;this.sessionCharts=[...this.sessionCharts,preview];this.showChart(preview);
+  }
+  async toggleRadixSynods():Promise<void> {
+    if (this.radixSynodsOpen) {this.closeEventTool();this.cd.markForCheck();return;}
+    if (this.ascensionsOpen || this.seasonsOpen) this.closeEventTool();
+    const base=this.activeChart;
+    if (!base || base.timeUnknown || !Number.isFinite(Date.parse(base.utcIso))) return;
+    const ticket=++this.ascensionsTicket;this.ascensionsBase=base;this.radixSynodsOpen=true;this.radixSynodsLoading=true;
+    this.radixSynodsError=false;this.radixSynodsRecords=[];this.cd.markForCheck();
+    const result=await synodEvents(Date.parse(base.utcIso));
+    if (this.destroyed || ticket!==this.ascensionsTicket || !this.radixSynodsOpen) return;
+    this.radixSynodsLoading=false;
+    if (result.kind==='ready') this.radixSynodsRecords=result.records;
+    else this.radixSynodsError=true;
+    this.cd.markForCheck();
+  }
+  get radixSynodInstant():number|null {
+    return this.radixSynodsRecords.find(record=>record.body===this.radixSynodsBody)?.phaseStartsMillis?.[this.radixSynodsPhase] ?? null;
+  }
+  changeRadixSynodBody(value:string):void {
+    if (!this.radixSynodsBodies.includes(value) || this.radixSynodsLoading) return;
+    this.radixSynodsBody=value;this.clearEventPreview();void this.showRadixSynod();
+  }
+  changeRadixSynodPhase(value:number):void {
+    if (!Number.isInteger(value) || value<0 || value>=this.radixSynodsPhases.length || this.radixSynodsLoading) return;
+    this.radixSynodsPhase=value;this.clearEventPreview();void this.showRadixSynod();
+  }
+  async showRadixSynod():Promise<void> {
+    const base=this.ascensionsBase,instant=this.radixSynodInstant;
+    if (!base || instant===null || this.radixSynodsLoading) return;
+    const ticket=++this.ascensionsTicket;this.radixSynodsLoading=true;this.radixSynodsError=false;this.cd.markForCheck();
+    try {await this.showEventPreview(base,instant,`${this.planetLabel(this.radixSynodsBody)} · ${this.radixSynodsPhases[this.radixSynodsPhase]}`,ticket);}
+    catch {if (!this.destroyed && ticket===this.ascensionsTicket) this.radixSynodsError=true;}
+    finally {if (!this.destroyed && ticket===this.ascensionsTicket) {this.radixSynodsLoading=false;this.cd.markForCheck();}}
+  }
+  toggleSeasons():void {
+    if (this.seasonsOpen) {this.closeEventTool();this.cd.markForCheck();return;}
+    if (this.ascensionsOpen || this.radixSynodsOpen) this.closeEventTool();
+    const base=this.activeChart;
+    if (!base) return;
+    this.ascensionsBase=base;this.seasonYear=localParts(Date.parse(base.utcIso),base.timeZone)?.year ?? new Date().getFullYear();
+    this.seasonIndex=0;this.ascensionsError=false;this.seasonsOpen=true;this.cd.markForCheck();
+  }
+  async calculateSeason():Promise<void> {
+    const base=this.ascensionsBase;
+    if (!base || this.ascensionsBusy) return;
+    const ticket=++this.ascensionsTicket,year=Number(this.seasonYear),season=Number(this.seasonIndex);
+    this.ascensionsBusy=true;this.ascensionsError=false;this.cd.markForCheck();
+    try {
+      const instant=await findSeasonIngress(async at=>{
+        if (this.destroyed || ticket!==this.ascensionsTicket) throw new Error('cancelled');
+        const chart=await this.eventSnapshot(base,at), sun=chart.bodies.find(body=>body.id==='Sun');
+        if (!sun) throw new Error('sun unavailable');
+        return sun.longitudeDeg;
+      },year,season);
+      await this.showEventPreview(base,instant,(this.locale==='it'?this.seasonNamesIt:this.seasonNamesEn)[season]+' '+year,ticket);
+    } catch {if (!this.destroyed && ticket===this.ascensionsTicket) this.ascensionsError=true;}
+    finally {if (!this.destroyed && ticket===this.ascensionsTicket) {this.ascensionsBusy=false;this.cd.markForCheck();}}
+  }
+  private async eventSnapshot(base:SessionChart,instant:number):Promise<ChartSnapshotV1> {
+    const utcIso=isoFromMs(instant), year=new Date(instant).getUTCFullYear();
+    let result:ChartCalculationResult|HistoricalChartResult|null = year>=1900 && year<=2033
+      ? await calculateChart({utcIso,latMicro:base.latMicro,lngMicro:base.lngMicro}) : null;
+    if (!result || result.kind==='out_of_range') {
+      const request=historicalNavigationRequest(instant,base.timeZone,base.latMicro,base.lngMicro);
+      if (!request) throw new Error('time unavailable');
+      result=await calculateHistoricalChart(request);
+    }
+    if (result.kind!=='ready') throw new Error('position unavailable');
+    return result.chart;
+  }
+  async calculateAscension(selectedBody:string=this.ascensionsBody,selectedAxis:string=this.ascensionsAxis):Promise<void> {
+    const base=this.ascensionsBase;
+    if (!base || this.ascensionsBusy || !this.ascensionsBodies.includes(selectedBody) || !this.ascensionsAxes.includes(selectedAxis as AxisName)) return;
+    this.ascensionsBody=selectedBody;this.ascensionsAxis=selectedAxis as AxisName;
+    this.clearEventPreview();
+    const ticket=++this.ascensionsTicket, body=selectedBody, axis=selectedAxis as AxisName;
+    const sample=axisSamplerForBody(body,async instant=>{
+      if (this.destroyed || ticket!==this.ascensionsTicket) throw new Error('cancelled');
+      return this.eventSnapshot(base,instant);
+    });
+    this.ascensionsBusy=true;this.ascensionsError=false;this.cd.markForCheck();
+    try {
+      const instant=await findAxisEvent(sample,Date.parse(base.utcIso),axis);
+      if (instant===null) throw new Error('event unavailable');
+      await this.showEventPreview(base,instant,`${this.planetLabel(body)} · ${axis}`,ticket,preview=>{
+        const planet=preview.data.planets[body];
+        return !!planet && axisContactError({longitude:planet.longitude,ascendant:preview.data.as,midheaven:preview.data.mc},axis)<0.01;
+      });
+    } catch { if (!this.destroyed && ticket===this.ascensionsTicket) this.ascensionsError=true; }
+    finally {if (!this.destroyed && ticket===this.ascensionsTicket) {this.ascensionsBusy=false;this.cd.markForCheck();}}
   }
   get arabicParts(): {essenziali:readonly RegoloPart[]; abumashar:readonly (readonly RegoloPart[])[]} | null {
     const chart = this.activeChart;
@@ -1217,6 +1432,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   private showChart(chart: SessionChart | null, redraw = true): void {
+    if (this.apogeeOpen && chart?.id!==this.apogeeChartId) {
+      ++this.apogeeTicket;this.apogeeOpen=false;this.apogeeBusy=false;this.apogeeLongitudes=[];this.apogeeChartId=null;
+    }
+    if ((this.ascensionsOpen || this.radixSynodsOpen || this.seasonsOpen) && chart?.id!==this.ascensionsBase?.id && chart?.id!==this.ascensionsPreviewId) {
+      if (this.ascensionsPreviewId!==null) this.sessionCharts=this.sessionCharts.filter(item=>item.id!==this.ascensionsPreviewId);
+      ++this.ascensionsTicket;this.ascensionsOpen=false;this.radixSynodsOpen=false;this.seasonsOpen=false;this.ascensionsBusy=false;this.radixSynodsLoading=false;this.ascensionsBase=null;this.ascensionsPreviewId=null;
+    }
     this.cancelTransitNavigation();
     this.natalAspectFocus = null;
     this.zodiacPoint = 'tutti';
@@ -1247,18 +1469,38 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.planetaryHourTimer !== null) clearTimeout(this.planetaryHourTimer);
     this.planetaryHourTimer = null;
     this.planetaryHour = null;
+    this.planetaryHoursLoading = false;
     const build = moduleExport(astrologyPackage, 'buildPlanetaryHours');
-    if (!chart || chart.timeUnknown || chart.kind !== 'chart' || typeof build !== 'function') return;
+    if (!chart || chart.timeUnknown || typeof build !== 'function') return;
     const key = this.planetaryHourKey(chart);
+    this.planetaryHoursLoading = true;
     this.planetaryHourTimer = setTimeout(() => {
       this.planetaryHourTimer = null;
       void calculateChart({utcIso:chart.utcIso, latMicro:chart.latMicro, lngMicro:chart.lngMicro, includeSolarEvents:true}).then(result => {
         if (this.destroyed || ticket !== this.planetaryHourTicket || !this.activeChart || this.planetaryHourKey(this.activeChart) !== key) return;
         const value = result.kind === 'ready' && result.solarDay
           ? rendererPlanetaryHours(result.solarDay, chart.utcIso, chart.timeZone, build as Parameters<typeof rendererPlanetaryHours>[3]) : null;
+        this.planetaryHoursLoading = false;
         if (value) { this.planetaryHour = {key, value}; if (this.initialized) void this.draw(); }
+        this.cd.markForCheck();
+      }).catch(() => {
+        if (!this.destroyed && ticket===this.planetaryHourTicket) {this.planetaryHoursLoading=false;this.cd.markForCheck();}
       });
     }, 250);
+  }
+  get planetaryHourRows():readonly {ruler:string;start:string;end:string;active:boolean;day:boolean}[] {
+    const chart=this.activeChart, entry=this.planetaryHour;
+    if (!chart || !entry || entry.key!==this.planetaryHourKey(chart)) return [];
+    const hours=[...entry.value.dh.diurne,...entry.value.dh.notturne], current=Date.parse(chart.utcIso);
+    return hours.map((hour,index)=>({ruler:hour.pianeta,start:hour.dataora,
+      end:hours[index+1]?.dataora ?? entry.value.albaSucc,day:index<12,
+      active:current>=Date.parse(hour.dataora) && current<Date.parse(hours[index+1]?.dataora ?? entry.value.albaSucc)}));
+  }
+  planetaryHourTime(instant:string):string {
+    const chart=this.activeChart;
+    if (!chart) return '';
+    try {return new Intl.DateTimeFormat(this.locale==='it'?'it-IT':'en-GB',{timeZone:chart.timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(instant));}
+    catch {return instant;}
   }
   activateChart(id:number): void {
     const chart = this.sessionCharts.find(item => item.id === id);
@@ -1293,7 +1535,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     }, null, 'sky');
     if (this.destroyed || ticket !== this.calcTicket) return;
     // The sky must still be what is on screen, as a plain wheel.
-    if (silent && (!this.isSkyActive || this.mode !== 'natal')) return;
+    if (silent && (!this.isSkyActive || this.mode !== 'natal' || this.ascensionsOpen || this.radixSynodsOpen || this.seasonsOpen || this.apogeeOpen)) return;
     if (!silent) this.calcBusy = false;
     if (typeof chart === 'string') {
       // A refresh that fails keeps the chart already on screen.
@@ -1577,6 +1819,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private async skyTick(): Promise<void> {
     if (!this.skyLive || this.destroyed || !this.isSkyActive || this.mode !== 'natal') return;
+    if (this.ascensionsOpen || this.radixSynodsOpen || this.seasonsOpen || this.apogeeOpen) return;
     // While the sky is being navigated by hand, nothing moves it on its own.
     if (this.nav && this.inspectorTab === 'navigate' && !this.inspectorCollapsed) return;
     if (this.calcBusy || this.busy || this.exporting || this.skyRefreshing) return;
@@ -2638,6 +2881,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
           this.cd.markForCheck();
         }
       });
+      this.renderer.setChakraHoverListener(value => {
+        const sector=this.chakraOpen && value?.chakra===this.chakraSelected ? value.sector : null;
+        if (!this.destroyed && this.chakraSector!==sector) {this.chakraSector=sector;this.cd.markForCheck();}
+      });
       this.renderer.setNatalPlanetHoverListener(value => {
         if (!value || this.destroyed || this.view !== 'chart' || this.mode !== 'natal' ||
           this.chartPresentation !== 'wheel' || !this.activeChart) return;
@@ -2663,6 +2910,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     } catch (error) {
       this.renderError(error);
     }
+  }
+  get chakraDescription():string|null {
+    return this.chakraSector===null ? null : chakraSectorDescription(this.chakraSelected,this.chakraSector);
   }
 
   private attachTransitHover(): void {
@@ -2708,6 +2958,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    ++this.apogeeTicket;
     this.setFixedStarsAnimation(false);
     ++this.fixedStarsTicket;
     ++this.arabicNewMoonTicket;
@@ -2968,7 +3219,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     options.sinastria.deflettiSuCasa = this.synastryDeflectionHouse;
     if (active) options.settaggi.domificazione_selezionata = this.houseSystem;
     const settings = this.chartSettings;
-    options.mostraAspetti = settings.showAspects;
+    options.chakramAttivi = this.mode==='natal' && this.chakraOpen;
+    options.chakram = options.chakramAttivi ? this.chakraSelected : undefined;
+    (options as typeof options & {apogeeLongitudes?:readonly number[]}).apogeeLongitudes =
+      this.mode==='natal' && this.apogeeOpen && active?.id===this.apogeeChartId ? this.apogeeLongitudes : undefined;
+    options.mostraAspetti = settings.showAspects && !options.chakramAttivi;
     if (this.mode === 'natal' && this.kleroiEnabled && !this.directionChart && this.kleroi) options.kleros = 'visualizza sorti';
     if (this.mode === 'natal' && this.arabicPartsOpen && !this.directionChart) {
       if (this.arabicPartsGroup === 'custom') {
@@ -2998,8 +3253,14 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       // A point the provider did not compute is never drawn from a default.
       const present = AXIS_IDS.includes(id) ? !!active && !active.timeUnknown : id in planets;
       target.att = present && setting.shown;
+      if (this.ascensionsOpen && this.ascensionsDisplayed && id===this.ascensionsBody) target.att=present;
       target.orb = setting.orb;
       target.aspVerso = present && setting.aspects;
+    }
+    // Lots are supplied separately from the natal bodies and have no row in
+    // the planet settings. Enable their aspect endpoints when they are shown.
+    if (options.kleros === 'visualizza sorti' && this.kleroi) {
+      enableKleroiAspects(points,this.kleroi,this.kleroiFilter);
     }
     return options;
   }
@@ -3015,7 +3276,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const synastry = this.mode === 'natal' && this.directionAppliedMode === 'SECONDARY_PROGRESSION' ? this.directionChart?.render :
       this.mode === 'transits' && this.synodView === 'transit-synod' ? this.displayChart(this.synodChart)?.render : this.partnerChart?.render;
     let natal = active.render;
-    const kleroi = this.mode === 'natal' && this.kleroiEnabled ? this.kleroi : null;
+    const allKleroi = this.mode === 'natal' && this.kleroiEnabled ? this.kleroi : null;
+    const kleroi = allKleroi && this.kleroiFilter !== 'all'
+      ? Object.fromEntries(Object.entries(allKleroi).filter(([name]) => isKlerosSelected(name,this.kleroiFilter)))
+      : allKleroi;
     const parts = this.mode === 'natal' && this.arabicPartsOpen ? this.arabicParts : null;
     const partLots = parts ? this.kleroi : null;
     const stars = this.mode === 'natal' ? this.fixedStarContacts : [];

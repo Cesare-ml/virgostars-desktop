@@ -113,4 +113,16 @@ The desktop opts into dashed ASC, DS, MC and IC markers for the displayed transi
 
 The synod panel queries the pinned experimental VirgoStars Event Ephemeris Rust reader offline. It displays the latest **recorded** event for each body and a phase only when the reader derives one from recorded thresholds. A calculated chart for the selected recorded instant is shown around the radix, alone or alongside transits; the transit clock can also be moved to that instant. The source snapshot is historical; its hash and all blocks are checked, but this does not establish complete scientific coverage.
 
-For local development, `npm run events:prepare:local` assembles the owner's snapshot from the sibling Event Ephemeris repository into the ignored `.local/event-ephemeris` folder and checks its independently recorded SHA-256. Debug builds discover that staged file automatically. Alternatively, the native host reads `VIRGOSTARS_EVENTS_PATH` and `VIRGOSTARS_EVENTS_SHA256` together; the WebView cannot supply either. No event data are bundled or downloaded by this integration. A release needs an independently approved archive distribution and coverage review.
+For local development and installer builds, `npm run events:prepare:local` verifies the owner's pinned snapshot in the ignored `.local/event-ephemeris` folder. If it is absent, preparation assembles it from the sibling checkout or fetches the three immutable source parts, and rejects any SHA-256 mismatch. The Windows and macOS installer paths include the archive at `ephemeris/events/`; startup opens a private copy only after verifying the pinned digest and all blocks. Debug builds may use the staged copy. The native environment override requires `VIRGOSTARS_EVENTS_PATH` and `VIRGOSTARS_EVENTS_SHA256` together; the WebView cannot supply either. Update backups already cover the `ephemeris` resource directory. A missing or modified archive produces an explicit unavailable result, not fabricated dates. Installer integration is locally implemented; an installed Windows/macOS package still requires acceptance testing.
+
+The owner requested inclusion in Desktop installers on 2026-11-20. This does not select a general data license or certify the source snapshot's completeness. The file contains recorded events with known gaps; including it does not establish that every date or body is covered. The Desktop request now accepts the navigator's years 1–3000, while the reader returns only recorded values.
+
+## Chakra sector hover (local integration)
+
+The chart renderer reports and highlights the numbered chakra sector beneath
+the pointer throughout the inner circle; the desktop displays its traditional
+description in the existing side panel. Aspects are hidden while the chakra is
+active and return to the user's previous display preference when it closes.
+Closing the tool or changing the selected chakra clears the selection. Pointer
+listeners are owned and disposed by the renderer. Native WebView visual
+acceptance remains separate from the synthetic geometry tests.

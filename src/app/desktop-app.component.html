@@ -337,7 +337,7 @@
               [value]="archiveQuery" (input)="setArchiveQuery($event)">
             <p class="inspector-hint" *ngIf="!editingChart && !savedCharts.length">{{t('archive.empty')}}</p>
             <p class="inspector-hint" *ngIf="!editingChart && savedCharts.length && !visibleSavedCharts.length">{{t('archive.nomatch')}}</p>
-            <div class="archive-grid" [class.archive-list]="!showArchivePhotos" *ngIf="!editingChart">
+            <div class="archive-grid archive-list" *ngIf="!editingChart">
               <article class="archive-card" *ngFor="let saved of shownSavedCharts; trackBy:trackSaved">
                 <div class="archive-card-main">
                   <label class="archive-select"><input type="checkbox" [checked]="selectedArchiveIds.includes(saved.id)" [disabled]="archiveBusy || deletingSelected" [attr.aria-label]="t('archive.select') + ': ' + (saved.name || t('session.unnamed'))" (change)="toggleArchiveSelection(saved.id,$event)"></label>
@@ -347,7 +347,7 @@
                   </div>
                   <button type="button" class="archive-card-open" [disabled]="calcBusy || busy"
                     (click)="openSavedChart(saved)" [attr.title]="t('archive.open')">
-                    <strong>{{saved.name || t('session.unnamed')}}</strong>
+                    <span class="archive-name"><strong>{{saved.name || t('session.unnamed')}}</strong><small class="archive-linked" *ngIf="isAssociated(saved.id)">{{t('sync.associate.linked')}}</small></span>
                     <span>{{chartWhen(saved)}}</span>
                     <small>{{saved.placeName || savedPlace(saved)}}</small>
                   </button>
@@ -362,7 +362,6 @@
                   [value]="groupDrafts[saved.id] || ''" (input)="setGroupDraft(saved.id, $event)">
                 <button type="button" class="small-control" [disabled]="archiveBusy || !groupDrafts[saved.id]?.trim()" (click)="addSavedGroup(saved)">{{t('archive.groups.add')}}</button>
               </div>
-              <p class="inspector-hint" *ngIf="account.status==='connected' && isAssociated(saved.id)">{{t('sync.associate.linked')}}</p>
               <p class="inspector-hint" *ngIf="pendingCreateIds.includes(saved.id)">{{t('sync.create.queued')}}</p>
               <p class="inspector-hint" *ngIf="rejectedCreateIds.includes(saved.id)">{{t('sync.create.full')}}</p>
               <button type="button" class="small-control wide" *ngIf="account.status==='connected' && rejectedCreateIds.includes(saved.id)" [disabled]="syncGroupBusy" (click)="cancelRejectedCreate(saved)">{{t('sync.create.cancel')}}</button>
@@ -400,7 +399,7 @@
                 <div class="archive-card-actions">
                   <button type="button" class="archive-action primary" [disabled]="calcBusy || busy" (click)="openSavedChart(saved)">{{t('archive.open')}}</button>
                   <button type="button" class="archive-action" [disabled]="archiveBusy || calcBusy" (click)="editSavedChart(saved)">{{t('archive.edit')}}</button>
-                  <button type="button" class="archive-action" [attr.aria-pressed]="accountChart?.source==='local' && accountChart?.id===saved.id" (click)="setAccountChart('local',saved.id)">{{t(accountChart?.source==='local' && accountChart?.id===saved.id ? 'accountChart.selected' : 'accountChart.set')}}</button>
+                  <button type="button" class="archive-action" [attr.aria-pressed]="accountChart?.id===saved.id" (click)="setAccountChart('local',saved.id)">{{t(accountChart?.id===saved.id ? 'accountChart.selected' : 'accountChart.set')}}</button>
                   <label *ngIf="showArchivePhotos" class="archive-action archive-file-action" [class.is-disabled]="archiveBusy || !!photoBusyId">
                     {{t(hasPrivatePhoto(saved.id) ? 'archive.photo.change' : 'archive.photo.add')}}
                     <input type="file" accept="image/jpeg,image/png,image/webp" [disabled]="archiveBusy || !!photoBusyId"
@@ -431,17 +430,22 @@
               <p class="archive-website-note" *ngIf="syncedCharts.length && !visibleSyncedCharts.length">{{t('archive.nomatch')}}</p>
               <div class="archive-website-list">
               <article class="archive-card archive-site-card" *ngFor="let chart of shownSyncedCharts; trackBy:trackSynced">
+                <div class="archive-card-main">
                   <label class="archive-select"><input type="checkbox" [checked]="selectedArchiveIds.includes(chart.id)" [disabled]="archiveBusy || deletingSelected" [attr.aria-label]="t('archive.select') + ': ' + chart.name" (change)="toggleArchiveSelection(chart.id,$event)"></label>
                   <button type="button" class="archive-card-open" [disabled]="calcBusy || busy || (!chart.timeUnknown && !chart.civilTime) || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">
-                    <strong>{{chart.name || t('session.unnamed')}}</strong>
+                    <span class="archive-name"><strong>{{chart.name || t('session.unnamed')}}</strong></span>
                     <span>{{chart.civilDate}} · {{chart.timeUnknown ? t('sync.unknownTime') : chart.civilTime}}</span>
                     <small>{{chart.placeName}} <ng-container *ngIf="chart.timeZone">· {{chart.timeZone}}</ng-container></small>
-                    <small *ngIf="chart.syncStatus!=='clean'">{{t(syncedStatusKey(chart))}}</small>
                   </button>
+                </div>
+                <div class="archive-card-actions">
                   <button type="button" class="archive-action primary" [disabled]="calcBusy || busy || (!chart.timeUnknown && !chart.civilTime) || !chart.timeZone || chart.latMicro===null || chart.lngMicro===null" (click)="openSyncedChart(chart)">{{t('archive.open')}}</button>
                   <button type="button" class="archive-action" [attr.aria-pressed]="accountChart?.source==='synced' && accountChart?.id===chart.id" (click)="setAccountChart('synced',chart.id)">{{t(accountChart?.source==='synced' && accountChart?.id===chart.id ? 'accountChart.selected' : 'accountChart.set')}}</button>
                   <button type="button" class="archive-action archive-danger" [disabled]="archiveBusy || deletingSelected" [attr.aria-label]="t('archive.delete')" (click)="askDeleteSaved(chart.id)">×</button>
                   <button type="button" class="archive-action" *ngIf="chart.lifecycleStatus==='conflict'" [disabled]="syncGroupBusy" (click)="retryLifecycleConflict(chart)">{{t('sync.manageRetryButton')}}</button>
+                </div>
+                <div class="archive-card-extra">
+                <p class="inspector-hint" *ngIf="chart.syncStatus!=='clean'">{{t(syncedStatusKey(chart))}}</p>
                 <div class="archive-groups" *ngIf="groupsFeatureVisible" [attr.aria-label]="t('archive.groups')">
                   <span>{{t('archive.groups')}}:</span>
                   <span class="archive-group" *ngFor="let group of chart.groups">{{group}}
@@ -450,6 +454,7 @@
                   <input type="text" maxlength="160" autocomplete="off" [attr.aria-label]="t('archive.groups.new')"
                     [value]="syncGroupDrafts[chart.id] || ''" (input)="setSyncedGroupDraft(chart.id,$event)">
                   <button type="button" class="small-control" [disabled]="syncGroupBusy || !syncGroupDrafts[chart.id]?.trim()" (click)="addSyncedGroup(chart)">{{t('archive.groups.add')}}</button>
+                </div>
                 </div>
               </article>
               </div>
@@ -589,6 +594,64 @@
         </section>
       </section>
       <div class="stage-tools" #stageTools [hidden]="(view!=='chart' && !(view==='returns' && returnTool==='solar')) || chartPresentation==='sky3d'" [class.solar-active]="solarContextActive || (view==='returns' && returnTool==='solar')">
+      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && apogeeOpen && mode==='natal' && chartPresentation==='wheel'" [attr.aria-label]="locale==='it' ? 'Apogeo radix' : 'Natal apogee'">
+        <header class="arabic-panel-head"><strong>{{locale==='it' ? 'Apogeo radix' : 'Natal apogee'}}</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="toggleApogee()">×</button></header>
+        <p class="inspector-hint" *ngIf="apogeeBusy">{{locale==='it' ? 'Ricerca delle congiunzioni in corso…' : 'Searching for conjunctions…'}}</p>
+        <p class="inspector-hint" *ngIf="!apogeeBusy && apogeeLongitudes.length">{{locale==='it' ? 'Congiunzioni calcolate' : 'Calculated conjunctions'}}: {{apogeeLongitudes.length}}</p>
+        <p class="inspector-hint" *ngIf="apogeeError">{{locale==='it' ? 'Calcolo non disponibile. Controlla le effemeridi installate.' : 'Calculation unavailable. Check installed ephemerides.'}} <button type="button" class="archive-action" (click)="openUpdateSettings()">{{locale==='it' ? 'Impostazioni' : 'Settings'}}</button></p>
+      </aside>
+      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && chakraOpen && mode==='natal' && chartPresentation==='wheel'" aria-label="Chakra">
+        <header class="arabic-panel-head"><strong>Chakra</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="toggleChakra()">×</button></header>
+        <label><span>Chakra</span><select [value]="chakraSelected" (change)="selectChakra($any($event.target).value)"><option *ngFor="let chakra of chakras" [value]="chakra">{{chakra}}</option></select></label>
+        <div class="chakra-sector-info" *ngIf="chakraSector as sector" role="status"><strong>{{sector}}° {{locale==='it' ? 'petalo' : 'petal'}} · {{chakraSelected}}</strong><p *ngIf="chakraDescription as description">{{description}}</p></div>
+        <p class="inspector-hint" *ngIf="!chakraSector">{{locale==='it' ? 'Passa il mouse sul cerchio interno per illuminare un settore.' : 'Hover over the inner circle to highlight a sector.'}}</p>
+      </aside>
+      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && seasonsOpen && mode==='natal' && chartPresentation==='wheel'" [attr.aria-label]="locale==='it' ? 'Stagioni' : 'Seasons'">
+        <header class="arabic-panel-head"><strong>{{locale==='it' ? 'Stagioni' : 'Seasons'}}</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="toggleSeasons()">×</button></header>
+        <label><span>{{locale==='it' ? 'Anno' : 'Year'}}</span><input type="number" min="1" max="9999" [disabled]="ascensionsBusy" [value]="seasonYear" (change)="seasonYear=+$any($event.target).value"></label>
+        <label><span>{{locale==='it' ? 'Stagione' : 'Season'}}</span><select [disabled]="ascensionsBusy" [value]="seasonIndex" (change)="seasonIndex=+$any($event.target).value"><option *ngFor="let name of (locale==='it' ? seasonNamesIt : seasonNamesEn); let i=index" [value]="i">{{name}}</option></select></label>
+        <button type="button" class="archive-action primary" [disabled]="ascensionsBusy" (click)="calculateSeason()">{{ascensionsBusy ? (locale==='it' ? 'Calcolo…' : 'Calculating…') : (locale==='it' ? 'Mostra evento' : 'Show event')}}</button>
+        <p class="inspector-hint" *ngIf="ascensionsDisplayed && activeChart as event">{{chartWhen(event)}}</p>
+        <p class="inspector-hint" *ngIf="ascensionsError">{{locale==='it' ? 'Evento non disponibile: controlla le effemeridi installate.' : 'Event unavailable: check installed ephemerides.'}} <button type="button" class="archive-action" (click)="openUpdateSettings()">{{locale==='it' ? 'Impostazioni' : 'Settings'}}</button></p>
+      </aside>
+      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && radixSynodsOpen && mode==='natal' && chartPresentation==='wheel'" [attr.aria-label]="locale==='it' ? 'Sinodi radix' : 'Natal synods'">
+        <header class="arabic-panel-head"><strong>{{locale==='it' ? 'Sinodi radix' : 'Natal synods'}}</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="toggleRadixSynods()">×</button></header>
+        <label><span>{{locale==='it' ? 'Elemento celeste' : 'Celestial body'}}</span><select [disabled]="radixSynodsLoading" [value]="radixSynodsBody" (change)="changeRadixSynodBody($any($event.target).value)"><option *ngFor="let body of radixSynodsBodies" [value]="body">{{planetLabel(body)}}</option></select></label>
+        <label><span>{{locale==='it' ? 'Fase' : 'Phase'}}</span><select [disabled]="radixSynodsLoading" [value]="radixSynodsPhase" (change)="changeRadixSynodPhase(+$any($event.target).value)"><option *ngFor="let phase of radixSynodsPhases; let i=index" [value]="i">{{phase}}</option></select></label>
+        <button type="button" class="archive-action primary" [disabled]="radixSynodsLoading || radixSynodInstant===null" (click)="showRadixSynod()">{{locale==='it' ? 'Mostra fase' : 'Show phase'}}</button>
+        <p class="inspector-hint" *ngIf="radixSynodsLoading">{{t('calc.running')}}</p>
+        <p class="inspector-hint" *ngIf="!radixSynodsLoading && (radixSynodsError || radixSynodInstant===null)">{{locale==='it' ? 'Dati della fase non disponibili per questo tema.' : 'Phase data are not available for this chart.'}}</p>
+        <p class="inspector-hint" *ngIf="ascensionsDisplayed && activeChart as event">{{chartWhen(event)}}</p>
+      </aside>
+      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && planetaryHoursOpen && mode==='natal' && chartPresentation==='wheel' && activeChart as hourChart" [attr.aria-label]="locale==='it' ? 'Ore planetarie' : 'Planetary hours'">
+        <header class="arabic-panel-head"><strong>{{locale==='it' ? 'Ore planetarie' : 'Planetary hours'}}</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="planetaryHoursOpen=false">×</button></header>
+        <small>{{hourChart.placeName}} · {{hourChart.timeZone}}</small>
+        <p class="inspector-hint" *ngIf="planetaryHoursLoading">{{t('calc.running')}}</p>
+        <p class="inspector-hint" *ngIf="!planetaryHoursLoading && !planetaryHourRows.length">{{locale==='it' ? 'Ore planetarie non disponibili per questa data o località.' : 'Planetary hours are unavailable for this date or location.'}}</p>
+        <div class="planetary-hours-list" *ngIf="planetaryHourRows.length">
+          <div class="planetary-hour-row" *ngFor="let hour of planetaryHourRows; let i=index" [class.current]="hour.active">
+            <span>{{i%12+1}} · {{hour.day ? (locale==='it' ? 'giorno' : 'day') : (locale==='it' ? 'notte' : 'night')}}</span>
+            <img class="glyph" [src]="glyphUrl(hour.ruler)" [attr.alt]="planetLabel(hour.ruler)" (error)="glyphMissing($event)"><span class="glyph-name" hidden>{{planetLabel(hour.ruler)}}</span>
+            <span>{{planetaryHourTime(hour.start)}}–{{planetaryHourTime(hour.end)}}</span>
+          </div>
+        </div>
+      </aside>
+      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && ascensionsOpen && mode==='natal' && chartPresentation==='wheel'" [attr.aria-label]="locale==='it' ? 'Ascendenze' : 'Ascensions'">
+        <header class="arabic-panel-head"><strong>{{locale==='it' ? 'Ascendenze' : 'Ascensions'}}</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="toggleAscensions()">×</button></header>
+        <label><span>{{locale==='it' ? 'Elemento celeste' : 'Celestial body'}}</span><select #ascensionBody [value]="ascensionsBody" (change)="changeAscensionBody(ascensionBody.value)"><option *ngFor="let body of ascensionsBodies" [value]="body">{{planetLabel(body)}}</option></select></label>
+        <label><span>{{locale==='it' ? 'Asse' : 'Angle'}}</span><select #ascensionAxis [value]="ascensionsAxis" (change)="changeAscensionAxis(ascensionAxis.value)"><option *ngFor="let axis of ascensionsAxes" [value]="axis">{{axis==='AS' ? 'ASC' : axis}}</option></select></label>
+        <button type="button" class="archive-action primary" [disabled]="ascensionsBusy" (click)="calculateAscension(ascensionBody.value,ascensionAxis.value)">{{ascensionsBusy ? (locale==='it' ? 'Calcolo…' : 'Calculating…') : (locale==='it' ? 'Mostra evento' : 'Show event')}}</button>
+        <p class="inspector-hint" *ngIf="ascensionsDisplayed && activeChart as event"><strong>{{chartName(event)}}</strong> · {{chartWhen(event)}}</p>
+        <p class="inspector-hint" *ngIf="ascensionsError" role="status">{{locale==='it' ? 'Evento non disponibile per questa data o posizione. Controlla le effemeridi disponibili.' : 'Event unavailable for this date or location. Check the available ephemeris.'}} <button type="button" class="archive-action" (click)="openUpdateSettings()">{{locale==='it' ? 'Impostazioni' : 'Settings'}}</button></p>
+      </aside>
+      <aside class="kleroi-filter" *ngIf="!fixedStarToolsActive && kleroiEnabled && mode==='natal' && chartPresentation==='wheel' && activeChart" [attr.aria-label]="t('kleroi.title')">
+        <strong>{{t('kleroi.title')}}</strong>
+        <div class="kleroi-filter-options" role="group" [attr.aria-label]="t('kleroi.title')">
+          <button type="button" [class.selected]="kleroiFilter==='all'" [attr.aria-pressed]="kleroiFilter==='all'" (click)="setKleroiFilter('all')">{{locale==='it' ? 'Tutte · 9' : 'All · 9'}}</button>
+          <button type="button" [class.selected]="kleroiFilter==='principal'" [attr.aria-pressed]="kleroiFilter==='principal'" (click)="setKleroiFilter('principal')">{{locale==='it' ? 'Principali · 4' : 'Principal · 4'}}</button>
+          <button type="button" [class.selected]="kleroiFilter==='planetary'" [attr.aria-pressed]="kleroiFilter==='planetary'" (click)="setKleroiFilter('planetary')">{{locale==='it' ? 'Planetarie · 5' : 'Planetary · 5'}}</button>
+        </div>
+      </aside>
       <aside class="arabic-panel" *ngIf="!fixedStarToolsActive && arabicPartsOpen && mode==='natal' && chartPresentation==='wheel' && activeChart" [attr.aria-label]="t('arabic.title')">
         <header class="arabic-panel-head"><strong>{{t('arabic.title')}}</strong><button type="button" class="arabic-close" [disabled]="busy || calcBusy" [attr.aria-label]="t('sheet.close')" (click)="toggleArabicParts()">×</button></header>
         <label><span>{{t('arabic.group')}}</span>
@@ -665,6 +728,12 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!kleroiSupported || !kleroi || busy || calcBusy" [attr.title]="t(kleroiSupported ? 'kleroi.hint' : 'kleroi.unavailable')"
             [class.selected]="kleroiEnabled" [attr.aria-pressed]="kleroiEnabled" (click)="toggleKleroi()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-kleroi"></use></svg>{{t('kleroi.title')}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="activeChart.timeUnknown || calcBusy" [class.selected]="ascensionsOpen" [attr.aria-pressed]="ascensionsOpen" (click)="toggleAscensions()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 18h18M12 17V4m-5 5 5-5 5 5"/></svg>{{locale==='it' ? 'Ascendenze' : 'Ascensions'}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="activeChart.timeUnknown || calcBusy" [class.selected]="radixSynodsOpen" [attr.aria-pressed]="radixSynodsOpen" (click)="toggleRadixSynods()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="8" cy="12" r="5"/><circle cx="16" cy="12" r="5"/></svg>{{locale==='it' ? 'Sinodi radix' : 'Natal synods'}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="activeChart.timeUnknown || calcBusy" [class.selected]="planetaryHoursOpen" [attr.aria-pressed]="planetaryHoursOpen" (click)="planetaryHoursOpen=!planetaryHoursOpen"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 3"/></svg>{{locale==='it' ? 'Ore planetarie' : 'Planetary hours'}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="calcBusy" [class.selected]="seasonsOpen" [attr.aria-pressed]="seasonsOpen" (click)="toggleSeasons()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 1v4m0 14v4M1 12h4m14 0h4M4 4l3 3m10 10 3 3M20 4l-3 3M7 17l-3 3"/></svg>{{locale==='it' ? 'Stagioni' : 'Seasons'}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="calcBusy" [class.selected]="chakraOpen" [attr.aria-pressed]="chakraOpen" (click)="toggleChakra()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 4 7 8-7 8-7-8z"/></svg>Chakra</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="calcBusy" [class.selected]="apogeeOpen" [attr.aria-pressed]="apogeeOpen" (click)="toggleApogee()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 12C5 3 2 6 3 9s5 3 9 3Zm0 0c7 9 10 6 9 3s-5-3-9-3ZM12 12c7-9 10-6 9-3s-5 3-9 3Zm0 0c-7 9-10 6-9 3s5-3 9-3Z"/></svg>{{locale==='it' ? 'Apogeo radix' : 'Natal apogee'}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!kleroi || busy || calcBusy" [class.selected]="arabicPartsOpen" [attr.aria-pressed]="arabicPartsOpen"
             (click)="toggleArabicParts()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-arabic"></use></svg>{{t('arabic.title')}}</button>
