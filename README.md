@@ -88,12 +88,25 @@ For local development with the verified original artwork, place the authorized `
 
 The experimental observer sky has an atmosphere toggle, collapsible controls, detailed planetary and star coordinates, and a **house-cusp grid linked to the chart's active house system**. The grid plots intersections on the ecliptic, not complete 3D house boundary planes.
 
-To replace the illustrated planet portraits with licensed, NASA-data-derived surface maps in a private local build, run **once with an Internet connection**:
+To replace the illustrated planet portraits with licensed, NASA-data-derived surface maps, first run **once with an Internet connection**:
 
 ```bash
 npm run sky3d:textures:download
+```
+
+Then start the private Angular frontend in one terminal:
+
+```bash
+npm start
+```
+
+Launch the native Desktop in a second terminal:
+
+```bash
 npm run tauri:dev
 ```
+
+The Tauri configuration points to the existing `http://127.0.0.1:4200` frontend; it does not automatically start that server.
 
 Maps from **Solar System Scope** are licensed **CC BY 4.0** and credited in the 3D sky. This is an explicitly requested download, **not** an automatic browser/network call. Private staging verifies the cached checksums and embeds the available maps into the offline bundle. Missing or undownloadable maps retain the existing illustrated portrait. Surface rotation, phases, illumination and apparent diameters are still illustrative, not time-accurate.
 
