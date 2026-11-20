@@ -60,7 +60,7 @@
           [selected]="grid.id===houseSystem">{{houseLabel(grid.id)}}</option>
       </select>
       <p class="sky3d-house-caveat" *ngIf="activeHouseGrid">{{word('houseNote')}}</p>
-      <p class="sky3d-house-caveat" *ngIf="!activeHouseGrid">{{word('houseUnavailable')}}</p>
+      <p class="sky3d-house-caveat" *ngIf="!activeHouseGrid">{{houseSystemName || houseSystem}} — {{word('houseUnavailable')}}</p>
     </details>
     <details class="sky3d-accordion" open>
       <summary>{{word('appearance')}}</summary>
