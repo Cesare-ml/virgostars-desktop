@@ -104,7 +104,7 @@
         </div>
       </div>
       <div class="sidebar-bottom">
-        <button type="button" class="nav-item" [class.selected]="view==='account'" [attr.title]="t('account.title')" (click)="openAccount()"><span class="nav-mark" aria-hidden="true">◯</span><span class="nav-label">{{t('account.title')}}</span></button>
+        <button type="button" class="nav-item" [class.selected]="view==='account'" [attr.title]="t('account.title')" (click)="openAccount()"><span class="nav-mark" aria-hidden="true"><vs-menu-icon name="account-virgostars"></vs-menu-icon></span><span class="nav-label">{{t('account.title')}}</span></button>
       </div>
     </nav>
 
@@ -499,7 +499,10 @@
             <button type="button" class="data-line function-line" *ngFor="let entry of availableIn(group)"
               [disabled]="busy || calcBusy || (entry.action==='monomeri' && !monomeriAvailable) || (entry.action==='directions' && !directionsSupported)"
               [attr.title]="entry.action==='monomeri' && !monomeriAvailable ? t('monomeri.unavailable') : null" (click)="runFunction(entry)">
-              <span>{{entryLabel(entry)}}</span>
+              <vs-menu-icon *ngIf="entry.action==='solar_return'" name="solar-return"></vs-menu-icon>
+              <vs-menu-icon *ngIf="entry.action==='lunar_return'" name="lunar-return"></vs-menu-icon>
+              <vs-menu-icon *ngIf="entry.action==='monomeri'" name="monomeri"></vs-menu-icon>
+              <span class="function-entry-label">{{entryLabel(entry)}}</span>
             </button>
           </details>
         </section>
@@ -622,7 +625,7 @@
             (click)="toggleAspects()">{{t('elements.aspectsButton')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!monomeriAvailable || busy" [attr.title]="t(monomeriAvailable ? 'monomeri.help' : 'monomeri.unavailable')"
-            [class.selected]="monomeriEnabled" [attr.aria-pressed]="monomeriEnabled" (click)="toggleMonomeri()">{{t('monomeri.title')}}</button>
+            [class.selected]="monomeriEnabled" [attr.aria-pressed]="monomeriEnabled" (click)="toggleMonomeri()"><span class="stage-menu-label"><vs-menu-icon name="monomeri"></vs-menu-icon>{{t('monomeri.title')}}</span></button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
             [disabled]="!kleroiSupported || !kleroi || busy || calcBusy" [attr.title]="t(kleroiSupported ? 'kleroi.hint' : 'kleroi.unavailable')"
             [class.selected]="kleroiEnabled" [attr.aria-pressed]="kleroiEnabled" (click)="toggleKleroi()">{{t('kleroi.title')}}</button>
