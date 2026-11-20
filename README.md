@@ -108,7 +108,7 @@ npm run tauri:dev
 
 The Tauri configuration points to the existing `http://127.0.0.1:4200` frontend; it does not automatically start that server.
 
-Maps from **Solar System Scope** are licensed **CC BY 4.0** and credited in the 3D sky. This is an explicitly requested download, **not** an automatic browser/network call. Private staging verifies the cached checksums and embeds the available maps into the offline bundle. Missing or undownloadable maps retain the existing illustrated portrait. Surface rotation, phases, illumination and apparent diameters are still illustrative, not time-accurate.
+Maps from **Solar System Scope** are licensed **CC BY 4.0** and credited in the 3D sky. This is an explicitly requested download, **not** an automatic browser/network call. Private staging verifies the cached checksums and embeds the available maps into the offline bundle. Missing or undownloadable maps retain the existing illustrated portrait. The Sun direction now drives the 3D globe lighting, and the Moon card shows an ephemeris-derived geometric illuminated fraction. Surface rotations, physically exact phase appearance for other planets, eclipse shading and apparent diameters remain illustrative or unimplemented; see [lunar illumination notes](docs/SKY_3D_LUNAR_ILLUMINATION_2026-11-20.md).
 
 See [Cielo 3D: planet textures and house grids](docs/SKY_3D_REAL_PLANETS_HOUSE_GRID_2026-11-20.md) for source rights, geometric limits and outstanding validation. The current changes remain in a draft PR until Angular/Rust/Windows QA is complete.
 
