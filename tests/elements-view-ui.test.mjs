@@ -8,12 +8,12 @@ test('Elementi and Aspetti independently swap central presentation without destr
   const html=read('src/app/desktop-app.component.html');
   const source=read('src/app/desktop-app.component.ts');
   assert.match(html, /<canvas #canvas class="chart-canvas"/);
-  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && chartPresentation!=='wheel'"/);
+  assert.match(html, /<vs-elements-view \*ngIf="view==='chart' && activeChart && (chartPresentation==='elements' || chartPresentation==='aspects')"/);
   assert.match(html, /\(click\)="toggleElements\(\)"/);
   assert.match(html, /\[attr\.aria-pressed\]="chartPresentation==='elements'"/);
   assert.match(html, /\(click\)="toggleAspects\(\)"/);
   assert.match(html, /\[attr\.aria-pressed\]="chartPresentation==='aspects'"/);
-  assert.match(source, /chartPresentation: 'wheel' \| 'elements' \| 'aspects' = 'wheel'/);
+  assert.match(source, /chartPresentation: 'wheel' \| 'elements' \| 'aspects' \| 'sky3d' = 'wheel'/);
   assert.match(source, /this\.chartPresentation = this\.chartPresentation === 'elements' \? 'wheel' : 'elements'/);
   assert.match(source, /this\.chartPresentation = this\.chartPresentation === 'aspects' \? 'wheel' : 'aspects'/);
 });
