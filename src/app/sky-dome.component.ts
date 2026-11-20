@@ -6,7 +6,12 @@ import {
 import * as THREE from 'three';
 import {calculateSkyDome} from './native/sky-dome';
 import type {SkyDomeData, SkyDomePoint, SkyDomeResult} from './native/sky-dome-contract';
-import {observerVector, validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
+import {validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
+import {SkyDomeLens} from './sky-dome-fisheye';
+import {
+  clampedSkyFov, normalizePitch, skyCameraFrame, skyFisheyeWorldRay,
+  skyWorldVector, SKY_FISHEYE_START_DEG,
+} from './sky-dome-projection';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 import {planetAccent, skyLightFromSun, starAppearance, type SkyLight} from './sky-dome-visuals';
 
@@ -43,7 +48,10 @@ const WORDS={
     direction:'Orientamento',
     statusReady:'Posizioni astronomiche',
     starMagnitude:'Magnitudine',
-    skyHelp:'Frecce per orientarti; + e − per variare il campo visivo.',
+    skyHelp:'Trascina per ruotare anche oltre lo zenit; rotellina per passare alla vista sferica.',
+    spherical:'Vista sferica',
+    perspective:'Prospettiva',
+    nadir:'Nadir',
     skyLightNote:'Atmosfera illustrativa, non modello fisico.',
     backToChart:'Torna al grafico',
     noStars:'Catalogo locale delle stelle non disponibile.',
@@ -71,7 +79,10 @@ const WORDS={
     direction:'Direction',
     statusReady:'Astronomical positions',
     starMagnitude:'Magnitude',
-    skyHelp:'Arrow keys to turn; + and − to change field of view.',
+    skyHelp:'Drag beyond the zenith; scroll out for a spherical all-sky view.',
+    spherical:'Spherical view',
+    perspective:'Perspective',
+    nadir:'Nadir',
     skyLightNote:'Illustrative atmosphere, not a physical model.',
     backToChart:'Back to chart',
     noStars:'Local star catalogue unavailable.',
@@ -98,6 +109,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private scene:THREE.Scene|null=null;
   private camera:THREE.PerspectiveCamera|null=null;
   private renderer:THREE.WebGLRenderer|null=null;
+  private skyLens:SkyDomeLens|null=null;
   private observer:ResizeObserver|null=null;
   private frame=0;
   private generation=0;
@@ -156,10 +168,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     return skyLightFromSun(sun?.altitudeDeg??null);
   }
   get viewDirection():string {
-    const az=(this.yaw%360+360)%360;
-    const altitude=this.pitch;
-    return az.toFixed(0)+'° · '+altitude.toFixed(0)+'°';
+    const frame=skyCameraFrame(this.yaw,this.pitch);
+    return frame?frame.headingDeg.toFixed(0)+'° · '+frame.altitudeDeg.toFixed(0)+'°':'—';
   }
+  get isSpherical():boolean {return (this.camera?.fov??75)>=SKY_FISHEYE_START_DEG;}
   get fieldOfView():number { return Math.round(this.camera?.fov??75); }
   get visiblePlanetCount():number{return this.data?.planets.length??0;}
   get planetDock():readonly SkyDomePoint[] { return this.data?.planets??[]; }
@@ -201,6 +213,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
       this.renderer.setClearColor(0x000000,0);
       this.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+      this.skyLens=new SkyDomeLens();
       this.renderer.domElement.setAttribute('aria-hidden','true');
       this.viewport.nativeElement.appendChild(this.renderer.domElement);
       this.renderer.domElement.addEventListener('pointerdown',this.pointerDown);
@@ -256,6 +269,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.zodiacTextures=[];
     for(const texture of this.compassTextures)texture.dispose();
     this.compassTextures=[];
+    this.skyLens?.dispose();
+    this.skyLens=null;
     this.renderer?.dispose();
     this.renderer?.forceContextLoss();
     this.renderer=null;this.scene=null;this.camera=null;this.targets=[];
@@ -294,7 +309,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     (group??this.scene)?.add(this.line(points,color,opacity));
   }
   private vec(az:number,alt:number,r=100):THREE.Vector3 {
-    const p=observerVector(az,alt,r);
+    const p=skyWorldVector(az,alt,r);
     return new THREE.Vector3(p?.x??0,p?.y??0,p?.z??0);
   }
   private buildScaffold():void {
@@ -364,7 +379,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
         const t=i*Math.PI/180;
         return new THREE.Vector3(
           99*Math.cos(t),99*Math.sin(t)*Math.cos(latitude),
-          -99*Math.sin(t)*Math.sin(latitude));
+          99*Math.sin(t)*Math.sin(latitude));
       });
       this.curve(points,0x9a92e8,0.9,group);
     }
@@ -646,8 +661,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     switch(event.key){
       case 'ArrowLeft':this.look((this.yaw-step+360)%360,this.pitch);break;
       case 'ArrowRight':this.look((this.yaw+step)%360,this.pitch);break;
-      case 'ArrowUp':this.look(this.yaw,Math.min(85,this.pitch+step));break;
-      case 'ArrowDown':this.look(this.yaw,Math.max(-85,this.pitch-step));break;
+      case 'ArrowUp':this.look(this.yaw,this.pitch+step);break;
+      case 'ArrowDown':this.look(this.yaw,this.pitch-step);break;
       case '+':case '=':this.adjustField(-5);break;
       case '-':case '_':this.adjustField(5);break;
       case 'Home':this.resetView();break;
@@ -655,28 +670,55 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     }
     if(handled){event.preventDefault();this.cd.markForCheck();}
   }
+  zoomSky(change:number):void {
+    this.adjustField(change);
+    this.cd.markForCheck();
+  }
   private adjustField(change:number):void {
     if(!this.camera)return;
-    this.camera.fov=Math.max(28,Math.min(100,this.camera.fov+change));
-    this.camera.updateProjectionMatrix();this.draw();
+    this.camera.fov=clampedSkyFov(this.camera.fov+change);
+    this.camera.updateProjectionMatrix();
+    // The objects have not moved: only their display projection changes.
+    this.draw(false);
   }
   look(az:number,alt:number):void {
-    this.yaw=az;this.pitch=alt;
-    this.camera?.lookAt(this.vec(this.yaw,this.pitch,1));
-    this.draw();
+    const frame=skyCameraFrame(az,alt);
+    if(!frame)return;
+    this.yaw=((az%360)+360)%360;
+    this.pitch=normalizePitch(alt);
+    if(this.camera){
+      // Stable through both poles. Three.js camera local -Z = forward.
+      const rotation=new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(frame.right.x,frame.right.y,frame.right.z),
+        new THREE.Vector3(frame.up.x,frame.up.y,frame.up.z),
+        new THREE.Vector3(frame.back.x,frame.back.y,frame.back.z),
+      );
+      this.camera.quaternion.setFromRotationMatrix(rotation);
+      this.camera.updateMatrixWorld();
+    }
+    this.draw(false);
   }
   private resize():void {
     if(!this.camera||!this.renderer)return;
     const w=Math.max(1,this.viewport.nativeElement.clientWidth);
     const h=Math.max(1,this.viewport.nativeElement.clientHeight);
     this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w,h,false);this.draw();
+    this.renderer.setSize(w,h,false);this.draw(false);
   }
-  private draw():void {
+  private draw(sceneChanged=true):void {
+    if(sceneChanged)this.skyLens?.invalidate();
     if(!this.renderer||!this.scene||!this.camera||this.frame)return;
     this.frame=requestAnimationFrame(()=>{
       this.frame=0;
-      if(this.renderer&&this.scene&&this.camera)this.renderer.render(this.scene,this.camera);
+      if(this.renderer&&this.scene&&this.camera&&!this.webglFailed){
+        try{
+          if(this.skyLens)this.skyLens.render(this.renderer,this.scene,this.camera);
+          else this.renderer.render(this.scene,this.camera);
+        }catch{
+          this.webglFailed=true;this.status='webgl_error';
+          this.cd.markForCheck();
+        }
+      }
     });
   }
   private pointerDown=(event:PointerEvent):void=>{
@@ -689,7 +731,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const dx=event.clientX-this.pointer.lastX,dy=event.clientY-this.pointer.lastY;
     if(Math.abs(event.clientX-this.pointer.x)+Math.abs(event.clientY-this.pointer.y)>5)this.pointer.dragged=true;
     this.pointer.lastX=event.clientX;this.pointer.lastY=event.clientY;
-    this.look((this.yaw-dx*0.27+360)%360,Math.max(-85,Math.min(85,this.pitch+dy*0.27)));
+    this.look(this.yaw-dx*0.27,this.pitch+dy*0.27);
     this.cd.markForCheck();
   };
   private pointerUp=(event:PointerEvent):void=>{
@@ -702,7 +744,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private wheel=(event:WheelEvent):void=>{
     event.preventDefault();
     if(!this.camera)return;
-    this.adjustField(Math.sign(event.deltaY)*4);
+    const step=(this.camera.fov>=110?8:5)*Math.sign(event.deltaY);
+    if(step!==0)this.adjustField(step);
     this.cd.markForCheck();
   };
   private contextLost=(event:Event):void=>{
@@ -717,7 +760,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       1-((event.clientY-bounds.top)/bounds.height)*2);
     const ray=new THREE.Raycaster();
     ray.params.Points.threshold=1.6;
-    ray.setFromCamera(ndc,this.camera);
+    if(this.camera.fov>=SKY_FISHEYE_START_DEG){
+      const frame=skyCameraFrame(this.yaw,this.pitch);
+      const dir=frame?skyFisheyeWorldRay(ndc.x,ndc.y,this.camera.aspect,this.camera.fov,frame):null;
+      if(!dir){this.clearSelection();return;}
+      ray.set(new THREE.Vector3(0,0,0),new THREE.Vector3(dir.x,dir.y,dir.z).normalize());
+    }else{
+      ray.setFromCamera(ndc,this.camera);
+    }
     let chosen:PointWithKind|null=null;
     for(const hit of ray.intersectObjects(this.targets,false)){
       const obj=hit.object;
@@ -726,6 +776,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       chosen=objectPoint??(stars && hit.index!==undefined ? {point:stars[hit.index],kind:'star'} : null);
       if(chosen)break;
     }
+    if(chosen && this.showGround && chosen.point.altitudeDeg<0)chosen=null;
     this.selected=chosen;
     this.updateSelectionRing();
     this.cd.markForCheck();
