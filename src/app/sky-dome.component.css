@@ -264,6 +264,33 @@
   margin:0 11px 11px;color:#94b6b2;font-size:9.5px;
   line-height:1.5;
 }
+.sky3d-house-cusps {margin:0 10px 11px;border:1px solid rgba(114,199,169,.24);border-radius:9px;}
+.sky3d-house-cusps summary {
+  padding:8px 10px;color:#c2e6d9;font-size:10px;font-weight:650;
+  list-style:none;cursor:pointer;
+}
+.sky3d-house-cusps summary::-webkit-details-marker {display:none;}
+.sky3d-house-cusps summary::after {content:'⌄';float:right;color:#9cc8b9;}
+.sky3d-house-cusps summary:focus-visible {outline:2px solid #b7e5ce;outline-offset:-2px;}
+.sky3d-cusp-grid {
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:5px;padding:0 7px 7px;
+}
+.sky3d-cusp-grid button {
+  display:flex;align-items:center;gap:4px;min-width:0;
+  min-height:32px;border:1px solid rgba(161,225,202,.12);
+  border-radius:7px;background:rgba(23,53,49,.42);
+  color:#dceee7;font:inherit;font-size:9.5px;
+  padding:5px;cursor:pointer;
+}
+.sky3d-cusp-grid button img {width:15px;height:15px;object-fit:contain;}
+.sky3d-cusp-grid button:hover,.sky3d-cusp-grid button.selected {
+  background:rgba(85,141,118,.32);border-color:rgba(164,234,197,.45);
+}
+.sky3d-cusp-grid button:focus-visible {outline:2px solid #b7e5ce;outline-offset:2px;}
+.sky3d-cusp-roman {min-width:20px;font-weight:710;color:#c2f7d4;}
+.sky3d-cusp-number {margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap;}
+
 .sky3d-search-accordion {border-color:rgba(144,176,225,.18);}
 .sky3d-search-accordion[open] {background:rgba(20,33,55,.55);}
 .sky3d-search-content {padding:0 10px 10px;}
