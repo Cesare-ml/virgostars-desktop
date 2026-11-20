@@ -1644,9 +1644,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   /** View the same chart's observer sky. The Rust command supplies all astronomical positions. */
   toggleSkyDome(): void {
-    if (!this.activeChart || this.destroyed) return;
+    if (!this.activeChart || this.destroyed || this.busy || this.calcBusy) return;
     this.view = 'chart';
-    this.chartPresentation = this.chartPresentation === 'sky3d' ? 'wheel' : 'sky3d';
+    if (this.chartPresentation === 'sky3d') {
+      this.chartPresentation = 'wheel';
+    } else {
+      // An observer sky depicts the active chart's own instant. Do not silently
+      // pretend a natal sky contains the planets of a transit or synastry overlay.
+      if (this.mode !== 'natal') this.setMode('natal');
+      this.chartPresentation = 'sky3d';
+    }
     this.cd.markForCheck();
   }
   toggleElements(): void {
@@ -2548,6 +2555,9 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   setMode(mode:ChartMode): void {
     if (this.view !== 'chart') { this.view = 'chart'; this.cd.markForCheck(); }
     if(this.busy) return;
+    // Mode selection always returns to the astrological wheel, even when the
+    // selected mode is unchanged; this prevents an observer-sky/time mismatch.
+    if (this.chartPresentation === 'sky3d') this.chartPresentation = 'wheel';
     if (mode === 'natal' && this.mode === 'natal' && this.directionChart) { this.clearDirection(); return; }
     // "Tema natale" while the sky is on screen means the last subject's chart, or the archive to choose one.
     if (mode === 'natal' && this.isSkyActive) { this.openNatal(); return; }
