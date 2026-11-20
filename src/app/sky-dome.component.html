@@ -68,7 +68,7 @@
             [attr.aria-label]="word('houseFocus')+' '+cusp.house+' · '+formatCusp(cusp.longitude)+' '+cuspSign(cusp.longitude)"
             [attr.aria-pressed]="selectedCuspIndex===cusp.index"
             (click)="focusCusp(cusp.index)">
-            <span class="sky3d-cusp-roman">{{['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][cusp.index]}}</span>
+            <span class="sky3d-cusp-roman">{{cuspRoman(cusp.index)}}</span>
             <img [src]="cuspGlyph(cusp.longitude)" alt="" aria-hidden="true">
             <span class="sky3d-cusp-number">{{formatCusp(cusp.longitude)}}</span>
           </button>
