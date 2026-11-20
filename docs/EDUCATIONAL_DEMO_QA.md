@@ -65,7 +65,11 @@ La procedura richiede un conteggio positivo di test effettivamente eseguiti e co
 
 ## Evidenze disponibili alla stesura
 
-È stata eseguita una verifica isolata di tre moduli JavaScript letti dai repository: **11/11** test di ore planetarie, **31/31** test di andamento degli aspetti, **5/5** test della precessione IAU 2006 (totale **47/47**), tramite ambiente JavaScript isolato. Non equivale a `npm test` o `cargo test` nei checkout, né convalida le pipeline native. Per l'esecutore stesso sono stati superati **9 test locali** con fixture fittizie (inclusi file senza `test()`, fallimenti e skip).
+**Integrità della mappatura (20/11/2026):** i 14 scenari dichiarano **42 riferimenti** a **32 file di test distinti** sui quattro repository; la presenza delle 32 destinazioni nei branch `main` è stata controllata tramite directory GitHub. Il controllo dei percorsi **non** equivale all'esecuzione o a una verifica delle dipendenze. Tutti i 14 scenari end-to-end rimangono non certificati.
+
+
+
+Sono state eseguite verifiche isolate del codice JavaScript letto dai repository: **11/11** test di ore planetarie, **11/11** test dell'adattatore degli eventi solari (con clone equivalente per soli oggetti dati nell'ambiente isolato), **31/31** test di andamento degli aspetti e **5/5** test della precessione IAU 2006: **58/58 test isolati**, distinti dall'esecuzione Node/Cargo standard. Questi controlli non equivalgono a `npm test` o `cargo test` nei checkout né convalidano pipeline native. L'esecutore ha **11 test di regressione già eseguiti su fixture locali**; un **dodicesimo test** controlla il mapping dell'adattatore ed è stato aggiunto al branch, ma non eseguito come suite nativa in questa sessione. La logica del runner aggiornata è stata inoltre provata con subprocessi simulati (successo parziale, test vuoti, skipped, cache Cargo assente, QA-11 bloccato).
 
 Non risultano qui eseguiti **i 14 scenari Desktop end-to-end** e non sono state scaricate/installate dipendenze o DE441. Qualsiasi report futuro deve includere commit SHA, comando realmente lanciato, OS, versioni strumenti, eventuali fixture e blocchi. Il gate di release resta **non superato** fino a risultati native/visual/manuali ripetibili.
 
