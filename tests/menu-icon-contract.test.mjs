@@ -41,3 +41,20 @@ test('account and all three function actions use their new icons', () => {
     assert.ok(markup.includes(`<vs-menu-icon name="${name}"></vs-menu-icon>`));
   }
 });
+
+
+test('six additional menu icons have matching standalone SVG assets and reusable Angular cases', () => {
+  const added = [
+    'planetary-ascensions', 'radix-synods', 'planetary-hours',
+    'seasons', 'chakra', 'radix-apogee'
+  ];
+  for (const name of added) {
+    assert.ok(icons.includes(`<g *ngSwitchCase="'${name}'">`), `Missing Angular icon: ${name}`);
+    const svg = read(`design/menu-icons/${name}.svg`);
+    assert.match(svg, /<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    assert.match(svg, /viewBox="0 0 24 24"/);
+    assert.match(svg, /stroke="currentColor"/);
+    assert.match(svg, /fill="none"/);
+    assert.match(svg, /<title>[^<]+<\/title>/);
+  }
+});
