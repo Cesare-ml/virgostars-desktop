@@ -20,13 +20,19 @@ An offline-first interactive celestial dome for the observer at the active chart
 
 ## Zodiac/ecliptic implementation
 
-The Rust `calculate_sky_dome` response now also supplies `zodiacSegments`: **exactly 12 ordered segments, each with 31 computed direction points and one midpoint**. These are longitude intervals [0°,30°], [30°,60°], etc. in the *true ecliptic/equinox of date*. The host uses `houseAngleContext.trueObliquityDeg` and `ARMC` from the same calculated chart, rotates the ecliptic-of-date unit vector into the true equatorial frame, then computes local geometric altitude and north-through-east azimuth for each ecliptic direction. The markers are points at infinite astronomical distance, unlike topocentric physical bodies.
+The Rust `calculate_sky_dome` response also supplies `zodiacSegments`: **exactly 12 ordered segments, each with 31 computed direction points and one midpoint**. These are longitude intervals [0°,30°], [30°,60°], etc. in the *true ecliptic/equinox of date*. The host uses `houseAngleContext.trueObliquityDeg` and `ARMC` from the same calculated chart, rotates the ecliptic-of-date unit vector into the true equatorial frame, then computes local geometric altitude and north-through-east azimuth for each ecliptic direction. The markers are points at infinite astronomical distance, unlike topocentric physical bodies.
 
 Angular wrap at 360° is handled as an actual spherical vector: the azimuth becomes mathematically indeterminate at the zenith/nadir, so numerical QA compares unit vectors rather than azimuth equality at those singularities. This layer is not a precessional/sidereal zodiac switch; no sidereal offset is silently applied.
 
 The WebView validates the received 12×31 points and draws the arcs, 30° boundaries and sign images from `/assets/img/simboli-bianchi/segni/` using the approved `zodiacGlyphUrl` helper. The **Eclittica** and **Segni** toggles can be switched independently. No emoji glyphs or local JS astronomy are used; missing glyph assets are omitted. All textures, geometries and stale-request artefacts are cleaned up when the layer changes or the component unmounts.
 
 This new zodiac geometry is implemented **but not yet compiled or native-smoke-tested**. It remains in the draft PR pending WebView2 rendering and independent astronomical comparison.
+
+## Real chart axes on the celestial sphere
+
+The native response additionally supplies `angles` in strict `ASC, DSC, MC, IC` order. The inputs are the ephemeris/chart provider's **Ascendant longitude, Midheaven longitude**, and their 180° opposites, all interpreted as *ecliptic directions*, not separate physical planets. They are projected through the same true obliquity, sidereal angle and observer location as the zodiac. This shows the intersection of the ecliptic with the local horizon and meridian, allowing a direct comparison with the 2D astrological wheel.
+
+The overlay is controlled by **Angoli** and uses a distinct palette: ASC yellow, DSC green, MC violet and IC light violet. Each label is positioned at the computed point; no house boundary circles are inferred from these four points. Numerical QA and native screenshots with multiple house systems are still required; the code remains draft.
 
 ## Rendering and performance
 
@@ -47,7 +53,7 @@ The rendering boundary already defines `SkyOverlayPolyline` with `kind`, `proven
 ## Next acceptance gates
 
 - Run `npm test`, `npm run verify:ipc`, `npm run build:ui` on the complete checkout; run `cargo test` and `cargo check` for relevant Desktop features. No CI or GitHub Actions are triggered by this branch.
-- Launch native Windows build with configured DE441; compare Sun, Moon, Mercury, stars, **ecliptic arc and all sign boundaries** for multiple latitudes/longitudes, horizon rise/set, near poles, southern hemisphere, longitude wrapping, year boundaries, day/night and changing local sidereal time. Record reference conventions and residuals.
+- Launch native Windows build with configured DE441; compare Sun, Moon, Mercury, stars, **ecliptic arc, sign boundaries and the ASC/DSC/MC/IC intersections** for multiple latitudes/longitudes, horizon rise/set, near poles, southern hemisphere, longitude wrapping, year boundaries, day/night and changing local sidereal time. Record reference conventions and residuals.
 - Test WebView2 context-loss and low-power GPU, 738-star local catalogue, missing/approximate catalogue, browser-only preview, navigation of live-sky versus natal chart, and clean canvas teardown.
 - Extend a fully validated spherical-coordinate API in VirgoStars-Ephemeris, including configurable observer elevation and refraction (optional) before broad release.
 - Verify licences/provenance for bundled star catalogues, artwork, landscape and any third-party sky assets. Stellarium graphics/code are **not** copied.
