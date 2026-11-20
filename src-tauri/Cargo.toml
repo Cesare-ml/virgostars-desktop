@@ -1,6 +1,6 @@
 [package]
 name = "virgostars-desktop-spike"
-version = "0.0.4"
+version = "0.0.5"
 description = "Offline synthetic VirgoStars chart renderer shell (unreleased prototype)"
 authors = ["VirgoStars project"]
 edition = "2021"
