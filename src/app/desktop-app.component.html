@@ -121,7 +121,8 @@
         <canvas #canvas class="chart-canvas" aria-hidden="true" [style.visibility]="view==='chart' && chartPresentation==='sky3d' ? 'hidden' : null"></canvas>
         <vs-sky-dome *ngIf="view==='chart' && chartPresentation==='sky3d' && activeChart"
           [utcIso]="activeChart.utcIso" [latMicro]="activeChart.latMicro"
-          [lngMicro]="activeChart.lngMicro" [locale]="locale"></vs-sky-dome>
+          [lngMicro]="activeChart.lngMicro" [locale]="locale"
+          (closed)="toggleSkyDome()"></vs-sky-dome>
         <div class="monomero-overlay monomero-tip" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'"
           *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel' && monomeriEnabled && !monomero && !busy" role="status">{{t('monomeri.help')}}</div>
         <div class="monomero-overlay" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'" *ngIf="view==='chart' && mode==='natal' && chartPresentation==='wheel' && !busy && monomero as item" aria-live="polite">
@@ -621,7 +622,7 @@
           </details>
         </section>
       </section>
-      <div class="stage-tools" [hidden]="view!=='chart'" [class.solar-active]="solarContextActive" role="toolbar" [attr.aria-label]="t('chart')">
+      <div class="stage-tools" [hidden]="view!=='chart' || chartPresentation==='sky3d'" [class.solar-active]="solarContextActive" role="toolbar" [attr.aria-label]="t('chart')">
           <vs-returns-panel *ngIf="returnTool==='solar' && returnRadix" [locale]="locale" kind="solar" [radix]="returnRadix"
             [houseSystem]="houseSystem" [busy]="calcBusy || busy" [mapOpen]="solarMapOpen" [showControls]="solarContextActive" [comparing]="mode==='synastry'"
             (chartRequested)="onReturnChartRequested($event)" (closed)="solarMapOpen=false"
