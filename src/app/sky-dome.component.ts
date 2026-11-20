@@ -15,6 +15,7 @@ import {
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 import {planetAccent, skyLightFromSun, starAppearance, labeledCatalogStars, type SkyLight} from './sky-dome-visuals';
 import {createPlanetPortrait,planetPortraitSpec} from './sky-dome-planet-portraits';
+import {REAL_PLANET_TEXTURES} from './sky-dome-real-textures';
 import {findSkyStars} from './sky-dome-star-search';
 import {skyFacingPlane} from './sky-dome-billboard';
 
@@ -37,6 +38,7 @@ const WORDS={
     rightAscension:'Ascensione retta',declination:'Declinazione',distance:'Distanza geocentrica',
     longitudeSpeed:'Velocità in longitudine',constellation:'Costellazione',catalogId:'ID archivio',
     source:'Effemeridi',sign:'Segno',notAvailable:'Non disponibile',
+    realTextureNote:'Mappe planetarie Solar System Scope (CC BY 4.0); orientamento e fasi illustrativi.',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -80,6 +82,7 @@ const WORDS={
     rightAscension:'Right ascension',declination:'Declination',distance:'Geocentric distance',
     longitudeSpeed:'Longitude speed',constellation:'Constellation',catalogId:'Catalogue ID',
     source:'Ephemeris',sign:'Sign',notAvailable:'Unavailable',
+    realTextureNote:'Planet maps by Solar System Scope (CC BY 4.0); illustrative orientation and phases.',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -197,6 +200,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   get approximateStars():boolean{return !!this.data?.stars.some(s=>s.approximate);}
   get starCount():number{return this.data?.stars.length??0;}
   get availableHouseGrids():readonly SkyHouseGrid[]{return this.data?.houseGrids??[];}
+  get hasRealPlanetTextures():boolean{return Object.keys(REAL_PLANET_TEXTURES).length>0;}
+  get planetTextureNote():string {
+    return this.word(this.hasRealPlanetTextures?'realTextureNote':'skyLightNote');
+  }
   get activeHouseGrid():SkyHouseGrid|null{
     return this.data?.houseGrids.find(grid=>grid.id===this.houseSystem)??null;
   }
@@ -308,6 +315,11 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     try {
       this.scene=new THREE.Scene();
       this.scene.background=null;
+      // Graphic volume lighting, NOT the actual physical phase angle.
+      this.scene.add(new THREE.AmbientLight(0xffffff,1.75));
+      const planetLight=new THREE.DirectionalLight(0xfff4df,2.0);
+      planetLight.position.set(-45,65,-40);
+      this.scene.add(planetLight);
       this.camera=new THREE.PerspectiveCamera(75,1,0.1,180);
       this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
       this.renderer.setClearColor(0x000000,0);
@@ -773,15 +785,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           }
 
           const portrait=this.portraitTexture(point.id);
+          let fallbackPlane:THREE.Object3D|null=null;
           if(portrait){
-            // Main portrait faces the observer: actual altitude/azimuth is
-            // computed in Rust; colour/texture is expressly illustrative.
             const disc=skyFacingPlane(portrait,position.clone().multiplyScalar(0.998),
               spec.diameter,spec.diameter,{renderOrder:1});
             disc.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
             group.add(disc);this.targets.push(disc);
+            fallbackPlane=disc;
           }else{
-            // Canvas-unavailable fallback: never omit the real sky position.
             const fallback=new THREE.Mesh(
               new THREE.SphereGeometry(0.9,12,10),
               new THREE.MeshBasicMaterial({color:accent}),
@@ -789,12 +800,61 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             fallback.position.copy(position);
             fallback.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
             group.add(fallback);this.targets.push(fallback);
+            fallbackPlane=fallback;
+          }
+          const realMap=REAL_PLANET_TEXTURES[point.id];
+          if(realMap?.startsWith('data:image/jpeg;base64,')){
+            const globeMaterial=point.id==='Sun'
+              ? new THREE.MeshBasicMaterial({color:0xffffff})
+              : new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
+            const globe=new THREE.Mesh(
+              new THREE.SphereGeometry(spec.diameter*0.5,36,24),globeMaterial,
+            );
+            globe.position.copy(position.clone().multiplyScalar(0.998));
+            globe.quaternion.setFromUnitVectors(
+              new THREE.Vector3(0,0,1),
+              globe.position.clone().normalize().negate(),
+            );
+            globe.visible=false;
+            globe.renderOrder=1;
+            globe.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
+            group.add(globe);
+            let saturnRing:THREE.Mesh|null=null;
+            if(point.id==='Saturn'){
+              const geometry=new THREE.RingGeometry(spec.diameter*.52,spec.diameter*.95,72);
+              const material=new THREE.MeshBasicMaterial({
+                color:0xd3bd92,side:THREE.DoubleSide,
+                transparent:true,opacity:0.72,depthWrite:false,
+              });
+              const ring=new THREE.Mesh(geometry,material);
+              ring.position.copy(globe.position);
+              ring.quaternion.copy(globe.quaternion);
+              ring.rotateX(.38);
+              ring.visible=false;
+              group.add(ring);
+              saturnRing=ring;
+            }
+            const realTexture=loader.load(realMap,()=>{
+              if(this.destroyed||generation!==this.markerGeneration)return;
+              realTexture.colorSpace=THREE.SRGBColorSpace;
+              globeMaterial.map=realTexture;
+              globeMaterial.needsUpdate=true;
+              globe.visible=true;
+              if(saturnRing)saturnRing.visible=true;
+              if(fallbackPlane){
+                fallbackPlane.visible=false;
+                this.targets=this.targets.filter(target=>target!==fallbackPlane);
+              }
+              this.targets.push(globe);
+              this.draw();
+            },undefined,()=>{/* The illustrated portrait remains as a fallback. */});
+            this.markerTextures.push(realTexture);
           }
 
           // The official glyph is deliberately a small badge, not the body.
           const texture=loader.load(celestialGlyphUrl(point.id),()=>{
             if(this.destroyed||generation!==this.markerGeneration)return;
-            const glyph=skyFacingPlane(texture,position.clone().multiplyScalar(0.995),
+            const glyph=skyFacingPlane(texture,position.clone().multiplyScalar(0.915),
               spec.labelDiameter,spec.labelDiameter,
               {anchorX:0.10,anchorY:0.10,renderOrder:2});
             glyph.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
