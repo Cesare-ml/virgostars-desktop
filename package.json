@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "qa:education-demo": "node scripts/qa/education-demo-runner.mjs",
     "verify:version": "node scripts/verify-desktop-version.mjs",
     "verify:translations": "node scripts/verify-translations.mjs",
     "verify:ipc": "node scripts/verify-native-ipc.mjs",
