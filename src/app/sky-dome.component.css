@@ -76,7 +76,21 @@
 }
 .sky3d-header h2 { margin:10px 0 5px; font-size:clamp(23px,2.35vw,32px); font-weight:680; letter-spacing:-.045em; line-height:1.05; }
 .sky3d-header p { margin:0; font-size:11px; color:#aebed7; font-weight:450; }
+.sky3d-header-actions {
+  display:flex;align-items:flex-start;justify-content:flex-end;gap:12px;
+}
 .sky3d-epoch { text-align:right; font-variant-numeric:tabular-nums; padding-top:2px; }
+.sky3d-exit {
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  flex:none;min-height:32px;padding:6px 10px;
+  border:1px solid rgba(180,199,234,.25);border-radius:10px;
+  background:rgba(24,39,67,.65);color:#e0d7ff;
+  font:inherit;font-size:10px;font-weight:650;
+  pointer-events:auto;cursor:pointer;
+}
+.sky3d-exit svg {width:15px;height:15px;}
+.sky3d-exit:hover {background:rgba(69,70,125,.75);color:#fff;}
+.sky3d-exit:focus-visible {outline:2px solid #d3baff;outline-offset:2px;}
 .sky3d-epoch-date { color:#edf2ff; font-weight:650; letter-spacing:.015em; }
 .sky3d-epoch-place { margin-top:5px; color:#a9bcd6; font-size:11px; }
 .sky3d-computation {
@@ -304,6 +318,9 @@
   .sky3d-header h2 {margin-top:7px;}
   .sky3d-header p {display:none;}
   .sky3d-epoch-date {font-size:10px;}
+  .sky3d-header-actions {gap:5px;}
+  .sky3d-exit {padding:6px;min-width:30px;}
+  .sky3d-exit span {display:none;}
   .sky3d-controls {top:106px;max-height:calc(100% - 215px);width:165px;left:10px;padding:9px;}
   .sky3d-layer-grid button {font-size:9px;padding:5px;min-height:31px;}
   .sky3d-info-strip {top:108px;right:9px;padding:7px;gap:6px;}
