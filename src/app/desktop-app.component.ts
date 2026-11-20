@@ -72,6 +72,7 @@ import {australChartData, regoloPlanetOfYear, settingsWithConjunctOuter} from '.
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
+import { MenuIconComponent } from './menu-icon.component';
 import { UpdatesComponent } from './updates.component';
 import { De441PackagesComponent } from './de441-packages.component';
 import {
@@ -181,7 +182,7 @@ const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, UpdatesComponent, De441PackagesComponent],
+  imports:[CommonModule, MenuIconComponent, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, UpdatesComponent, De441PackagesComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
