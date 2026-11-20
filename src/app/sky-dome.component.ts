@@ -8,6 +8,7 @@ import {calculateSkyDome} from './native/sky-dome';
 import type {SkyDomeData, SkyDomePoint, SkyDomeResult} from './native/sky-dome-contract';
 import {observerVector, validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
+import {planetAccent, skyLightFromSun, starAppearance, type SkyLight} from './sky-dome-visuals';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -78,6 +79,11 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private destroyed=false;
   private webglFailed=false;
   private markerGroup:THREE.Group|null=null;
+  private markerGeneration=0;
+  private markerTextures:THREE.Texture[]=[];
+  private sparkleTexture:THREE.CanvasTexture|null=null;
+  private selectionTexture:THREE.CanvasTexture|null=null;
+  private selectionRing:THREE.Sprite|null=null;
   private overlayGroup:THREE.Group|null=null;
   private layerGroups:Partial<Record<LayerName,THREE.Group>>={};
   private ground:THREE.Mesh|null=null;
@@ -114,6 +120,17 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get approximateStars():boolean{return !!this.data?.stars.some(s=>s.approximate);}
   get starCount():number{return this.data?.stars.length??0;}
+  get light():SkyLight {
+    const sun=this.data?.planets.find(p=>p.id==='Sun');
+    return skyLightFromSun(sun?.altitudeDeg??null);
+  }
+  get viewDirection():string {
+    const az=(this.yaw%360+360)%360;
+    const altitude=this.pitch;
+    return az.toFixed(0)+'° · '+altitude.toFixed(0)+'°';
+  }
+  get fieldOfView():number { return Math.round(this.camera?.fov??75); }
+  get visiblePlanetCount():number{return this.data?.planets.length??0;}
 
   ngOnChanges(changes:SimpleChanges):void {
     if(changes['utcIso']||changes['latMicro']||changes['lngMicro']) void this.load();
@@ -169,7 +186,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       canvas.remove();
     }
     ++this.zodiacGeneration;
+    ++this.markerGeneration;
     if(this.scene)this.disposeTree(this.scene);
+    for(const texture of this.markerTextures)texture.dispose();
+    this.markerTextures=[];
+    this.sparkleTexture?.dispose();
+    this.sparkleTexture=null;
+    this.selectionTexture?.dispose();
+    this.selectionTexture=null;
     for(const texture of this.angleTextures)texture.dispose();
     this.angleTextures=[];
     for(const texture of this.zodiacTextures)texture.dispose();
