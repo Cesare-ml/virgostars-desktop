@@ -24,11 +24,20 @@ function dataFromCache(root) {
   assert(manifest.schemaVersion===1&&manifest.source==='Solar System Scope'&&
     manifest.baseUrl===TEXTURE_SOURCE&&manifest.license===TEXTURE_LICENSE&&
     manifest.credit===TEXTURE_CREDIT&&Array.isArray(manifest.images) &&
-    manifest.images.length===TEXTURES.length,'Invalid texture attribution manifest');
+    manifest.images.length>0&&manifest.images.length<=TEXTURES.length,
+    'Invalid texture attribution manifest');
+  const allowed=new Map(TEXTURES.map(([id,name])=>[id,name]));
+  const unique=new Set();
+  for(const entry of manifest.images){
+    assert(entry&&allowed.get(entry.id)===entry.name&&!unique.has(entry.id),
+      'Unknown or duplicate texture entry');
+    unique.add(entry.id);
+  }
   const out={};
   for(const [id,name] of TEXTURES){
     const entry=manifest.images.find(item=>item.id===id&&item.name===name);
-    assert(entry&&Number.isSafeInteger(entry.bytes)&&entry.bytes>5000&&entry.bytes<3_000_000&&
+    if(!entry)continue;
+    assert(Number.isSafeInteger(entry.bytes)&&entry.bytes>5000&&entry.bytes<3_000_000&&
       /^[a-f0-9]{64}$/.test(entry.sha256),'Missing or invalid texture manifest entry');
     const bytes=safeFile(join(cache,name));
     assert(bytes.length===entry.bytes&&
