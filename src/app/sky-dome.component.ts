@@ -356,7 +356,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const group=new THREE.Group();
     this.scene.add(group);this.angleGroup=group;
     if(!this.showAngles || !this.data){this.draw();return;}
-    const colors:Record<string,string>={
+    const colors:Record<'ASC'|'DSC'|'MC'|'IC',string>={
       ASC:'#f6ca58',DSC:'#79dca2',MC:'#ba94eb',IC:'#dfc5ff',
     };
     for(const angle of this.data.angles){
