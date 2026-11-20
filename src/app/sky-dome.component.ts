@@ -219,6 +219,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       altitude:grid.separators[index][4].altitudeDeg,
     }));
   }
+  cuspRoman(index:number):string {
+    return ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][index]??'';
+  }
   formatCusp(longitude:number):string {
     return (((longitude%30)+30)%30).toFixed(2)+'°';
   }
