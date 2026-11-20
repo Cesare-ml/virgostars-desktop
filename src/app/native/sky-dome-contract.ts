@@ -62,7 +62,7 @@ function direction(v:unknown):SkyDomeDirection {
   if(!record(v))throw Error('Invalid sky dome protocol');
   return Object.freeze({
     altitudeDeg:num(v['altitudeDeg'],-90,90),
-    azimuthNorthEastDeg:num(v['azimuthNorthEastDeg'],0,359.99999999999994),
+    azimuthNorthEastDeg:num(v['azimuthNorthEastDeg'],0,360),
   });
 }
 function zodiac(v:unknown):readonly SkyZodiacSegment[] {
@@ -88,7 +88,7 @@ function angles(v:unknown):readonly SkyAngle[] {
       throw Error('Invalid sky dome protocol');
     return Object.freeze({
       id:names[i],
-      zodiacLongitudeDeg:num(item['zodiacLongitudeDeg'],0,359.99999999999994),
+      zodiacLongitudeDeg:num(item['zodiacLongitudeDeg'],0,360),
       position:direction(item['position']),
     });
   }));
