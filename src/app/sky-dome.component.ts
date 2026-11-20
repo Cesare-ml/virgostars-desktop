@@ -13,7 +13,8 @@ import {
   skyWorldVector, SKY_FISHEYE_START_DEG,
 } from './sky-dome-projection';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
-import {planetAccent, skyLightFromSun, starAppearance, type SkyLight} from './sky-dome-visuals';
+import {planetAccent, skyLightFromSun, starAppearance, labeledCatalogStars, type SkyLight} from './sky-dome-visuals';
+import {createPlanetPortrait,planetPortraitSpec} from './sky-dome-planet-portraits';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -27,7 +28,7 @@ type PointWithKind={point:SkyDomePoint;kind:'planet'|'star'};
 const WORDS={
   it:{
     title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
-    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',planets:'Pianeti',
+    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',starLabels:'Nomi stelle',planets:'Pianeti',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -53,13 +54,13 @@ const WORDS={
     perspective:'Prospettiva',
     nadir:'Nadir',
     allSky:'Tutto il cielo',
-    skyLightNote:'Atmosfera illustrativa, non modello fisico.',
+    skyLightNote:'Corpi planetari illustrati: non fotografie, fasi o dimensioni fisiche.',
     backToChart:'Torna al grafico',
     noStars:'Catalogo locale delle stelle non disponibile.',
   },
   en:{
     title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
-    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',planets:'Planets',
+    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',starLabels:'Star names',planets:'Planets',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -85,7 +86,7 @@ const WORDS={
     perspective:'Perspective',
     nadir:'Nadir',
     allSky:'All-sky',
-    skyLightNote:'Illustrative atmosphere, not a physical model.',
+    skyLightNote:'Illustrated planetary portraits, not photos, physical phases or diameters.',
     backToChart:'Back to chart',
     noStars:'Local star catalogue unavailable.',
   },
@@ -120,6 +121,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private markerGroup:THREE.Group|null=null;
   private markerGeneration=0;
   private markerTextures:THREE.Texture[]=[];
+  private portraitTextures=new Map<string,THREE.CanvasTexture>();
   private sparkleTexture:THREE.CanvasTexture|null=null;
   private selectionTexture:THREE.CanvasTexture|null=null;
   private selectionRing:THREE.Sprite|null=null;
@@ -149,6 +151,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   showAngles=true;
   showGround=false;
   showStars=true;
+  showStarLabels=true;
   showPlanets=true;
 
   word(key:keyof typeof WORDS.it):string { return WORDS[this.locale][key]; }
@@ -262,6 +265,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(this.scene)this.disposeTree(this.scene);
     for(const texture of this.markerTextures)texture.dispose();
     this.markerTextures=[];
+    for(const texture of this.portraitTextures.values())texture.dispose();
+    this.portraitTextures.clear();
     this.sparkleTexture?.dispose();
     this.sparkleTexture=null;
     this.selectionTexture?.dispose();
@@ -571,6 +576,31 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.markerGroup.add(sprite);
     this.selectionRing=sprite;
     this.draw();
+  }
+  private portraitTexture(id:string):THREE.CanvasTexture|null {
+    const existing=this.portraitTextures.get(id);
+    if(existing)return existing;
+    const texture=createPlanetPortrait(id);
+    if(texture)this.portraitTextures.set(id,texture);
+    return texture;
+  }
+  private starNameTexture(name:string):THREE.CanvasTexture|null {
+    const canvas=document.createElement('canvas');
+    canvas.width=512;canvas.height=96;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)return null;
+    const label=name.length>28?name.slice(0,27)+'…':name;
+    ctx.font='600 31px sans-serif';
+    ctx.textBaseline='middle';ctx.textAlign='left';
+    const width=Math.min(480,ctx.measureText(label).width+25);
+    ctx.fillStyle='rgba(8,18,34,.55)';
+    ctx.beginPath();ctx.roundRect(8,13,width,68,14);ctx.fill();
+    ctx.fillStyle='#e3e9fc';
+    ctx.shadowColor='rgba(70,105,180,.55)';ctx.shadowBlur=9;
+    ctx.fillText(label,20,48,455);
+    const texture=new THREE.CanvasTexture(canvas);
+    texture.colorSpace=THREE.SRGBColorSpace;
+    return texture;
   }
   private buildMarkers():void {
     if(!this.scene)return;
