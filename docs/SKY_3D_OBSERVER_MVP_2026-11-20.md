@@ -50,6 +50,29 @@ The rendering boundary already defines `SkyOverlayPolyline` with `kind`, `proven
 3. **True primary directions:** separate from existing `SIMPLIFIED_PRIMARY` or symbolic solar-arc directions. Define the historical doctrine and computational method first: promissor/significator, semi-arc, pole of the significator, right/oblique ascension, direct/converse, arc/time key, zodiacal versus mundane directions, under/above horizon, latitude, precession and calendar/time scales. Produce an explicit mathematical arc and a progression on the *natal* celestial frame; never treat the progressed longitude as a physically observed planet or confuse primary directions with transits. Show 3D geometrical constructions and an audit table for every result. Cross-validate with reference examples before enabling.
 4. Future common infrastructure belongs in **VirgoStars-Ephemeris (Rust)** for astronomy and **astrological-functions** for house/doctrinal algorithms; Three.js remains a renderer.
 
+## Visual design update — planetarium HUD (2026-11-20)
+
+**Implemented in the draft branch (not yet visually tested on Windows):**
+
+- An immersive full-bleed, dark-blue star field with subtle atmospheric gradients. The CSS appearance changes between `night`, `twilight` and `day` based **only** on the Sun's computed geometric altitude. The gradient is explicitly *illustrative*, not an atmospheric/refraction/visibility simulation. No decorative/fake stars were added.
+- Catalogue-derived star markers rendered with an original radial luminosity texture. Magnitude changes size and opacity in four capped classes; unknown magnitudes receive faint markers. The visual tint is aesthetic and **does not claim B–V/spectral classifications**.
+- Physical Sun, Moon and planets use native-computed sky positions with small luminous halos. Original VirgoStars-Assets celestial glyphs are loaded for each planet, with the mathematical marker retained if an asset is missing. Sizes are symbolic; no false angular-diameter claim is made.
+- The official zodiac glyph assets decorate the actual tropical 30° ecliptic segments. ASC/DSC/MC/IC retain their existing yellow, green and two violet conventions. The ground, when active, occludes objects below the horizon, including zodiac artwork.
+- The front end has a structured, responsive glass-style **Cielo 3D** control panel, a compact epoch/location display, camera azimuth/altitude and field-of-view readouts, selectable planet/star detail cards, and a bottom dock of planet glyphs for direct orientation to each **computed** body.
+- The camera supports drag, wheel zoom, keyboard arrows, Shift+arrows for larger movements, `+`/`-` for field-of-view, `Home` to reset and direct N/E/S/O/zenith controls. Only necessary state changes schedule a frame; there is no continuous animation loop.
+- Star, sign, planet and selection textures are private, generated locally or loaded from the approved asset path; no third-party images/fonts or network feeds were added. Texture, renderer, and event listener cleanup is required when the panel closes.
+
+**Visual QA acceptance checklist (still open):**
+
+1. Test native WebView2 at normal and 125%/150% DPI; verify the planet dock and control panel never cover important content at typical Desktop window sizes.
+2. Check every Sun altitude mode with the same astronomical data; ensure night/twilight/day changes only the background, not celestial positions. Document that daytime star visibility is didactic.
+3. Verify glyph loads from approved private/synthetic asset builds, and every broken/missing artwork path fails gracefully (no broken-image icons/emoji substitutes).
+4. Check marker pick, focus-to-planet, selection ring, highlighting, click-vs-drag and camera reset, including the Sun, Moon, low-altitude and below-horizon targets.
+5. Test renderer disposal, asset reloads, resize and WebGL context-loss; profile 738 local stars and less powerful GPUs, keeping one canvas and no unnecessary animation.
+6. Preserve keyboard accessibility and sufficient contrast, including when the panel is shown over the bright illustrative daytime gradient.
+
+**No pixel-perfect screenshot approval or compiled GUI smoke test has been performed in this session.**
+
 ## Next acceptance gates
 
 - Run `npm test`, `npm run verify:ipc`, `npm run build:ui` on the complete checkout; run `cargo test` and `cargo check` for relevant Desktop features. No CI or GitHub Actions are triggered by this branch.
