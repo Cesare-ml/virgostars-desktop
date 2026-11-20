@@ -60,7 +60,7 @@
   </div>
 
   <article class="sky3d-selection" *ngIf="selected as selection">
-    <button type="button" class="sky3d-dismiss" [attr.aria-label]="word('close')" (click)="selected=null;updateSelectionRing()">×</button>
+    <button type="button" class="sky3d-dismiss" [attr.aria-label]="word('close')" (click)="clearSelection()">×</button>
     <div class="sky3d-selection-header">
       <div class="sky3d-selection-mark">
         <img *ngIf="selection.kind==='planet'" [src]="bodyGlyph(selection.point.id)" alt="" aria-hidden="true">
