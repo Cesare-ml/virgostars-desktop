@@ -10,16 +10,15 @@ import {fileURLToPath} from 'node:url';
 import {TEXTURES,TEXTURE_SOURCE,TEXTURE_LICENSE,TEXTURE_CREDIT} from './texture-sources.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-const CACHE=resolve(ROOT,'.local/sky3d/textures');
-const OUT=resolve(ROOT,'.local/sky3d-real-textures.private.ts');
 function assert(ok,message){if(!ok)throw Error(message);}
 function safeFile(path) {
   const stat=lstatSync(path);
   assert(stat.isFile()&&!stat.isSymbolicLink(),'Unsafe texture cache file');
   return readFileSync(path);
 }
-function dataFromCache() {
-  const manifestPath=join(CACHE,'manifest.json');
+function dataFromCache(root) {
+  const cache=resolve(root,'.local/sky3d/textures');
+  const manifestPath=join(cache,'manifest.json');
   if(!existsSync(manifestPath))return {};
   const manifest=JSON.parse(safeFile(manifestPath).toString('utf8'));
   assert(manifest.schemaVersion===1&&manifest.source==='Solar System Scope'&&
@@ -31,7 +30,7 @@ function dataFromCache() {
     const entry=manifest.images.find(item=>item.id===id&&item.name===name);
     assert(entry&&Number.isSafeInteger(entry.bytes)&&entry.bytes>5000&&entry.bytes<3_000_000&&
       /^[a-f0-9]{64}$/.test(entry.sha256),'Missing or invalid texture manifest entry');
-    const bytes=safeFile(join(CACHE,name));
+    const bytes=safeFile(join(cache,name));
     assert(bytes.length===entry.bytes&&
       createHash('sha256').update(bytes).digest('hex')===entry.sha256,
       'Texture cache checksum mismatch: '+id);
@@ -42,14 +41,14 @@ function dataFromCache() {
   return out;
 }
 export function stagePlanetTextures(root=ROOT) {
-  assert(root===ROOT,'Unexpected staging destination');
-  mkdirSync(dirname(OUT),{recursive:true});
-  const textures=dataFromCache();
+  const destination=resolve(root,'.local/sky3d-real-textures.private.ts');
+  mkdirSync(dirname(destination),{recursive:true});
+  const textures=dataFromCache(root);
   const content='/** Solar System Scope; CC BY 4.0; credit in Cielo 3D and docs. '+TEXTURE_SOURCE+' */\n'
     +'export const REAL_PLANET_TEXTURES:Readonly<Record<string,string>>=Object.freeze('
     +JSON.stringify(textures)+');\n';
-  const tmp=OUT+'.part';
-  try{writeFileSync(tmp,content,'utf8');renameSync(tmp,OUT);}
+  const tmp=destination+'.part';
+  try{writeFileSync(tmp,content,'utf8');renameSync(tmp,destination);}
   finally{if(existsSync(tmp))rmSync(tmp);}
   return Object.keys(textures).length;
 }
