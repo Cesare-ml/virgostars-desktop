@@ -60,6 +60,20 @@
           [selected]="grid.id===houseSystem">{{houseLabel(grid.id)}}</option>
       </select>
       <p class="sky3d-house-caveat" *ngIf="activeHouseGrid">{{word('houseNote')}}</p>
+      <details class="sky3d-house-cusps" *ngIf="activeHouseGrid && showHouses">
+        <summary>{{word('houseCusps')}}</summary>
+        <div class="sky3d-cusp-grid" role="group" [attr.aria-label]="word('houseCusps')">
+          <button type="button" *ngFor="let cusp of cuspRows"
+            [class.selected]="selectedCuspIndex===cusp.index"
+            [attr.aria-label]="word('houseFocus')+' '+cusp.house+' · '+formatCusp(cusp.longitude)+' '+cuspSign(cusp.longitude)"
+            [attr.aria-pressed]="selectedCuspIndex===cusp.index"
+            (click)="focusCusp(cusp.index)">
+            <span class="sky3d-cusp-roman">{{['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][cusp.index]}}</span>
+            <img [src]="cuspGlyph(cusp.longitude)" alt="" aria-hidden="true">
+            <span class="sky3d-cusp-number">{{formatCusp(cusp.longitude)}}</span>
+          </button>
+        </div>
+      </details>
       <p class="sky3d-house-caveat" *ngIf="!activeHouseGrid">{{houseSystemName || houseSystem}} — {{word('houseUnavailable')}}</p>
     </details>
     <details class="sky3d-accordion" open>
