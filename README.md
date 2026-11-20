@@ -50,6 +50,17 @@ For local development with the verified original artwork, place the authorized `
 
 The synthetic asset generator is designed to fail closed on unexpected, modified or unapproved assets. If the local generated pack already exists, follow [Asset Pipeline](docs/ASSET_PIPELINE.md) rather than overwriting it.
 
+## macOS build handoff (Apple Silicon / Intel)
+
+On a Mac with the one-time Tauri prerequisites installed (Xcode Command Line Tools, Node 22/24, Rust 1.90+, Python 3), a collaborator can build a locally testable `.app` and `.dmg` with **two commands**:
+
+```bash
+git clone https://github.com/Cesare-ml/virgostars-desktop.git && cd virgostars-desktop
+npm run build:mac
+```
+
+The script clones pinned public sibling repositories, verifies and stages the public DE441 base and city catalog, then packages the app. This has **not yet been executed on macOS**. Default artwork is synthetic; original artwork requires a separate public-rights check. A signed, notarized and owner-authorized GitHub release is a distinct procedure, not automatic. See [macOS build and release runbook](docs/MACOS_BUILD_AND_RELEASE.md).
+
 ## Project architecture
 
 The Rust host owns future native storage, security-sensitive system integration and astronomical engine adapters. Angular owns UI state, while Charts owns rendering. No private backend source is required to build the synthetic preview. The upstream public [VirgoStars Ephemeris](https://github.com/Cesare-ml/VirgoStars-Ephemeris) is independently developed and **not yet integrated as a validated runtime provider**.
