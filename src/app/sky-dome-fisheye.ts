@@ -3,7 +3,8 @@ import {fisheyeBlend,SKY_FISHEYE_START_DEG} from './sky-dome-projection';
 
 /**
  * All-sky display lens. Render the astronomical scene into six directions
- * only when its objects/layers change. Camera drag and wheel zoom reproject
+ * only when its objects/layers change. The face size is chosen to fit
+ * the device's reported cube-map limit (256/512/1024 px). Camera movements reproject
  * the cached cubemap without recomputing astronomy or six WebGL passes.
  *
  * Below 85° use the crisp native perspective camera. At 85° the shader is
@@ -19,8 +20,8 @@ export class SkyDomeLens {
   private readonly quad:THREE.Mesh;
   private dirty=true;
 
-  constructor() {
-    this.target=new THREE.WebGLCubeRenderTarget(1024,{
+  constructor(size:256|512|1024=1024) {
+    this.target=new THREE.WebGLCubeRenderTarget(size,{
       format:THREE.RGBAFormat,
       type:THREE.UnsignedByteType,
       generateMipmaps:false,
