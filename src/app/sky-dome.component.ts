@@ -39,8 +39,9 @@ const WORDS={
     rightAscension:'Ascensione retta',declination:'Declinazione',distance:'Distanza geocentrica',
     longitudeSpeed:'Velocità in longitudine',constellation:'Costellazione',catalogId:'ID archivio',
     illuminatedFraction:'Luna illuminata',
+    illuminatedFractionNote:'Stima geometrica da Sole e Luna calcolati; rifrazione e fotometria escluse.',
     source:'Effemeridi',sign:'Segno',notAvailable:'Non disponibile',distanceUnit:' UA',speedUnit:' °/giorno',
-    realTextureNote:'Mappe planetarie Solar System Scope (CC BY 4.0); orientamento e fasi illustrativi.',
+    realTextureNote:'Mappe Solar System Scope (CC BY 4.0); luce solare orientata sulle effemeridi, fasi degli altri pianeti illustrative.',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -85,8 +86,9 @@ const WORDS={
     rightAscension:'Right ascension',declination:'Declination',distance:'Geocentric distance',
     longitudeSpeed:'Longitude speed',constellation:'Constellation',catalogId:'Catalogue ID',
     illuminatedFraction:'Illuminated Moon',
+    illuminatedFractionNote:'Geometric estimate from computed Sun and Moon; no refraction or photometry.',
     source:'Ephemeris',sign:'Sign',notAvailable:'Unavailable',distanceUnit:' AU',speedUnit:' °/day',
-    realTextureNote:'Planet maps by Solar System Scope (CC BY 4.0); illustrative orientation and phases.',
+    realTextureNote:'Solar System Scope maps (CC BY 4.0); sunlight direction from ephemerides, other planetary phases illustrative.',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -274,6 +276,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   valueText(value:number|null|undefined,suffix='°',digits=3):string {
     return value===null||value===undefined?this.word('notAvailable'):value.toFixed(digits)+suffix;
+  }
+  percentText(value:number|null):string {
+    return value===null?this.word('notAvailable'):(value*100).toFixed(1)+'%';
   }
   close():void { this.closed.emit(); }
   clearSelection():void {
