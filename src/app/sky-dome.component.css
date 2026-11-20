@@ -177,6 +177,13 @@
 }
 .sky3d-info-caption {font-size:9px;letter-spacing:.04em;color:#a3b6cd;}
 .sky3d-info-strip strong {font-size:11px;color:#e9f3ff;}
+.sky3d-lens-kind {
+  font-size:10px;font-weight:620;color:#a6b9cf;
+  transition:color .18s ease;
+}
+.sky3d-lens-kind.wide {
+  color:#e1c4ff;text-shadow:0 0 8px rgba(212,174,255,.35);
+}
 .sky3d-info-separator {height:18px;border-left:1px solid rgba(176,197,230,.16);}
 .sky3d-selection {
   position:absolute;z-index:4;top:169px;right:22px;
