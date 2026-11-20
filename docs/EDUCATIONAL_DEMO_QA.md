@@ -4,6 +4,8 @@
 
 Questo protocollo traduce in prove eseguibili la matrice delle 14 esigenze didattiche raccolte nella [documentazione globale del sito](https://github.com/Cesare-ml/virgo-stars/blob/docs/astrology-education-expansion-2026-11-19/docs/product/GLOBAL_ECOSYSTEM_PARTNER_QUALITY_GATE_2026-11-20.md). Non importa nominativi o altri dati del CRM privato.
 
+**Politica di esecuzione Rust:** i comandi Cargo usano `test --offline --locked` e `CARGO_NET_OFFLINE=true`. Se dipendenze e lockfile non sono pronti, lo stato resta `BLOCKED_ENV` invece di tentare un download automatico. I test JavaScript sono eseguiti localmente come subprocessi; **il runner non può garantire che ogni test preesistente non acceda alla rete**. Per isolamento rigoroso, eseguire i checkout in un ambiente con rete disabilitata. Non utilizzare dati personali.
+
 ## Prerequisiti
 
 - Node.js 22.12+ o 24 (compatibile con il progetto), npm. Per i test Rust: Cargo/rustc compatibili con il repository Ephemeris.
