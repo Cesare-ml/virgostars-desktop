@@ -16,6 +16,7 @@ import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
 import {planetAccent, skyLightFromSun, starAppearance, labeledCatalogStars, type SkyLight} from './sky-dome-visuals';
 import {createPlanetPortrait,planetPortraitSpec} from './sky-dome-planet-portraits';
 import {findSkyStars} from './sky-dome-star-search';
+import {skyFacingPlane} from './sky-dome-billboard';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -133,7 +134,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private portraitTextures=new Map<string,THREE.CanvasTexture>();
   private sparkleTexture:THREE.CanvasTexture|null=null;
   private selectionTexture:THREE.CanvasTexture|null=null;
-  private selectionRing:THREE.Sprite|null=null;
+  private selectionRing:THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>|null=null;
   private overlayGroup:THREE.Group|null=null;
   private layerGroups:Partial<Record<LayerName,THREE.Group>>={};
   private ground:THREE.Mesh|null=null;
@@ -407,11 +408,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(letter,64,68);
       const texture=new THREE.CanvasTexture(canvas);
       this.compassTextures.push(texture);
-      const label=new THREE.Sprite(new THREE.SpriteMaterial({
-        map:texture,transparent:true,depthTest:true,depthWrite:false,
-      }));
-      label.position.copy(this.vec(az,4,96));
-      label.scale.set(11,11,1);
+      const label=skyFacingPlane(texture,this.vec(az,4,96),11,11);
       group.add(label);
     }
     this.scene.add(group);
@@ -485,14 +482,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
         // Keep an unlabelled sky if an asset is missing: never substitute an emoji.
         const texture=loader.load(url,()=>{
           if(this.destroyed || generation!==this.zodiacGeneration)return;
-          const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-            map:texture,transparent:true,depthTest:true,depthWrite:false
-          }));
-          sprite.position.copy(this.vec(
+          const label=skyFacingPlane(texture,this.vec(
             sign.label.azimuthNorthEastDeg,sign.label.altitudeDeg,98.5
-          ));
-          sprite.scale.set(8,8,1);
-          group.add(sprite);
+          ),8,8);
+          group.add(label);
           this.draw();
         });
         this.zodiacTextures.push(texture);
@@ -533,12 +526,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       ctx.closePath();ctx.fill();
       const texture=new THREE.CanvasTexture(canvas);
       this.angleTextures.push(texture);
-      const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-        map:texture,transparent:true,depthTest:true,depthWrite:false,
-      }));
-      sprite.position.copy(this.vec(pos.azimuthNorthEastDeg,pos.altitudeDeg,99));
-      sprite.scale.set(11,5.5,1);
-      group.add(sprite);
+      group.add(skyFacingPlane(texture,
+        this.vec(pos.azimuthNorthEastDeg,pos.altitudeDeg,99),11,5.5));
     }
     this.draw();
   }
@@ -593,6 +582,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(!this.markerGroup)return;
     if(this.selectionRing){
       this.markerGroup.remove(this.selectionRing);
+      this.selectionRing.geometry.dispose();
       this.selectionRing.material.dispose();
       this.selectionRing=null;
     }
@@ -600,14 +590,11 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const texture=this.selectionOutline();
     if(!texture)return;
     const {point}=this.selected;
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:texture,transparent:true,depthTest:true,depthWrite:false,
-    }));
-    sprite.position.copy(this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,98.5));
     const radius=this.selected.kind==='star'?7:(planetPortraitSpec(point.id)?.diameter??9)+3;
-    sprite.scale.set(radius,radius,1);
-    this.markerGroup.add(sprite);
-    this.selectionRing=sprite;
+    const ring=skyFacingPlane(texture,
+      this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,98.5),radius,radius);
+    this.markerGroup.add(ring);
+    this.selectionRing=ring;
     this.draw();
   }
   private portraitTexture(id:string):THREE.CanvasTexture|null {
@@ -657,26 +644,19 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           const position=this.vec(point.azimuthNorthEastDeg,point.altitudeDeg,100);
           const accent=planetAccent(point.id);
           // Soft glow: not a physical angular diameter or planetary magnitude.
-          const halo=new THREE.Sprite(new THREE.SpriteMaterial({
-            map:this.radialTexture(),color:new THREE.Color(accent),
-            transparent:true,blending:THREE.AdditiveBlending,opacity:0.72,
-            depthTest:true,depthWrite:false,
-          }));
-          halo.position.copy(position.clone().multiplyScalar(1.002));
-          halo.scale.set(spec.diameter*1.8,spec.diameter*1.8,1);
-          halo.renderOrder=0;
+          const halo=skyFacingPlane(
+            this.radialTexture(),position.clone().multiplyScalar(1.002),
+            spec.diameter*1.8,spec.diameter*1.8,
+            {color:accent,blending:THREE.AdditiveBlending,opacity:0.72,renderOrder:0},
+          );
           group.add(halo);
 
           const portrait=this.portraitTexture(point.id);
           if(portrait){
             // Main portrait faces the observer: actual altitude/azimuth is
             // computed in Rust; colour/texture is expressly illustrative.
-            const disc=new THREE.Sprite(new THREE.SpriteMaterial({
-              map:portrait,transparent:true,depthTest:true,depthWrite:false,
-            }));
-            disc.position.copy(position.clone().multiplyScalar(0.998));
-            disc.scale.set(spec.diameter,spec.diameter,1);
-            disc.renderOrder=1;
+            const disc=skyFacingPlane(portrait,position.clone().multiplyScalar(0.998),
+              spec.diameter,spec.diameter,{renderOrder:1});
             disc.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
             group.add(disc);this.targets.push(disc);
           }else{
@@ -693,13 +673,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           // The official glyph is deliberately a small badge, not the body.
           const texture=loader.load(celestialGlyphUrl(point.id),()=>{
             if(this.destroyed||generation!==this.markerGeneration)return;
-            const glyph=new THREE.Sprite(new THREE.SpriteMaterial({
-              map:texture,transparent:true,depthTest:true,depthWrite:false,
-            }));
-            glyph.position.copy(position.clone().multiplyScalar(0.995));
-            glyph.center.set(0.10,0.10); // below/right corner of the portrait
-            glyph.scale.set(spec.labelDiameter,spec.labelDiameter,1);
-            glyph.renderOrder=2;
+            const glyph=skyFacingPlane(texture,position.clone().multiplyScalar(0.995),
+              spec.labelDiameter,spec.labelDiameter,
+              {anchorX:0.10,anchorY:0.10,renderOrder:2});
             glyph.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
             group.add(glyph);
             this.targets.push(glyph);
@@ -735,14 +711,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             const texture=this.starNameTexture(star.id);
             if(!texture)continue;
             this.markerTextures.push(texture);
-            const label=new THREE.Sprite(new THREE.SpriteMaterial({
-              map:texture,transparent:true,depthTest:true,depthWrite:false,
-              opacity:0.89,
-            }));
-            label.position.copy(this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,99.2));
-            label.center.set(0.03,0.5);
-            label.scale.set(13,2.45,1);
-            group.add(label);
+            group.add(skyFacingPlane(texture,
+              this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,99.2),
+              13,2.45,{anchorX:0.03,anchorY:0.5,opacity:0.89}));
           }
         }
       }
