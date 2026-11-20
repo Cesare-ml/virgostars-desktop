@@ -80,6 +80,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private overlayGroup:THREE.Group|null=null;
   private layerGroups:Partial<Record<LayerName,THREE.Group>>={};
   private ground:THREE.Mesh|null=null;
+  private compassGroup:THREE.Group|null=null;
+  private compassTextures:THREE.Texture[]=[];
   private targets:THREE.Object3D[]=[];
   private pointer:{x:number;y:number;lastX:number;lastY:number;dragged:boolean}|null=null;
   private yaw=180;
@@ -107,6 +109,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   ngOnChanges(changes:SimpleChanges):void {
     if(changes['utcIso']||changes['latMicro']||changes['lngMicro']) void this.load();
     if(changes['latMicro']&&this.scene) this.buildEquator();
+    if(changes['locale']&&this.scene) this.buildCardinalLabels();
     if(changes['overlays']&&this.scene)this.buildOverlays();
   }
   ngAfterViewInit():void {
@@ -125,6 +128,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       this.renderer.domElement.addEventListener('wheel',this.wheel,{passive:false});
       this.renderer.domElement.addEventListener('webglcontextlost',this.contextLost);
       this.buildScaffold();
+      this.buildCardinalLabels();
       this.buildEquator();
       this.buildOverlays();
       this.buildMarkers();
@@ -153,6 +157,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       canvas.remove();
     }
     if(this.scene)this.disposeTree(this.scene);
+    for(const texture of this.compassTextures)texture.dispose();
+    this.compassTextures=[];
     this.renderer?.dispose();
     this.renderer?.forceContextLoss();
     this.renderer=null;this.scene=null;this.camera=null;this.targets=[];
@@ -211,6 +217,38 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.ground=new THREE.Mesh(geometry,material);
     this.ground.visible=this.showGround;
     this.scene.add(this.ground);
+  }
+  /** Real in-sky cardinal labels; not just camera-direction shortcuts. */
+  private buildCardinalLabels():void {
+    if(!this.scene)return;
+    if(this.compassGroup){this.scene.remove(this.compassGroup);this.disposeTree(this.compassGroup);}
+    for(const texture of this.compassTextures)texture.dispose();
+    this.compassTextures=[];
+    const group=new THREE.Group();
+    const labels:readonly (readonly [string,number])[]=[
+      ['N',0],['E',90],['S',180],[this.locale==='it'?'O':'W',270],
+    ];
+    for(const [letter,az] of labels){
+      const canvas=document.createElement('canvas');
+      canvas.width=128;canvas.height=128;
+      const ctx=canvas.getContext('2d');
+      if(!ctx)continue;
+      ctx.fillStyle='rgba(6,17,31,.75)';
+      ctx.beginPath();ctx.arc(64,64,36,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#e4f1f9';ctx.font='700 62px sans-serif';
+      ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(letter,64,68);
+      const texture=new THREE.CanvasTexture(canvas);
+      this.compassTextures.push(texture);
+      const label=new THREE.Sprite(new THREE.SpriteMaterial({
+        map:texture,transparent:true,depthTest:false,depthWrite:false,
+      }));
+      label.position.copy(this.vec(az,4,96));
+      label.scale.set(11,11,1);
+      group.add(label);
+    }
+    this.scene.add(group);
+    this.compassGroup=group;
+    this.draw();
   }
   private buildEquator():void {
     if(!this.scene)return;
@@ -293,8 +331,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       case 'grid':this.showGrid=!this.showGrid;break;
       case 'equator':this.showEquator=!this.showEquator;break;
       case 'ground':this.showGround=!this.showGround;break;
-      case 'stars':this.showStars=!this.showStars;this.buildMarkers();break;
-      case 'planets':this.showPlanets=!this.showPlanets;this.buildMarkers();break;
+      case 'stars':this.showStars=!this.showStars;if(!this.showStars && this.selected?.kind==='star')this.selected=null;this.buildMarkers();break;
+      case 'planets':this.showPlanets=!this.showPlanets;if(!this.showPlanets && this.selected?.kind==='planet')this.selected=null;this.buildMarkers();break;
     }
     if(this.layerGroups.meridian)this.layerGroups.meridian.visible=this.showMeridian;
     if(this.layerGroups.grid)this.layerGroups.grid.visible=this.showGrid;
