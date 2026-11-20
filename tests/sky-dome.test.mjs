@@ -111,6 +111,37 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
     assert.throws(()=>decodeSkyDome(modified),/protocol/);
   }
 });
+test('computed lunar illumination is bounded, native-only and visible in the detail card',()=>{
+  const data=reply();
+  data.planets[1].illuminatedFraction=0.503;
+  const decoded=decodeSkyDome(data);
+  assert.equal(decoded.kind,'ready');
+  assert.equal(decoded.data.planets[1].illuminatedFraction,0.503);
+  assert.equal(decoded.data.planets[0].illuminatedFraction,null);
+  assert.equal(decoded.data.stars[0].illuminatedFraction,null);
+  const impossible=[
+    r=>r.planets[1].illuminatedFraction=-0.01,
+    r=>r.planets[1].illuminatedFraction=1.01,
+    r=>r.planets[1].illuminatedFraction=Number.NaN,
+    r=>r.planets[0].illuminatedFraction=0.9,
+    r=>r.stars[0].illuminatedFraction=0.9,
+  ];
+  for(const mutate of impossible){
+    const bad=reply();
+    mutate(bad);
+    assert.throws(()=>decodeSkyDome(bad),/protocol/);
+  }
+  const rust=readFileSync(new URL('../src-tauri/src/sky_dome.rs',import.meta.url),'utf8');
+  const viewer=readFileSync(new URL('../src/app/sky-dome.component.ts',import.meta.url),'utf8');
+  const template=readFileSync(new URL('../src/app/sky-dome.component.html',import.meta.url),'utf8');
+  assert.match(rust,/lunar_illumination_fraction\(sun,moon\)/);
+  assert.match(rust,/if body\.id=="Moon"\{lunar_fraction\}/);
+  assert.match(viewer,/this\.sunLight\.position\.copy/);
+  assert.match(viewer,/sun\.azimuthNorthEastDeg,sun\.altitudeDeg,70/);
+  assert.match(template,/selection\.point\.illuminatedFraction/);
+  assert.match(template,/word\('illuminatedFraction'\)/);
+});
+
 test('planet and fixed-star metadata are validated and never invented in the browser',()=>{
   const item=reply();
   item.planets[0]={
