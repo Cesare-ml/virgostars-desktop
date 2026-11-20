@@ -150,6 +150,17 @@ mod tests {
         assert!(far.abs() < 0.001);
     }
     #[test]
+    fn missing_provider_does_not_produce_a_synthetic_sky() {
+        let reply = respond(None, ChartRequestV1 {
+            protocol_version:1, utc_iso:"2026-11-20T13:00:00Z".to_string(),
+            lat_micro:45_000_000, lng_micro:9_000_000,
+            include_solar_events:false,include_previous_new_moon:false,
+            include_fixed_stars:false,
+        });
+        assert_eq!(reply.status,"provider_unavailable");
+        assert!(reply.planets.is_empty() && reply.stars.is_empty());
+    }
+    #[test]
     fn invalid_vectors_do_not_produce_rendered_points() {
         assert!(topocentric_horizontal(0.0,0.0,0.0,0.0,0.0).is_none());
         assert!(topocentric_horizontal(f64::NAN,0.0,1.0,0.0,0.0).is_none());
