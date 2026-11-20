@@ -25,7 +25,7 @@
     <button type="button" [attr.aria-label]="word('north')" (click)="look(0,20)">N</button>
     <button type="button" [attr.aria-label]="word('east')" (click)="look(90,20)">E</button>
     <button type="button" [attr.aria-label]="word('south')" (click)="look(180,20)">S</button>
-    <button type="button" [attr.aria-label]="word('west')" (click)="look(270,20)">O</button>
+    <button type="button" [attr.aria-label]="word('west')" (click)="look(270,20)">{{locale==='it' ? 'O' : 'W'}}</button>
     <button type="button" [attr.aria-label]="word('zenith')" (click)="look(180,85)">↑</button>
   </div>
   <article class="sky3d-selection" *ngIf="selected as selection">
