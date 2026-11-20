@@ -20,6 +20,9 @@ const reply=()=>({
   planets:[fixture('Sun',50,180),fixture('Moon',-20,90)],
   stars:[fixture('Sirius',-2,225,true,-1.44)],
   zodiacSegments:zodiacFixture(),
+  angles:['ASC','DSC','MC','IC'].map((id,i)=>({
+    id,zodiacLongitudeDeg:i*90,position:sampleDirection(i*20-30,i*90),
+  })),
 });
 
 test('3D renderer uses true north/east/up and supports underground points',()=>{
@@ -48,6 +51,7 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
   assert.ok(Object.isFrozen(decoded.data.zodiacSegments));
   assert.equal(decoded.data.zodiacSegments.length,12);
   assert.equal(decoded.data.zodiacSegments[0].points.length,31);
+  assert.deepEqual(decoded.data.angles.map(a=>a.id),['ASC','DSC','MC','IC']);
   for(const mutation of [
     r=>r.planets[0].altitudeDeg=NaN,
     r=>r.planets[1].azimuthNorthEastDeg=-1,
@@ -61,6 +65,10 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
     r=>r.zodiacSegments[2].points.pop(),
     r=>r.zodiacSegments[4].label.altitudeDeg=Infinity,
     r=>r.zodiacSegments[5].points[7].azimuthNorthEastDeg=-2,
+    r=>r.angles.pop(),
+    r=>r.angles[1].id='ASC',
+    r=>r.angles[2].zodiacLongitudeDeg=Infinity,
+    r=>r.angles[3].position.altitudeDeg=91,
   ]){
     const modified=reply();mutation(modified);
     assert.throws(()=>decodeSkyDome(modified),/protocol/);
@@ -91,9 +99,12 @@ test('Desktop chart uses separate 3D presentation, not a second synthetic natal 
   assert.match(controller,/chartPresentation: 'wheel' \| 'elements' \| 'aspects' \| 'sky3d'/);
   assert.match(rust,/topocentric_horizontal/);
   assert.match(rust,/zodiac_direction/);
+  assert.match(rust,/SkyAngleV1/);
+  assert.match(viewer,/buildAngles/);
   assert.match(viewer,/zodiacGlyphUrl/);
   assert.match(viewer,/data.zodiacSegments/);
   assert.match(read('src/app/sky-dome.component.html'),/toggleLayer\('zodiac'\)/);
+  assert.match(read('src/app/sky-dome.component.html'),/toggleLayer\('angles'\)/);
   assert.match(viewer,/calculateSkyDome/);
   assert.doesNotMatch(viewer,/Math\.random\(|synthetic|fakePlanet/);
 });
