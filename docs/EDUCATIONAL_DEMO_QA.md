@@ -45,7 +45,7 @@ La procedura richiede un conteggio positivo di test effettivamente eseguiti e co
 | ID | Tema | Percorso automatico (sintesi) | Gate ancora necessario |
 |---|---|---|---|
 | QA-01 | Tema, assi, case e aspetti | Rust angoli/pianeti, Functions house-set, Charts assi, Desktop contract | DE441/Swiss indipendenti; grafico nativo |
-| QA-02 | Oraria e ore planetarie | Functions Regiomontanus, planetary hours, lots, Desktop hours | Alba reale/settori; applicazione oraria |
+| QA-02 | Oraria e ore planetarie | Functions Regiomontanus, planetary hours, **solar-event adapter**, lots, Desktop hours | Alba reale/settori; applicazione oraria |
 | QA-03 | Stelle fisse, lotti e aspetti | Rust fixed-star provider, lots, Desktop star-link | Catalogo reale, epoca, precisione |
 | QA-04 | Sinastria, transiti e progressioni | Charts endpoints, Desktop sync, Functions aspect-trend | Carte vere e progressioni **non presunte** |
 | QA-05 | Affollamento del grafico | Rust planets, Charts layout/assi, Desktop contract | Screenshot/manuale grafico con posizioni reali |
@@ -60,6 +60,8 @@ La procedura richiede un conteggio positivo di test effettivamente eseguiti e co
 | QA-14 | Case, aspetti, materiali didattici | Functions house-set, Charts markers, Desktop time | Calendario scuola e metodo effettivamente supportati |
 
 **I file di test collegati servono come regressioni parziali**, non come prova matematica globale, integrazione completa fra quattro repository o release distribuita. Gli scenari possono usare input sintetici come una data UTC fissa, Roma o un altro luogo con coordinate esplicite; **nessun dato personale reale** è necessario.
+
+**Nota QA-02:** il runner ora esegue anche `test/planetary-hours-solar-adapter.test.mjs` per verificare il passaggio di dati di alba e tramonto al calendario. La regressione dell'adattatore usa eventi **forniti dal chiamante**, non dimostra il calcolo astronomico o la correttezza dei dati di alba reali. In una verifica isolata del 20/11/2026, gli **11 casi del modulo adapter sono risultati superati**, ma occorre ripetere la suite nei checkout completi.
 
 ## Evidenze disponibili alla stesura
 
