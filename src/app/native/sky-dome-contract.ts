@@ -36,7 +36,7 @@ function num(v:unknown,min:number,max:number):number {
   return v;
 }
 function arr(v:unknown,max:number):unknown[] {
-  if(!Array.isArray(v)||v.length>max||!Object.keys(v).every(k=>/^\d+$/.test(k)))throw Error('Invalid sky dome protocol');
+  if(!Array.isArray(v)||v.length>max||Object.keys(v).length!==v.length||!Object.keys(v).every(k=>/^\d+$/.test(k)))throw Error('Invalid sky dome protocol');
   return v;
 }
 function point(v:unknown,star:boolean):SkyDomePoint {
@@ -61,8 +61,7 @@ export function decodeSkyDome(raw:unknown):SkyDomeResult {
   const planets=arr(raw['planets'],11).map(p=>point(p,false));
   const stars=arr(raw['stars'],2048).map(s=>point(s,true));
   if(new Set(planets.map(p=>p.id)).size!==planets.length||
-    !planets.some(p=>p.id==='Sun')||!planets.some(p=>p.id==='Moon')||
-    new Set(stars.map(s=>s.id)).size!==stars.length) throw Error('Invalid sky dome protocol');
+    !planets.some(p=>p.id==='Sun')||!planets.some(p=>p.id==='Moon')) throw Error('Invalid sky dome protocol');
   return Object.freeze({kind:'ready',data:Object.freeze({
     providerId:raw['providerId'],
     planets:Object.freeze(planets),stars:Object.freeze(stars),
