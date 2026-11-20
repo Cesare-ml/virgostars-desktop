@@ -45,6 +45,8 @@
         (click)="toggleLayer('zodiac')">{{word('zodiac')}}</button>
       <button type="button" [class.active]="showSigns" [attr.aria-pressed]="showSigns"
         (click)="toggleLayer('signs')">{{word('signs')}}</button>
+      <button type="button" [class.active]="showZodiacGrid" [attr.aria-pressed]="showZodiacGrid"
+        (click)="toggleLayer('zodiacGrid')">{{word('zodiacGrid')}}</button>
       <button type="button" class="sky3d-layer-wide" [class.active]="showAngles" [attr.aria-pressed]="showAngles"
         (click)="toggleLayer('angles')">{{word('angles')}} <span class="sky3d-axis-swatch" aria-hidden="true"></span></button>
     </div>
