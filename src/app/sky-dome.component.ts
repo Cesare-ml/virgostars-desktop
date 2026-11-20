@@ -27,7 +27,7 @@ type PointWithKind={point:SkyDomePoint;kind:'planet'|'star'};
 const WORDS={
   it:{
     title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
-    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',planets:'Pianeti',
+    meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',planets:'Pianeti',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -59,7 +59,7 @@ const WORDS={
   },
   en:{
     title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
-    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',planets:'Planets',
+    meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',planets:'Planets',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -144,6 +144,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   showGrid=false;
   showEquator=false;
   showZodiac=true;
+  showZodiacGrid=true;
   showSigns=true;
   showAngles=true;
   showGround=false;
@@ -416,7 +417,17 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     const group=new THREE.Group();
     this.scene.add(group);
     this.zodiacGroup=group;
-    if(!this.data || (!this.showZodiac && !this.showSigns)){this.draw();return;}
+    if(!this.data || (!this.showZodiac && !this.showZodiacGrid && !this.showSigns)){this.draw();return;}
+    if(this.showZodiacGrid) {
+      const grid=this.data.zodiacGrid;
+      const drawGridLine=(line:readonly {azimuthNorthEastDeg:number;altitudeDeg:number}[],color:number,opacity:number):void=>{
+        this.curve(line.map(p=>this.vec(p.azimuthNorthEastDeg,p.altitudeDeg,99.4)),color,opacity,group);
+      };
+      drawGridLine(grid.northEdge,0xdeb777,0.27);
+      drawGridLine(grid.southEdge,0xdeb777,0.27);
+      for(const line of grid.signDividers)drawGridLine(line,0xeed2a3,0.39);
+      for(const line of grid.decadeTicks)drawGridLine(line,0xe2b977,0.16);
+    }
     const loader=new THREE.TextureLoader();
     for(const sign of this.data.zodiacSegments){
       const color=sign.signIndex%2===0?0xe1bb75:0xc99f6a;
@@ -644,12 +655,13 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.updateSelectionRing();
     this.draw();
   }
-  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'signs'|'angles'|'ground'|'stars'|'planets'):void {
+  toggleLayer(name:'meridian'|'grid'|'equator'|'zodiac'|'zodiacGrid'|'signs'|'angles'|'ground'|'stars'|'planets'|'starLabels'):void {
     switch(name){
       case 'meridian':this.showMeridian=!this.showMeridian;break;
       case 'grid':this.showGrid=!this.showGrid;break;
       case 'equator':this.showEquator=!this.showEquator;break;
       case 'zodiac':this.showZodiac=!this.showZodiac;this.buildZodiac();break;
+      case 'zodiacGrid':this.showZodiacGrid=!this.showZodiacGrid;this.buildZodiac();break;
       case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
       case 'ground':this.showGround=!this.showGround;break;
