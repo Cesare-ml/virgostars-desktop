@@ -186,3 +186,51 @@ sized drawing buffer after startup, resize, theme changes and zoom.
   Angular/Charts build, Rust/Tauri binary, Windows/WebView2 visuals
   and actual GPU buffer/render output. A nonzero canvas buffer alone
   never proves that Three.js drew the chart.
+
+## Canvas-to-CSS sampling ratio (14 November 2026)
+
+The read-only diagnostic now also flags a **severely undersampled** drawing
+buffer: either backing-buffer axis below 25% of the corresponding displayed
+canvas CSS bounding-box axis returns `collapsed`. This matters when a
+large styled chart retains a tiny native drawing surface. The threshold
+intentionally allows reduced-resolution rendering and higher-DPI backing
+buffers; it is a **smoke warning**, not an exact GPU, DPR or sharpness score.
+
+For example, a 602x602 CSS canvas backed by 150x602 pixels is flagged,
+while 151x151 and 1204x1204 buffers pass this particular ratio check.
+The probe evaluates each axis independently and uses the **canvas box**
+rather than stage dimensions (which may include intended margins).
+A styled canvas can still be blank due to WebGL or renderer failures
+despite passing this check.
+
+Verification command in a full checkout:
+
+```powershell
+node --experimental-strip-types --test tests/desktop-layout-probe.test.mjs
+npm.cmd test
+npm.cmd run build:ui
+```
+
+The actual Windows 11 x64 Tauri/WebView2 render and DPR tests remain
+required. No canvas mutation, WebGL allocation, networking, private
+assets or platform permission has been added.
+
+## Verification of this increment (14 November 2026)
+
+- **Actual Node.js 22.16.0:** ran 13 targeted local smoke tests using
+  `node --experimental-strip-types --test` against the *exact committed*
+  `src/app/desktop-layout-probe.ts` content in an isolated mirror:
+  **13 passed, 0 failed**. Its locally computed Git blob SHA-1
+  `2eb4b33476adfb147a34ddea4cdbe464c8504e41` matches the
+  GitHub branch source blob. The standalone 13-case harness was not
+  committed; permanent regression coverage is added to the existing
+  repository test file.
+- **Actual TypeScript 5.8.3:** strict no-emit ES2022 + DOM compilation of
+  the exact mirrored helper passed.
+- **Committed test file:** all **16/16** authored test callback groups passed
+  in an isolated V8 harness using exact GitHub source and in-memory
+  assertions/fixtures. This is *not* full Node's test runner against
+  the repository.
+- **Not performed:** full checkout `npm test`, complete Angular/Charts build,
+  Cargo/Tauri/Windows executable, native WebView2 screenshot and physical
+  GPU rendering checks. These remain before merging or release.

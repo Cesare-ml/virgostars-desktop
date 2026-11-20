@@ -28,6 +28,8 @@ export type ReadDesktopRect = (element: Element) => DesktopLayoutRect;
 const MIN_SURFACE_PX = 96;
 const MIN_CANVAS_PX = 32;
 const MIN_CANVAS_STAGE_RATIO = 0.25;
+// Allow intentional low-resolution rendering, but flag severe CSS upscaling.
+const MIN_BACKING_CSS_RATIO = 0.25;
 
 /** Never request remote assets, log DOM contents or mutate the document. */
 export function probeDesktopLayout(
@@ -82,7 +84,11 @@ export function probeDesktopLayout(
         box.width < MIN_SURFACE_PX || box.height < MIN_SURFACE_PX) ||
         canvasBox.width < MIN_CANVAS_PX || canvasBox.height < MIN_CANVAS_PX ||
         Math.min(canvasBox.width, canvasBox.height) <
-          Math.min(stageBox.width, stageBox.height) * MIN_CANVAS_STAGE_RATIO) {
+          Math.min(stageBox.width, stageBox.height) * MIN_CANVAS_STAGE_RATIO ||
+        // A 600px styled canvas backed by only 32 pixels can appear
+        // enormous but unreadably pixelated. Check each axis independently.
+        backingWidth < canvasBox.width * MIN_BACKING_CSS_RATIO ||
+        backingHeight < canvasBox.height * MIN_BACKING_CSS_RATIO) {
       return 'collapsed';
     }
     return 'active';
