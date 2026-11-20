@@ -72,6 +72,7 @@ import {australChartData, regoloPlanetOfYear, settingsWithConjunctOuter} from '.
 import type { ReturnKind, ReturnRadix } from './returns-form';
 import { ChartSettingsComponent } from './chart-settings.component';
 import { ElementsViewComponent } from './elements-view.component';
+import { SkyDomeComponent } from './sky-dome.component';
 import { MenuIconComponent } from './menu-icon.component';
 import { UpdatesComponent } from './updates.component';
 import { De441PackagesComponent } from './de441-packages.component';
@@ -182,7 +183,7 @@ const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, MenuIconComponent, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, UpdatesComponent, De441PackagesComponent],
+  imports:[CommonModule, MenuIconComponent, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, SkyDomeComponent, UpdatesComponent, De441PackagesComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
@@ -484,7 +485,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   locale: Locale = resolveLocale(this.languagePreference);
   mode: ChartMode = 'natal';
   /** An alternative presentation of the same chart snapshot; the wheel stays mounted for WebGL lifecycle safety. */
-  chartPresentation: 'wheel' | 'elements' | 'aspects' = 'wheel';
+  chartPresentation: 'wheel' | 'elements' | 'aspects' | 'sky3d' = 'wheel';
   showDodecatemoria = false;
   kleroiEnabled = false;
   arabicPartsOpen = false;
@@ -1639,6 +1640,13 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.houseSystem = value;
     if (value !== 'egizia') this.synastryDeflection = false;
     if (this.initialized) void this.draw();
+    this.cd.markForCheck();
+  }
+  /** View the same chart's observer sky. The Rust command supplies all astronomical positions. */
+  toggleSkyDome(): void {
+    if (!this.activeChart || this.destroyed) return;
+    this.view = 'chart';
+    this.chartPresentation = this.chartPresentation === 'sky3d' ? 'wheel' : 'sky3d';
     this.cd.markForCheck();
   }
   toggleElements(): void {
