@@ -56,6 +56,10 @@ test('3D sky has a responsive HUD, real native sky, keyboard controls and no inv
   assert.match(html,/\(keydown\)="onKeyDown\(\$event\)"/);
   assert.match(html,/\(click\)="resetView\(\)"/);
   assert.match(html,/\(click\)="clearSelection\(\)"/);
+  assert.match(html,/\(click\)="close\(\)"/);
+  const parent=read('src/app/desktop-app.component.html');
+  assert.match(parent,/\(closed\)="toggleSkyDome\(\)"/);
+  assert.match(parent,/\[hidden\]="view!=='chart' \|\| chartPresentation==='sky3d'"/);
   assert.match(ts,/focusPlanet\(id:string\):void/);
   assert.match(ts,/this\.data\?\.planets\.find\(body=>body\.id===id\)/);
   assert.match(ts,/this\.renderer=new THREE\.WebGLRenderer\(\{antialias:true,alpha:true/);
