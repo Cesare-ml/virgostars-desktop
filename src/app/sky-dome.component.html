@@ -14,6 +14,10 @@
       (click)="toggleLayer('grid')">{{word('grid')}}</button>
     <button type="button" [class.active]="showEquator" [attr.aria-pressed]="showEquator"
       (click)="toggleLayer('equator')">{{word('equator')}}</button>
+    <button type="button" [class.active]="showZodiac" [attr.aria-pressed]="showZodiac"
+      (click)="toggleLayer('zodiac')">{{word('zodiac')}}</button>
+    <button type="button" [class.active]="showSigns" [attr.aria-pressed]="showSigns"
+      (click)="toggleLayer('signs')">{{word('signs')}}</button>
     <button type="button" [class.active]="showGround" [attr.aria-pressed]="showGround"
       (click)="toggleLayer('ground')">{{word('ground')}}</button>
     <button type="button" [class.active]="showStars" [attr.aria-pressed]="showStars"
