@@ -21,11 +21,18 @@ export type SkyZodiacSegment = Readonly<{
   points:readonly SkyDomeDirection[];
   label:SkyDomeDirection;
 }>;
+export type SkyAngleId = 'ASC'|'DSC'|'MC'|'IC';
+export type SkyAngle = Readonly<{
+  id:SkyAngleId;
+  zodiacLongitudeDeg:number;
+  position:SkyDomeDirection;
+}>;
 export type SkyDomeData = Readonly<{
   providerId: string;
   planets: readonly SkyDomePoint[];
   stars: readonly SkyDomePoint[];
   zodiacSegments: readonly SkyZodiacSegment[];
+  angles: readonly SkyAngle[];
 }>;
 export type SkyDomeResult =
   | Readonly<{kind:'ready'; data:SkyDomeData}>
@@ -72,6 +79,20 @@ function zodiac(v:unknown):readonly SkyZodiacSegment[] {
     });
   }));
 }
+function angles(v:unknown):readonly SkyAngle[] {
+  const result=arr(v,4);
+  const names:readonly SkyAngleId[]=['ASC','DSC','MC','IC'];
+  if(result.length!==4)throw Error('Invalid sky dome protocol');
+  return Object.freeze(result.map((item,i)=>{
+    if(!record(item)||item['id']!==names[i])
+      throw Error('Invalid sky dome protocol');
+    return Object.freeze({
+      id:names[i],
+      zodiacLongitudeDeg:num(item['zodiacLongitudeDeg'],0,359.99999999999994),
+      position:direction(item['position']),
+    });
+  }));
+}
 function point(v:unknown,star:boolean):SkyDomePoint {
   if(!record(v)||typeof v['id']!=='string'||v['id'].length<1||v['id'].length>80||
     (star ? /[\u0000-\u001f]/.test(v['id']) : !PLANETS.has(v['id'])) ||
@@ -94,11 +115,12 @@ export function decodeSkyDome(raw:unknown):SkyDomeResult {
   const planets=arr(raw['planets'],11).map(p=>point(p,false));
   const stars=arr(raw['stars'],2048).map(s=>point(s,true));
   const zodiacSegments=zodiac(raw['zodiacSegments']);
+  const anglePoints=angles(raw['angles']);
   if(new Set(planets.map(p=>p.id)).size!==planets.length||
     !planets.some(p=>p.id==='Sun')||!planets.some(p=>p.id==='Moon')) throw Error('Invalid sky dome protocol');
   return Object.freeze({kind:'ready',data:Object.freeze({
     providerId:raw['providerId'],
-    planets:Object.freeze(planets),stars:Object.freeze(stars),zodiacSegments,
+    planets:Object.freeze(planets),stars:Object.freeze(stars),zodiacSegments,angles:anglePoints,
   })});
 }
 export async function requestSkyDome(transport:SkyDomeTransport,request:SkyDomeRequest):Promise<SkyDomeResult> {
