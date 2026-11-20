@@ -1,6 +1,6 @@
 import {CommonModule} from '@angular/common';
 import {
-  AfterViewInit, ChangeDetectorRef, Component, ElementRef, Input, OnChanges, OnDestroy,
+  AfterViewInit, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, Output,
   SimpleChanges, ViewChild, inject,
 } from '@angular/core';
 import * as THREE from 'three';
@@ -45,6 +45,7 @@ const WORDS={
     starMagnitude:'Magnitudine',
     skyHelp:'Frecce per orientarti; + e − per variare il campo visivo.',
     skyLightNote:'Atmosfera illustrativa, non modello fisico.',
+    backToChart:'Torna al grafico',
     noStars:'Catalogo locale delle stelle non disponibile.',
   },
   en:{
@@ -72,6 +73,7 @@ const WORDS={
     starMagnitude:'Magnitude',
     skyHelp:'Arrow keys to turn; + and − to change field of view.',
     skyLightNote:'Illustrative atmosphere, not a physical model.',
+    backToChart:'Back to chart',
     noStars:'Local star catalogue unavailable.',
   },
 } as const;
@@ -90,6 +92,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   @Input() locale:'it'|'en'='it';
   /** Future natal zodiac/house/primary direction curves: never synthesized in the renderer. */
   @Input() overlays:readonly SkyOverlayPolyline[]=[];
+  @Output() closed=new EventEmitter<void>();
   @ViewChild('viewport',{static:true}) private viewport!:ElementRef<HTMLDivElement>;
   private readonly cd=inject(ChangeDetectorRef);
   private scene:THREE.Scene|null=null;
@@ -142,6 +145,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get approximateStars():boolean{return !!this.data?.stars.some(s=>s.approximate);}
   get starCount():number{return this.data?.stars.length??0;}
+  close():void { this.closed.emit(); }
   clearSelection():void {
     this.selected=null;
     this.updateSelectionRing();
