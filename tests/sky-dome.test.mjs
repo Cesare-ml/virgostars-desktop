@@ -172,6 +172,8 @@ test('Desktop chart uses separate 3D presentation, not a second synthetic natal 
   assert.match(rust,/zodiac_direction/);
   assert.match(rust,/SkyAngleV1/);
   assert.match(rust,/SkyZodiacGridV1/);
+  assert.match(rust,/fn ecliptic_to_equatorial\(/);
+  assert.match(rust,/let \(star_ra,star_dec\)=ecliptic_to_equatorial\(/);
   assert.match(rust,/zodiac_latitude_direction/);
   assert.match(viewer,/buildAngles/);
   assert.match(viewer,/zodiacGlyphUrl/);
