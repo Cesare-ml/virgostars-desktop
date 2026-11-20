@@ -35,15 +35,6 @@ function noise(x:number,y:number,seed:number):number {
   value=Math.imul(value^(value>>>13),1274126177);
   return ((value^(value>>>16))>>>0)/4294967295;
 }
-function diskGradient(ctx:CanvasRenderingContext2D,base:string):void {
-  const grad=ctx.createRadialGradient(100,93,16,134,135,100);
-  grad.addColorStop(0,'#fff5e4');
-  grad.addColorStop(0.15,base);
-  grad.addColorStop(0.77,base);
-  grad.addColorStop(1,'#1c2432');
-  ctx.fillStyle=grad;
-  ctx.fillRect(0,0,256,256);
-}
 function planetBands(ctx:CanvasRenderingContext2D,seed:number,opacity:number,baseColors:readonly string[]):void {
   for(let i=0;i<16;i++){
     const y=44+i*11;
