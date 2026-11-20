@@ -142,6 +142,11 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   }
   get approximateStars():boolean{return !!this.data?.stars.some(s=>s.approximate);}
   get starCount():number{return this.data?.stars.length??0;}
+  clearSelection():void {
+    this.selected=null;
+    this.updateSelectionRing();
+    this.cd.markForCheck();
+  }
   get light():SkyLight {
     const sun=this.data?.planets.find(p=>p.id==='Sun');
     return skyLightFromSun(sun?.altitudeDeg??null);
@@ -666,6 +671,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(Math.abs(event.clientX-this.pointer.x)+Math.abs(event.clientY-this.pointer.y)>5)this.pointer.dragged=true;
     this.pointer.lastX=event.clientX;this.pointer.lastY=event.clientY;
     this.look((this.yaw-dx*0.27+360)%360,Math.max(-85,Math.min(85,this.pitch+dy*0.27)));
+    this.cd.markForCheck();
   };
   private pointerUp=(event:PointerEvent):void=>{
     const drag=this.pointer?.dragged??true;
