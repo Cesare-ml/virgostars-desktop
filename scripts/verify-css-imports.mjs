@@ -29,7 +29,7 @@ function cssIdent(css, start) {
       if (/\s/.test(css[i] ?? '')) i++;
       continue;
     }
-    if (css[i] === '\n' || css[i] === '\r') fail('Invalid CSS escape');
+    if (css[i] === '\n' || css[i] === '\r' || css[i] === '\f') fail('Invalid CSS escape');
     text += css[i++];
   }
   return { text, end: i };
@@ -40,9 +40,12 @@ function skipQuoted(css, start) {
   let i = start + 1;
   while (i < css.length) {
     if (css[i] === '\\') {
-      i += 2;
+      if (i + 1 >= css.length) fail('Unterminated CSS string');
+      i += css[i + 1] === '\r' && css[i + 2] === '\n' ? 3 : 2;
     } else if (css[i] === quote) {
       return i + 1;
+    } else if (css[i] === '\n' || css[i] === '\r' || css[i] === '\f') {
+      fail('Unterminated CSS string');
     } else {
       i++;
     }
