@@ -97,6 +97,12 @@ async function main() {
   log('Staging independently hashed city data and public DE441 base');
   command(process.execPath,['scripts/mac/prepare-public-data.mjs']);
   command('npm',['run',OPTIONS.original?'build:ui:private':'build:ui']);
+  if(OPTIONS.original) {
+    // The manifest verifier checks checksums, this gate additionally requires
+    // every core zodiac/planetary glyph the desktop actually renders.
+    log('Checking real planet and zodiac glyphs in the built offline frontend');
+    command(process.execPath,['scripts/mac/verify-glyph-bundle.mjs']);
+  }
   command('npm',['run','prepare:icon']);
   log('Fetching locked Rust dependencies before the offline license inventory');
   command('cargo',['fetch','--locked','--target',TARGET,'--manifest-path','src-tauri/Cargo.toml']);

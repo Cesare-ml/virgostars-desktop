@@ -18,6 +18,7 @@ test('Mac entrypoint remains an explicit local build, never automatic publishing
   assert.match(build,/process\.platform==='darwin'/);
   assert.match(build,/prepare-public-data\.mjs/);
   assert.match(build,/--bundles','app,dmg'/);
+  assert.match(build,/verify-glyph-bundle\.mjs/);
   assert.match(build,/stapler','validate'/);
   assert.doesNotMatch(build,/release','upload'/);
   assert.match(publish,/verifyReport/);
