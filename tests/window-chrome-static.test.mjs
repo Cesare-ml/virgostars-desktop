@@ -108,3 +108,14 @@ test('glass retains pen dragging and a solid accessibility fallback', () => {
   assert.match(appCss, /prefers-contrast:more/);
   assert.match(html, /aria-controls="virgostars-primary-navigation"/);
 });
+
+
+test('glass does not blur the full-height chart side panels on the GPU', () => {
+  const css = source('../src/app/desktop-app.component.css');
+  const sidebar = css.match(/\.desktop-app\.chrome-active \.sidebar\s*\{([^}]*)\}/)?.[1];
+  const inspector = css.match(/\.desktop-app\.chrome-active \.inspector\s*\{([^}]*)\}/)?.[1];
+  assert.ok(sidebar && inspector);
+  assert.doesNotMatch(sidebar, /backdrop-filter:\s*blur/);
+  assert.doesNotMatch(inspector, /backdrop-filter:\s*blur/);
+  assert.match(source('../src/app/window-chrome.component.css'), /backdrop-filter:blur/);
+});
