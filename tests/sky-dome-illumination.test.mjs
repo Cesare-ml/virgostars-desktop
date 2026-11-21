@@ -4,44 +4,49 @@ import {readFileSync} from 'node:fs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('lunar illumination is computed in native Rust from real Sun and Moon vectors',()=>{
+test('Solar geometry comes from the native Sun and individual planet vectors',()=>{
   const rust=read('src-tauri/src/sky_dome.rs');
   assert.match(rust,/fn geocentric_vector\(/);
-  assert.match(rust,/fn lunar_illumination_fraction\(/);
-  assert.match(rust,/let from_moon_to_sun=\[s\[0\]-m\[0\]/);
-  assert.match(rust,/let from_moon_to_earth=\[-m\[0\]/);
-  assert.match(rust,/let fraction=\(1\.0\+cos_phase\)\*0\.5/);
-  assert.match(rust,/chart\.bodies\.iter\(\)\.find\(\|body\|body\.id=="Sun"\)/);
-  assert.match(rust,/chart\.bodies\.iter\(\)\.find\(\|body\|body\.id=="Moon"\)/);
-  assert.match(rust,/illuminated_fraction:if body\.id=="Moon"\{lunar_fraction\}else\{None\}/);
-  assert.match(rust,/illuminated_fraction:None/);
+  assert.match(rust,/fn geometric_illumination\(/);
+  assert.match(rust,/fn body_sunlight\(/);
+  assert.match(rust,/sunlight=\[/);
+  assert.match(rust,/sun_xyz\[0\]-body_xyz\[0\]/);
+  assert.match(rust,/let earthward=\[-body_xyz\[0\]/);
+  assert.match(rust,/let fraction=\(1\.0\+cosine\)\*0\.5/);
+  assert.match(rust,/let sun_body=chart\.bodies\.iter\(\)\.find\(\|body\|body\.id=="Sun"\)\.cloned\(\)/);
+  assert.match(rust,/body_sunlight\(sun,&body,armc,latitude\)/);
+  assert.match(rust,/sunlight_direction:sunlight\.map\(\|\(_,direction\)\|direction\)/);
+  assert.match(rust,/sunlight_direction:None/);
+  assert.match(rust,/fn venus_phases_depend_on_observer_relative_position_to_sun/);
   assert.match(rust,/fn lunar_fraction_matches_new_full_and_quarter_geometry/);
 });
 
-test('the sky uses the actual host-calculated Sun direction to light spherical images',()=>{
-  const source=read('src/app/sky-dome.component.ts');
-  assert.match(source,/private sunLight:THREE\.DirectionalLight\|null=null/);
-  assert.match(source,/new THREE\.DirectionalLight\(0xfff7ea,2\.4\)/);
-  assert.match(source,/this\.sunLight\.position\.copy\(/);
-  assert.match(source,/this\.vec\(sun\.azimuthNorthEastDeg,sun\.altitudeDeg,70\)/);
-  assert.match(source,/this\.sunLight\.visible=true/);
-  assert.match(source,/this\.sunLight\.visible=false/);
-  assert.match(source,/this\.updateSunLighting\(\)/);
-  assert.doesNotMatch(source,/planetLight\.position\.set\(-45,65,-40\)/);
-  // No lunar phase is recalculated or invented in TypeScript.
-  assert.doesNotMatch(source,/lunar_illumination_fraction|moonPhaseAngle|fakeMoonPhase/);
+test('Each photo sphere uses the native Sun direction and a stable shader key',()=>{
+  const component=read('src/app/sky-dome.component.ts');
+  const shader=read('src/app/sky-dome-solar-material.ts');
+  assert.match(component,/const light=point\.sunlightDirection/);
+  assert.match(component,/skyWorldVector\(\s*light\.azimuthNorthEastDeg,light\.altitudeDeg,1/);
+  assert.match(component,/sunlitPlanetMaterial\(new THREE\.Vector3\(/);
+  assert.match(shader,/onBeforeCompile/);
+  assert.match(shader,/customProgramCacheKey/);
+  assert.match(shader,/vSkyWorldNormal = normalize\(mat3\(modelMatrix\) \* normal\)/);
+  assert.match(shader,/float solarIncidence = dot\(normalize\(vSkyWorldNormal\),normalize\(uSkySunDir\)\)/);
+  assert.match(shader,/diffuseColor\.rgb \*= mix\(0\.065,1\.0,daySide\)/);
+  assert.doesNotMatch(component,/new THREE\.DirectionalLight\(/);
 });
 
-test('the type-safe IPC reports only bounded lunar illumination and UI labels it',()=>{
+test('The IPC validates the illuminated fraction and sun direction as one pair',()=>{
   const contract=read('src/app/native/sky-dome-contract.ts');
-  const html=read('src/app/sky-dome.component.html');
-  const viewer=read('src/app/sky-dome.component.ts');
+  const template=read('src/app/sky-dome.component.html');
+  const component=read('src/app/sky-dome.component.ts');
   assert.match(contract,/illuminatedFraction:number\|null/);
+  assert.match(contract,/sunlightDirection:SkyDomeDirection\|null/);
   assert.match(contract,/optionalNum\(v,'illuminatedFraction',0,1\)/);
-  assert.match(contract,/illuminatedFraction!==null&&\(star\|\|v\['id'\]!=='Moon'\)/);
-  assert.match(html,/\*ngIf="selection\.point\.illuminatedFraction!==null"/);
-  assert.match(html,/percentText\(selection\.point\.illuminatedFraction\)/);
-  assert.match(viewer,/illuminatedFraction:'Luna illuminata'/);
-  assert.match(viewer,/illuminatedFraction:'Illuminated Moon'/);
-  assert.match(viewer,/illuminatedFractionNote:/);
+  assert.match(contract,/sunField===undefined\|\|sunField===null\?null:direction\(sunField\)/);
+  assert.match(contract,/\(star\|\|v\['id'\]==='Sun'\)/);
+  assert.match(template,/\*ngIf="selection\.point\.illuminatedFraction!==null"/);
+  assert.match(template,/percentText\(selection\.point\.illuminatedFraction\)/);
+  assert.match(component,/illuminatedFraction:'Superficie illuminata'/);
+  assert.match(component,/illuminatedFraction:'Illuminated surface'/);
+  assert.match(component,/illuminatedFractionNote:/);
 });
