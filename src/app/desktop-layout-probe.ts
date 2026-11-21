@@ -20,6 +20,8 @@ export interface DesktopStyleRead {
 export interface DesktopLayoutRect {
   readonly width: number;
   readonly height: number;
+  readonly top?: number;
+  readonly left?: number;
 }
 
 export type ReadDesktopStyle = (element: Element) => DesktopStyleRead;
@@ -78,6 +80,17 @@ export function probeDesktopLayout(
     if (boxes.some(box => !Number.isFinite(box.width) || !Number.isFinite(box.height) ||
         box.width < 0 || box.height < 0)) return 'unavailable';
     const [shellBox, workspaceBox, stageBox, canvasBox] = boxes;
+    // On WKWebView a valid CSS grid may still occupy only the bottom of the
+    // native window. Detect uncovered strips instead of reporting healthy.
+    const edgeTolerance = 4; // native fractional CSS-pixel rounding
+    const misaligned = (edge: 'top' | 'left'): boolean => {
+      const a = shellBox[edge], b = workspaceBox[edge];
+      return a !== undefined && b !== undefined &&
+        (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(a - b) > edgeTolerance);
+    };
+    if (workspaceBox.width < shellBox.width - edgeTolerance ||
+        workspaceBox.height < shellBox.height - edgeTolerance ||
+        misaligned('top') || misaligned('left')) return 'collapsed';
     if ([shellBox, workspaceBox, stageBox].some(box =>
         box.width < MIN_SURFACE_PX || box.height < MIN_SURFACE_PX) ||
         canvasBox.width < MIN_CANVAS_PX || canvasBox.height < MIN_CANVAS_PX ||

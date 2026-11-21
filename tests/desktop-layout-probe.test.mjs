@@ -5,12 +5,12 @@ import { probeDesktopLayout } from '../src/app/desktop-layout-probe.ts';
 import { STRINGS } from '../src/app/translations.ts';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
-function box(width, height) {
+function box(width, height, top=0, left=0) {
   // Mirror the HTMLCanvasElement drawing-buffer dimensions as well as CSS geometry.
-  return {width, height, getBoundingClientRect() { return {width, height}; }};
+  return {width, height, getBoundingClientRect() { return {width, height, top, left}; }};
 }
 const shell = box(1360, 880);
-const workspace = box(1360, 820);
+const workspace = box(1360, 880);
 const stage = box(720, 650);
 const canvas = box(602, 602);
 const elements = {shell, workspace, stage, canvas};
@@ -124,8 +124,17 @@ test('a tiny canvas in a large stage is reported separately from missing CSS', (
   }
 });
 
+test('detects the Mac screenshot regression: workspace shifted down or not filling shell', () => {
+  for (const displaced of [
+    box(1360, 550), box(1100, 880), box(1360, 880, 150, 0), box(1360, 880, 0, 100)
+  ]) {
+    const readDisplaced = element => element === displaced ? inspect(workspace) : inspect(element);
+    assert.equal(probeDesktopLayout({...elements, workspace:displaced}, readDisplaced), 'collapsed');
+  }
+});
+
 test('healthy small but usable viewports and relative chart sizes remain valid', () => {
-  const resized = {...elements,shell:box(850,620),workspace:box(850,560),
+  const resized = {...elements,shell:box(850,620),workspace:box(850,620),
     stage:box(320,390),canvas:box(272,272)};
   const readResized = element => element === resized.shell ? inspect(shell) :
     element === resized.workspace ? inspect(workspace) :
