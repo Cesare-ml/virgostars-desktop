@@ -18,6 +18,7 @@ import {createPlanetPortrait,planetPortraitSpec} from './sky-dome-planet-portrai
 import {REAL_PLANET_TEXTURES} from './sky-dome-real-textures';
 import {findSkyStars} from './sky-dome-star-search';
 import {skyFacingPlane} from './sky-dome-billboard';
+import {sunlitPlanetMaterial} from './sky-dome-solar-material';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -38,8 +39,10 @@ const WORDS={
     appearance:'Aspetto del cielo',objectDetails:'Coordinate astronomiche',longitude:'Longitudine eclittica',latitude:'Latitudine eclittica',
     rightAscension:'Ascensione retta',declination:'Declinazione',distance:'Distanza geocentrica',
     longitudeSpeed:'Velocità in longitudine',constellation:'Costellazione',catalogId:'ID archivio',
+    illuminatedFraction:'Superficie illuminata',
+    illuminatedFractionNote:'Frazione geometrica da Sole e pianeta calcolati; senza eclissi o fotometria.',
     source:'Effemeridi',sign:'Segno',notAvailable:'Non disponibile',distanceUnit:' UA',speedUnit:' °/giorno',
-    realTextureNote:'Mappe planetarie Solar System Scope (CC BY 4.0); orientamento e fasi illustrativi.',
+    realTextureNote:'Mappe Solar System Scope (CC BY 4.0); terminatori da vettori Sole-pianeta calcolati, rotazioni illustrative.',
     north:'Nord',east:'Est',south:'Sud',west:'Ovest',zenith:'Zenit',
     altitude:'Altezza',azimuth:'Azimut',approximate:'Posizione stellare approssimata',
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
@@ -83,8 +86,10 @@ const WORDS={
     appearance:'Sky appearance',objectDetails:'Astronomical coordinates',longitude:'Ecliptic longitude',latitude:'Ecliptic latitude',
     rightAscension:'Right ascension',declination:'Declination',distance:'Geocentric distance',
     longitudeSpeed:'Longitude speed',constellation:'Constellation',catalogId:'Catalogue ID',
+    illuminatedFraction:'Illuminated surface',
+    illuminatedFractionNote:'Geometric fraction from ephemeris Sun and body vectors; excludes eclipses and photometry.',
     source:'Ephemeris',sign:'Sign',notAvailable:'Unavailable',distanceUnit:' AU',speedUnit:' °/day',
-    realTextureNote:'Planet maps by Solar System Scope (CC BY 4.0); illustrative orientation and phases.',
+    realTextureNote:'Solar System Scope maps (CC BY 4.0); per-body Sun terminators computed, surface rotations illustrative.',
     north:'North',east:'East',south:'South',west:'West',zenith:'Zenith',
     altitude:'Altitude',azimuth:'Azimuth',approximate:'Approximate stellar position',
     close:'Close',loading:'Calculating astronomical positions…',
@@ -272,6 +277,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   valueText(value:number|null|undefined,suffix='°',digits=3):string {
     return value===null||value===undefined?this.word('notAvailable'):value.toFixed(digits)+suffix;
   }
+  percentText(value:number|null):string {
+    return value===null?this.word('notAvailable'):(value*100).toFixed(1)+'%';
+  }
   close():void { this.closed.emit(); }
   clearSelection():void {
     this.selected=null;
@@ -350,11 +358,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     try {
       this.scene=new THREE.Scene();
       this.scene.background=null;
-      // Graphic volume lighting, NOT the actual physical phase angle.
-      this.scene.add(new THREE.AmbientLight(0xffffff,1.75));
-      const planetLight=new THREE.DirectionalLight(0xfff4df,2.0);
-      planetLight.position.set(-45,65,-40);
-      this.scene.add(planetLight);
+      // Each globe now has a native-calculated body-to-Sun lighting vector.
+      // Do not install a shared scene light: that cannot represent both
+      // superior and inferior conjunctions at one observer viewpoint.
       this.camera=new THREE.PerspectiveCamera(75,1,0.1,180);
       this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});
       this.renderer.setClearColor(0x000000,0);
@@ -841,9 +847,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
           }
           const realMap=REAL_PLANET_TEXTURES[point.id];
           if(realMap?.startsWith('data:image/jpeg;base64,')){
-            const globeMaterial=point.id==='Sun'
-              ? new THREE.MeshBasicMaterial({color:0xffffff})
-              : new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
+            const light=point.sunlightDirection;
+            const skyDirection=light?skyWorldVector(
+              light.azimuthNorthEastDeg,light.altitudeDeg,1
+            ):null;
+            const globeMaterial=point.id!=='Sun' && skyDirection
+              ? sunlitPlanetMaterial(new THREE.Vector3(
+                  skyDirection.x,skyDirection.y,skyDirection.z
+                ))
+              : new THREE.MeshBasicMaterial({color:0xffffff});
             const globe=new THREE.Mesh(
               new THREE.SphereGeometry(spec.diameter*0.5,36,24),globeMaterial,
             );

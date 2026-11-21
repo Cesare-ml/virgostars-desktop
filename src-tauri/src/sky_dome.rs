@@ -26,6 +26,12 @@ pub struct HorizontalObject {
     pub azimuth_north_east_deg: f64,
     pub magnitude: Option<f64>,
     pub approximate: bool,
+    /// Estimated illuminated fraction from provider Sun/body geocentric vectors.
+    /// Null for the Sun and for stars; not a photometric or eclipse model.
+    pub illuminated_fraction: Option<f64>,
+    /// Direction *from this physical body toward the Sun*, expressed in the
+    /// observer's local horizontal basis for correct lighting in the 3D viewer.
+    pub sunlight_direction: Option<SkyDirectionV1>,
     pub ecliptic_longitude_deg: Option<f64>,
     pub ecliptic_latitude_deg: Option<f64>,
     pub right_ascension_deg: Option<f64>,
@@ -284,6 +290,66 @@ fn house_grid(
     })
 }
 
+/// Solar illumination from the actual apparent geocentric Sun/body vectors
+/// and distances provided by the ephemeris. Never derived from chart labels.
+fn geocentric_vector(body:&chart_calculation::BodyPositionV1)->Option<[f64;3]> {
+    let [ra,dec,distance]=[
+        body.right_ascension_deg,body.declination_deg,body.distance_au
+    ];
+    if ![ra,dec,distance].iter().all(|v|v.is_finite())
+        || dec.abs()>90.0 || distance<=0.0 {return None;}
+    let ra=ra.to_radians();
+    let dec=dec.to_radians();
+    Some([
+        distance*dec.cos()*ra.cos(),
+        distance*dec.cos()*ra.sin(),
+        distance*dec.sin(),
+    ])
+}
+/// Compute the fraction seen from Earth and the *body-to-Sun* direction in
+/// equatorial xyz. A nonzero apparent Sun/body separation and distances are
+/// required; this intentionally excludes eclipse/occultation photometry.
+fn geometric_illumination(
+    sun:&chart_calculation::BodyPositionV1,
+    body:&chart_calculation::BodyPositionV1,
+)->Option<(f64,[f64;3])> {
+    let sun_xyz=geocentric_vector(sun)?;
+    let body_xyz=geocentric_vector(body)?;
+    let sunlight=[
+        sun_xyz[0]-body_xyz[0],
+        sun_xyz[1]-body_xyz[1],
+        sun_xyz[2]-body_xyz[2],
+    ];
+    let earthward=[-body_xyz[0],-body_xyz[1],-body_xyz[2]];
+    let sun_distance=sunlight.iter().map(|x|x*x).sum::<f64>().sqrt();
+    let earth_distance=earthward.iter().map(|x|x*x).sum::<f64>().sqrt();
+    if sun_distance<=0.0||earth_distance<=0.0||
+        !sun_distance.is_finite()||!earth_distance.is_finite(){return None;}
+    let dot=(0..3).map(|i|sunlight[i]*earthward[i]).sum::<f64>();
+    let cosine=(dot/(sun_distance*earth_distance)).clamp(-1.0,1.0);
+    let fraction=(1.0+cosine)*0.5;
+    fraction.is_finite().then_some((fraction,sunlight))
+}
+fn body_sunlight(
+    sun:&chart_calculation::BodyPositionV1,
+    body:&chart_calculation::BodyPositionV1,
+    armc_deg:f64,latitude_deg:f64,
+)->Option<(f64,SkyDirectionV1)> {
+    if body.id=="Sun" {return None;}
+    let (fraction,v)=geometric_illumination(sun,body)?;
+    let right_ascension=circle_degrees(v[1].atan2(v[0]).to_degrees());
+    let declination=v[2].atan2(v[0].hypot(v[1])).to_degrees();
+    let direction=celestial_horizontal(right_ascension,declination,armc_deg,latitude_deg)?;
+    Some((fraction,direction))
+}
+#[cfg(test)]
+fn lunar_illumination_fraction(
+    sun:&chart_calculation::BodyPositionV1,
+    moon:&chart_calculation::BodyPositionV1,
+)->Option<f64> {
+    geometric_illumination(sun,moon).map(|(fraction,_)|fraction)
+}
+
 fn failure(status: &'static str) -> SkyDomeV1 {
     SkyDomeV1 { protocol_version:1, status, provider_id:None, planets:vec![], stars:vec![], zodiac_segments:vec![], zodiac_grid:None, angles:vec![], house_grids:vec![] }
 }
@@ -332,15 +398,22 @@ pub fn respond(
         ) else {return failure("calculation_failed");};
         angles.push(SkyAngleV1 {id,zodiac_longitude_deg:longitude,position});
     }
+    // Clone the provider's actual Sun position before consuming chart.bodies:
+    // each globe uses its own body→Sun vector, not a single fixed light.
+    let sun_body=chart.bodies.iter().find(|body|body.id=="Sun").cloned();
     let mut planets = Vec::new();
     for body in chart.bodies {
         if !PHYSICAL_BODIES.contains(&body.id) { continue; }
         if let Some((alt,az))=topocentric_horizontal(
             body.right_ascension_deg,body.declination_deg,body.distance_au,armc,latitude
         ) {
+            let sunlight=sun_body.as_ref()
+                .and_then(|sun|body_sunlight(sun,&body,armc,latitude));
             planets.push(HorizontalObject {
                 id:body.id.to_string(),altitude_deg:alt,azimuth_north_east_deg:az,
                 magnitude:None,approximate:false,
+                illuminated_fraction:sunlight.map(|(fraction,_)|fraction),
+                sunlight_direction:sunlight.map(|(_,direction)|direction),
                 ecliptic_longitude_deg:Some(body.longitude_deg),
                 ecliptic_latitude_deg:Some(body.latitude_deg),
                 right_ascension_deg:Some(body.right_ascension_deg),
@@ -363,6 +436,7 @@ pub fn respond(
             id:s.name,altitude_deg:s.true_altitude_deg,
             azimuth_north_east_deg:(s.azimuth_south_west_deg+180.0).rem_euclid(360.0),
             magnitude:s.magnitude,approximate:s.approximate,
+            illuminated_fraction:None,sunlight_direction:None,
             ecliptic_longitude_deg:Some(s.longitude_deg),
             ecliptic_latitude_deg:Some(s.latitude_deg),
             right_ascension_deg:star_ra,declination_deg:star_dec,
@@ -388,6 +462,85 @@ mod tests {
     use super::*;
     fn horizontal(ra:f64,dec:f64,distance:f64,armc:f64,lat:f64)->(f64,f64) {
         topocentric_horizontal(ra,dec,distance,armc,lat).unwrap()
+    }
+    fn phase_body(
+        id:&'static str,ra:f64,declination:f64,distance:f64
+    )->chart_calculation::BodyPositionV1 {
+        chart_calculation::BodyPositionV1 {
+            id,
+            longitude_deg:ra,
+            latitude_deg:0.0,
+            distance_au:distance,
+            longitude_speed:0.0,
+            latitude_speed:0.0,
+            distance_speed:0.0,
+            right_ascension_deg:ra,
+            declination_deg:declination,
+            ephemeris_source:"fixture",
+        }
+    }
+    #[test]
+    fn lunar_fraction_matches_new_full_and_quarter_geometry() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        let new_moon=phase_body("Moon",0.0,0.0,0.00257);
+        let full_moon=phase_body("Moon",180.0,0.0,0.00257);
+        let quarter=phase_body("Moon",90.0,0.0,0.00257);
+        let first=lunar_illumination_fraction(&sun,&new_moon).unwrap();
+        let full=lunar_illumination_fraction(&sun,&full_moon).unwrap();
+        let quarter_fraction=lunar_illumination_fraction(&sun,&quarter).unwrap();
+        assert!(first<1e-8);
+        assert!(full>1.0-1e-8);
+        assert!(quarter_fraction>0.49 && quarter_fraction<0.51);
+        assert!(first<quarter_fraction && quarter_fraction<full);
+    }
+    #[test]
+    fn venus_phases_depend_on_observer_relative_position_to_sun() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        // Inferior conjunction: Venus between Earth and Sun, dark facing us.
+        let inferior=phase_body("Venus",0.0,0.0,0.4);
+        let (dark,direction)=body_sunlight(&sun,&inferior,0.0,0.0).unwrap();
+        assert!(dark<1e-10);
+        assert!(direction.altitude_deg>89.999);
+        // Superior conjunction: Venus behind Sun, bright facing us.
+        let superior=phase_body("Venus",0.0,0.0,1.6);
+        let (bright,direction)=body_sunlight(&sun,&superior,0.0,0.0).unwrap();
+        assert!(bright>1.0-1e-10);
+        assert!(direction.altitude_deg< -89.999);
+        // Mercury at quadrature with plausible geocentric distance.
+        let mercury=phase_body("Mercury",90.0,0.0,0.55);
+        let (partial,_) = body_sunlight(&sun,&mercury,0.0,45.0).unwrap();
+        assert!(partial>0.5&&partial<1.0);
+        assert!(body_sunlight(&sun,&sun,0.0,0.0).is_none());
+    }
+    #[test]
+    fn solar_light_direction_is_a_real_bounded_horizontal_direction() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        let mut mercury=phase_body("Mercury",60.0,10.0,0.5);
+        for latitude in [-60.0,0.0,47.0,75.0] {
+            let (fraction,direction)=body_sunlight(&sun,&mercury,130.0,latitude).unwrap();
+            assert!((0.0..=1.0).contains(&fraction));
+            assert!((-90.0..=90.0).contains(&direction.altitude_deg));
+            assert!((0.0..360.0).contains(&direction.azimuth_north_east_deg));
+        }
+        mercury.distance_au=0.0;
+        assert!(body_sunlight(&sun,&mercury,0.0,0.0).is_none());
+        mercury.distance_au=0.5;
+        assert!(body_sunlight(&sun,&mercury,0.0,f64::NAN).is_none());
+    }
+    #[test]
+    fn lunar_fraction_rejects_invalid_distance_and_non_finite_angles() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        let moon=phase_body("Moon",30.0,0.0,0.00257);
+        assert!(lunar_illumination_fraction(&sun,&moon).is_some());
+        assert!(lunar_illumination_fraction(
+            &phase_body("Sun",0.0,0.0,0.0),&moon
+        ).is_none());
+        assert!(lunar_illumination_fraction(
+            &sun,&phase_body("Moon",f64::NAN,0.0,0.00257)
+        ).is_none());
+        assert!(lunar_illumination_fraction(
+            &sun,&phase_body("Moon",45.0,91.0,0.00257)
+        ).is_none());
     }
     #[test]
     fn observer_azimuth_is_zero_north_ninety_east_and_zenith_above() {

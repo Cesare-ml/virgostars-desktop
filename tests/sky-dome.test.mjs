@@ -111,6 +111,49 @@ test('sky dome protocol accepts only bounded, finite, uniquely named real positi
     assert.throws(()=>decodeSkyDome(modified),/protocol/);
   }
 });
+test('native Sun directions and geometric illumination are bounded for Moon and planets',()=>{
+  const data=reply();
+  const direction={altitudeDeg:20,azimuthNorthEastDeg:145};
+  data.planets[1].illuminatedFraction=0.503;
+  data.planets[1].sunlightDirection=direction;
+  data.planets.push({
+    ...fixture('Venus',45,120),
+    illuminatedFraction:0.17,
+    sunlightDirection:{altitudeDeg:30,azimuthNorthEastDeg:60},
+  });
+  const decoded=decodeSkyDome(data);
+  assert.equal(decoded.kind,'ready');
+  assert.equal(decoded.data.planets[1].illuminatedFraction,0.503);
+  assert.deepEqual(decoded.data.planets[1].sunlightDirection,direction);
+  assert.equal(decoded.data.planets[2].illuminatedFraction,0.17);
+  assert.equal(decoded.data.planets[0].illuminatedFraction,null);
+  assert.equal(decoded.data.stars[0].sunlightDirection,null);
+  const impossible=[
+    r=>r.planets[1].illuminatedFraction=-0.01,
+    r=>r.planets[1].illuminatedFraction=1.01,
+    r=>r.planets[1].illuminatedFraction=Number.NaN,
+    r=>r.planets[0].illuminatedFraction=0.9,
+    r=>r.stars[0].sunlightDirection=direction,
+    r=>r.planets[1].illuminatedFraction=0.3,
+    r=>r.planets[1].sunlightDirection=direction,
+    r=>{r.planets[1].illuminatedFraction=0.5;r.planets[1].sunlightDirection={altitudeDeg:91,azimuthNorthEastDeg:0};},
+  ];
+  for(const mutate of impossible){
+    const bad=reply();
+    mutate(bad);
+    assert.throws(()=>decodeSkyDome(bad),/protocol/);
+  }
+  const rust=readFileSync(new URL('../src-tauri/src/sky_dome.rs',import.meta.url),'utf8');
+  const viewer=readFileSync(new URL('../src/app/sky-dome.component.ts',import.meta.url),'utf8');
+  const template=readFileSync(new URL('../src/app/sky-dome.component.html',import.meta.url),'utf8');
+  assert.match(rust,/fn geometric_illumination\(/);
+  assert.match(rust,/fn body_sunlight\(/);
+  assert.match(rust,/illuminated_fraction:sunlight\.map/);
+  assert.match(viewer,/sunlitPlanetMaterial\(/);
+  assert.match(template,/selection\.point\.illuminatedFraction/);
+  assert.match(template,/word\('illuminatedFraction'\)/);
+});
+
 test('planet and fixed-star metadata are validated and never invented in the browser',()=>{
   const item=reply();
   item.planets[0]={

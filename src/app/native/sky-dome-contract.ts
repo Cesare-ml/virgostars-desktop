@@ -9,6 +9,10 @@ export type SkyDomePoint = Readonly<{
   azimuthNorthEastDeg: number;
   magnitude: number | null;
   approximate: boolean;
+  /** Geometric fraction illuminated, from the actual Sun/body vectors. */
+  illuminatedFraction:number|null;
+  /** Direction from the body toward the Sun, in the observer sky frame. */
+  sunlightDirection:SkyDomeDirection|null;
   eclipticLongitudeDeg:number|null;
   eclipticLatitudeDeg:number|null;
   rightAscensionDeg:number|null;
@@ -176,12 +180,20 @@ function point(v:unknown,star:boolean):SkyDomePoint {
     (star ? /[\u0000-\u001f]/.test(v['id']) : !PLANETS.has(v['id'])) ||
     typeof v['approximate']!=='boolean' ||
     (!star&&v['magnitude']!==null) )throw Error('Invalid sky dome protocol');
+  const illuminatedFraction=optionalNum(v,'illuminatedFraction',0,1);
+  const sunField=v['sunlightDirection'];
+  const sunlightDirection=sunField===undefined||sunField===null?null:direction(sunField);
+  if((illuminatedFraction!==null)!==(sunlightDirection!==null) ||
+    (star||v['id']==='Sun')&&(illuminatedFraction!==null||sunlightDirection!==null))
+    throw Error('Invalid sky dome protocol');
   return Object.freeze({
     id:v['id'],
     altitudeDeg:num(v['altitudeDeg'],-90,90),
     azimuthNorthEastDeg:num(v['azimuthNorthEastDeg'],0,360),
     magnitude:v['magnitude']===null?null:num(v['magnitude'],-30,30),
     approximate:v['approximate'],
+    illuminatedFraction,
+    sunlightDirection,
     eclipticLongitudeDeg:optionalNum(v,'eclipticLongitudeDeg',0,360),
     eclipticLatitudeDeg:optionalNum(v,'eclipticLatitudeDeg',-90,90),
     rightAscensionDeg:optionalNum(v,'rightAscensionDeg',0,360),
