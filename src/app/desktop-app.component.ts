@@ -208,6 +208,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
         return this.chartPresentation === 'sky3d'
           ? (this.locale === 'it' ? 'Cielo 3D' : '3D Sky')
           : this.stageTitle;
+      default: return 'VirgoStars Desktop';
     }
   }
   @ViewChild('shell', {static:true}) readonly shell!: ElementRef<HTMLElement>;
@@ -688,7 +689,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   solarMapOpen = false;
   solarReturnChartId: number | null = null;
   returnRadix: ReturnRadix | null = null;
-  navCollapsed = shouldCollapseNavigation(window.innerWidth, window.innerHeight, false);
+  navCollapsed = shouldCollapseNavigation(
+    window.innerWidth, window.innerHeight - (this.windowsChromeEnabled ? 42 : 0), false);
   /** Once the user folds or unfolds the navigation themselves, the window size no longer decides. */
   private navManual = false;
   /** The planet and aspect tables start closed; the left menu or the Info pianeti button opens them. */
@@ -2767,7 +2769,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   private fitStage(): void {
     if (this.destroyed) return;
     if (!this.navManual) {
-      const collapse = shouldCollapseNavigation(window.innerWidth, window.innerHeight, !this.inspectorCollapsed);
+      const availableHeight = this.workspace.nativeElement.getBoundingClientRect().height;
+      const collapse = shouldCollapseNavigation(window.innerWidth, availableHeight, !this.inspectorCollapsed);
       if (collapse !== this.navCollapsed) { this.navCollapsed = collapse; this.cd.markForCheck(); }
     }
     const bounds = this.stage.nativeElement.getBoundingClientRect();
