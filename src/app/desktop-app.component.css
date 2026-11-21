@@ -16,10 +16,12 @@
   height:calc(100% - 42px);
 }
 .desktop-app.chrome-active .sidebar {
-  background:linear-gradient(155deg,rgba(48,42,71,.97),rgba(43,35,65,.92));
+  background:linear-gradient(180deg,rgba(48,42,71,.99),rgba(43,35,65,.97));
 }
+/* The same sidebar toggle lives in the custom titlebar, not twice in the view. */
+.desktop-app.chrome-active .sidebar-heading { display:none; }
 .desktop-app.chrome-active[data-theme="dark"] .sidebar {
-  background:linear-gradient(155deg,rgba(27,23,43,.96),rgba(23,21,37,.92));
+  background:linear-gradient(180deg,rgba(27,23,43,.99),rgba(23,21,37,.97));
 }
 .desktop-app.chrome-active .inspector {
   background:color-mix(in srgb,var(--vs-surface) 92%,transparent);
