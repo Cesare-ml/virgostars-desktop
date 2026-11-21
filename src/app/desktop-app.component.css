@@ -4,14 +4,14 @@
 .desktop-app.chrome-active {
   --vs-chrome-start:rgba(235,227,248,.72);
   --vs-chrome-end:rgba(248,249,253,.68);
-  --vs-chrome-sidebar-bg:rgba(48,42,71,.99);
+  --vs-chrome-sidebar-bg:rgba(48,42,71,.89);
   --vs-chrome-divider:rgba(72,53,105,.12);
   background:transparent; /* let the OS Mica surface show through the header */
 }
 .desktop-app.chrome-active[data-theme="dark"] {
   --vs-chrome-start:rgba(34,30,49,.86);
   --vs-chrome-end:rgba(23,23,35,.81);
-  --vs-chrome-sidebar-bg:rgba(27,23,43,.99);
+  --vs-chrome-sidebar-bg:rgba(27,23,43,.89);
   --vs-chrome-divider:rgba(211,203,233,.13);
   background:transparent;
 }
@@ -20,12 +20,14 @@
   height:calc(100% - 42px);
 }
 .desktop-app.chrome-active .sidebar {
-  background:linear-gradient(180deg,rgba(48,42,71,.99),rgba(43,35,65,.97));
+  background:linear-gradient(180deg,rgba(48,42,71,.89),rgba(43,35,65,.93));
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
 }
 /* The same sidebar toggle lives in the custom titlebar, not twice in the view. */
 .desktop-app.chrome-active .sidebar-heading { display:none; }
 .desktop-app.chrome-active[data-theme="dark"] .sidebar {
-  background:linear-gradient(180deg,rgba(27,23,43,.99),rgba(23,21,37,.97));
+  background:linear-gradient(180deg,rgba(27,23,43,.89),rgba(23,21,37,.93));
 }
 .desktop-app.chrome-active .inspector {
   background:color-mix(in srgb,var(--vs-surface) 92%,transparent);
