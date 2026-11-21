@@ -56,3 +56,55 @@ test('live custom titlebar is measured by the layout probe rather than ignored',
   assert.match(probe, /titlebarHeight = chromeBox\?\.height \?\? 0/);
   assert.match(probe, /workspaceBox\.height \+ titlebarHeight - shellBox\.height/);
 });
+
+
+test('titlebar context is localized and never includes the subject name', () => {
+  const app = source('../src/app/desktop-app.component.ts');
+  const shell = source('../src/app/desktop-app.component.html');
+  const chrome = source('../src/app/window-chrome.component.html');
+  const component = source('../src/app/window-chrome.component.ts');
+  assert.match(app, /get chromeContextTitle\(\): string/);
+  assert.match(app, /case 'archive': return this\.t\('archive'\)/);
+  assert.match(app, /case 'settings': return this\.t\('tab\.settings'\)/);
+  assert.match(app, /case 'directions': return this\.t\('directions\.title'\)/);
+  assert.match(app, /case 'chart':/);
+  assert.match(shell, /\[contextTitle\]="chromeContextTitle"/);
+  assert.match(component, /@Input\(\) contextTitle = ''/);
+  assert.match(chrome, /class="chrome-context-title"/);
+  // The top bar never reads the active chart's private subject name.
+  const titleGetter = app.match(/get chromeContextTitle\(\): string \{([\s\S]*?)\n  \}/)?.[1];
+  assert.ok(titleGetter);
+  assert.doesNotMatch(titleGetter, /subjectTitle|chartName|subjectCaption/);
+});
+
+test('native maximized state handles rapid resize events and cleans up after unmount', () => {
+  const chrome = source('../src/app/window-chrome.component.ts');
+  assert.match(chrome, /implements OnInit, OnDestroy/);
+  assert.match(chrome, /@HostListener\('window:focus'\)/);
+  assert.match(chrome, /@HostListener\('window:blur'\)/);
+  assert.match(chrome, /@HostBinding\('class\.window-inactive'\)/);
+  assert.match(chrome, /this\.refreshQueued = true/);
+  assert.match(chrome, /while \(this\.refreshQueued && !this\.destroyed\)/);
+  assert.match(chrome, /ngOnDestroy\(\): void/);
+  assert.match(chrome, /if \(this\.destroyed\) return/);
+});
+
+test('responsive navigation uses usable content height after titlebar inset', () => {
+  const app = source('../src/app/desktop-app.component.ts');
+  assert.match(app, /window\.innerHeight - \(this\.windowsChromeEnabled \? 42 : 0\)/);
+  assert.match(app, /availableHeight = this\.workspace\.nativeElement\.getBoundingClientRect\(\)\.height/);
+  assert.match(app, /shouldCollapseNavigation\(window\.innerWidth, availableHeight,/);
+});
+
+test('glass retains pen dragging and a solid accessibility fallback', () => {
+  const chromeCss = source('../src/app/window-chrome.component.css');
+  const appCss = source('../src/app/desktop-app.component.css');
+  const html = source('../src/app/window-chrome.component.html');
+  assert.match(chromeCss, /app-region:drag/);
+  assert.match(chromeCss, /app-region:no-drag/);
+  assert.match(chromeCss, /@media \(forced-colors:active\)/);
+  assert.match(chromeCss, /prefers-reduced-transparency:reduce/);
+  assert.match(appCss, /@media \(forced-colors:active\)/);
+  assert.match(appCss, /prefers-contrast:more/);
+  assert.match(html, /aria-controls="virgostars-primary-navigation"/);
+});
