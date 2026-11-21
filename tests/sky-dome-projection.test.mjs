@@ -71,6 +71,54 @@ test('fisheye lens matches perspective at 85° then transitions smoothly to >180
   assert.equal(clampedSkyFov(400),SKY_FOV_MAX_DEG);
 });
 
+test('fisheye zoom is monotonic at the centre as well as the screen edge',()=>{
+  // Regression: the former changing tan(FOV/2) blend increased then
+  // decreased near the central disc between 100° and 115°.
+  for(const radius of [0.005,0.02,0.05,0.1,0.25,0.5,0.75,1,1.25,1.5,2,3]){
+    let previous=skyLensTheta(radius,85);
+    for(let fov=85.25;fov<=120.0001;fov+=0.25){
+      const next=skyLensTheta(radius,fov);
+      assert.notEqual(next,null,`unexpected clipping at radius ${radius}, FOV ${fov}`);
+      assert.ok(next>=previous-1e-11,
+        `zoom reversed near radius ${radius}, FOV ${fov}: ${previous} -> ${next}`);
+      previous=next;
+    }
+  }
+});
+test('the visible vertical edge always matches half the indicated FOV',()=>{
+  for(const fov of [28,60,84.9,85,85.01,90,100,110,119.99,120,121,150,179.999,180,180.001,200,220]){
+    near(skyLensTheta(1,fov),fov*Math.PI/360,2e-10);
+    near(skyLensTheta(0,fov),0,1e-12);
+  }
+  const r=0.05;
+  assert.ok(Math.abs(skyLensTheta(r,84.999)-skyLensTheta(r,85.001))<0.00005);
+  assert.ok(Math.abs(skyLensTheta(r,119.999)-skyLensTheta(r,120.001))<0.00005);
+});
+test('pure fisheye never evaluates a perspective tangent around 180 degrees',()=>{
+  for(const fov of [120,150,179.999999,180,180.000001,200,220]){
+    for(const radius of [0,0.01,0.05,0.5,1,1.25,1.6]){
+      const reference=radius*fov*Math.PI/360;
+      const actual=skyLensTheta(radius,fov);
+      if(reference>Math.PI)assert.equal(actual,null);
+      else near(actual,reference,1e-10);
+    }
+  }
+  assert.equal(skyLensTheta(2,220),null);
+});
+test('click rays agree with the same fisheye angle across full zoom range',()=>{
+  const frame=skyCameraFrame(33,27);
+  const forward={x:-frame.back.x,y:-frame.back.y,z:-frame.back.z};
+  const dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;
+  for(const fov of [85,90,100,110,120,150,179.999,180,180.001,220]){
+    for(const [x,y] of [[0,0],[0.03,0],[0,0.5],[0.3,0.4],[0,1]]){
+      const theta=skyLensTheta(Math.hypot(x,y),fov);
+      const ray=skyFisheyeWorldRay(x,y,1,fov,frame);
+      assert.ok(ray&&theta!==null);
+      near(Math.acos(Math.max(-1,Math.min(1,dot(forward,ray)))),theta,3e-7);
+    }
+  }
+});
+
 test('fisheye pick rays agree with compass and survive the poles',()=>{
   const north=skyCameraFrame(0,0);
   const center=skyFisheyeWorldRay(0,0,1.5,200,north);
@@ -95,7 +143,10 @@ test('3D renderer uses one cached cubemap and a coherent fisheye pick ray',()=>{
   assert.match(lens,/THREE\.CubeCamera/);
   assert.match(lens,/if\(this\.dirty\)/);
   assert.match(lens,/this\.dirty=false/);
-  assert.match(lens,/mix\(perspective,equidistant,uBlend\)/);
+  assert.match(lens,/uBaseHalfFov/);
+  assert.match(lens,/if \(uBlend<1\.0\)/);
+  assert.match(lens,/theta=uHalfFov\*mix\(perspectiveShape,r,uBlend\)/);
+  assert.doesNotMatch(lens,/tan\(uHalfFov\)/);
   assert.match(viewer,/skyFisheyeWorldRay\(ndc\.x,ndc\.y/);
   assert.match(viewer,/this\.skyLens\.render\(this\.renderer,this\.scene,this\.camera\)/);
   assert.match(viewer,/normalizePitch\(alt\)/);
