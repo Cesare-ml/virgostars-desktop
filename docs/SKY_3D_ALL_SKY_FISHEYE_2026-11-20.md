@@ -1,6 +1,6 @@
 # Cielo 3D — sfera completa e lente fisheye (20 novembre 2026)
 
-**Stato:** implementazione proposta su branch dedicato, non integrata in `main` e non ancora collaudata sul runtime nativo Windows/WebView2.
+**Stato (21 novembre 2026):** la prima versione del Cielo 3D è integrata in `main` tramite PR #393. La correzione di zoom/picking descritta nell'ultima sezione è proposta nella PR #398. **Il collaudo su Windows/WebView2 non è ancora completato.**
 
 ## Obiettivo
 
@@ -78,3 +78,7 @@ Il renderer e il sistema di selezione dei corpi (picking) ora usano **esattament
 Aggiornati `sky-dome-projection.ts`, `sky-dome-fisheye.ts`, e i test `sky-dome-projection.test.mjs`: controllo numerico dei raggi centrali e laterali in incrementi di 0,25°, contiguità alle soglie 85° e 120°, corrispondenza tra bordo verticale e campo dichiarato, casi 179.999°/180°/180.001° e raggi di selezione concordi con la proiezione.
 
 **QA ancora aperta:** questi test sono stati aggiunti al repository ma la suite Node, la compilazione Angular e il rendering WebView2 non sono stati ancora eseguiti su una macchina con checkout completo. Occorre confrontare viste e picking con il vecchio renderer a 85°, 110°, 120°, 180° e 220°, e verificare l'assenza di "salti" e di saturazione della cubemap su GPU limitate.
+
+## Ulteriore controllo del picking (21 novembre 2026)
+
+Aggiunti casi di regressione sulla direzione di selezione con rapporti d'aspetto **0,55:1**, **1:1**, **1,4:1**, **16:9** e **21:9**. Gli angoli selezionati sono confrontati con l'effettivo campo radiale, verificando anche il segno di destra/sinistra e alto/basso e la trasparenza fuori dai limiti della lente. Questo protegge sia le finestre strette sia gli schermi ultrawide. I test sono introdotti in `tests/sky-dome-projection.test.mjs` e richiedono ancora esecuzione nel checkout completo.
