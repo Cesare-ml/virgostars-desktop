@@ -104,7 +104,11 @@
 .chrome-resize.southwest { left:0; bottom:0; cursor:sw-resize; }
 .chrome-resize.southeast { right:0; bottom:0; cursor:se-resize; }
 @media (max-width:760px) {
+  /* The workspace forces a 60px navigation rail at this width. */
+  .chrome-bar { --chrome-sidebar-width:60px; }
+  .chrome-symbol, .chrome-product { display:none; }
   .chrome-edition { display:none; }
-  .chrome-identity { gap:5px; padding-left:11px; }
+  .chrome-identity { justify-content:center; gap:0; padding:0 6px; }
+  .chrome-sidebar-toggle { margin:0; }
 }
 @media (prefers-reduced-motion:reduce) { .chrome-button { transition:none; } }
