@@ -123,3 +123,46 @@ background treatment without running two extra panel-sized backdrop passes.
 Only the small 42px titlebar retains a CSS blur. This is an implementation
 optimization, **not a benchmark**; measure GPU behavior in Cielo 3D on
 Windows before merging.
+
+
+## Fourth iteration — native window state correctness (21 November 2026)
+
+The custom chrome now listens to `Window.onResized`,
+`Window.onFocusChanged`, and `Window.onScaleChanged` (Tauri 2), in
+addition to retaining WebView DOM resize/focus events as fallback. This
+addresses native Windows operations that need not produce a matching
+WebView event, especially taskbar restores, snap transitions, and DPI changes
+when moving between monitors. Native callbacks enter Angular's `NgZone`
+before updating the displayed state.
+
+A pure `WindowChromeStateCoordinator` serializes `isMaximized()`
+queries and coalesces bursts into one final refresh. It ignores late
+results after disposal and tolerates transient native errors without
+breaking the controls. **6/6 actual Node 22 tests passed** against this
+helper, including bursts, delayed results, errors and disposal. The
+helper also passed a standalone strict TypeScript 5.8.3 check.
+Each Tauri event subscription is tracked independently and unsubscribed
+even if another subscription fails or never resolves; late subscriptions
+are immediately removed after component destruction.
+
+The Windows-only capability is expanded by just these commands:
+`core:event:allow-listen`, `core:event:allow-unlisten`, and
+`core:window:allow-internal-toggle-maximize`. The last command enables
+the built-in double-click on Tauri drag regions. The Angular `(dblclick)`
+handlers on those same regions are removed to avoid a potential
+double-toggle. All permissions remain scoped to the sole `main` window
+on Windows, with exact-value validation in the experimental security gate.
+Mac/Linux and baseline `tauri.conf.json` remain unchanged.
+
+### Verification
+
+Run `npm test`, `npm run verify:ipc`, `npm run build:ui:private`
+(with private local assets staged) and `npm run tauri:dev` on Windows.
+Also check Snap Assist using Win+Arrow, titlebar double-click,
+un/maximize from the button, resizing after changing display scale,
+restore from taskbar, and the real window focus color. Windows 11
+maximize-hover Snap Layout is **not guaranteed** by this frameless
+experiment.
+
+The runtime on an actual Windows machine and the complete Angular/native
+build are still pending; do not merge this branch yet.
