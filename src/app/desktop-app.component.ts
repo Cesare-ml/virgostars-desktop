@@ -194,7 +194,7 @@ const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
 export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   readonly brandWordmark = BRAND_WORDMARK;
   // The native frame is replaced only on Windows; browsers and macOS retain their original chrome.
-  readonly windowsChromeEnabled = inNativeDesktop() && typeof navigator !== 'undefined' && /\\bWindows\\b/i.test(navigator.userAgent);
+  readonly windowsChromeEnabled = inNativeDesktop() && typeof navigator !== 'undefined' && (/^Win/i.test(navigator.platform) || /Windows/i.test(navigator.userAgent));
   @ViewChild('shell', {static:true}) readonly shell!: ElementRef<HTMLElement>;
   @ViewChild('workspace', {static:true}) readonly workspace!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
