@@ -89,14 +89,22 @@ export function skyLensTheta(radius:number,fovDeg:number):number|null {
   if(!Number.isFinite(radius)||radius<0||!Number.isFinite(fovDeg)||
     fovDeg<SKY_FOV_MIN_DEG||fovDeg>SKY_FOV_MAX_DEG)return null;
   const half=fovDeg*RAD/2;
-  const equidistant=radius*half;
+  const baseHalf=SKY_FISHEYE_START_DEG*RAD/2;
+  // Anchor the pre-fisheye *shape* at 85° instead of evaluating a changing
+  // perspective tan(fov/2) above 85°. That older interpolation made objects
+  // near the centre briefly reverse direction while zooming out at ~105°.
+  // Both the shader and mouse picking use exactly this same radial formula.
   const blend=fisheyeBlend(fovDeg);
-  // At >=120° the lens is fully equidistant. Do NOT evaluate tan(half):
-  // for FOV=180° that expression is singular/undefined in some WebGL
-  // implementations, even though the perspective contribution is zero.
-  const theta=blend>=1
-    ? equidistant
-    : (1-blend)*Math.atan(radius*Math.tan(half))+blend*equidistant;
+  let theta:number;
+  if(fovDeg<=SKY_FISHEYE_START_DEG){
+    theta=Math.atan(radius*Math.tan(half));
+  }else if(blend>=1){
+    // No perspective tangent is evaluated in the 120–220° all-sky regime.
+    theta=radius*half;
+  }else{
+    const perspectiveShape=Math.atan(radius*Math.tan(baseHalf))/baseHalf;
+    theta=half*((1-blend)*perspectiveShape+blend*radius);
+  }
   return Number.isFinite(theta)&&theta>=0&&theta<=Math.PI?theta:null;
 }
 
