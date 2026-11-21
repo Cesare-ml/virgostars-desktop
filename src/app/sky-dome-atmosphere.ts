@@ -13,7 +13,9 @@ export function skyAtmosphereStarTransmission(
   atmosphereEnabled:boolean,
 ):number {
   if(!atmosphereEnabled||sunAltitudeDeg===null||!Number.isFinite(sunAltitudeDeg))return 1;
-  const x=Math.max(0,Math.min(1,(sunAltitudeDeg+12)/12));
+  if(sunAltitudeDeg<=-12)return 1;
+  if(sunAltitudeDeg>=0)return 0.02;
+  const x=(sunAltitudeDeg+12)/12;
   const twilight=x*x*(3-2*x);
   return 1-0.98*twilight;
 }
