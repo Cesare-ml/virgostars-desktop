@@ -1,5 +1,17 @@
 # Renderer lifecycle — latest request wins
 
+## Natal overlays and chart navigation (2026-11-21)
+
+The Desktop can keep natal apogee, Arabic parts and dodecatemoria visible while
+the transit wheel is active. Apogee conjunction results retain their instant,
+longitude and osculating-apogee speed: selecting a row previews that instant
+without replacing the active natal chart, and selecting it again restores the
+butterfly. Search and preview use separate generation tickets so an obsolete
+calculation cannot replace a newer selection. Zodiac projection controls live
+inside the tool rail. The chart renderer supports wheel zoom centred on the
+pointer, and fit resets both zoom and camera offset. These changes require the
+sibling Charts build; native WebView verification remains a separate step.
+
 When Kleros is active, the shared renderer keeps aspects involving a Kleros
 colored and renders other radix aspects gray and translucent. This display
 requires rebuilding the sibling `astrological-charts` library before the

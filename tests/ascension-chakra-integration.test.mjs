@@ -48,3 +48,47 @@ test('chakra hides aspects only while active and preserves the user preference',
   settings.showAspects=false;
   assert.equal(app.options().mostraAspetti,false);
 });
+
+test('transits retain natal apogee, dodecatemoria and Arabic part options',()=>{
+  const app=Object.create(DesktopAppComponent.prototype), settings=defaultChartSettings();
+  const active={id:7,timeUnknown:false,data:{planets:{Sun:{longitude:30}}}};
+  Object.defineProperty(app,'activeChart',{value:active});
+  Object.assign(app,{chartSettings:settings,chartSkin:'virgostars',theme:'light',mode:'transits',
+    transitChart:{},synastryTransitChart:null,directionChart:null,zodiacMode:'dodecatemoria',zodiacPoint:'Sun',
+    chakraOpen:false,monomeriEnabled:false,kleroiEnabled:false,apogeeOpen:true,apogeeChartId:7,
+    apogeeEvents:[{instant:1,longitude:123,speed:-1}],apogeePreview:null,arabicPartsOpen:true,
+    arabicPartsGroup:'custom',arabicCustomPlanet:'Sun',arabicCustomDestination:'ascendant'});
+  const options=app.options();
+  assert.equal(options.mostraTransiti,true);
+  assert.equal(options.dodecatemoriAttivi,true);
+  assert.equal(options.dodecatemore,'Sun');
+  assert.equal(options.mostraPartiArabe,true);
+  assert.deepEqual(options.apogeeLongitudes,[123]);
+});
+
+test('selecting an apogee event previews that instant and selecting again restores the butterfly',async()=>{
+  const app=Object.create(DesktopAppComponent.prototype), base={id:7,timeZone:'Europe/Rome',latMicro:1,lngMicro:2,placeName:'Luogo fittizio'};
+  Object.defineProperty(app,'activeChart',{value:base});
+  Object.assign(app,{apogeeOpen:true,apogeeEvents:[{instant:1000,longitude:123,speed:-1}],apogeeSelected:null,
+    apogeePreview:null,apogeePreviewTicket:0,activeChartId:7,destroyed:false,initialized:false,locale:'it',cd:{markForCheck(){}}});
+  let input;
+  app.computeChart=async value=>{input=value;return {id:8};};
+  await app.selectApogeeEvent(1000);
+  assert.equal(input.utcIso,new Date(1000).toISOString());
+  assert.equal(app.apogeeSelected,1000);assert.equal(app.apogeePreview.id,8);
+  await app.selectApogeeEvent(1000);
+  assert.equal(app.apogeeSelected,null);assert.equal(app.apogeePreview,null);
+});
+
+test('a slow apogee preview cannot replace a newer selection',async()=>{
+  const app=Object.create(DesktopAppComponent.prototype), base={id:7,timeZone:'UTC',latMicro:1,lngMicro:2,placeName:'Fittizio'};
+  Object.defineProperty(app,'activeChart',{value:base});
+  Object.assign(app,{apogeeOpen:true,apogeeEvents:[{instant:1000},{instant:2000}],apogeeSelected:null,
+    apogeePreview:null,apogeePreviewTicket:0,activeChartId:7,destroyed:false,initialized:false,locale:'it',cd:{markForCheck(){}}});
+  let release;const delayed=new Promise(resolve=>{release=resolve;});
+  app.computeChart=async input=>input.utcIso===new Date(1000).toISOString() ? delayed : {id:9};
+  const first=app.selectApogeeEvent(1000);
+  await app.selectApogeeEvent(2000);
+  release({id:8});await first;
+  assert.equal(app.apogeeSelected,2000);assert.equal(app.apogeePreview.id,9);
+});

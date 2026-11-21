@@ -1,12 +1,13 @@
-export type ApogeePosition = Readonly<{sun:number; apogee:number}>;
+export type ApogeePosition = Readonly<{sun:number; apogee:number; speed:number}>;
+export type ApogeeConjunction = Readonly<{instant:number; longitude:number; speed:number}>;
 const delta=(position:ApogeePosition) => ((position.apogee-position.sun+540)%360)-180;
 
 /** Previous group of Sun–osculating-apogee conjunctions. */
-export async function findApogeeConjunctions(sample:(instant:number)=>Promise<ApogeePosition>, reference:number):Promise<readonly number[]> {
-  const day=86400000, roots:number[]=[];
+export async function findApogeeConjunctions(sample:(instant:number)=>Promise<ApogeePosition>, reference:number):Promise<readonly ApogeeConjunction[]> {
+  const day=86400000, roots:ApogeeConjunction[]=[];
   const initial=await sample(reference);
   let later=reference, laterValue=delta(initial), complete=false;
-  if (laterValue===0) roots.push(initial.apogee);
+  if (laterValue===0) roots.push({instant:reference,longitude:initial.apogee,speed:initial.speed});
   for (let i=0;i<550;i++) {
     let earlier=later-day, earlierValue=delta(await sample(earlier));
     if (roots.length && Math.abs(earlierValue)>=60) {complete=true;break;}
@@ -18,7 +19,8 @@ export async function findApogeeConjunctions(sample:(instant:number)=>Promise<Ap
         if (midValue*loValue<=0) hi=mid; else {lo=mid;loValue=midValue;}
       }
       const position=await sample(hi);
-      roots.push(position.apogee);
+      if (!Number.isFinite(position.speed)) throw new Error('apogee speed unavailable');
+      roots.push({instant:hi,longitude:position.apogee,speed:position.speed});
     }
     later=earlier;laterValue=earlierValue;
   }

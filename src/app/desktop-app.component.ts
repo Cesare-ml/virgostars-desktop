@@ -12,7 +12,7 @@ import {makeDirectionPlan} from './directions-form';
 import {rendererPlanetaryHours} from './astro/planetary-hour';
 import {axisContactError, axisSamplerForBody, findAxisEvent, type AxisName} from './astro/axis-events';
 import {findSeasonIngress} from './astro/season-events';
-import {findApogeeConjunctions} from './astro/apogee-events';
+import {findApogeeConjunctions, type ApogeeConjunction} from './astro/apogee-events';
 import {chakraSectorDescription} from './chakra-sectors';
 import {enableKleroiAspects, isKlerosSelected} from './astro/kleroi-aspects';
 import {addExtraHouses} from './astro/extra-houses';
@@ -592,7 +592,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   apogeeOpen = false;
   apogeeBusy = false;
   apogeeError = false;
-  apogeeLongitudes:readonly number[] = [];
+  apogeeEvents:readonly ApogeeConjunction[] = [];
+  apogeeSelected:number|null = null;
+  apogeePreview:SessionChart|null = null;
+  private apogeePreviewTicket = 0;
   private apogeeTicket = 0;
   private apogeeChartId:number|null = null;
   arabicPartsOpen = false;
@@ -805,7 +808,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return rows;
   }
   get crossAspectRows(): AspectRow[] {
-    const active = this.activeChart;
+    const active = this.apogeeOpen && this.apogeePreview ? this.apogeePreview : this.activeChart;
     const mode = this.mode;
     if (!active || (mode !== 'transits' && mode !== 'synastry')) return [];
     const overlay = mode === 'transits' ? this.displayedTransit : this.partnerChart;
@@ -891,7 +894,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (this.initialized && this.chakraOpen) void this.draw();
   }
   async toggleApogee():Promise<void> {
-    if (this.apogeeOpen) {++this.apogeeTicket;this.apogeeOpen=false;this.apogeeBusy=false;this.apogeeLongitudes=[];if(this.initialized) void this.draw();return;}
+    if (this.apogeeOpen) {++this.apogeeTicket;++this.apogeePreviewTicket;this.apogeeOpen=false;this.apogeeBusy=false;this.apogeeEvents=[];this.apogeeSelected=null;this.apogeePreview=null;if(this.initialized) void this.draw();return;}
     const chart=this.activeChart;
     if (!chart) return;
     const ticket=++this.apogeeTicket;
@@ -902,11 +905,30 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
         const snapshot=await this.eventSnapshot(chart,instant);
         const sun=snapshot.bodies.find(body=>body.id==='Sun'),apogee=snapshot.bodies.find(body=>body.id==='osc. Apogee');
         if (!sun || !apogee) throw new Error('position unavailable');
-        return {sun:sun.longitudeDeg,apogee:apogee.longitudeDeg};
+        return {sun:sun.longitudeDeg,apogee:apogee.longitudeDeg,speed:apogee.longitudeSpeed};
       },Date.parse(chart.utcIso));
-      if (!this.destroyed && ticket===this.apogeeTicket) {this.apogeeLongitudes=values;if(this.initialized) void this.draw();}
+      if (!this.destroyed && ticket===this.apogeeTicket) {this.apogeeEvents=values;if(this.initialized) void this.draw();}
     } catch {if (!this.destroyed && ticket===this.apogeeTicket) this.apogeeError=true;}
     finally {if (!this.destroyed && ticket===this.apogeeTicket) {this.apogeeBusy=false;this.cd.markForCheck();}}
+  }
+  async selectApogeeEvent(instant:number):Promise<void> {
+    const base=this.activeChart;
+    if (!base || !this.apogeeOpen || !this.apogeeEvents.some(event=>event.instant===instant)) return;
+    const ticket=++this.apogeePreviewTicket;
+    if (this.apogeeSelected===instant) {
+      this.apogeeSelected=null;this.apogeePreview=null;this.apogeeError=false;
+      if(this.initialized) void this.draw();this.cd.markForCheck();return;
+    }
+    this.apogeeSelected=instant;this.apogeePreview=null;this.apogeeError=false;this.cd.markForCheck();
+    const preview=await this.computeChart({name:this.locale==='it'?'Apogeo radix':'Natal apogee',utcIso:isoFromMs(instant),localDate:'',localTime:'',
+      timeZone:base.timeZone,offsetSeconds:0,latMicro:base.latMicro,lngMicro:base.lngMicro,placeName:base.placeName});
+    if (this.destroyed || ticket!==this.apogeePreviewTicket || !this.apogeeOpen || this.activeChartId!==base.id) return;
+    if (typeof preview==='string') {this.apogeeSelected=null;this.apogeeError=true;}
+    else this.apogeePreview=preview;
+    if(this.initialized) void this.draw();this.cd.markForCheck();
+  }
+  apogeeWhen(instant:number):string {
+    return this.chartWhen({utcIso:isoFromMs(instant),timeZone:this.activeChart?.timeZone ?? 'UTC'});
   }
   toggleAscensions():void {
     if (this.ascensionsOpen) {
@@ -1226,11 +1248,11 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     return this.inspectorTab === 'planets' ? 'nav.planets' : this.inspectorTab === 'aspects' ? 'tab.aspects' : this.inspectorTab === 'transits' ? 'transits.navigation' : this.inspectorTab === 'zodiac' ? 'zodiac.title' : 'nav.title';
   }
   get subjectTitle(): string {
-    const chart = this.activeChart;
+    const chart = this.apogeeOpen && this.apogeePreview ? this.apogeePreview : this.activeChart;
     return chart ? this.chartName(chart) : '';
   }
   get subjectCaption(): string {
-    const chart = this.activeChart;
+    const chart = this.apogeeOpen && this.apogeePreview ? this.apogeePreview : this.activeChart;
     return chart ? this.chartWhen(chart) + ' · ' + chart.placeLabel : '';
   }
   aspectSymbolOf(aspect:string): string { return aspectSymbol(aspect); }
@@ -1433,7 +1455,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private showChart(chart: SessionChart | null, redraw = true): void {
     if (this.apogeeOpen && chart?.id!==this.apogeeChartId) {
-      ++this.apogeeTicket;this.apogeeOpen=false;this.apogeeBusy=false;this.apogeeLongitudes=[];this.apogeeChartId=null;
+      ++this.apogeeTicket;++this.apogeePreviewTicket;this.apogeeOpen=false;this.apogeeBusy=false;this.apogeeEvents=[];this.apogeeSelected=null;this.apogeePreview=null;this.apogeeChartId=null;
     }
     if ((this.ascensionsOpen || this.radixSynodsOpen || this.seasonsOpen) && chart?.id!==this.ascensionsBase?.id && chart?.id!==this.ascensionsPreviewId) {
       if (this.ascensionsPreviewId!==null) this.sessionCharts=this.sessionCharts.filter(item=>item.id!==this.ascensionsPreviewId);
@@ -2924,7 +2946,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   private drawTransitFocus(): void {
         const value = this.transitFocus;
-        const natal = this.activeChart, transit = this.mode === 'synastry' ? this.partnerChart : this.displayedTransit;
+        const natal = this.apogeeOpen && this.apogeePreview ? this.apogeePreview : this.activeChart;
+        const transit = this.mode === 'synastry' ? this.partnerChart : this.displayedTransit;
         if (!value || !natal || !transit || !['transits','synastry'].includes(this.mode) ||
           (this.mode === 'synastry' && (this.synastryDeflection || value.ring === 'transit')) ||
           (this.mode === 'transits' && value.ring === 'synastry') || this.view !== 'chart' ||
@@ -3057,14 +3080,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (!this.activeChart || this.busy || this.exporting) return;
     this.view = 'chart';
     this.chartPresentation = 'wheel';
-    if (this.mode === 'transits') this.cancelTransitNavigation();
-    this.mode = 'natal';
+    if (this.mode !== 'transits' || mode !== 'dodecatemoria') {
+      if (this.mode === 'transits') this.cancelTransitNavigation();
+      this.mode = 'natal';
+    }
     if (this.monomeriEnabled && mode !== 'dodecatemoria') this.toggleMonomeri();
     this.monomero = null;
     this.monomeroDodecatemoria = false;
     this.zodiacMode = mode;
     this.zodiacPoint = 'tutti';
-    this.openInspector('zodiac');
+    if (this.inspectorTab === 'zodiac') this.inspectorCollapsed = true;
     if (this.initialized) void this.draw();
   }
   toggleZodiacTool(mode: ZodiacProjectionMode): void {
@@ -3169,9 +3194,15 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if(!this.ready || this.busy) return;
     direction > 0 ? this.renderer.zoomIn(.15) : this.renderer.zoomOut(.15);
   }
+  zoomAtPointer(event:WheelEvent):void {
+    if (!this.ready || this.busy || this.exporting || this.view!=='chart' || this.chartPresentation!=='wheel' || this.mode==='latitude') return;
+    event.preventDefault();
+    const delta = Math.max(-100,Math.min(100,event.deltaY));
+    this.renderer.zoomAt(event.clientX,event.clientY,Math.exp(-delta * .002));
+  }
   fitChart(): void {
     if(!this.ready || this.busy) return;
-    this.renderer.setZoom(1);
+    this.renderer.resetFraming();
     this.fitStage();
   }
   private options() {
@@ -3196,7 +3227,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       options.applicazioniAspetti = {modo:this.chartSettings.applicationMode,
         stati:this.aspectRows.map(row => ({aspetto:row.aspect,da:row.from,a:row.to,applicante:row.applying}))};
     }
-    if (active && this.mode === 'natal' && this.zodiacMode === 'dodecatemoria') {
+    if (active && (this.mode === 'natal' || this.mode === 'transits') && this.zodiacMode === 'dodecatemoria') {
       options.dodecatemoriAttivi = true;
       options.dodecatemore = this.zodiacPoint;
     } else if (active && this.mode === 'natal' && (this.zodiacMode === 'antiscia' || this.zodiacMode === 'contra-antiscia')) {
@@ -3222,10 +3253,10 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     options.chakramAttivi = this.mode==='natal' && this.chakraOpen;
     options.chakram = options.chakramAttivi ? this.chakraSelected : undefined;
     (options as typeof options & {apogeeLongitudes?:readonly number[]}).apogeeLongitudes =
-      this.mode==='natal' && this.apogeeOpen && active?.id===this.apogeeChartId ? this.apogeeLongitudes : undefined;
+      (this.mode==='natal' || this.mode==='transits') && this.apogeeOpen && !this.apogeePreview && active?.id===this.apogeeChartId ? this.apogeeEvents.map(event=>event.longitude) : undefined;
     options.mostraAspetti = settings.showAspects && !options.chakramAttivi;
-    if (this.mode === 'natal' && this.kleroiEnabled && !this.directionChart && this.kleroi) options.kleros = 'visualizza sorti';
-    if (this.mode === 'natal' && this.arabicPartsOpen && !this.directionChart) {
+    if (!this.apogeePreview && this.mode === 'natal' && this.kleroiEnabled && !this.directionChart && this.kleroi) options.kleros = 'visualizza sorti';
+    if (!this.apogeePreview && (this.mode === 'natal' || this.mode === 'transits') && this.arabicPartsOpen && !this.directionChart) {
       if (this.arabicPartsGroup === 'custom') {
         options.mostraPartiArabe = true;
         options.partiArabe = {modalita:'crea', nomeElCeleste:this.arabicCustomPlanet, elDestinazione:this.arabicCustomDestination};
@@ -3275,17 +3306,17 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const transit = this.mode === 'synastry' ? this.displayChart(this.synastryTransitChart)?.render : this.displayedTransit?.render;
     const synastry = this.mode === 'natal' && this.directionAppliedMode === 'SECONDARY_PROGRESSION' ? this.directionChart?.render :
       this.mode === 'transits' && this.synodView === 'transit-synod' ? this.displayChart(this.synodChart)?.render : this.partnerChart?.render;
-    let natal = active.render;
-    const allKleroi = this.mode === 'natal' && this.kleroiEnabled ? this.kleroi : null;
+    let natal = this.apogeeOpen && this.apogeePreview ? this.apogeePreview.render : active.render;
+    const allKleroi = !this.apogeePreview && this.mode === 'natal' && this.kleroiEnabled ? this.kleroi : null;
     const kleroi = allKleroi && this.kleroiFilter !== 'all'
       ? Object.fromEntries(Object.entries(allKleroi).filter(([name]) => isKlerosSelected(name,this.kleroiFilter)))
       : allKleroi;
-    const parts = this.mode === 'natal' && this.arabicPartsOpen ? this.arabicParts : null;
+    const parts = !this.apogeePreview && (this.mode === 'natal' || this.mode === 'transits') && this.arabicPartsOpen ? this.arabicParts : null;
     const partLots = parts ? this.kleroi : null;
-    const stars = this.mode === 'natal' ? this.fixedStarContacts : [];
-    const hour = this.planetaryHour?.key === this.planetaryHourKey(active) ? this.planetaryHour.value : null;
+    const stars = !this.apogeePreview && this.mode === 'natal' ? this.fixedStarContacts : [];
+    const hour = !this.apogeePreview && this.planetaryHour?.key === this.planetaryHourKey(active) ? this.planetaryHour.value : null;
     if (kleroi || hour || parts || stars.length) {
-      natal = Object.assign(new TemaRender(), structuredClone(active.data));
+      natal = Object.assign(new TemaRender(), structuredClone(this.apogeeOpen && this.apogeePreview ? this.apogeePreview.data : active.data));
       if (kleroi) for (const [name, longitude] of Object.entries(kleroi)) natal.planets[name] = {longitude};
       if (partLots) for (const [name, longitude] of Object.entries(partLots)) natal.planets[name] = {longitude};
       if (parts) natal.partiArabe = parts;

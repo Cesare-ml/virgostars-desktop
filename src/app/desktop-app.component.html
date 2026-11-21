@@ -145,7 +145,7 @@
       <section class="chart-stage" #stage [attr.aria-label]="t('chart')"
         [style.background-color]="(view==='chart' || view==='settings') && chartPresentation==='wheel' && activeChart ? chartBackground : null"
         [class.chart-dark]="(view==='chart' || view==='settings') && chartPresentation==='wheel' && activeChart && (chartSkin==='dark' || chartSkin==='dark-bn')">
-        <canvas #canvas class="chart-canvas" aria-hidden="true" [style.visibility]="view==='chart' && chartPresentation==='sky3d' ? 'hidden' : null"></canvas>
+        <canvas #canvas class="chart-canvas" aria-hidden="true" (wheel)="zoomAtPointer($event)" [style.visibility]="view==='chart' && chartPresentation==='sky3d' ? 'hidden' : null"></canvas>
         <vs-sky-dome *ngIf="view==='chart' && chartPresentation==='sky3d' && activeChart"
           [utcIso]="activeChart.utcIso" [latMicro]="activeChart.latMicro"
           [lngMicro]="activeChart.lngMicro" [locale]="locale"
@@ -593,10 +593,24 @@
         </section>
       </section>
       <div class="stage-tools" #stageTools [hidden]="(view!=='chart' && !(view==='returns' && returnTool==='solar')) || chartPresentation==='sky3d'" [class.solar-active]="solarContextActive || (view==='returns' && returnTool==='solar')">
-      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && apogeeOpen && mode==='natal' && chartPresentation==='wheel'" [attr.aria-label]="locale==='it' ? 'Apogeo radix' : 'Natal apogee'">
+      <aside class="derived-panel zodiac-panel" *ngIf="zodiacMode && activeChart && chartPresentation==='wheel' && (mode==='natal' || (mode==='transits' && zodiacMode==='dodecatemoria'))">
+        <header class="arabic-panel-head"><strong>{{t(zodiacMode==='dodecatemoria' ? 'zodiac.dodecatemoria' : zodiacMode==='antiscia' ? 'zodiac.antiscia' : 'zodiac.contra')}}</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="toggleZodiacTool(zodiacMode)">×</button></header>
+        <div class="zodiac-axis" *ngIf="zodiacMode!=='dodecatemoria'" role="group" [attr.aria-label]="t('zodiac.axis')">
+          <span>{{t('zodiac.axis')}}</span>
+          <button type="button" *ngFor="let axis of zodiacAxes" [disabled]="busy" [class.selected]="zodiacAxis===axis" [attr.aria-pressed]="zodiacAxis===axis" (click)="setZodiacAxis(axis)">{{zodiacAxisLabel(axis)}}</button>
+        </div>
+        <div class="zodiac-points" role="group" [attr.aria-label]="t('zodiac.select')">
+          <button type="button" [disabled]="busy" [class.selected]="zodiacPoint==='tutti'" [attr.aria-pressed]="zodiacPoint==='tutti'" (click)="setZodiacPoint('tutti')">{{t('zodiac.all')}}</button>
+          <button type="button" *ngFor="let point of zodiacPoints" [disabled]="busy || !zodiacPointAvailable(point)" [class.selected]="zodiacPoint===point" [attr.aria-pressed]="zodiacPoint===point" (click)="setZodiacPoint(point)"><img [src]="glyphUrl(point)" alt="" (error)="glyphMissing($event)"><span>{{planetLabel(point)}}</span></button>
+        </div>
+      </aside>
+      <aside class="derived-panel" *ngIf="!fixedStarToolsActive && apogeeOpen && (mode==='natal' || mode==='transits') && chartPresentation==='wheel'" [attr.aria-label]="locale==='it' ? 'Apogeo radix' : 'Natal apogee'">
         <header class="arabic-panel-head"><strong>{{locale==='it' ? 'Apogeo radix' : 'Natal apogee'}}</strong><button type="button" class="arabic-close" [attr.aria-label]="t('sheet.close')" (click)="toggleApogee()">×</button></header>
         <p class="inspector-hint" *ngIf="apogeeBusy">{{locale==='it' ? 'Ricerca delle congiunzioni in corso…' : 'Searching for conjunctions…'}}</p>
-        <p class="inspector-hint" *ngIf="!apogeeBusy && apogeeLongitudes.length">{{locale==='it' ? 'Congiunzioni calcolate' : 'Calculated conjunctions'}}: {{apogeeLongitudes.length}}</p>
+        <table class="apogee-table" *ngIf="!apogeeBusy && apogeeEvents.length">
+          <thead><tr><th>{{locale==='it' ? 'Data e ora locale' : 'Local date and time'}}</th><th>{{locale==='it' ? 'Moto' : 'Motion'}}</th></tr></thead>
+          <tbody><tr *ngFor="let event of apogeeEvents"><td><button type="button" [class.selected]="apogeeSelected===event.instant" [attr.aria-pressed]="apogeeSelected===event.instant" (click)="selectApogeeEvent(event.instant)">{{apogeeWhen(event.instant)}}</button></td><td>{{event.speed < 0 ? (locale==='it' ? 'Retrograda' : 'Retrograde') : (locale==='it' ? 'Diretta' : 'Direct')}}</td></tr></tbody>
+        </table>
         <p class="inspector-hint" *ngIf="apogeeError">{{locale==='it' ? 'Calcolo non disponibile. Controlla le effemeridi installate.' : 'Calculation unavailable. Check installed ephemerides.'}} <button type="button" class="archive-action" (click)="openUpdateSettings()">{{locale==='it' ? 'Impostazioni' : 'Settings'}}</button></p>
       </aside>
       <aside class="derived-panel" *ngIf="!fixedStarToolsActive && chakraOpen && mode==='natal' && chartPresentation==='wheel'" aria-label="Chakra">
@@ -651,7 +665,7 @@
           <button type="button" [class.selected]="kleroiFilter==='planetary'" [attr.aria-pressed]="kleroiFilter==='planetary'" (click)="setKleroiFilter('planetary')">{{locale==='it' ? 'Planetarie · 5' : 'Planetary · 5'}}</button>
         </div>
       </aside>
-      <aside class="arabic-panel" *ngIf="!fixedStarToolsActive && arabicPartsOpen && mode==='natal' && chartPresentation==='wheel' && activeChart" [attr.aria-label]="t('arabic.title')">
+      <aside class="arabic-panel" *ngIf="!fixedStarToolsActive && arabicPartsOpen && (mode==='natal' || mode==='transits') && chartPresentation==='wheel' && activeChart" [attr.aria-label]="t('arabic.title')">
         <header class="arabic-panel-head"><strong>{{t('arabic.title')}}</strong><button type="button" class="arabic-close" [disabled]="busy || calcBusy" [attr.aria-label]="t('sheet.close')" (click)="toggleArabicParts()">×</button></header>
         <label><span>{{t('arabic.group')}}</span>
           <select [value]="arabicPartsGroup" (change)="changeArabicGroup($event)">
@@ -732,8 +746,8 @@
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="activeChart.timeUnknown || calcBusy" [class.selected]="planetaryHoursOpen" [attr.aria-pressed]="planetaryHoursOpen" (click)="planetaryHoursOpen=!planetaryHoursOpen"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 3"/></svg>{{locale==='it' ? 'Ore planetarie' : 'Planetary hours'}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="calcBusy" [class.selected]="seasonsOpen" [attr.aria-pressed]="seasonsOpen" (click)="toggleSeasons()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 1v4m0 14v4M1 12h4m14 0h4M4 4l3 3m10 10 3 3M20 4l-3 3M7 17l-3 3"/></svg>{{locale==='it' ? 'Stagioni' : 'Seasons'}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="calcBusy" [class.selected]="chakraOpen" [attr.aria-pressed]="chakraOpen" (click)="toggleChakra()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 4 7 8-7 8-7-8z"/></svg>Chakra</button>
-          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'" [disabled]="calcBusy" [class.selected]="apogeeOpen" [attr.aria-pressed]="apogeeOpen" (click)="toggleApogee()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 12C5 3 2 6 3 9s5 3 9 3Zm0 0c7 9 10 6 9 3s-5-3-9-3ZM12 12c7-9 10-6 9-3s-5 3-9 3Zm0 0c-7 9-10 6-9 3s5-3 9-3Z"/></svg>{{locale==='it' ? 'Apogeo radix' : 'Natal apogee'}}</button>
-          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && (mode==='natal' || mode==='transits') && chartPresentation==='wheel'" [disabled]="calcBusy" [class.selected]="apogeeOpen" [attr.aria-pressed]="apogeeOpen" (click)="toggleApogee()"><svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 12C5 3 2 6 3 9s5 3 9 3Zm0 0c7 9 10 6 9 3s-5-3-9-3ZM12 12c7-9 10-6 9-3s-5 3-9 3Zm0 0c-7 9-10 6-9 3s5-3 9-3Z"/></svg>{{locale==='it' ? 'Apogeo radix' : 'Natal apogee'}}</button>
+          <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && (mode==='natal' || mode==='transits') && chartPresentation==='wheel'"
             [disabled]="!kleroi || busy || calcBusy" [class.selected]="arabicPartsOpen" [attr.aria-pressed]="arabicPartsOpen"
             (click)="toggleArabicParts()"><svg class="tool-icon" aria-hidden="true"><use href="#tool-arabic"></use></svg>{{t('arabic.title')}}</button>
           <button type="button" class="toolbar-button fit-button" *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel'"
@@ -793,27 +807,6 @@
           <p class="inspector-hint missing-note" *ngIf="chart.unavailableBodies.length">{{t('bodies.missing')}} {{namesOf(chart.unavailableBodies)}}</p>
         </div>
         <!-- Naviga cielo: move the chart in time and place and watch it change. -->
-        <div class="zodiac-panel" *ngIf="inspectorTab==='zodiac' && activeChart && mode==='natal'">
-          <p class="zodiac-intro">{{t('zodiac.intro')}}</p>
-          <div class="zodiac-modes" role="group" [attr.aria-label]="t('zodiac.title')">
-            <button type="button" [disabled]="busy" [class.selected]="zodiacMode==='dodecatemoria'" [attr.aria-pressed]="zodiacMode==='dodecatemoria'" (click)="toggleZodiacTool('dodecatemoria')"><strong>{{t('zodiac.dodecatemoria')}}</strong><small>{{t('zodiac.dodeca.desc')}}</small></button>
-            <button type="button" [disabled]="busy" [class.selected]="zodiacMode==='antiscia'" [attr.aria-pressed]="zodiacMode==='antiscia'" (click)="toggleZodiacTool('antiscia')"><strong>{{t('zodiac.antiscia')}}</strong><small>{{t('zodiac.antiscia.desc')}}</small></button>
-            <button type="button" [disabled]="busy" [class.selected]="zodiacMode==='contra-antiscia'" [attr.aria-pressed]="zodiacMode==='contra-antiscia'" (click)="toggleZodiacTool('contra-antiscia')"><strong>{{t('zodiac.contra')}}</strong><small>{{t('zodiac.contra.desc')}}</small></button>
-          </div>
-          <ng-container *ngIf="zodiacMode">
-            <div class="zodiac-axis" *ngIf="zodiacMode!=='dodecatemoria'" role="group" [attr.aria-label]="t('zodiac.axis')">
-              <span>{{t('zodiac.axis')}}</span>
-              <button type="button" *ngFor="let axis of zodiacAxes" [disabled]="busy" [class.selected]="zodiacAxis===axis" [attr.aria-pressed]="zodiacAxis===axis" (click)="setZodiacAxis(axis)">{{zodiacAxisLabel(axis)}}</button>
-            </div>
-            <div class="zodiac-points" role="group" [attr.aria-label]="t('zodiac.select')">
-              <button type="button" class="zodiac-all" [disabled]="busy" [class.selected]="zodiacPoint==='tutti'" [attr.aria-pressed]="zodiacPoint==='tutti'" (click)="setZodiacPoint('tutti')">{{t('zodiac.all')}}</button>
-              <button type="button" class="zodiac-glyph" *ngFor="let point of zodiacPoints" [disabled]="busy || !zodiacPointAvailable(point)" [class.selected]="zodiacPoint===point"
-                [attr.aria-pressed]="zodiacPoint===point" [attr.aria-label]="planetLabel(point)" [attr.title]="planetLabel(point)" (click)="setZodiacPoint(point)">
-                <img [src]="glyphUrl(point)" alt="" (error)="glyphMissing($event)"><span hidden>{{planetLabel(point)}}</span>
-              </button>
-            </div>
-          </ng-container>
-        </div>
         <div class="navigator" *ngIf="inspectorTab==='transits' && mode==='transits' && activeChart && transitNav">
           <div class="transit-help" *ngIf="transitHelpVisible" role="status">
             <p>{{t('transits.help')}}</p>
