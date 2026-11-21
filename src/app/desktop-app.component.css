@@ -32,6 +32,17 @@
   backdrop-filter:blur(20px);
   -webkit-backdrop-filter:blur(20px);
 }
+/* Diagnostics should never obscure the MC label above the astrology wheel. */
+.desktop-app.chrome-active .layout-warning-banner {
+  top:12px;
+  right:14px;
+  left:auto;
+  transform:none;
+  max-width:min(340px,calc(100% - 28px));
+  flex-wrap:wrap;
+  background:var(--vs-surface);
+  box-shadow:0 8px 24px rgba(33,25,55,.08);
+}
 /* WebView2 native scrollbars/form widgets follow the app's explicit saved theme. */
 .desktop-app {
   color-scheme: light;
