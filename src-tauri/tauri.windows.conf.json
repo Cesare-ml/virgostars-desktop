@@ -1,0 +1,38 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VirgoStars Desktop — UI laboratory",
+        "width": 1360,
+        "height": 880,
+        "minWidth": 850,
+        "minHeight": 620,
+        "userAgent": "VirgoStarsDesktop/0.0.4 (+https://virgostars.it)",
+        "decorations": false,
+        "transparent": true,
+        "windowEffects": {
+          "effects": ["mica"]
+        }
+      }
+    ],
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "windows-chrome-experiment",
+          "description": "Main window: minimal native controls for the experimental Windows titlebar",
+          "windows": ["main"],
+          "platforms": ["windows"],
+          "permissions": [
+            "core:window:allow-close",
+            "core:window:allow-is-maximized",
+            "core:window:allow-minimize",
+            "core:window:allow-toggle-maximize",
+            "core:window:allow-start-dragging",
+            "core:window:allow-start-resize-dragging"
+          ]
+        }
+      ]
+    }
+  }
+}
