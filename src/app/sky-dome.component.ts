@@ -19,6 +19,7 @@ import {REAL_PLANET_TEXTURES} from './sky-dome-real-textures';
 import {findSkyStars} from './sky-dome-star-search';
 import {skyFacingPlane} from './sky-dome-billboard';
 import {sunlitPlanetMaterial} from './sky-dome-solar-material';
+import {canPickSkyMarker,skyMarkerVisibility} from './sky-dome-marker-layers';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -804,9 +805,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
    * their GPU resources. Rebuild only when the native sky data changes.
    */
   private updateMarkerVisibility():void {
-    if(this.planetMarkerGroup)this.planetMarkerGroup.visible=this.showPlanets;
-    if(this.starPointGroup)this.starPointGroup.visible=this.showStars;
-    if(this.starLabelGroup)this.starLabelGroup.visible=this.showStars&&this.showStarLabels;
+    const visibility=skyMarkerVisibility(this.showPlanets,this.showStars,this.showStarLabels);
+    if(this.planetMarkerGroup)this.planetMarkerGroup.visible=visibility.planets;
+    if(this.starPointGroup)this.starPointGroup.visible=visibility.stars;
+    if(this.starLabelGroup)this.starLabelGroup.visible=visibility.starLabels;
   }
   private buildMarkers():void {
     if(!this.scene)return;
@@ -991,7 +993,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
       case 'ground':
         this.showGround=!this.showGround;
-        if(this.showGround&&this.selected?.point.altitudeDeg!==undefined&&this.selected.point.altitudeDeg<0)
+        if(this.showGround&&this.selected&&this.selected.point.altitudeDeg<0)
           this.clearSelection();
         break;
       case 'stars':
@@ -1161,9 +1163,10 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       const stars=obj.userData['skyStars'] as SkyDomePoint[]|undefined;
       // Raycaster can report meshes belonging to hidden parent groups.
       // Reject them explicitly to keep picking consistent with the toggles.
-      if(objectPoint?.kind==='planet'&&!this.showPlanets)continue;
-      if((objectPoint?.kind==='star'||stars)&&!this.showStars)continue;
-      if(objectPoint?.kind==='star'&&this.starLabelGroup===obj.parent&&!this.showStarLabels)continue;
+      const pickedKind:PointWithKind['kind']|null=objectPoint?.kind??(stars?'star':null);
+      if(!pickedKind)continue;
+      const visibility=skyMarkerVisibility(this.showPlanets,this.showStars,this.showStarLabels);
+      if(!canPickSkyMarker(pickedKind,obj.parent===this.starLabelGroup,visibility))continue;
       chosen=objectPoint??(stars && hit.index!==undefined ? {point:stars[hit.index],kind:'star'} : null);
       if(chosen)break;
     }
