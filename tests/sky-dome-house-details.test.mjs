@@ -42,7 +42,8 @@ test('atmosphere can be disabled without changing astronomy or simulating new st
   const viewer=read('src/app/sky-dome.component.ts');
   assert.match(html,/\[class\.sky3d-no-atmosphere\]="!showAtmosphere"/);
   assert.match(html,/\(click\)="toggleLayer\('atmosphere'\)"/);
-  assert.match(viewer,/case 'atmosphere':this\.showAtmosphere=!this\.showAtmosphere/);
+  assert.match(viewer,/case 'atmosphere':\s*this\.showAtmosphere=!this\.showAtmosphere/);
+  assert.match(viewer,/this\.applyAtmosphericStarlight\(\)/);
   assert.match(css,/\.sky3d\.sky3d-no-atmosphere/);
   assert.match(css,/\.sky3d-no-atmosphere \.sky3d-vignette/);
   assert.match(viewer,/calculateSkyDome\(\{utcIso:this\.utcIso,latMicro:this\.latMicro,lngMicro:this\.lngMicro\}\)/);

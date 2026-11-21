@@ -264,6 +264,12 @@
   margin:0 11px 11px;color:#94b6b2;font-size:9.5px;
   line-height:1.5;
 }
+.sky3d-atmosphere-note {
+  margin:0 10px 11px;padding:7px 9px;
+  border:1px solid rgba(183,212,233,.14);
+  border-radius:8px;background:rgba(19,45,68,.4);
+  color:#bad2e7;font-size:9.5px;line-height:1.5;
+}
 .sky3d-house-cusps {margin:0 10px 11px;border:1px solid rgba(114,199,169,.24);border-radius:9px;}
 .sky3d-house-cusps summary {
   padding:8px 10px;color:#c2e6d9;font-size:10px;font-weight:650;

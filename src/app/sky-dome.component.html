@@ -90,6 +90,9 @@
         <button type="button" [class.active]="showPlanets" [attr.aria-pressed]="showPlanets"
           (click)="toggleLayer('planets')">{{word('planets')}}</button>
       </div>
+      <p class="sky3d-atmosphere-note" *ngIf="showAtmosphere && light==='day' && status==='ready'">
+        {{word('daylightStarsNote')}}
+      </p>
     </details>
     <details class="sky3d-accordion sky3d-search-accordion">
       <summary>{{word('findStar')}}</summary>
