@@ -155,3 +155,20 @@ test('native drag-region owns double-click maximize, preventing a duplicate togg
   assert.ok(config.app.security.capabilities[0].permissions.includes('core:window:allow-internal-toggle-maximize'));
   assert.equal((chrome.match(/data-tauri-drag-region/g) || []).length >= 6, true);
 });
+
+
+test('native DPI event also refreshes chart backing pixels with unchanged CSS dimensions', () => {
+  const bar = source('../src/app/window-chrome.component.ts');
+  const app = source('../src/app/desktop-app.component.ts');
+  const html = source('../src/app/desktop-app.component.html');
+  assert.match(bar,/this\.appWindow\.onScaleChanged\(/);
+  assert.match(bar,/this\.displayScaleChanged\.emit\(\)/);
+  assert.match(html,/\(displayScaleChanged\)="onNativeDisplayScaleChanged\(\)"/);
+  assert.match(app,/onNativeDisplayScaleChanged\(\): void/);
+  const handler=app.match(/onNativeDisplayScaleChanged\(\): void \{([\s\S]*?)\n  \}/)?.[1];
+  assert.ok(handler);
+  assert.match(handler,/if \(this\.destroyed\) return/);
+  assert.match(handler,/this\.fitStage\(\)/);
+  assert.match(handler,/previousCssSize === canvas\.style\.width \+ '\|' \+ canvas\.style\.height/);
+  assert.match(handler,/window\.dispatchEvent\(new Event\('resize'\)\)/);
+});
