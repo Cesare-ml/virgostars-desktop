@@ -191,3 +191,41 @@ test('existing ResizeObserver updates layout health even for collapsed or unchan
   assert.doesNotMatch(fit, /if\s*\(diameter < 32\) return/);
   assert.doesNotMatch(fit, /if\s*\(surface\.style\.width === css && surface\.style\.height === css\) return/);
 });
+
+test('the Windows chrome reserves its measured 42px strip without a false collapsed warning', () => {
+  const chrome = box(1360,42);
+  const insetWorkspace = box(1360,838,42,0);
+  const native = {...elements,workspace:insetWorkspace,chrome};
+  const inspectNative = element => element === chrome ?
+    {display:'grid',visibility:'visible',opacity:'1',getPropertyValue:()=>''} :
+    element === insetWorkspace ? inspect(workspace) : inspect(element);
+  assert.equal(probeDesktopLayout(native,inspectNative),'active');
+  assert.equal(probeDesktopLayout(native,inspectNative,undefined,{width:1360,height:880}),'active');
+  // macOS and plain browser previews still require a zero-inset workspace.
+  assert.equal(probeDesktopLayout({...native,chrome:null},inspectNative),'collapsed');
+});
+
+test('a mismatched, hidden or misplaced Windows titlebar cannot disguise a broken layout', () => {
+  const chrome = box(1360,42);
+  const insetWorkspace = box(1360,838,42,0);
+  const native = {...elements,workspace:insetWorkspace,chrome};
+  const inspectNative = element => element === chrome ?
+    {display:'grid',visibility:'visible',opacity:'1',getPropertyValue:()=>''} :
+    element === insetWorkspace ? inspect(workspace) : inspect(element);
+  assert.equal(probeDesktopLayout(native, element => element === chrome ?
+    {...inspectNative(chrome),visibility:'hidden'} : inspectNative(element)), 'hidden');
+  assert.equal(probeDesktopLayout(native, element => element === chrome ?
+    {...inspectNative(chrome),display:'none'} : inspectNative(element)), 'hidden');
+  for (const brokenBar of [box(1000,42),box(1360,42,20,0),box(1360,42,0,20),
+    box(1360,0),box(1360,120)]) {
+    const diagnostic = {...native, chrome:brokenBar};
+    const read = element => element === brokenBar ? inspectNative(chrome) : inspectNative(element);
+    assert.equal(probeDesktopLayout(diagnostic,read),'collapsed');
+  }
+  for (const misplaced of [box(1360,880,42,0),box(1360,820,42,0),
+    box(1360,838,0,0),box(1310,838,42,0),box(1360,838,42,20)]) {
+    const diagnostic = {...native, workspace:misplaced};
+    const read = element => element === misplaced ? inspectNative(insetWorkspace) : inspectNative(element);
+    assert.equal(probeDesktopLayout(diagnostic,read),'collapsed');
+  }
+});
