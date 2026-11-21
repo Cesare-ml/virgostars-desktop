@@ -141,3 +141,14 @@ test('native events cover resize, focus and monitor DPI changes with listener cl
   assert.equal(config.app.security.capabilities[0].windows.join(','),'main');
   assert.equal(config.app.security.capabilities[0].platforms.join(','),'windows');
 });
+
+
+test('native drag-region owns double-click maximize, preventing a duplicate toggle', () => {
+  const chrome = source('../src/app/window-chrome.component.html');
+  const config = JSON.parse(source('../src-tauri/tauri.windows.conf.json'));
+  assert.match(chrome, /class="chrome-identity" data-tauri-drag-region/);
+  assert.match(chrome, /class="chrome-drag-title" data-tauri-drag-region/);
+  assert.doesNotMatch(chrome, /\(dblclick\)="toggleMaximize\(\)"/);
+  assert.ok(config.app.security.capabilities[0].permissions.includes('core:window:allow-internal-toggle-maximize'));
+  assert.equal((chrome.match(/data-tauri-drag-region/g) || []).length >= 6, true);
+});
