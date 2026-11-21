@@ -40,6 +40,7 @@ export class SkyDomeLens {
         uCam:{value:new THREE.Matrix3()},
         uAspect:{value:1},
         uHalfFov:{value:Math.PI/2},
+        uBaseHalfFov:{value:SKY_FISHEYE_START_DEG*Math.PI/360},
         uBlend:{value:0},
       },
       vertexShader:`
@@ -54,6 +55,7 @@ export class SkyDomeLens {
         uniform mat3 uCam;
         uniform float uAspect;
         uniform float uHalfFov;
+        uniform float uBaseHalfFov;
         uniform float uBlend;
         varying vec2 vUv;
         const float PI = 3.141592653589793;
@@ -61,9 +63,15 @@ export class SkyDomeLens {
         void main() {
           vec2 xy=(vUv*2.0-1.0)*vec2(uAspect,1.0);
           float r=length(xy);
-          float perspective=atan(r*tan(uHalfFov));
-          float equidistant=r*uHalfFov;
-          float theta=mix(perspective,equidistant,uBlend);
+          float theta=r*uHalfFov;
+          // The 85° perspective shape remains fixed while its amplitude
+          // scales with the selected FOV. Zoom never reverses near centre.
+          // When the fisheye is complete, skip perspective calculations.
+          // The same formula is in skyLensTheta() for object selection.
+          if (uBlend<1.0) {
+            float perspectiveShape=atan(r*tan(uBaseHalfFov))/uBaseHalfFov;
+            theta=uHalfFov*mix(perspectiveShape,r,uBlend);
+          }
           if (theta>PI) {
             gl_FragColor=vec4(0.0);
             return;
