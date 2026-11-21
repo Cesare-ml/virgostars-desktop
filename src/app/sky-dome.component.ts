@@ -20,6 +20,10 @@ import {findSkyStars} from './sky-dome-star-search';
 import {skyFacingPlane} from './sky-dome-billboard';
 import {sunlitPlanetMaterial} from './sky-dome-solar-material';
 import {canPickSkyMarker,skyMarkerVisibility} from './sky-dome-marker-layers';
+import {
+  skyAtmosphereStarTransmission,skyAtmosphereStarDotsVisible,
+  skyAtmosphereStarNamesVisible,
+} from './sky-dome-atmosphere';
 import {skyStarPickThreshold} from './sky-dome-star-picking';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
@@ -35,7 +39,7 @@ const WORDS={
   it:{
     title:'Cielo 3D',hint:'Trascina per guardare il cielo · Rotellina per ingrandire',
     meridian:'Meridiano',grid:'Griglia',equator:'Equatore',zodiac:'Eclittica',zodiacGrid:'Griglia segni',signs:'Segni',angles:'Angoli',ground:'Terreno',stars:'Stelle',starLabels:'Nomi stelle',planets:'Pianeti',
-    atmosphere:'Atmosfera',houseGrid:'Griglia delle case',houseSystem:'Domificazione',houseUnavailable:'Cuspidi non disponibili per questo metodo',
+    atmosphere:'Atmosfera',daylightStarsNote:'Con atmosfera attiva, la luce del giorno attenua le stelle. Disattivala per vedere anche il cielo diurno.',houseGrid:'Griglia delle case',houseSystem:'Domificazione',houseUnavailable:'Cuspidi non disponibili per questo metodo',
     houseNote:'Cuspidi proiettate sull’eclittica, non superfici spaziali delle case.',
     houseCusps:'Cuspidi delle case',houseFocus:'Punta la cuspide',
     appearance:'Aspetto del cielo',objectDetails:'Coordinate astronomiche',longitude:'Longitudine eclittica',latitude:'Latitudine eclittica',
@@ -82,7 +86,7 @@ const WORDS={
   en:{
     title:'3D Sky',hint:'Drag to look around · Scroll to zoom',
     meridian:'Meridian',grid:'Grid',equator:'Celestial equator',zodiac:'Ecliptic',zodiacGrid:'Zodiac grid',signs:'Signs',angles:'Angles',ground:'Ground',stars:'Stars',starLabels:'Star names',planets:'Planets',
-    atmosphere:'Atmosphere',houseGrid:'House cusp grid',houseSystem:'House system',houseUnavailable:'Cusps unavailable for this method',
+    atmosphere:'Atmosphere',daylightStarsNote:'With the atmosphere on, daylight dims the stars. Turn it off to explore the daytime sky.',houseGrid:'House cusp grid',houseSystem:'House system',houseUnavailable:'Cusps unavailable for this method',
     houseNote:'Ecliptic cusp projections, not spatial house boundary surfaces.',
     houseCusps:'House cusps',houseFocus:'Point to cusp',
     appearance:'Sky appearance',objectDetails:'Astronomical coordinates',longitude:'Ecliptic longitude',latitude:'Ecliptic latitude',
@@ -805,11 +809,40 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   /** Visibility changes must not re-download real planetary maps or dispose
    * their GPU resources. Rebuild only when the native sky data changes.
    */
+  /** Display-only fading from the ephemeris Sun altitude. Never modifies
+   * catalogue stars or their native positions and magnitudes.
+   */
+  get starAtmosphereTransmission():number {
+    const sun=this.data?.planets.find(point=>point.id==='Sun');
+    return skyAtmosphereStarTransmission(sun?.altitudeDeg??null,this.showAtmosphere);
+  }
+  private markerVisibility() {
+    const factor=this.starAtmosphereTransmission;
+    return skyMarkerVisibility(
+      this.showPlanets,
+      this.showStars&&skyAtmosphereStarDotsVisible(factor),
+      this.showStarLabels&&skyAtmosphereStarNamesVisible(factor),
+    );
+  }
   private updateMarkerVisibility():void {
-    const visibility=skyMarkerVisibility(this.showPlanets,this.showStars,this.showStarLabels);
+    const visibility=this.markerVisibility();
     if(this.planetMarkerGroup)this.planetMarkerGroup.visible=visibility.planets;
     if(this.starPointGroup)this.starPointGroup.visible=visibility.stars;
     if(this.starLabelGroup)this.starLabelGroup.visible=visibility.starLabels;
+  }
+  private applyAtmosphericStarlight():void {
+    const factor=this.starAtmosphereTransmission;
+    for(const point of this.starPointGroup?.children??[]){
+      if(!(point instanceof THREE.Points)||!(point.material instanceof THREE.PointsMaterial))continue;
+      const stars=point.userData['skyStars'] as SkyDomePoint[]|undefined;
+      if(stars?.length)point.material.opacity=starAppearance(stars[0].magnitude).opacity*factor;
+    }
+    for(const plate of this.starLabelGroup?.children??[]){
+      if(plate instanceof THREE.Mesh&&plate.material instanceof THREE.MeshBasicMaterial){
+        plate.material.opacity=0.89*factor;
+      }
+    }
+    this.updateMarkerVisibility();
   }
   private buildMarkers():void {
     if(!this.scene)return;
@@ -976,7 +1009,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.planetMarkerGroup=planetGroup;
     this.starPointGroup=starGroup;
     this.starLabelGroup=namesGroup;
-    this.updateMarkerVisibility();
+    this.applyAtmosphericStarlight();
     this.scene.add(group);
     this.updateSelectionRing();
     this.draw();
@@ -989,7 +1022,11 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       case 'zodiac':this.showZodiac=!this.showZodiac;this.buildZodiac();break;
       case 'zodiacGrid':this.showZodiacGrid=!this.showZodiacGrid;this.buildZodiac();break;
       case 'houses':this.showHouses=!this.showHouses;if(!this.showHouses)this.selectedCuspIndex=null;this.buildHouseGrid();break;
-      case 'atmosphere':this.showAtmosphere=!this.showAtmosphere;break;
+      case 'atmosphere':
+        this.showAtmosphere=!this.showAtmosphere;
+        this.applyAtmosphericStarlight();
+        if(this.selected?.kind==='star'&&!this.markerVisibility().stars)this.clearSelection();
+        break;
       case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
       case 'ground':
@@ -1174,7 +1211,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       // Reject them explicitly to keep picking consistent with the toggles.
       const pickedKind:PointWithKind['kind']|null=objectPoint?.kind??(stars?'star':null);
       if(!pickedKind)continue;
-      const visibility=skyMarkerVisibility(this.showPlanets,this.showStars,this.showStarLabels);
+      const visibility=this.markerVisibility();
       if(!canPickSkyMarker(pickedKind,obj.parent===this.starLabelGroup,visibility))continue;
       chosen=objectPoint??(stars && hit.index!==undefined ? {point:stars[hit.index],kind:'star'} : null);
       if(chosen)break;
