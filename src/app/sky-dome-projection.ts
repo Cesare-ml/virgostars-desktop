@@ -89,11 +89,15 @@ export function skyLensTheta(radius:number,fovDeg:number):number|null {
   if(!Number.isFinite(radius)||radius<0||!Number.isFinite(fovDeg)||
     fovDeg<SKY_FOV_MIN_DEG||fovDeg>SKY_FOV_MAX_DEG)return null;
   const half=fovDeg*RAD/2;
-  const perspective=Math.atan(radius*Math.tan(half));
   const equidistant=radius*half;
   const blend=fisheyeBlend(fovDeg);
-  const theta=perspective+(equidistant-perspective)*blend;
-  return theta<=Math.PI?theta:null;
+  // At >=120° the lens is fully equidistant. Do NOT evaluate tan(half):
+  // for FOV=180° that expression is singular/undefined in some WebGL
+  // implementations, even though the perspective contribution is zero.
+  const theta=blend>=1
+    ? equidistant
+    : (1-blend)*Math.atan(radius*Math.tan(half))+blend*equidistant;
+  return Number.isFinite(theta)&&theta>=0&&theta<=Math.PI?theta:null;
 }
 
 /** Inverse screen->sky for raycasting in the all-sky renderer. */
