@@ -9,8 +9,11 @@
   -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
-html,body,vs-desktop-app { margin:0; width:100%; height:100%; min-height:0; }
+html,body { margin:0; width:100%; height:100%; min-height:0; }
 body { overflow:hidden; }
+/* Tauri/WKWebView: anchor the app to the live window, not an intrinsic document row. */
+vs-desktop-app { display:block; position:fixed; inset:0; min-width:0; min-height:0; }
+
 button { font:inherit; cursor:pointer; }
 button:disabled { cursor:not-allowed; opacity:.42; }
 button:focus-visible { outline:2px solid var(--vs-focus); outline-offset:2px; }

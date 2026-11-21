@@ -15,7 +15,7 @@ export function validateCiReport(report, {version, arch, commit}) {
       report.version!==version || report.sourceCommit!==commit ||
       report.platform!=='darwin' || report.arch!==arch ||
       report.nativeTarget!==macTarget(arch) ||
-      report.artwork!=='synthetic' || report.signing!=='ad-hoc' ||
+      report.artwork!=='original-uncleared' || report.signing!=='ad-hoc' ||
       report.releaseEligible!==false ||
       report.datasets?.cityArchiveSha256!==DOWNLOADS.cities.sha256 ||
       report.datasets?.de441BaseSha256!==DOWNLOADS.de441.sha256 ||
@@ -24,7 +24,7 @@ export function validateCiReport(report, {version, arch, commit}) {
       !/^[a-f0-9]{64}$/.test(report.artifacts[0]?.sha256??'') ||
       !Number.isSafeInteger(report.artifacts[0]?.bytes) ||
       report.artifacts[0].bytes<=0)
-    throw Error('The build report does not describe this exact unsigned, synthetic macOS test artifact');
+    throw Error('The build report does not describe this exact unsigned macOS test artifact with original glyphs');
   return report.artifacts[0];
 }
 
@@ -54,7 +54,7 @@ async function main() {
   const sums=readFileSync(join(dir,'SHA256SUMS.txt'),'utf8');
   if (sums!==artifact.sha256+'  '+artifact.file+'\n')
     throw Error('Checksum manifest does not match build report');
-  console.log('Verified unsigned macOS test DMG, checksum and build report for '+arch+' at '+commit);
+  console.log('Verified unsigned macOS DMG with original glyphs, checksum and build report for '+arch+' at '+commit);
 }
 if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   main().catch(error=>{console.error('MAC_CI_VERIFICATION_FAILED:',error.message);process.exitCode=1;});

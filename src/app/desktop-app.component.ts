@@ -2667,6 +2667,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
       });
       this.initialized = true;
       this.resizeObserver = new ResizeObserver(() => this.fitStage());
+      // Resizing the native Mac window must refit even when the stage was temporarily unchanged.
+      this.resizeObserver.observe(this.shell.nativeElement);
       this.resizeObserver.observe(this.stage.nativeElement);
       void this.draw();
       void this.showStartupChart();

@@ -11,7 +11,7 @@ Il workflow [`macOS DMG · manual`](https://github.com/Cesare-ml/virgostars-desk
 3. Alla conclusione, apri la pagina del run. Nei job `DMG arm64` e `DMG x64` trovi log, eventuali errori, compilazione e verifica SHA-256.
 4. Sotto **Artifacts**, scarica gli ZIP `virgostars-macos-arm64-test-…` e `virgostars-macos-x64-test-…`. Ogni ZIP contiene un `.dmg`, `SHA256SUMS.txt` e `build-report.json`.
 
-Il workflow non usa un account Apple Developer e **non possiede segreti di firma**, privilegi di scrittura sui repository, capacità di pubblicare release o trigger su push/PR. Le due build utilizzano asset grafici sintetici e le risorse pubbliche DE441 1000–2200 / città autenticati con SHA-256. Gli artefatti sono **di prova, non firmati/notarizzati per distribuzione pubblica**, e vengono conservati per 14 giorni. I file `.app` e `.dmg` sono generati dal progetto sul runner ma soltanto il `.dmg`, l'hash e il report vengono caricati come artefatti di workflow.
+Il workflow non usa un account Apple Developer e **non possiede segreti di firma**, privilegi di scrittura sui repository, capacità di pubblicare release o trigger su push/PR. Le due build del workflow usano il pacchetto originale `astrological-assets`, fissato a commit e verificato tramite manifest, anziché i segnaposto sintetici. Includono i glifi reali dei dodici segni e dei pianeti, controllati anche nell'output Angular. I dati pubblici DE441 1000–2200 e città sono autenticati con SHA-256. Gli artefatti sono **di prova, non firmati/notarizzati per distribuzione pubblica**, e vengono conservati per 14 giorni. I file `.app` e `.dmg` sono generati dal progetto sul runner ma soltanto il `.dmg`, l'hash e il report vengono caricati come artefatti di workflow.
 
 **Se un job fallisce:** apri il log del passaggio fallito e prepara una issue con link al run, architettura, commit ed errore senza dati sensibili. Un job concluso con successo non sostituisce una prova di avvio/uso del `.dmg` su macOS reale. Per la distribuzione pubblica occorrono verifiche funzionali, diritti dei dataset/immagini, firma Developer ID e notarizzazione separate.
 
@@ -46,7 +46,7 @@ Il secondo comando:
 
 I risultati si trovano in `.local/mac/output/<versione>/<architettura>/`. Il progetto tiene dati, cache e risorse scaricate in `.local/`, ignorata da Git.
 
-La compilazione predefinita usa **asset di test sintetici**, perché il repository pubblico `astrological-assets` ha ancora una verifica separata di pubblicabilità delle singole immagini. Questo percorso consente di collaudare un'app con il **vero motore DE441 e le vere città**, ma **non è una release grafica definitiva**. In questa prima base non sono compresi USNO ΔT, SPK di Chirone o cataloghi stellari privati: le funzioni che li richiedono possono essere indisponibili, così come i calcoli fuori dalle politiche temporali supportate.
+La compilazione locale predefinita `npm run build:mac` usa ancora **asset sintetici** come diagnostica; la GitHub Action manuale usa invece `npm run build:mac:original` e prepara la grafica autentica verificata. Il controllo `check:public-release` sugli asset originali rimane obbligatorio per la distribuzione pubblica: un DMG di prova con `artwork: original-uncleared` **non è approvato per la pubblicazione come release**. Questo percorso permette comunque di verificare rendering, DE441 e città sul Mac di un collaboratore. In questa prima base non sono compresi USNO ΔT, SPK di Chirone o cataloghi stellari privati: le funzioni che li richiedono possono essere indisponibili, così come i calcoli fuori dalle politiche temporali supportate.
 
 Per eseguire una **build locale con la grafica originale** autorizzata:
 
@@ -54,7 +54,7 @@ Per eseguire una **build locale con la grafica originale** autorizzata:
 npm run build:mac:original
 ```
 
-Questo comando aggiunge il checkout pubblico `astrological-assets`, verifica il manifest approvato e abilita le funzioni di account previste dalla build proprietario. Una build `--original` **non è autorizzata automaticamente alla redistribuzione**: l'approvazione a livello di singolo asset va completata, e la build release impone `npm run check:public-release` nel repository Assets. Non pubblicare una build con questi asset finché il controllo non passa.
+Questo comando aggiunge il checkout pubblico `astrological-assets`, verifica il manifest approvato e la presenza dei glifi nel bundle, e abilita le funzioni di account previste dalla build del proprietario. È anche il comando eseguito dalla GitHub Action manuale. Una build `--original` **non è autorizzata automaticamente alla redistribuzione**: l'approvazione a livello di singolo asset va completata, e la build release impone `npm run check:public-release` nel repository Assets. Non pubblicare una build con questi asset finché il controllo non passa.
 
 ## Pubblicazione a tutti: compilazione firmata e notarizzata
 
@@ -79,6 +79,13 @@ Questo comando **non crea tag, non apre una nuova release, non pubblica draft e 
 **Attenzione alla versione:** la versione in `package.json`, `Cargo.toml` e `tauri.conf.json` deve coincidere e il tag release deve puntare al commit compilato. Non caricare una nuova build 0.0.2 su una vecchia release 0.0.2 che punta a un altro commit. Preparare e convalidare un nuovo numero di versione prima della prima pubblicazione Mac.
 
 Per una release con asset originali, usare `node scripts/mac/build.mjs --original --release`: il controllo pubblicazione del repository Assets deve passare senza eccezioni. Non modificare i manifest/hash per aggirarlo.
+
+## Correzioni macOS del 21 novembre 2026
+
+- **Glifi originali:** le build manuali GitHub Actions per ARM64 e Intel utilizzano ora il pack originale verificato. Un controllo su `dist/desktop/browser/assets/img/simboli-bianchi/` esige 12 segni, pianeti principali, varianti retrograde, nodi e assi; un file mancante o non PNG interrompe il build. `build-report.json` distingue `original-uncleared` da `synthetic` e il controllo CI rifiuta la variante sbagliata.
+- **Finestra ridimensionabile:** shell e workspace sono ancorati al viewport nativo di WKWebView; la superficie di lavoro non deve più essere spinta in basso da righe implicite della griglia. Il resize osserva sia shell sia stage, ridimensiona il canvas mantenendo le proporzioni ed evita strisce di sfondo vuote.
+- **Regressioni:** i test rilevano una superficie di lavoro spostata in basso o più piccola della finestra; `npm test` viene eseguito prima della compilazione.
+- **Verifica visiva richiesta:** sul Mac aprire/chiudere la finestra, espandere/contrarre, ridimensionare ad almeno 850×620 e 1360×880, controllare 12 glifi dei segni, Sole, Luna, pianeti, retrogradi e passaggio tra viste. I test statici e la compilazione CI non sostituiscono questa prova.
 
 ## Collaudo minimo obbligatorio su un Mac
 
