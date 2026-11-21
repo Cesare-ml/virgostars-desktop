@@ -97,6 +97,9 @@ async function main() {
   log('Staging independently hashed city data and public DE441 base');
   command(process.execPath,['scripts/mac/prepare-public-data.mjs']);
   command('npm',['run',OPTIONS.original?'build:ui:private':'build:ui']);
+  // Check the emitted Angular bundle, not only the source CSS. This catches a
+  // large blank band if the pinned macOS WKWebView build loses viewport rules.
+  command(process.execPath,['scripts/mac/verify-responsive-bundle.mjs']);
   if(OPTIONS.original) {
     // The manifest verifier checks checksums, this gate additionally requires
     // every core zodiac/planetary glyph the desktop actually renders.
