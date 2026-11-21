@@ -2766,6 +2766,20 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.renderer.ngOnDestroy();
   }
 
+  /** DPI changes may leave CSS sizes unchanged while canvas backing pixels need updating. */
+  onNativeDisplayScaleChanged(): void {
+    if (this.destroyed) return;
+    const canvas = this.canvas.nativeElement;
+    const previousCssSize = canvas.style.width + '|' + canvas.style.height;
+    this.fitStage();
+    // fitStage already notifies the renderer if the CSS size changed.
+    // If it did not, this event is still necessary to update devicePixelRatio.
+    if (this.initialized && !this.destroyed &&
+        previousCssSize === canvas.style.width + '|' + canvas.style.height) {
+      window.dispatchEvent(new Event('resize'));
+    }
+  }
+
   private fitStage(): void {
     if (this.destroyed) return;
     if (!this.navManual) {
