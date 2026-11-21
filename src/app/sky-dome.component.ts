@@ -157,6 +157,9 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   private webglFailed=false;
   fisheyeUnavailable=false;
   private markerGroup:THREE.Group|null=null;
+  private planetMarkerGroup:THREE.Group|null=null;
+  private starPointGroup:THREE.Group|null=null;
+  private starLabelGroup:THREE.Group|null=null;
   private markerGeneration=0;
   private markerTextures:THREE.Texture[]=[];
   private portraitTextures=new Map<string,THREE.CanvasTexture>();
@@ -441,6 +444,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.renderer?.dispose();
     this.renderer?.forceContextLoss();
     this.renderer=null;this.scene=null;this.camera=null;this.targets=[];
+    this.markerGroup=null;this.planetMarkerGroup=null;
+    this.starPointGroup=null;this.starLabelGroup=null;
   }
   private async load():Promise<void> {
     const ticket=++this.generation;
@@ -795,6 +800,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     texture.colorSpace=THREE.SRGBColorSpace;
     return texture;
   }
+  /** Visibility changes must not re-download real planetary maps or dispose
+   * their GPU resources. Rebuild only when the native sky data changes.
+   */
+  private updateMarkerVisibility():void {
+    if(this.planetMarkerGroup)this.planetMarkerGroup.visible=this.showPlanets;
+    if(this.starPointGroup)this.starPointGroup.visible=this.showStars;
+    if(this.starLabelGroup)this.starLabelGroup.visible=this.showStars&&this.showStarLabels;
+  }
   private buildMarkers():void {
     if(!this.scene)return;
     const generation=++this.markerGeneration;
@@ -806,10 +819,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     this.markerTextures=[];
     this.selectionRing=null;
     const group=new THREE.Group();
+    const planetGroup=new THREE.Group();
+    const starGroup=new THREE.Group();
+    const namesGroup=new THREE.Group();
+    group.add(planetGroup,starGroup,namesGroup);
     this.targets=[];
     const data=this.data;
     if(data){
-      if(this.showPlanets){
+      { // Keep the planet geometry/textures alive when only layer visibility changes.
         const loader=new THREE.TextureLoader();
         for(const point of data.planets){
           const spec=planetPortraitSpec(point.id);
@@ -824,7 +841,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
               spec.diameter*1.8,spec.diameter*1.8,
               {color:accent,blending:THREE.AdditiveBlending,opacity:0.72,renderOrder:0},
             );
-            group.add(halo);
+            planetGroup.add(halo);
           }
 
           const portrait=this.portraitTexture(point.id);
@@ -833,7 +850,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             const disc=skyFacingPlane(portrait,position.clone().multiplyScalar(0.998),
               spec.diameter,spec.diameter,{renderOrder:1});
             disc.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-            group.add(disc);this.targets.push(disc);
+            planetGroup.add(disc);this.targets.push(disc);
             fallbackPlane=disc;
           }else{
             const fallback=new THREE.Mesh(
@@ -842,7 +859,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             );
             fallback.position.copy(position);
             fallback.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-            group.add(fallback);this.targets.push(fallback);
+            planetGroup.add(fallback);this.targets.push(fallback);
             fallbackPlane=fallback;
           }
           const realMap=REAL_PLANET_TEXTURES[point.id];
@@ -867,7 +884,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             globe.visible=false;
             globe.renderOrder=1;
             globe.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-            group.add(globe);
+            planetGroup.add(globe);
             let saturnRing:THREE.Mesh|null=null;
             if(point.id==='Saturn'){
               const geometry=new THREE.RingGeometry(spec.diameter*.52,spec.diameter*.95,72);
@@ -880,7 +897,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
               ring.quaternion.copy(globe.quaternion);
               ring.rotateX(.38);
               ring.visible=false;
-              group.add(ring);
+              planetGroup.add(ring);
               saturnRing=ring;
             }
             const realTexture=loader.load(realMap,()=>{
@@ -907,14 +924,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
               spec.labelDiameter,spec.labelDiameter,
               {anchorX:0.10,anchorY:0.10,renderOrder:2});
             glyph.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-            group.add(glyph);
+            planetGroup.add(glyph);
             this.targets.push(glyph);
             this.draw();
           },undefined,()=>{ /* Portrait remains present without glyph artwork. */ });
           this.markerTextures.push(texture);
         }
       }
-      if(this.showStars){
+      { // Star dots persist through visibility toggles.
         for(let bin=0;bin<4;bin++){
           const stars=data.stars.filter(star=>starAppearance(star.magnitude).bin===bin);
           if(!stars.length)continue;
@@ -933,22 +950,30 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             depthTest:true,depthWrite:false,blending:THREE.AdditiveBlending,
           }));
           dots.userData['skyStars']=stars;
-          group.add(dots);
+          starGroup.add(dots);
           this.targets.push(dots);
         }
-        if(this.showStarLabels){
+        { // Nameplate meshes remain cached and can be hidden independently.
           for(const star of labeledCatalogStars(data.stars)){
             const texture=this.starNameTexture(star.id);
             if(!texture)continue;
             this.markerTextures.push(texture);
-            group.add(skyFacingPlane(texture,
+            const namePlate=skyFacingPlane(texture,
               this.vec(star.azimuthNorthEastDeg,star.altitudeDeg,99.2),
-              13,2.45,{anchorX:0.03,anchorY:0.5,opacity:0.89}));
+              13,2.45,{anchorX:0.03,anchorY:0.5,opacity:0.89});
+            // Let people select the genuine catalog star by clicking its name.
+            namePlate.userData['skyPoint']={point:star,kind:'star'} as PointWithKind;
+            namesGroup.add(namePlate);
+            this.targets.push(namePlate);
           }
         }
       }
     }
     this.markerGroup=group;
+    this.planetMarkerGroup=planetGroup;
+    this.starPointGroup=starGroup;
+    this.starLabelGroup=namesGroup;
+    this.updateMarkerVisibility();
     this.scene.add(group);
     this.updateSelectionRing();
     this.draw();
@@ -964,10 +989,25 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       case 'atmosphere':this.showAtmosphere=!this.showAtmosphere;break;
       case 'signs':this.showSigns=!this.showSigns;this.buildZodiac();break;
       case 'angles':this.showAngles=!this.showAngles;this.buildAngles();break;
-      case 'ground':this.showGround=!this.showGround;break;
-      case 'stars':this.showStars=!this.showStars;if(!this.showStars && this.selected?.kind==='star')this.selected=null;this.buildMarkers();break;
-      case 'starLabels':this.showStarLabels=!this.showStarLabels;this.buildMarkers();break;
-      case 'planets':this.showPlanets=!this.showPlanets;if(!this.showPlanets && this.selected?.kind==='planet')this.selected=null;this.buildMarkers();break;
+      case 'ground':
+        this.showGround=!this.showGround;
+        if(this.showGround&&this.selected?.point.altitudeDeg!==undefined&&this.selected.point.altitudeDeg<0)
+          this.clearSelection();
+        break;
+      case 'stars':
+        this.showStars=!this.showStars;
+        if(!this.showStars && this.selected?.kind==='star')this.selected=null;
+        this.updateMarkerVisibility();this.updateSelectionRing();
+        break;
+      case 'starLabels':
+        this.showStarLabels=!this.showStarLabels;
+        this.updateMarkerVisibility();
+        break;
+      case 'planets':
+        this.showPlanets=!this.showPlanets;
+        if(!this.showPlanets && this.selected?.kind==='planet')this.selected=null;
+        this.updateMarkerVisibility();this.updateSelectionRing();
+        break;
     }
     if(this.layerGroups.meridian)this.layerGroups.meridian.visible=this.showMeridian;
     if(this.layerGroups.grid)this.layerGroups.grid.visible=this.showGrid;
@@ -1119,6 +1159,11 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       const obj=hit.object;
       const objectPoint=obj.userData['skyPoint'] as PointWithKind|undefined;
       const stars=obj.userData['skyStars'] as SkyDomePoint[]|undefined;
+      // Raycaster can report meshes belonging to hidden parent groups.
+      // Reject them explicitly to keep picking consistent with the toggles.
+      if(objectPoint?.kind==='planet'&&!this.showPlanets)continue;
+      if((objectPoint?.kind==='star'||stars)&&!this.showStars)continue;
+      if(objectPoint?.kind==='star'&&this.starLabelGroup===obj.parent&&!this.showStarLabels)continue;
       chosen=objectPoint??(stars && hit.index!==undefined ? {point:stars[hit.index],kind:'star'} : null);
       if(chosen)break;
     }
