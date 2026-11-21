@@ -51,6 +51,7 @@ import {loadReferencePlace, saveReferencePlace, loadAccountChart, saveAccountCha
 import { probeDesktopLayout, type DesktopLayoutStatus } from './desktop-layout-probe';
 import { NewChartComponent } from './new-chart.component';
 import { MenuIconComponent } from './menu-icon.component';
+import { WindowChromeComponent } from './window-chrome.component';
 import type { NewChartInput } from './new-chart-form';
 import { calculateChart } from './native/chart-calculation';
 import { calculateHistoricalChart } from './native/historical-chart';
@@ -186,12 +187,14 @@ const ACCOUNT_STATUS_KEYS: Record<AccountViewStatus, MessageKey> = {
 @Component({
   selector:'vs-desktop-app',
   standalone:true,
-  imports:[CommonModule, MenuIconComponent, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, SkyDomeComponent, UpdatesComponent, De441PackagesComponent],
+  imports:[CommonModule, MenuIconComponent, WindowChromeComponent, NewChartComponent, ReturnsPanelComponent, ChartSettingsComponent, OfflineCityPickerComponent, ElementsViewComponent, SkyDomeComponent, UpdatesComponent, De441PackagesComponent],
   templateUrl:'./desktop-app.component.html',
   styleUrls:['./desktop-app.component.css']
 })
 export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   readonly brandWordmark = BRAND_WORDMARK;
+  // The native frame is replaced only on Windows; browsers and macOS retain their original chrome.
+  readonly windowsChromeEnabled = inNativeDesktop() && typeof navigator !== 'undefined' && /\\bWindows\\b/i.test(navigator.userAgent);
   @ViewChild('shell', {static:true}) readonly shell!: ElementRef<HTMLElement>;
   @ViewChild('workspace', {static:true}) readonly workspace!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
