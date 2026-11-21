@@ -57,3 +57,59 @@ local assets are available, and `npm run tauri:dev` on Windows 11, then verify
 minimize/maximize/restore/snap, resize edges, the light/dark backdrop, DPI,
 narrow windows and the diagnostic's absence on a healthy chart. Do not merge
 until this is checked in an actual Windows build.
+
+
+## Third iteration — native-feel polish
+
+The user requested further refinement of the Codex-like Windows experiment.
+The following changes remain **isolated on this branch**:
+
+- The middle of the top bar now shows a subdued, localized *workspace title*
+  (sky, natal chart, transits, archive, settings, directions, returns, etc.).
+  It intentionally **does not include any person's name** even when a private
+  chart is displayed.
+- The navigation toggle has an explicit `aria-controls` target and keeps its
+  original `toggleNavigation()` behavior. The duplicate sidebar brand remains
+  hidden only when the native Windows chrome is active.
+- The Tauri-native maximize-state query now coalesces resize/focus events
+  rather than discarding the final query when events overlap. It also ignores
+  late responses after the Angular component is destroyed.
+- The titlebar indicates focus discreetly; buttons remain keyboard-focusable,
+  with dedicated focus styles.
+- Chromium's `app-region:drag` supplements the original Tauri
+  `data-tauri-drag-region` for **Windows pen/touch input**; interactive
+  buttons are explicitly `no-drag`.
+- Theme-specific Mica gradients remain subtle, while `forced-colors`,
+  `prefers-contrast`, and `prefers-reduced-transparency` provide a solid
+  surface for accessibility. The astrological chart itself is still opaque.
+- Responsive navigation now uses the actual **workspace height** (after the
+  42px custom header), avoiding unnecessary rail collapse.
+- Additional source tests check focus, context labeling, accessibility,
+  and responsive layout. A manual repository readback confirmed 16/16
+  source invariants; **this was not an Angular, Node test-runner, or native
+  Windows execution**.
+
+### Validation checklist before any merge
+
+Run from the branch on a real Windows 11 computer:
+
+```powershell
+git switch experiment/codex-style-window
+git pull --ff-only origin experiment/codex-style-window
+npm test
+npm run tauri:dev
+```
+
+On the native window, inspect: all eight resize handles; double-click title
+and maximize/restore; Win+Arrow snap; Alt+F4; minimize/restore via taskbar;
+mouse and touch/pen dragging; title while switching views and language;
+keyboard focus indicators (Tab, Shift+Tab); light/dark theme; minimized/
+maximized state while switching monitors or DPI; Windows high contrast and
+transparency settings. The layout diagnostic should report **active** when the
+chart is correctly sized, and still flag genuinely collapsed geometry.
+
+**Limitations:** replacing the native Windows caption controls may lose some
+built-in features, such as the native Windows 11 maximize-hover Snap Layout
+flyout. Windows keyboard snapping should be checked separately. Do not claim
+full native caption parity without dedicated OS testing. The macOS/Linux
+window configuration and `main` remain unchanged.
