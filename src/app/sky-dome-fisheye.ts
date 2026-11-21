@@ -61,9 +61,15 @@ export class SkyDomeLens {
         void main() {
           vec2 xy=(vUv*2.0-1.0)*vec2(uAspect,1.0);
           float r=length(xy);
-          float perspective=atan(r*tan(uHalfFov));
           float equidistant=r*uHalfFov;
-          float theta=mix(perspective,equidistant,uBlend);
+          float theta=equidistant;
+          // Do not evaluate tan(PI/2) at FOV=180° or negative tan beyond
+          // the hemisphere. Fully fisheye views have no perspective term.
+          // This must match skyLensTheta() used for mouse picking.
+          if (uBlend<1.0) {
+            float perspective=atan(r*tan(uHalfFov));
+            theta=mix(perspective,equidistant,uBlend);
+          }
           if (theta>PI) {
             gl_FragColor=vec4(0.0);
             return;
