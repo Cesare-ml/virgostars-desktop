@@ -119,6 +119,31 @@ test('click rays agree with the same fisheye angle across full zoom range',()=>{
   }
 });
 
+test('fisheye picking uses display aspect ratio for wide, square and tall windows',()=>{
+  const frame=skyCameraFrame(247,37);
+  const forward={x:-frame.back.x,y:-frame.back.y,z:-frame.back.z};
+  for(const aspect of [0.55,1,1.4,16/9,21/9]){
+    for(const fov of [85,100,119.99,120,150,180,200,220]){
+      for(const [ndcX,ndcY] of [[0,0],[0.2,0.1],[-0.6,0.3],[0.85,-0.7],[1,1]]){
+        const radius=Math.hypot(ndcX*aspect,ndcY);
+        const theta=skyLensTheta(radius,fov);
+        const ray=skyFisheyeWorldRay(ndcX,ndcY,aspect,fov,frame);
+        if(theta===null){assert.equal(ray,null);continue;}
+        assert.ok(ray,`missing ray for aspect=${aspect}, fov=${fov}`);
+        near(length(ray),1,1e-10);
+        near(dot(ray,forward),Math.cos(theta),1e-10);
+        // Screen right and up must map to the camera's world right/up.
+        if(ndcX!==0)assert.ok(Math.sign(dot(ray,frame.right))===Math.sign(ndcX));
+        if(ndcY!==0)assert.ok(Math.sign(dot(ray,frame.up))===Math.sign(ndcY));
+      }
+    }
+  }
+  const frameN=skyCameraFrame(0,0);
+  for(const aspect of [-1,0,NaN,Infinity]){
+    assert.equal(skyFisheyeWorldRay(.5,.5,aspect,180,frameN),null);
+  }
+});
+
 test('fisheye pick rays agree with compass and survive the poles',()=>{
   const north=skyCameraFrame(0,0);
   const center=skyFisheyeWorldRay(0,0,1.5,200,north);
