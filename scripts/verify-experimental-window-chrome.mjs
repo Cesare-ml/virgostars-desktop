@@ -16,6 +16,9 @@ export const CHROME_PERMISSIONS = Object.freeze([
   'core:window:allow-toggle-maximize',
   'core:window:allow-start-dragging',
   'core:window:allow-start-resize-dragging',
+  // Native resize/focus/DPI subscriptions, scoped to this single WebView.
+  'core:event:allow-listen',
+  'core:event:allow-unlisten',
 ]);
 
 export function verifyWindowsChromeOverride(base, override) {
