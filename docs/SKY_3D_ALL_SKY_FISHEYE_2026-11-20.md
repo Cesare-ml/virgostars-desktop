@@ -10,7 +10,7 @@ Raggiungere navigando con mouse e rotellina le inquadrature *all-sky* viste in S
 
 - **28–84°:** prospettiva standard Three.js, qualità dei glifi conservata nel rendering diretto.
 - **Da 85°:** attivazione del campionamento cubico delle sei direzioni celesti. Alla soglia di 85° la proiezione del nuovo shader è matematicamente uguale alla prospettiva, senza salto geometrico.
-- **85–120°:** interpolazione continua del raggio angolare dalla proiezione prospettica `atan(r * tan(FOV/2))` alla proiezione *equidistante* `r * FOV/2`. Il fattore è un smoothstep, zero a 85° e uno a 120°.
+- **85–120°:** interpolazione della *forma* prospettica fissata a 85° verso quella equidistante, entrambe riscalate sul campo visivo attuale. Per ogni raggio normalizzato `r`, si usa `theta = (FOV/2) * mix(atan(r * tan(85°/2)) / (85°/2), r, smoothstep)`. La scelta evita che i punti vicini al centro invertano brevemente il movimento durante lo zoom, come avveniva con la prospettiva variabile in `tan(FOV/2)`. Sul bordo verticale `r=1`, il semivisibile resta sempre esattamente `FOV/2`.
 - **120–220°:** fisheye equidistante, adatto a vedere una semisfera intera e oltre 180° per comprendere anche la relazione fra cielo e terreno. Non è una lente fotografica calibrata; è una proiezione didattica della sfera.
 - **«Tutto il cielo»:** impostazione rapida a 200° con puntamento allo zenit. I pulsanti per zenit e nadir sono separati e la rotellina continua ad agire sul campo visivo.
 - **Trascinamento:** non si ferma a ±85°: la camera ruota stabilmente oltre zenit e nadir senza il classico problema di `lookAt` al polo. Il puntamento dell'HUD è convertito nell'altezza/azimut reali della direzione osservata.
@@ -29,7 +29,7 @@ Il nuovo `skyCameraFrame` fornisce una base ortonormale destrorsa anche ai poli,
 
 ## Prestazioni
 
-`SkyDomeLens` usa un `WebGLCubeRenderTarget` di **1024×1024 per faccia** e una `CubeCamera` con sei direzioni. L'aggiornamento delle sei facce avviene soltanto quando cambiano le geometrie/livelli o arrivano nuove coordinate astronomiche. Drag, zoom e ridimensionamento riutilizzano il cubemap già pronto e rendono soltanto un quad shader con il nuovo orientamento: non richiamano le effemeridi e non ricostruiscono sei viste per ogni movimento.
+`SkyDomeLens` usa un `WebGLCubeRenderTarget` di **256, 512 o 1024 pixel per faccia** (in base al limite della GPU) e una `CubeCamera` con sei direzioni. L'aggiornamento delle sei facce avviene soltanto quando cambiano le geometrie/livelli o arrivano nuove coordinate astronomiche. Drag, zoom e ridimensionamento riutilizzano il cubemap già pronto e rendono soltanto un quad shader con il nuovo orientamento: non richiamano le effemeridi e non ricostruiscono sei viste per ogni movimento.
 
 Sotto 85° la scena usa la normale PerspectiveCamera, senza risoluzione cubica limitante. La stessa finestra mantiene un unico canvas WebGL. Lo smontaggio dispone render target, materiali, mesh e listener.
 
@@ -65,3 +65,16 @@ Questa funzione non aggiunge un paesaggio realistico o una Via Lattea fotografic
 - `tests/sky-dome-billboard.test.mjs` verifica orientamento e geometria radiale ai poli e negli ottanti, incluse ancore dei piccoli glifi; i controlli di dimensione/fallback sono inclusi nei test della proiezione.
 - **Non ancora verificato su Windows:** continuità della texture, orientamento dei piani nel cubemap, qualità delle immagini e comportamento del fallback su una GPU con limiti reali.
 
+
+## Correzione matematico-grafica (21 novembre 2026) — zoom coerente e 180°
+
+L'interpolazione originale della lente utilizzava `atan(r * tan(FOV/2))` per ogni campo visivo fino a 120°, poi eliminava progressivamente la prospettiva. Questo provocava un'inversione **locale** del movimento degli oggetti prossimi al centro intorno a 100°–115°, pur rispettando il FOV ai bordi.
+
+Il renderer e il sistema di selezione dei corpi (picking) ora usano **esattamente la stessa funzione**, con due invarianti:
+
+1. Dal 85° al 120° la **forma della prospettiva a 85°** è fissa e viene mescolata con la forma equidistante. L'angolo è poi moltiplicato per il semiamplitudine del FOV corrente. Per tutti i raggi visibili, l'angolo cresce monotonicamente quando si allarga il campo. In particolare il punto al bordo verticale rimane a `FOV/2`.
+2. Per `FOV >= 120°` la formula è direttamente `theta = r * FOV/2`; non viene più valutata `tan(FOV/2)`. In particolare a 180° e 220° il GLSL evita una tangente prospettica priva di significato e potenzialmente indefinita. Oltre un angolo di 180° dalla direzione centrale i pixel sono trasparenti e la selezione restituisce `null`.
+
+Aggiornati `sky-dome-projection.ts`, `sky-dome-fisheye.ts`, e i test `sky-dome-projection.test.mjs`: controllo numerico dei raggi centrali e laterali in incrementi di 0,25°, contiguità alle soglie 85° e 120°, corrispondenza tra bordo verticale e campo dichiarato, casi 179.999°/180°/180.001° e raggi di selezione concordi con la proiezione.
+
+**QA ancora aperta:** questi test sono stati aggiunti al repository ma la suite Node, la compilazione Angular e il rendering WebView2 non sono stati ancora eseguiti su una macchina con checkout completo. Occorre confrontare viste e picking con il vecchio renderer a 85°, 110°, 120°, 180° e 220°, e verificare l'assenza di "salti" e di saturazione della cubemap su GPU limitate.
