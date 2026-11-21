@@ -3,8 +3,8 @@
  *
  * Native VirgoStars-Ephemeris supplies the geometric Sun altitude: this
  * function NEVER derives a celestial position or claims radiometric accuracy.
- * It is a smooth, bounded display convention from astronomical twilight
- * (-12° in the current sky UI) to the solar horizon (0°).
+ * It is a smooth, bounded display convention from the current sky UI's
+ * night boundary (-12°, nautical twilight) to the solar horizon (0°).
  *
  * Without atmosphere every catalogue star remains available, even by day.
  */
