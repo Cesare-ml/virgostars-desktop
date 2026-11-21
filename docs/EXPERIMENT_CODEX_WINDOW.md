@@ -113,3 +113,13 @@ built-in features, such as the native Windows 11 maximize-hover Snap Layout
 flyout. Windows keyboard snapping should be checked separately. Do not claim
 full native caption parity without dedicated OS testing. The macOS/Linux
 window configuration and `main` remain unchanged.
+
+
+### Rendering-cost note
+
+The large, full-height sidebar and inspector no longer use CSS
+`backdrop-filter:blur(...)`: the Windows native Mica surface supplies the
+background treatment without running two extra panel-sized backdrop passes.
+Only the small 42px titlebar retains a CSS blur. This is an implementation
+optimization, **not a benchmark**; measure GPU behavior in Cielo 3D on
+Windows before merging.
