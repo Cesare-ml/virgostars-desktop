@@ -71,3 +71,22 @@ Questo documento descrive il codice introdotto, **non certifica un risultato sci
 - **Preview nativa in due terminali:** `npm start` prepara e serve la build privata sul localhost, poi `npm run tauri:dev` avvia Tauri sulla pagina già in esecuzione. La sola chiamata Tauri non avvia automaticamente il dev server.
 
 **Verifiche non ancora effettuate:** compilazione Rust/Angular completa, tutte le suite Node e rendering reale WebView2. I controlli dei collegamenti HTML/CSS/TypeScript e dei dati del nuovo schema sono statici, non sostituiscono queste prove.
+
+
+## Aggiornamento atmosferico e visibilità stellare — 21 novembre 2026
+
+La prima versione del comando **Atmosfera** cambiava solo lo sfondo CSS, mentre stelle e nomi conservavano la stessa luminosità anche con il Sole alto. Questo non simulava correttamente la differenza tra una vista con atmosfera e una **senza atmosfera**, particolarmente importante per lo studio del cielo diurno.
+
+Il modulo puramente grafico `src/app/sky-dome-atmosphere.ts` prende **esclusivamente l'altezza del Sole fornita dal provider Rust** e lo stato del comando Atmosfera. Non calcola o modifica effemeridi, posizioni, magnitudini del catalogo o geometria del cielo.
+
+- Da Sole a **−12° o più basso**, la trasmissione visuale delle stelle è **100%**.
+- Nel crepuscolo tra **−12° e 0°**, l'opacità decresce progressivamente tramite una curva *smoothstep*. A −6° la trasmissione è circa **51%**.
+- Da Sole a **0° o più alto**, la trasmissione dei puntini è circa **2%**; gli oggetti quasi impercettibili e i relativi nomi vengono anche esclusi dall'interazione del mouse per evitare selezioni invisibili.
+- Quando **Atmosfera è disattivata**, la trasmissione torna immediatamente al **100% a qualsiasi ora**, senza ricostruire le geometrie o ricaricare le texture dei pianeti.
+- Se non è disponibile un'altezza solare valida, il software non ne inventa una: conserva la trasmissione piena e il normale stato di indisponibilità dei dati.
+
+La visibilità dei puntini e delle etichette è ora condivisa tra il disegno dei gruppi Three.js e il *picking* del mouse; l'attenuazione viene applicata ai materiali delle stelle già presenti, senza passare da `buildMarkers()`. L'interfaccia aggiunge una nota IT/EN quando l'atmosfera è attiva di giorno, per spiegare perché le stelle non risultano visibili e come esplorarle.
+
+Questa curva è una **convenzione didattica**, non un modello scientifico quantitativo di dispersione atmosferica, estinzione, inquinamento luminoso, rifrazione, magnitudine limite o occlusione solare. Non pretende di simulare il cielo con accuratezza fotometrica.
+
+**Test introdotti:** `tests/sky-dome-atmosphere.test.mjs` verifica i limiti solari, la monotonia della curva, la riapparizione immediata senza atmosfera, l'assenza di clic fantasma su oggetti nascosti e la presenza delle note UI in entrambe le lingue. Aggiornati anche i test relativi ai livelli persistenti e alla selezione del comando Atmosfera. Prima del rilascio rimangono necessari il collaudo su WebView2 e i test completi della build.
