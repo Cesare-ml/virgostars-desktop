@@ -1,5 +1,5 @@
 import {CommonModule} from '@angular/common';
-import {Component, ChangeDetectorRef, HostListener, Input, OnInit, inject} from '@angular/core';
+import {Component, ChangeDetectorRef, EventEmitter, HostListener, Input, OnInit, Output, inject} from '@angular/core';
 import {getCurrentWindow} from '@tauri-apps/api/window';
 
 type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>['startResizeDragging']>[0];
@@ -17,6 +17,8 @@ type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>['startResi
 })
 export class WindowChromeComponent implements OnInit {
   @Input() locale = 'en';
+  @Input() navCollapsed = false;
+  @Output() readonly navigationToggle = new EventEmitter<void>();
   maximized = false;
 
   private readonly appWindow = getCurrentWindow();
