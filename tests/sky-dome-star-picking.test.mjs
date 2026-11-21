@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {skyStarPickThreshold} from '../src/app/sky-dome-star-picking.ts';
+import {skyStarPickThreshold as pickWithLens} from '../src/app/sky-dome-star-picking.ts';
+import {skyLensTheta} from '../src/app/sky-dome-projection.ts';
+
+const skyStarPickThreshold=(fov,height,radius,skyRadius=100,targetRadiusPx=6)=>
+  pickWithLens(fov,height,radius,skyLensTheta,skyRadius,targetRadiusPx);
 
 test('star hit target grows with FOV instead of remaining a fixed 3D radius',()=>{
   const narrow=skyStarPickThreshold(28,800,0.5);
