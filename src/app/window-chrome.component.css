@@ -1,0 +1,66 @@
+:host {
+  position:fixed;
+  inset:0;
+  z-index:120;
+  pointer-events:none;
+  color:var(--vs-text);
+}
+.chrome-bar {
+  pointer-events:auto;
+  position:absolute;
+  inset:0 0 auto;
+  height:42px;
+  display:grid;
+  grid-template-columns:minmax(210px, 1fr) minmax(0, 1fr) minmax(210px, 1fr);
+  align-items:center;
+  user-select:none;
+  -webkit-user-select:none;
+  background:var(--vs-chrome-bar, rgba(255,255,255,.79));
+  border-bottom:1px solid var(--vs-chrome-divider, rgba(60,45,91,.1));
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+.chrome-identity, .chrome-drag-title { height:100%; display:flex; align-items:center; min-width:0; }
+.chrome-identity { gap:8px; padding-inline:18px 10px; font-size:12px; letter-spacing:-.015em; }
+.chrome-identity strong { font-weight:750; }
+.chrome-symbol { display:grid; place-items:center; width:20px; height:20px; font-size:22px; color:var(--vs-accent); }
+.chrome-edition { color:var(--vs-text-secondary); font-size:11px; }
+.chrome-drag-title { justify-content:center; color:var(--vs-text-secondary); font-size:11px; }
+.chrome-drag-title span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chrome-controls { display:flex; align-self:stretch; align-items:stretch; justify-self:end; }
+.chrome-button {
+  pointer-events:auto;
+  border:0;
+  border-radius:0;
+  width:46px;
+  height:100%;
+  display:grid;
+  place-items:center;
+  background:transparent;
+  color:var(--vs-text);
+  transition:background .12s ease, color .12s ease;
+}
+.chrome-button svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.25; stroke-linejoin:round; stroke-linecap:round; }
+.chrome-button:hover { background:rgba(91,76,120,.11); }
+.chrome-button:active { background:rgba(91,76,120,.19); }
+.chrome-button.chrome-close:hover { background:#c42b36; color:white; }
+.chrome-button.chrome-close:active { background:#a9212a; color:white; }
+.chrome-button:focus-visible { outline:2px solid var(--vs-focus); outline-offset:-3px; }
+.chrome-resize { position:absolute; z-index:2; pointer-events:auto; }
+.chrome-resize.north { top:0; left:8px; right:8px; height:5px; cursor:n-resize; }
+.chrome-resize.south { bottom:0; left:8px; right:8px; height:6px; cursor:s-resize; }
+.chrome-resize.west { top:8px; bottom:8px; left:0; width:6px; cursor:w-resize; }
+.chrome-resize.east { top:8px; bottom:8px; right:0; width:6px; cursor:e-resize; }
+.chrome-resize.northwest, .chrome-resize.northeast,
+.chrome-resize.southwest, .chrome-resize.southeast { width:10px; height:10px; }
+.chrome-resize.northwest { left:0; top:0; cursor:nw-resize; }
+.chrome-resize.northeast { right:0; top:0; cursor:ne-resize; }
+.chrome-resize.southwest { left:0; bottom:0; cursor:sw-resize; }
+.chrome-resize.southeast { right:0; bottom:0; cursor:se-resize; }
+@media (max-width:920px) {
+  .chrome-bar { grid-template-columns:minmax(145px, 1fr) minmax(0, 1fr) 138px; }
+  .chrome-identity { padding-inline:12px 6px; }
+  .chrome-edition { display:none; }
+  .chrome-drag-title { display:none; }
+}
+@media (prefers-reduced-motion:reduce) { .chrome-button { transition:none; } }
