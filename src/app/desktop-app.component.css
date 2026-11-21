@@ -20,19 +20,17 @@
   height:calc(100% - 42px);
 }
 .desktop-app.chrome-active .sidebar {
-  background:linear-gradient(180deg,rgba(48,42,71,.89),rgba(43,35,65,.93));
-  backdrop-filter:blur(18px);
-  -webkit-backdrop-filter:blur(18px);
+  /* Rely on the native Mica blur: blurring the entire sidebar costs GPU time. */
+  background:linear-gradient(180deg,rgba(48,42,71,.92),rgba(43,35,65,.96));
 }
 /* The same sidebar toggle lives in the custom titlebar, not twice in the view. */
 .desktop-app.chrome-active .sidebar-heading { display:none; }
 .desktop-app.chrome-active[data-theme="dark"] .sidebar {
-  background:linear-gradient(180deg,rgba(27,23,43,.89),rgba(23,21,37,.93));
+  background:linear-gradient(180deg,rgba(27,23,43,.92),rgba(23,21,37,.96));
 }
 .desktop-app.chrome-active .inspector {
-  background:color-mix(in srgb,var(--vs-surface) 92%,transparent);
-  backdrop-filter:blur(20px);
-  -webkit-backdrop-filter:blur(20px);
+  /* Keep dense astrology controls crisp without an expensive panel-sized blur. */
+  background:color-mix(in srgb,var(--vs-surface) 95%,transparent);
 }
 /* Diagnostics should never obscure the MC label above the astrology wheel. */
 .desktop-app.chrome-active .layout-warning-banner {
