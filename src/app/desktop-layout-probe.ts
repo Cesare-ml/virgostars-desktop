@@ -9,6 +9,8 @@ export interface DesktopLayoutElements {
   readonly workspace: Element | null;
   readonly stage: Element | null;
   readonly canvas: HTMLCanvasElement | null;
+  /** Optional custom native titlebar occupying the top of the desktop shell. */
+  readonly chrome?: Element | null;
 }
 
 export interface DesktopStyleRead {
@@ -51,6 +53,7 @@ export function probeDesktopLayout(
     const workspace = readStyle(elements.workspace);
     const stage = readStyle(elements.stage);
     const canvasStyle = readStyle(elements.canvas);
+    const chromeStyle = elements.chrome ? readStyle(elements.chrome) : null;
     const accent = shell.getPropertyValue('--vs-accent').trim();
     if (shell.display !== 'grid' || workspace.display !== 'grid' ||
         stage.display !== 'grid' || accent.length === 0) {
@@ -60,7 +63,7 @@ export function probeDesktopLayout(
     // A loaded grid can still be invisible due to runtime/inherited styles.
     // Validate each sampled computed style instead of treating unknown values
     // as visible; opacity is parsed strictly and may be fractional.
-    for (const style of [shell, workspace, stage, canvasStyle]) {
+    for (const style of [shell, workspace, stage, canvasStyle, ...(chromeStyle ? [chromeStyle] : [])]) {
       if (typeof style.visibility !== 'string' ||
           !['visible', 'hidden', 'collapse'].includes(style.visibility) ||
           typeof style.opacity !== 'string' || style.opacity.trim() === '') {
@@ -70,7 +73,7 @@ export function probeDesktopLayout(
       if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) return 'unavailable';
       if (style.visibility !== 'visible' || opacity === 0) return 'hidden';
     }
-    if (canvasStyle.display === 'none') return 'hidden';
+    if (canvasStyle.display === 'none' || chromeStyle?.display === 'none') return 'hidden';
 
     // CSS dimensions do not guarantee a usable HTML canvas drawing buffer.
     // WebView2 may expose a large styled canvas with zero native pixels.
@@ -86,17 +89,34 @@ export function probeDesktopLayout(
     if (boxes.some(box => !Number.isFinite(box.width) || !Number.isFinite(box.height) ||
         box.width < 0 || box.height < 0)) return 'unavailable';
     const [shellBox, workspaceBox, stageBox, canvasBox] = boxes;
-    // On WKWebView a valid CSS grid may still occupy only the bottom of the
-    // native window. Detect uncovered strips instead of reporting healthy.
+    // The experimental Windows frameless window reserves a real measured strip
+    // for its titlebar. Do not misclassify that intentional 42px inset as a
+    // collapsed chart, but continue to detect uncovered strips everywhere else.
+    // Without a custom titlebar this preserves the original Mac regression gate.
     const edgeTolerance = 4; // native fractional CSS-pixel rounding
-    const misaligned = (edge: 'top' | 'left'): boolean => {
+    const chromeBox = elements.chrome ? readRect(elements.chrome) : null;
+    if (chromeBox) {
+      if (![chromeBox.width, chromeBox.height].every(x => Number.isFinite(x) && x >= 0))
+        return 'unavailable';
+      if (chromeBox.width < MIN_SURFACE_PX || chromeBox.height < 24 ||
+          chromeBox.height > 96 || Math.abs(chromeBox.width - shellBox.width) > edgeTolerance ||
+          (chromeBox.top !== undefined && shellBox.top !== undefined &&
+            (!Number.isFinite(chromeBox.top) || !Number.isFinite(shellBox.top) ||
+              Math.abs(chromeBox.top - shellBox.top) > edgeTolerance)) ||
+          (chromeBox.left !== undefined && shellBox.left !== undefined &&
+            (!Number.isFinite(chromeBox.left) || !Number.isFinite(shellBox.left) ||
+              Math.abs(chromeBox.left - shellBox.left) > edgeTolerance)))
+        return 'collapsed';
+    }
+    const titlebarHeight = chromeBox?.height ?? 0;
+    const misaligned = (edge: 'top' | 'left', inset = 0): boolean => {
       const a = shellBox[edge], b = workspaceBox[edge];
       return a !== undefined && b !== undefined &&
-        (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(a - b) > edgeTolerance);
+        (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs((b - a) - inset) > edgeTolerance);
     };
     if (Math.abs(workspaceBox.width - shellBox.width) > edgeTolerance ||
-        Math.abs(workspaceBox.height - shellBox.height) > edgeTolerance ||
-        misaligned('top') || misaligned('left')) return 'collapsed';
+        Math.abs(workspaceBox.height + titlebarHeight - shellBox.height) > edgeTolerance ||
+        misaligned('top', titlebarHeight) || misaligned('left')) return 'collapsed';
     // The shell itself can be pushed down on macOS. Compare with the actual
     // WebView viewport, not only with its child workspace.
     if (viewport) {
