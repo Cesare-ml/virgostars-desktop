@@ -23,6 +23,10 @@ export interface DesktopLayoutRect {
   readonly top?: number;
   readonly left?: number;
 }
+export interface DesktopViewport {
+  readonly width: number;
+  readonly height: number;
+}
 
 export type ReadDesktopStyle = (element: Element) => DesktopStyleRead;
 export type ReadDesktopRect = (element: Element) => DesktopLayoutRect;
@@ -36,6 +40,8 @@ export function probeDesktopLayout(
   elements: DesktopLayoutElements,
   readStyle: ReadDesktopStyle = element => getComputedStyle(element),
   readRect: ReadDesktopRect = element => element.getBoundingClientRect(),
+  viewport: DesktopViewport | null = typeof window !== 'undefined' ?
+    {width:window.innerWidth, height:window.innerHeight} : null,
 ): DesktopLayoutStatus {
   try {
     if (!elements || !elements.shell || !elements.workspace || !elements.stage || !elements.canvas) {
@@ -88,9 +94,19 @@ export function probeDesktopLayout(
       return a !== undefined && b !== undefined &&
         (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(a - b) > edgeTolerance);
     };
-    if (workspaceBox.width < shellBox.width - edgeTolerance ||
-        workspaceBox.height < shellBox.height - edgeTolerance ||
+    if (Math.abs(workspaceBox.width - shellBox.width) > edgeTolerance ||
+        Math.abs(workspaceBox.height - shellBox.height) > edgeTolerance ||
         misaligned('top') || misaligned('left')) return 'collapsed';
+    // The shell itself can be pushed down on macOS. Compare with the actual
+    // WebView viewport, not only with its child workspace.
+    if (viewport) {
+      if (![viewport.width, viewport.height].every(x=>Number.isFinite(x) && x>0)) return 'unavailable';
+      if (Math.abs(shellBox.width - viewport.width) > edgeTolerance ||
+          Math.abs(shellBox.height - viewport.height) > edgeTolerance ||
+          (shellBox.top !== undefined && (!Number.isFinite(shellBox.top) || Math.abs(shellBox.top)>edgeTolerance)) ||
+          (shellBox.left !== undefined && (!Number.isFinite(shellBox.left) || Math.abs(shellBox.left)>edgeTolerance)))
+        return 'collapsed';
+    }
     if ([shellBox, workspaceBox, stageBox].some(box =>
         box.width < MIN_SURFACE_PX || box.height < MIN_SURFACE_PX) ||
         canvasBox.width < MIN_CANVAS_PX || canvasBox.height < MIN_CANVAS_PX ||

@@ -133,6 +133,16 @@ test('detects the Mac screenshot regression: workspace shifted down or not filli
   }
 });
 
+test('a root that does not cover the native Mac viewport is also collapsed', () => {
+  const viewport={width:1360,height:880};
+  assert.equal(probeDesktopLayout(elements,inspect,undefined,{width:1360,height:1200}),'collapsed');
+  const offset=box(1360,880,150,0);
+  const readOffset=element=>element===offset?inspect(shell):inspect(element);
+  assert.equal(probeDesktopLayout({...elements,shell:offset},readOffset,undefined,viewport),'collapsed');
+  assert.equal(probeDesktopLayout(elements,inspect,undefined,{width:0,height:880}),'unavailable');
+  assert.equal(probeDesktopLayout(elements,inspect,undefined,viewport),'active');
+});
+
 test('healthy small but usable viewports and relative chart sizes remain valid', () => {
   const resized = {...elements,shell:box(850,620),workspace:box(850,620),
     stage:box(320,390),canvas:box(272,272)};
