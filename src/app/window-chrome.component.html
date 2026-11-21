@@ -1,12 +1,19 @@
 <header class="chrome-bar" data-tauri-drag-region>
   <div class="chrome-identity" data-tauri-drag-region (dblclick)="toggleMaximize()">
     <span class="chrome-symbol" data-tauri-drag-region aria-hidden="true">✦</span>
-    <strong data-tauri-drag-region>VirgoStars</strong>
-    <span class="chrome-edition" data-tauri-drag-region>Desktop</span>
+    <span class="chrome-product" data-tauri-drag-region>
+      <strong data-tauri-drag-region>VirgoStars</strong>
+      <span class="chrome-edition" data-tauri-drag-region>Desktop</span>
+    </span>
+    <button type="button" class="chrome-sidebar-toggle" (click)="navigationToggle.emit()"
+      (dblclick)="$event.stopPropagation()"
+      [attr.aria-label]="locale === 'it' ? 'Mostra o nascondi menu' : 'Toggle navigation'"
+      [attr.title]="locale === 'it' ? 'Mostra o nascondi menu' : 'Toggle navigation'"
+      [attr.aria-expanded]="!navCollapsed">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M4 12h11M4 17.5h16"/></svg>
+    </button>
   </div>
-  <div class="chrome-drag-title" data-tauri-drag-region (dblclick)="toggleMaximize()">
-    <span data-tauri-drag-region>{{ locale === 'it' ? 'Il tuo osservatorio astrologico' : 'Your astrological workspace' }}</span>
-  </div>
+  <div class="chrome-drag-title" data-tauri-drag-region (dblclick)="toggleMaximize()"></div>
   <div class="chrome-controls" role="group" [attr.aria-label]="locale === 'it' ? 'Controlli finestra' : 'Window controls'">
     <button type="button" class="chrome-button" (click)="minimize()"
       [attr.aria-label]="locale === 'it' ? 'Riduci a icona' : 'Minimize'" [attr.title]="locale === 'it' ? 'Riduci a icona' : 'Minimize'">
