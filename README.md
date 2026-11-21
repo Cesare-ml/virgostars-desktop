@@ -16,7 +16,7 @@ VirgoStars Desktop is an offline-first workstation in development. It combines a
 2. Start the workflow and open its run page. When both jobs succeed, open **Artifacts** and download `virgostars-macos-arm64-test-…` and/or `virgostars-macos-x64-test-…`.
 3. Each artifact contains the test `.dmg`, `SHA256SUMS.txt` and `build-report.json`. Inspect failures in the job logs; do not upload unknown files or secrets.
 
-**Only `workflow_dispatch` triggers this job:** it does not run on push, create GitHub Releases, notarize software or require signing credentials. The DMGs are *unsigned/ad-hoc test builds using synthetic artwork*, not official installers; Mac launch and graphical behavior still require real-device acceptance testing. [Detailed build and release instructions](docs/MACOS_BUILD_AND_RELEASE.md).
+**Only `workflow_dispatch` triggers this job:** it does not run on push, create GitHub Releases, notarize software or require signing credentials. The DMGs are *unsigned/ad-hoc test builds containing the pinned, verified original astrological artwork (redistribution-rights review pending)*, not official installers; Mac launch and graphical behavior still require real-device acceptance testing. [Detailed build and release instructions](docs/MACOS_BUILD_AND_RELEASE.md).
 
 ## Help us build VirgoStars Desktop for Mac · Contribuisci alla versione macOS
 
@@ -40,7 +40,7 @@ The build script fetches pinned public Charts/Functions dependencies, checks the
 
 **How to contribute:** open a [GitHub issue](https://github.com/Cesare-ml/virgostars-desktop/issues) or [pull request](https://github.com/Cesare-ml/virgostars-desktop/pulls) with the macOS version, Mac model/CPU, the result of `npm run build:mac` (including any sanitized error output), whether the DMG installs and opens, and the build report/checksum. Never share passwords, signing certificates, private keys or personal chart data. Coordinate the DMG handoff with a maintainer before uploading it anywhere public.
 
-**Status:** the workflow has been prepared but **has not yet passed a native macOS build or launch test**. The default test build uses *synthetic artwork*; original images have a separate redistribution-rights review. The public-data test bundle does not include every optional astronomical dataset. **Do not publish it as an official VirgoStars release.** A public release needs Mac acceptance testing, rights verification, Apple Developer ID signing/notarization and maintainer approval. There is a separate controlled upload procedure for an already-existing GitHub release.
+**Status:** the revised workflow still requires a native macOS build and launch/resize test. Manual GitHub Actions DMGs now use the pinned, verified original astrological artwork; the local default `npm run build:mac` remains synthetic, while `npm run build:mac:original` includes the original glyphs. Original images have a separate redistribution-rights review. The public-data test bundle does not include every optional astronomical dataset. **Do not publish it as an official VirgoStars release.** A public release needs Mac acceptance testing, rights verification, Apple Developer ID signing/notarization and maintainer approval. There is a separate controlled upload procedure for an already-existing GitHub release.
 
 For original-artwork builds, troubleshooting, signing and official release handoff, read the **[full macOS contribution and release guide](docs/MACOS_BUILD_AND_RELEASE.md)**.
 

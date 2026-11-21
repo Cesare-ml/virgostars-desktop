@@ -1,4 +1,4 @@
-# Manual macOS smoke builds only. Never signs, notarizes or publishes a GitHub Release.
+# Manual macOS smoke builds with verified original astrological glyphs. Never signs, notarizes or publishes a GitHub Release.
 # The source script pins sibling repos and verifies downloadable public data by SHA-256.
 name: macOS DMG · manual
 
@@ -60,14 +60,15 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Build native macOS .app and .dmg (test only)
+      - name: Build macOS .app and .dmg with pinned original astro assets (test only)
         shell: bash
         env:
           CI: 'true'
           CARGO_TERM_COLOR: always
         run: |
           set -euo pipefail
-          npm run build:mac
+          # The default local build uses synthetic test art; CI must ship the real glyph pack.
+          npm run build:mac:original
 
       - name: Verify build report, DMG and SHA-256
         shell: bash

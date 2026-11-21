@@ -13,7 +13,7 @@ const build=(overrides={})=>({
   platform:'darwin',
   arch:'arm64',
   nativeTarget:macTarget('arm64'),
-  artwork:'synthetic',
+  artwork:'original-uncleared',
   signing:'ad-hoc',
   releaseEligible:false,
   datasets:{
@@ -36,20 +36,21 @@ test('only GitHub-hosted native macOS runners with unique artifact names',()=>{
   assert.match(workflow,/runner: macos-15-intel\s*$/m);
   assert.match(workflow,/arch: arm64/);
   assert.match(workflow,/arch: x64/);
-  assert.match(workflow,/npm run build:mac\s*$/m);
+  assert.match(workflow,/npm run build:mac:original\s*$/m);
   assert.match(workflow,/verify-ci-artifact\.mjs/);
   assert.match(workflow,/uses: actions\/upload-artifact@v4/);
   assert.match(workflow,/include-hidden-files: true/);
   assert.match(workflow,/if-no-files-found: error/);
   assert.match(workflow,/name: virgostars-macos-\$\{\{ matrix\.arch \}\}/);
 });
-test('only matching ad-hoc, synthetic, read-only artifacts pass the CI report gate',()=>{
+test('only matching ad-hoc, original-glyph, read-only artifacts pass the CI report gate',()=>{
   const valid=build();
   assert.equal(validateCiReport(valid,{version:'0.0.2',arch:'arm64',commit:sha}).bytes,512);
   for (const changed of [
     {signing:'apple-developer-notarized'},
     {releaseEligible:true},
     {artwork:'rights-cleared-original'},
+    {artwork:'synthetic'},
     {sourceCommit:'c'.repeat(40)},
     {datasets:{...valid.datasets,de441BaseSha256:'0'.repeat(64)}},
     {artifacts:[{...valid.artifacts[0],file:'../../bad.dmg'}]},
