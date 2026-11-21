@@ -2,13 +2,17 @@
 
 /* Windows-only Codex-like frame experiment. Chart sizing still follows .workspace bounds. */
 .desktop-app.chrome-active {
-  --vs-chrome-bar:rgba(252,251,255,.76);
-  --vs-chrome-divider:rgba(72,53,105,.13);
+  --vs-chrome-start:rgba(235,227,248,.72);
+  --vs-chrome-end:rgba(248,249,253,.68);
+  --vs-chrome-sidebar-bg:rgba(48,42,71,.99);
+  --vs-chrome-divider:rgba(72,53,105,.12);
   background:transparent; /* let the OS Mica surface show through the header */
 }
 .desktop-app.chrome-active[data-theme="dark"] {
-  --vs-chrome-bar:rgba(26,24,39,.79);
-  --vs-chrome-divider:rgba(211,203,233,.14);
+  --vs-chrome-start:rgba(34,30,49,.86);
+  --vs-chrome-end:rgba(23,23,35,.81);
+  --vs-chrome-sidebar-bg:rgba(27,23,43,.99);
+  --vs-chrome-divider:rgba(211,203,233,.13);
   background:transparent;
 }
 .desktop-app.chrome-active .workspace {
