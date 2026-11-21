@@ -49,7 +49,7 @@ test('layer buttons preserve photos and GPU marker geometry instead of rebuildin
   assert.match(component,/this\.starLabelGroup\.visible=visibility\.starLabels/);
   assert.match(component,/group\.add\(planetGroup,starGroup,namesGroup\)/);
   assert.match(component,/this\.markerGroup=group/);
-  assert.match(component,/this\.updateMarkerVisibility\(\);\s*this\.scene\.add\(group\)/);
+  assert.match(component,/this\.applyAtmosphericStarlight\(\);\s*this\.scene\.add\(group\)/);
 });
 
 test('actual catalogue star labels are selectable but not through hidden layers',()=>{
