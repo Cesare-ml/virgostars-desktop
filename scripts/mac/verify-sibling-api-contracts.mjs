@@ -48,10 +48,15 @@ export function hasNamedExport(moduleSource,symbol) {
       node.exportClause.elements.some(item=>item.name.text===symbol)));
 }
 function safeFile(path) {
-  const stat=lstatSync(path);
-  if(!stat.isFile()||stat.isSymbolicLink()||stat.size>1_000_000)
-    fail('Missing, unsafe or oversized pinned source file');
-  return readFileSync(path,'utf8');
+  try {
+    const stat=lstatSync(path);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>1_000_000)
+      fail('Missing, unsafe or oversized pinned source file');
+    return readFileSync(path,'utf8');
+  } catch {
+    // Never include a local filesystem path in CI diagnostics.
+    fail('Missing, unsafe or unreadable pinned source file');
+  }
 }
 export function verifyMacApiContracts(root=ROOT) {
   const desktop=safeFile(join(root,'src/app/desktop-app.component.ts'));
