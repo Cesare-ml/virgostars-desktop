@@ -79,7 +79,9 @@ test('settings are grouped into accessible collapsible sections and credit real 
   assert.match(html,/Solar System Scope · CC BY 4\.0/);
   assert.match(viewer,/REAL_PLANET_TEXTURES\[point\.id\]/);
   assert.match(viewer,/new THREE\.SphereGeometry\(spec\.diameter\*0\.5,36,24\)/);
-  assert.match(viewer,/new THREE\.DirectionalLight/);
+  // Per-planet sunlight vector supersedes the old shared scene DirectionalLight.
+  assert.match(viewer,/sunlitPlanetMaterial\(/);
+  assert.doesNotMatch(viewer,/new THREE\.DirectionalLight/);
   assert.match(viewer,/globe\.visible=false/);
   assert.match(css,/\.sky3d-accordion summary:focus-visible/);
   assert.match(css,/\.sky3d-selection \{/);

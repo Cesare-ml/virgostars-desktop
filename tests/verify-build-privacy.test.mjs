@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { auditBuildPrivacy } from '../scripts/verify-build-privacy.mjs';
@@ -71,9 +71,16 @@ test('rejects a symlink directory pointing outside the output', t => withBundle(
   assert.throws(() => auditBuildPrivacy(bundle), /symbolic link/);
 }));
 
-test('rejects Windows case-insensitive output path collisions on a case-sensitive host', { skip: process.platform === 'win32' ? 'Requires a case-sensitive filesystem' : false }, () => withBundle(({ bundle, add }) => {
+test('rejects Windows case-insensitive output path collisions on a case-sensitive host', t => withBundle(({ bundle, add }) => {
   add('assets/img/fictional.jpg');
   add('assets/img/FICTIONAL.jpg');
+  // The default APFS/HFS+ filesystem is case-insensitive, regardless of OS.
+  // Skip only when both distinct test entries genuinely cannot coexist.
+  const names=readdirSync(join(bundle,'assets','img'));
+  if (!names.includes('fictional.jpg') || !names.includes('FICTIONAL.jpg')) {
+    t.skip('Requires a case-sensitive test volume');
+    return;
+  }
   assert.throws(() => auditBuildPrivacy(bundle), /case-insensitive duplicate/);
 }));
 

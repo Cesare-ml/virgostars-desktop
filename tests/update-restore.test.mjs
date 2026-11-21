@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const script = fileURLToPath(new URL('../scripts/updates/restore-backup.mjs', import.meta.url));
 function setup() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vs-recovery-test-'));
+  // macOS /var is a symlink to /private/var: use the canonical temp root.
+  // The production restore tool must still reject actual symlinks in paths.
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'vs-recovery-test-'));
   const id = 'before-12345-7'; const snap = path.join(root, 'update-backups', id);
   fs.mkdirSync(path.join(snap, 'private-chart-photos-v1'), { recursive: true });
   const files = [['charts-v2.vsarchive', 'older-encrypted'], ['private-chart-photos-v1/a.vphoto', 'older-photo']];

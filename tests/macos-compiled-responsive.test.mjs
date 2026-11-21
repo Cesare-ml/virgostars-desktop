@@ -25,6 +25,10 @@ test('the committed viewport and workspace rules survive the source-layout check
   assert.equal(hasFixedDesktopHost(readFileSync(new URL('../src/styles.css',import.meta.url),'utf8')),true);
   assert.equal(hasPinnedWorkspace(readFileSync(new URL('../src/app/desktop-app.component.css',import.meta.url),'utf8')),true);
 });
+test('CSS comments do not cause false failure or forge a valid viewport selector',()=>{
+  assert.equal(hasFixedDesktopHost('/* introductory comment */\n'+host),true);
+  assert.equal(hasFixedDesktopHost('/* vs-desktop-app{display:block;position:fixed;inset:0} */\nvs-desktop-app{display:block}'),false);
+});
 test('a normal Angular build embeds full viewport styles',()=>fixture(dir=>{
   assert.equal(verifyMacResponsiveBundle(dir).stylesheets,1);
 }));

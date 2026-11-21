@@ -22,7 +22,10 @@ function includesDeclarations(body, rules) {
 }
 export function hasFixedDesktopHost(css) {
   if(typeof css!=='string')return false;
-  const rules=[...css.matchAll(/(?:^|\})\s*vs-desktop-app\s*\{([^{}]{1,1200})\}/g)];
+  // Comments can precede the host selector in source CSS. Ignore them, never
+  // accept a disabled declaration embedded only inside a comment.
+  const source=css.replace(/\/\*[\s\S]*?\*\//g,'');
+  const rules=[...source.matchAll(/(?:^|\})\s*vs-desktop-app\s*\{([^{}]{1,1200})\}/g)];
   return rules.some(([,body])=>includesDeclarations(body,[
     ['display','block'],['position','fixed'],['inset','0(?:px)?']
   ]));
