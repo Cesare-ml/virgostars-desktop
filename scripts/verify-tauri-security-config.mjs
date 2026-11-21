@@ -5,6 +5,7 @@
 import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {verifyWindowsChromeCheckout} from './verify-experimental-window-chrome.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const EXPECTED_CSP = Object.freeze({
@@ -137,7 +138,10 @@ export function verifyTauriSecurityCheckout(root = ROOT) {
   const file = join(root, 'src-tauri', 'tauri.conf.json');
   const stat = lstatSync(file);
   assertSafe(stat.isFile() && !stat.isSymbolicLink(), 'unsafe Tauri config file');
-  return verifyTauriSecurityConfig(JSON.parse(readFileSync(file, 'utf8')));
+  const validated = verifyTauriSecurityConfig(JSON.parse(readFileSync(file, 'utf8')));
+  // On Windows the CLI merges a second configuration file. Audit it, too.
+  verifyWindowsChromeCheckout(root);
+  return validated;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
