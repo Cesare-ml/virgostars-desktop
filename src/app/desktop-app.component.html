@@ -1,6 +1,7 @@
 <div class="desktop-app" #shell [attr.data-theme]="theme" [class.chrome-active]="windowsChromeEnabled">
   <vs-window-chrome *ngIf="windowsChromeEnabled" [locale]="locale" [navCollapsed]="navCollapsed"
-    [class.nav-collapsed]="navCollapsed" [contextTitle]="chromeContextTitle" (navigationToggle)="toggleNavigation()"></vs-window-chrome>
+    [class.nav-collapsed]="navCollapsed" [contextTitle]="chromeContextTitle"
+    (navigationToggle)="toggleNavigation()" (displayScaleChanged)="onNativeDisplayScaleChanged()"></vs-window-chrome>
   <svg class="tool-symbol-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
     <symbol id="tool-elements" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
     <symbol id="tool-aspects" viewBox="0 0 24 24"><path d="M12 4 21 19H3Z"/><circle cx="12" cy="4" r="1.5"/><circle cx="3" cy="19" r="1.5"/><circle cx="21" cy="19" r="1.5"/></symbol>
