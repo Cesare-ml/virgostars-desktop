@@ -84,7 +84,7 @@ Per una release con asset originali, usare `node scripts/mac/build.mjs --origina
 
 - **Glifi originali:** le build manuali GitHub Actions per ARM64 e Intel utilizzano ora il pack originale verificato. Un controllo su `dist/desktop/browser/assets/img/simboli-bianchi/` esige 12 segni, pianeti principali, varianti retrograde, nodi e assi; un file mancante o non PNG interrompe il build. `build-report.json` distingue `original-uncleared` da `synthetic` e il controllo CI rifiuta la variante sbagliata.
 - **Finestra ridimensionabile:** shell e workspace sono ancorati al viewport nativo di WKWebView; la superficie di lavoro non deve più essere spinta in basso da righe implicite della griglia. Il resize osserva sia shell sia stage, ridimensiona il canvas mantenendo le proporzioni ed evita strisce di sfondo vuote.
-- **Regressioni:** i test rilevano una superficie di lavoro spostata in basso o più piccola della finestra; `npm test` viene eseguito prima della compilazione.
+- **Regressioni:** i test rilevano una superficie di lavoro spostata in basso o più piccola della finestra; `npm test` viene eseguito prima della compilazione. Anche il bundle Angular effettivamente compilato viene verificato con `scripts/mac/verify-responsive-bundle.mjs`: il test fallisce se nel CSS globale o in un chunk Angular non si ritrovano gli ancoraggi reali di finestra e workspace.
 - **Verifica visiva richiesta:** sul Mac aprire/chiudere la finestra, espandere/contrarre, ridimensionare ad almeno 850×620 e 1360×880, controllare 12 glifi dei segni, Sole, Luna, pianeti, retrogradi e passaggio tra viste. I test statici e la compilazione CI non sostituiscono questa prova.
 
 ## Collaudo minimo obbligatorio su un Mac
