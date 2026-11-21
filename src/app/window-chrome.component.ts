@@ -1,6 +1,8 @@
 import {CommonModule} from '@angular/common';
 import {Component, ChangeDetectorRef, HostListener, Input, OnInit, inject} from '@angular/core';
-import {getCurrentWindow, type ResizeDirection} from '@tauri-apps/api/window';
+import {getCurrentWindow} from '@tauri-apps/api/window';
+
+type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>['startResizeDragging']>[0];
 
 /**
  * Experimental Windows-only native chrome. The parent must only create this
