@@ -494,6 +494,40 @@ mod tests {
         assert!(first<quarter_fraction && quarter_fraction<full);
     }
     #[test]
+    fn venus_phases_depend_on_observer_relative_position_to_sun() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        // Inferior conjunction: Venus between Earth and Sun, dark facing us.
+        let inferior=phase_body("Venus",0.0,0.0,0.4);
+        let (dark,direction)=body_sunlight(&sun,&inferior,0.0,0.0).unwrap();
+        assert!(dark<1e-10);
+        assert!(direction.altitude_deg>89.999);
+        // Superior conjunction: Venus behind Sun, bright facing us.
+        let superior=phase_body("Venus",0.0,0.0,1.6);
+        let (bright,direction)=body_sunlight(&sun,&superior,0.0,0.0).unwrap();
+        assert!(bright>1.0-1e-10);
+        assert!(direction.altitude_deg< -89.999);
+        // Mercury at quadrature with plausible geocentric distance.
+        let mercury=phase_body("Mercury",90.0,0.0,0.55);
+        let (partial,_) = body_sunlight(&sun,&mercury,0.0,45.0).unwrap();
+        assert!(partial>0.5&&partial<1.0);
+        assert!(body_sunlight(&sun,&sun,0.0,0.0).is_none());
+    }
+    #[test]
+    fn solar_light_direction_is_a_real_bounded_horizontal_direction() {
+        let sun=phase_body("Sun",0.0,0.0,1.0);
+        let mut mercury=phase_body("Mercury",60.0,10.0,0.5);
+        for latitude in [-60.0,0.0,47.0,75.0] {
+            let (fraction,direction)=body_sunlight(&sun,&mercury,130.0,latitude).unwrap();
+            assert!((0.0..=1.0).contains(&fraction));
+            assert!((-90.0..=90.0).contains(&direction.altitude_deg));
+            assert!((0.0..360.0).contains(&direction.azimuth_north_east_deg));
+        }
+        mercury.distance_au=0.0;
+        assert!(body_sunlight(&sun,&mercury,0.0,0.0).is_none());
+        mercury.distance_au=0.5;
+        assert!(body_sunlight(&sun,&mercury,0.0,f64::NAN).is_none());
+    }
+    #[test]
     fn lunar_fraction_rejects_invalid_distance_and_non_finite_angles() {
         let sun=phase_body("Sun",0.0,0.0,1.0);
         let moon=phase_body("Moon",30.0,0.0,0.00257);
