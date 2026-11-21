@@ -45,6 +45,46 @@
   background:var(--vs-surface);
   box-shadow:0 8px 24px rgba(33,25,55,.08);
 }
+/* Keep the glass restrained: the chart remains fully opaque for legibility. */
+@media (prefers-reduced-transparency:reduce), (prefers-contrast:more) {
+  .desktop-app.chrome-active .sidebar {
+    background:var(--vs-sidebar);
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+  .desktop-app.chrome-active .inspector {
+    background:var(--vs-surface);
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+}
+@media (forced-colors:active) {
+  .desktop-app.chrome-active .sidebar,
+  .desktop-app.chrome-active .inspector {
+    background:Canvas;
+    color:CanvasText;
+    border-color:CanvasText;
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+  .desktop-app.chrome-active .sidebar .nav-item,
+  .desktop-app.chrome-active .sidebar .nav-mark,
+  .desktop-app.chrome-active .sidebar .nav-label { color:CanvasText; }
+  .desktop-app.chrome-active .sidebar .nav-item.selected {
+    background:Highlight;
+    color:HighlightText;
+    outline:1px solid Highlight;
+    box-shadow:none;
+  }
+  .desktop-app.chrome-active .sidebar .nav-item.selected .nav-mark,
+  .desktop-app.chrome-active .sidebar .nav-item.selected .nav-label { color:HighlightText; }
+  .desktop-app.chrome-active .layout-warning-banner {
+    background:Canvas;
+    color:CanvasText;
+    border-color:CanvasText;
+    box-shadow:none;
+  }
+}
 /* WebView2 native scrollbars/form widgets follow the app's explicit saved theme. */
 .desktop-app {
   color-scheme: light;
