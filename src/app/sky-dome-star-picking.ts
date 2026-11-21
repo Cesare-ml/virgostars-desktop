@@ -1,5 +1,3 @@
-import {skyLensTheta} from './sky-dome-projection';
-
 /**
  * World-space Raycaster tolerance for visually constant-size star dots.
  *
@@ -14,17 +12,19 @@ export function skyStarPickThreshold(
   fovDeg:number,
   viewportHeightPx:number,
   screenRadius:number,
+  lensTheta:(radius:number,fovDeg:number)=>number|null,
   skyRadius=100,
   targetRadiusPx=6,
 ):number|null {
-  if(![fovDeg,viewportHeightPx,screenRadius,skyRadius,targetRadiusPx].every(Number.isFinite)
+  if(typeof lensTheta!=='function'||
+    ![fovDeg,viewportHeightPx,screenRadius,skyRadius,targetRadiusPx].every(Number.isFinite)
     ||viewportHeightPx<=0||screenRadius<0||skyRadius<=0
     ||targetRadiusPx<=0||targetRadiusPx>32)return null;
-  const theta=skyLensTheta(screenRadius,fovDeg);
+  const theta=lensTheta(screenRadius,fovDeg);
   if(theta===null)return null;
   const delta=2*targetRadiusPx/viewportHeightPx;
-  const thetaBefore=skyLensTheta(Math.max(0,screenRadius-delta),fovDeg);
-  const thetaAfter=skyLensTheta(screenRadius+delta,fovDeg);
+  const thetaBefore=lensTheta(Math.max(0,screenRadius-delta),fovDeg);
+  const thetaAfter=lensTheta(screenRadius+delta,fovDeg);
   const radial=Math.max(
     thetaBefore===null?0:Math.abs(theta-thetaBefore),
     thetaAfter===null?0:Math.abs(thetaAfter-theta),
@@ -32,7 +32,7 @@ export function skyStarPickThreshold(
   // A pixel displacement perpendicular to the radial line can have a
   // different angular footprint, especially at large fisheye radii.
   const transverseRadius=Math.hypot(screenRadius,delta);
-  const thetaSide=skyLensTheta(transverseRadius,fovDeg);
+  const thetaSide=lensTheta(transverseRadius,fovDeg);
   let transverse=radial;
   if(screenRadius>1e-12&&thetaSide!==null){
     const cosine=Math.sin(theta)*Math.sin(thetaSide)*(screenRadius/transverseRadius)
