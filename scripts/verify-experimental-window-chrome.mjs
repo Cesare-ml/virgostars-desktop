@@ -14,6 +14,7 @@ export const CHROME_PERMISSIONS = Object.freeze([
   'core:window:allow-is-maximized',
   'core:window:allow-minimize',
   'core:window:allow-toggle-maximize',
+  'core:window:allow-internal-toggle-maximize',
   'core:window:allow-start-dragging',
   'core:window:allow-start-resize-dragging',
   // Native resize/focus/DPI subscriptions, scoped to this single WebView.
