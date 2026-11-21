@@ -723,11 +723,16 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   }
   checkStyles(): void {
     if (this.destroyed) return;
+    // The titlebar consumes space by design. The probe still checks its real
+    // bounding box and the remaining workspace against the whole native view.
     this.styleStatus = probeDesktopLayout({
       shell: this.shell.nativeElement,
       workspace: this.workspace.nativeElement,
       stage: this.stage.nativeElement,
       canvas: this.canvas.nativeElement,
+      chrome: this.windowsChromeEnabled
+        ? this.shell.nativeElement.querySelector('vs-window-chrome .chrome-bar')
+        : null,
     });
     this.cd.markForCheck();
   }
