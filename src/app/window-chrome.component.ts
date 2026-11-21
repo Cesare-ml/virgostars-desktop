@@ -1,12 +1,16 @@
 import {CommonModule} from '@angular/common';
-import {Component, ChangeDetectorRef, EventEmitter, HostBinding, HostListener, Input, OnDestroy, OnInit, Output, inject} from '@angular/core';
+import {
+  ChangeDetectorRef, Component, EventEmitter, HostBinding, HostListener,
+  Input, NgZone, OnDestroy, OnInit, Output, inject,
+} from '@angular/core';
 import {getCurrentWindow} from '@tauri-apps/api/window';
+import {WindowChromeStateCoordinator} from './window-chrome-state';
 
 type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>['startResizeDragging']>[0];
 
 /**
- * Experimental Windows-only native chrome. The parent must only create this
- * component for a Windows Tauri WebView, never for a browser or macOS.
+ * Windows-only experimental chrome. Browser and macOS retain native decorations.
+ * Tauri event subscriptions are released on component destruction.
  */
 @Component({
   selector: 'vs-window-chrome',
@@ -19,81 +23,97 @@ export class WindowChromeComponent implements OnInit, OnDestroy {
   @Input() locale = 'en';
   @Input() navCollapsed = false;
   @Input() contextTitle = '';
-  @HostBinding('class.window-inactive') windowInactive = false;
   @Output() readonly navigationToggle = new EventEmitter<void>();
+  @HostBinding('class.window-inactive') windowInactive = false;
   maximized = false;
 
   private readonly appWindow = getCurrentWindow();
-  private readonly changeDetector = inject(ChangeDetectorRef);
-  private checkingMaximized = false;
-  private refreshQueued = false;
+  private readonly cd = inject(ChangeDetectorRef);
+  private readonly zone = inject(NgZone);
+  private readonly maximizedState = new WindowChromeStateCoordinator(
+    () => this.appWindow.isMaximized(),
+    maximized => this.zone.run(() => {
+      this.maximized = maximized;
+      this.cd.markForCheck();
+    }),
+  );
+  private readonly nativeUnlisteners: Array<() => void> = [];
   private destroyed = false;
 
   ngOnInit(): void {
-    void this.refreshMaximized();
+    this.maximizedState.refresh();
+    void this.subscribeNativeWindowEvents();
   }
 
+  /** DOM events remain a fallback if Tauri event subscriptions are unavailable. */
   @HostListener('window:resize')
   onWindowResize(): void {
-    void this.refreshMaximized();
+    this.maximizedState.refresh();
   }
 
   @HostListener('window:focus')
   onWindowFocus(): void {
+    if (this.destroyed) return;
     this.windowInactive = false;
-    void this.refreshMaximized();
+    this.maximizedState.refresh();
   }
 
   @HostListener('window:blur')
   onWindowBlur(): void {
-    this.windowInactive = true;
+    if (!this.destroyed) this.windowInactive = true;
+  }
+
+  private async subscribeNativeWindowEvents(): Promise<void> {
+    // Tauri events cover native resize, taskbar restore and DPI transitions
+    // even when the WebView does not emit a corresponding DOM resize.
+    const registrations = await Promise.allSettled([
+      this.appWindow.onResized(() => this.maximizedState.refresh()),
+      this.appWindow.onFocusChanged(({payload: focused}) => {
+        if (this.destroyed) return;
+        this.zone.run(() => {
+          this.windowInactive = !focused;
+          this.cd.markForCheck();
+        });
+        if (focused) this.maximizedState.refresh();
+      }),
+      this.appWindow.onScaleChanged(() => this.maximizedState.refresh()),
+    ]);
+
+    for (const result of registrations) {
+      if (result.status !== 'fulfilled') continue;
+      if (this.destroyed) {
+        // Event registration may resolve after Angular has unmounted us.
+        try { result.value(); } catch { /* best effort cleanup */ }
+      } else {
+        this.nativeUnlisteners.push(result.value);
+      }
+    }
   }
 
   ngOnDestroy(): void {
     this.destroyed = true;
-  }
-
-  private async refreshMaximized(): Promise<void> {
-    if (this.destroyed) return;
-    // Window resize and focus may arrive during an outstanding native query.
-    // Read once more in that case, otherwise the restore icon can stay stale
-    // after snapping or dragging between displays.
-    if (this.checkingMaximized) {
-      this.refreshQueued = true;
-      return;
-    }
-    this.checkingMaximized = true;
-    try {
-      do {
-        this.refreshQueued = false;
-        try {
-          const value = await this.appWindow.isMaximized();
-          if (this.destroyed) return;
-          this.maximized = value;
-          this.changeDetector.markForCheck();
-        } catch {
-          // Keep existing controls available after a transient IPC failure.
-        }
-      } while (this.refreshQueued && !this.destroyed);
-    } finally {
-      this.checkingMaximized = false;
+    this.maximizedState.dispose();
+    for (const unlisten of this.nativeUnlisteners.splice(0)) {
+      try { unlisten(); } catch { /* native window may already have closed */ }
     }
   }
 
   minimize(): void {
-    void this.appWindow.minimize().catch(() => this.refreshMaximized());
+    void this.appWindow.minimize().catch(() => this.maximizedState.refresh());
   }
 
   toggleMaximize(): void {
-    void this.appWindow.toggleMaximize().then(() => this.refreshMaximized()).catch(() => this.refreshMaximized());
+    void this.appWindow.toggleMaximize()
+      .then(() => this.maximizedState.refresh())
+      .catch(() => this.maximizedState.refresh());
   }
 
   close(): void {
-    void this.appWindow.close().catch(() => this.refreshMaximized());
+    void this.appWindow.close().catch(() => this.maximizedState.refresh());
   }
 
   startResize(event: MouseEvent, direction: ResizeDirection): void {
-    if (event.button !== 0 || this.maximized) return;
+    if (event.button !== 0 || this.maximized || this.destroyed) return;
     event.preventDefault();
     event.stopPropagation();
     void this.appWindow.startResizeDragging(direction).catch(() => undefined);
