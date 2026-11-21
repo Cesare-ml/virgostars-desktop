@@ -80,6 +80,10 @@ Questo comando **non crea tag, non apre una nuova release, non pubblica draft e 
 
 Per una release con asset originali, usare `node scripts/mac/build.mjs --original --release`: il controllo pubblicazione del repository Assets deve passare senza eccezioni. Non modificare i manifest/hash per aggirarlo.
 
+## Preflight API tra repository prima della compilazione macOS
+
+Dopo `npm ci`, la build verifica in modo statico e senza chiamate di rete che tutte le API del renderer effettivamente utilizzate dal Desktop siano presenti nel checkout di Charts fissato, e che i moduli `astrological-functions` importati esistano e siano esportati. Se una dipendenza e il Desktop non sono allineati, il job ora fallisce con `MAC UPSTREAM API:` e indica esattamente quale metodo o modulo manca, anziché aspettare un errore poco leggibile del bundle esbuild. Non sostituisce il test Angular, il compilatore TypeScript, né il collaudo nativo.
+
 ## Correzioni macOS del 21 novembre 2026
 
 - **Glifi originali:** le build manuali GitHub Actions per ARM64 e Intel utilizzano ora il pack originale verificato. Un controllo su `dist/desktop/browser/assets/img/simboli-bianchi/` esige 12 segni, pianeti principali, varianti retrograde, nodi e assi; un file mancante o non PNG interrompe il build. `build-report.json` distingue `original-uncleared` da `synthetic` e il controllo CI rifiuta la variante sbagliata.
