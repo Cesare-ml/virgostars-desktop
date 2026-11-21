@@ -131,11 +131,14 @@ test('native events cover resize, focus and monitor DPI changes with listener cl
   assert.match(chrome,/this\.appWindow\.onResized\(/);
   assert.match(chrome,/this\.appWindow\.onFocusChanged\(/);
   assert.match(chrome,/this\.appWindow\.onScaleChanged\(/);
-  assert.match(chrome,/Promise\.allSettled\(/);
-  assert.match(chrome,/this\.nativeUnlisteners\.push\(result\.value\)/);
+  assert.match(chrome,/private async trackNativeListener\(/);
+  assert.doesNotMatch(chrome,/Promise\.allSettled\(/);
+  assert.match(chrome,/this\.nativeUnlisteners\.push\(unlisten\)/);
   assert.match(chrome,/this\.nativeUnlisteners\.splice\(0\)/);
   assert.match(chrome,/if \(this\.destroyed\)/);
   assert.match(chrome,/this\.zone\.run\(/);
+  assert.match(chrome,/if \(this\.destroyed\) \{/);
+  assert.match(chrome,/try \{ unlisten\(\); \} catch/);
   assert.ok(perms.includes('core:event:allow-listen'));
   assert.ok(perms.includes('core:event:allow-unlisten'));
   assert.equal(config.app.security.capabilities[0].windows.join(','),'main');
