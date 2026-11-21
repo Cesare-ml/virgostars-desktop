@@ -1,3 +1,4 @@
+import {CommonModule} from '@angular/common';
 import {Component, ChangeDetectorRef, HostListener, Input, OnInit, inject} from '@angular/core';
 import {getCurrentWindow, type ResizeDirection} from '@tauri-apps/api/window';
 
@@ -8,6 +9,7 @@ import {getCurrentWindow, type ResizeDirection} from '@tauri-apps/api/window';
 @Component({
   selector: 'vs-window-chrome',
   standalone: true,
+  imports: [CommonModule],
   templateUrl: './window-chrome.component.html',
   styleUrls: ['./window-chrome.component.css'],
 })
