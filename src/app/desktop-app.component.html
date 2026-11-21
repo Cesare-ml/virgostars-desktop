@@ -73,7 +73,7 @@
     <span class="update-notice-label">{{locale==='it' ? 'Aggiornamento disponibile' : 'Update available'}}</span>
   </button>
   <div class="workspace" #workspace [attr.inert]="welcomeLoading || welcomeVisible ? '' : null" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.inspector-narrow]="inspectorTab==='navigate' || inspectorTab==='transits'">
-    <nav class="sidebar" [attr.aria-label]="t('navigation')">
+    <nav id="virgostars-primary-navigation" class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
         <div class="brand" aria-label="VirgoStars">
           <span class="brand-symbol" aria-hidden="true">✦</span>
