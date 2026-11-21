@@ -24,6 +24,7 @@ export class WindowChromeComponent implements OnInit, OnDestroy {
   @Input() navCollapsed = false;
   @Input() contextTitle = '';
   @Output() readonly navigationToggle = new EventEmitter<void>();
+  @Output() readonly displayScaleChanged = new EventEmitter<void>();
   @HostBinding('class.window-inactive') windowInactive = false;
   maximized = false;
 
@@ -80,7 +81,13 @@ export class WindowChromeComponent implements OnInit, OnDestroy {
       }),
     );
     void this.trackNativeListener(
-      this.appWindow.onScaleChanged(() => this.maximizedState.refresh()),
+      this.appWindow.onScaleChanged(() => {
+        if (this.destroyed) return;
+        this.maximizedState.refresh();
+        // Browser CSS dimensions may remain unchanged at a new devicePixelRatio.
+        // Tell the chart host to refresh its backing buffer for the new scale.
+        this.zone.run(() => this.displayScaleChanged.emit());
+      }),
     );
   }
 
