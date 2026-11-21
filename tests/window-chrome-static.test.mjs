@@ -83,8 +83,11 @@ test('native maximized state handles rapid resize events and cleans up after unm
   assert.match(chrome, /@HostListener\('window:focus'\)/);
   assert.match(chrome, /@HostListener\('window:blur'\)/);
   assert.match(chrome, /@HostBinding\('class\.window-inactive'\)/);
-  assert.match(chrome, /this\.refreshQueued = true/);
-  assert.match(chrome, /while \(this\.refreshQueued && !this\.destroyed\)/);
+  assert.match(chrome, /new WindowChromeStateCoordinator\(/);
+  assert.match(chrome, /this\.maximizedState\.dispose\(\)/);
+  const state = source('../src/app/window-chrome-state.ts');
+  assert.match(state, /this\.dirty = true/);
+  assert.match(state, /while \(this\.dirty && !this\.disposed\)/);
   assert.match(chrome, /ngOnDestroy\(\): void/);
   assert.match(chrome, /if \(this\.destroyed\) return/);
 });
@@ -118,4 +121,23 @@ test('glass does not blur the full-height chart side panels on the GPU', () => {
   assert.doesNotMatch(sidebar, /backdrop-filter:\s*blur/);
   assert.doesNotMatch(inspector, /backdrop-filter:\s*blur/);
   assert.match(source('../src/app/window-chrome.component.css'), /backdrop-filter:blur/);
+});
+
+
+test('native events cover resize, focus and monitor DPI changes with listener cleanup', () => {
+  const chrome = source('../src/app/window-chrome.component.ts');
+  const config = JSON.parse(source('../src-tauri/tauri.windows.conf.json'));
+  const perms = config.app.security.capabilities[0].permissions;
+  assert.match(chrome,/this\.appWindow\.onResized\(/);
+  assert.match(chrome,/this\.appWindow\.onFocusChanged\(/);
+  assert.match(chrome,/this\.appWindow\.onScaleChanged\(/);
+  assert.match(chrome,/Promise\.allSettled\(/);
+  assert.match(chrome,/this\.nativeUnlisteners\.push\(result\.value\)/);
+  assert.match(chrome,/this\.nativeUnlisteners\.splice\(0\)/);
+  assert.match(chrome,/if \(this\.destroyed\)/);
+  assert.match(chrome,/this\.zone\.run\(/);
+  assert.ok(perms.includes('core:event:allow-listen'));
+  assert.ok(perms.includes('core:event:allow-unlisten'));
+  assert.equal(config.app.security.capabilities[0].windows.join(','),'main');
+  assert.equal(config.app.security.capabilities[0].platforms.join(','),'windows');
 });
