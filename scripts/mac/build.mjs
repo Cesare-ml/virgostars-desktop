@@ -92,6 +92,7 @@ async function main() {
   command('npm',['run','build:library'],charts);
   command('npm',['run','demo:pack'],charts);
   command('npm',['ci']);
+  command(process.execPath,['scripts/mac/verify-sibling-api-contracts.mjs']);
   command('npm',['run','verify:version']);
   command('npm',['test']);
   command('npm',['run','verify:ipc']);
