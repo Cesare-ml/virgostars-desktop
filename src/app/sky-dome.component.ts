@@ -20,6 +20,7 @@ import {findSkyStars} from './sky-dome-star-search';
 import {skyFacingPlane} from './sky-dome-billboard';
 import {sunlitPlanetMaterial} from './sky-dome-solar-material';
 import {canPickSkyMarker,skyMarkerVisibility} from './sky-dome-marker-layers';
+import {skyStarPickThreshold} from './sky-dome-star-picking';
 
 const NAMES:Readonly<Record<string,readonly [string,string]>>={
   Sun:['Sole','Sun'],Moon:['Luna','Moon'],Mercury:['Mercurio','Mercury'],
@@ -1147,7 +1148,15 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       ((event.clientX-bounds.left)/bounds.width)*2-1,
       1-((event.clientY-bounds.top)/bounds.height)*2);
     const ray=new THREE.Raycaster();
-    ray.params.Points.threshold=1.6;
+    // Star dots are rendered in CSS pixels, but Three.js Points.raycast
+    // expects world units. Match the tolerance to this camera's actual
+    // radial lens and viewport so tight zoom cannot select distant dots.
+    const radialScreenDistance=Math.hypot(ndc.x*this.camera.aspect,ndc.y);
+    const pointThreshold=skyStarPickThreshold(
+      this.camera.fov,bounds.height,radialScreenDistance,
+    );
+    if(pointThreshold===null){this.clearSelection();return;}
+    ray.params.Points.threshold=pointThreshold;
     if(this.camera.fov>=SKY_FISHEYE_START_DEG){
       const frame=skyCameraFrame(this.yaw,this.pitch);
       const dir=frame?skyFisheyeWorldRay(ndc.x,ndc.y,this.camera.aspect,this.camera.fov,frame):null;
