@@ -1,0 +1,37 @@
+<header class="chrome-bar" data-tauri-drag-region>
+  <div class="chrome-identity" data-tauri-drag-region (dblclick)="toggleMaximize()">
+    <span class="chrome-symbol" data-tauri-drag-region aria-hidden="true">✦</span>
+    <strong data-tauri-drag-region>VirgoStars</strong>
+    <span class="chrome-edition" data-tauri-drag-region>Desktop</span>
+  </div>
+  <div class="chrome-drag-title" data-tauri-drag-region (dblclick)="toggleMaximize()">
+    <span data-tauri-drag-region>{{ locale === 'it' ? 'Il tuo osservatorio astrologico' : 'Your astrological workspace' }}</span>
+  </div>
+  <div class="chrome-controls" role="group" [attr.aria-label]="locale === 'it' ? 'Controlli finestra' : 'Window controls'">
+    <button type="button" class="chrome-button" (click)="minimize()"
+      [attr.aria-label]="locale === 'it' ? 'Riduci a icona' : 'Minimize'" [attr.title]="locale === 'it' ? 'Riduci a icona' : 'Minimize'">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.5h11"/></svg>
+    </button>
+    <button type="button" class="chrome-button" (click)="toggleMaximize()"
+      [attr.aria-label]="maximized ? (locale === 'it' ? 'Ripristina finestra' : 'Restore') : (locale === 'it' ? 'Ingrandisci' : 'Maximize')"
+      [attr.title]="maximized ? (locale === 'it' ? 'Ripristina finestra' : 'Restore') : (locale === 'it' ? 'Ingrandisci' : 'Maximize')">
+      <svg *ngIf="!maximized" viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1"/></svg>
+      <svg *ngIf="maximized" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6V4.5h8.5V13H14M5 7h8v8H5z"/></svg>
+    </button>
+    <button type="button" class="chrome-button chrome-close" (click)="close()"
+      [attr.aria-label]="locale === 'it' ? 'Chiudi' : 'Close'" [attr.title]="locale === 'it' ? 'Chiudi' : 'Close'">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>
+    </button>
+  </div>
+</header>
+<!-- Undecorated Windows windows need explicit edge/corner resize hit targets. -->
+<ng-container *ngIf="!maximized">
+  <div class="chrome-resize north" (mousedown)="startResize($event, 'North')"></div>
+  <div class="chrome-resize south" (mousedown)="startResize($event, 'South')"></div>
+  <div class="chrome-resize west" (mousedown)="startResize($event, 'West')"></div>
+  <div class="chrome-resize east" (mousedown)="startResize($event, 'East')"></div>
+  <div class="chrome-resize northwest" (mousedown)="startResize($event, 'NorthWest')"></div>
+  <div class="chrome-resize northeast" (mousedown)="startResize($event, 'NorthEast')"></div>
+  <div class="chrome-resize southwest" (mousedown)="startResize($event, 'SouthWest')"></div>
+  <div class="chrome-resize southeast" (mousedown)="startResize($event, 'SouthEast')"></div>
+</ng-container>
