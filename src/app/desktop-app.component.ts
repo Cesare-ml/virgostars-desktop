@@ -195,6 +195,21 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
   readonly brandWordmark = BRAND_WORDMARK;
   // The native frame is replaced only on Windows; browsers and macOS retain their original chrome.
   readonly windowsChromeEnabled = inNativeDesktop() && typeof navigator !== 'undefined' && (/^Win/i.test(navigator.platform) || /Windows/i.test(navigator.userAgent));
+  /** Human-readable page title in the custom frame; never exposes a subject name. */
+  get chromeContextTitle(): string {
+    switch (this.view) {
+      case 'new': return this.t('newchart');
+      case 'archive': return this.t('archive');
+      case 'settings': return this.t('tab.settings');
+      case 'account': return this.t('account.title');
+      case 'directions': return this.t('directions.title');
+      case 'returns': return this.t(this.returnTool === 'lunar' ? 'returns.lunar' : 'returns.solar');
+      case 'chart':
+        return this.chartPresentation === 'sky3d'
+          ? (this.locale === 'it' ? 'Cielo 3D' : '3D Sky')
+          : this.stageTitle;
+    }
+  }
   @ViewChild('shell', {static:true}) readonly shell!: ElementRef<HTMLElement>;
   @ViewChild('workspace', {static:true}) readonly workspace!: ElementRef<HTMLElement>;
   @ViewChild('canvas', {static:true}) readonly canvas!: ElementRef<HTMLCanvasElement>;
