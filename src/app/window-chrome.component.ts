@@ -42,7 +42,7 @@ export class WindowChromeComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.maximizedState.refresh();
-    void this.subscribeNativeWindowEvents();
+    this.subscribeNativeWindowEvents();
   }
 
   /** DOM events remain a fallback if Tauri event subscriptions are unavailable. */
@@ -63,11 +63,13 @@ export class WindowChromeComponent implements OnInit, OnDestroy {
     if (!this.destroyed) this.windowInactive = true;
   }
 
-  private async subscribeNativeWindowEvents(): Promise<void> {
-    // Tauri events cover native resize, taskbar restore and DPI transitions
-    // even when the WebView does not emit a corresponding DOM resize.
-    const registrations = await Promise.allSettled([
+  private subscribeNativeWindowEvents(): void {
+    // Subscribe independently: a stalled native registration must never
+    // prevent already-established listeners from being cleaned up.
+    void this.trackNativeListener(
       this.appWindow.onResized(() => this.maximizedState.refresh()),
+    );
+    void this.trackNativeListener(
       this.appWindow.onFocusChanged(({payload: focused}) => {
         if (this.destroyed) return;
         this.zone.run(() => {
@@ -76,17 +78,23 @@ export class WindowChromeComponent implements OnInit, OnDestroy {
         });
         if (focused) this.maximizedState.refresh();
       }),
+    );
+    void this.trackNativeListener(
       this.appWindow.onScaleChanged(() => this.maximizedState.refresh()),
-    ]);
+    );
+  }
 
-    for (const result of registrations) {
-      if (result.status !== 'fulfilled') continue;
+  private async trackNativeListener(registration: Promise<() => void>): Promise<void> {
+    try {
+      const unlisten = await registration;
       if (this.destroyed) {
-        // Event registration may resolve after Angular has unmounted us.
-        try { result.value(); } catch { /* best effort cleanup */ }
+        // Registration can finish after component teardown.
+        try { unlisten(); } catch { /* window may have closed */ }
       } else {
-        this.nativeUnlisteners.push(result.value);
+        this.nativeUnlisteners.push(unlisten);
       }
+    } catch {
+      // The DOM resize/focus handlers remain available as a fallback.
     }
   }
 
