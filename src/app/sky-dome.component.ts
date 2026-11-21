@@ -9,7 +9,7 @@ import type {SkyDomeData, SkyDomePoint, SkyDomeResult, SkyHouseGrid} from './nat
 import {validOverlay, type SkyOverlayPolyline} from './sky-dome-geometry';
 import {SkyDomeLens} from './sky-dome-fisheye';
 import {
-  clampedSkyFov, normalizePitch, skyCameraFrame, skyFisheyeWorldRay,
+  clampedSkyFov, normalizePitch, skyCameraFrame, skyFisheyeWorldRay, skyLensTheta,
   skyWorldVector, SKY_FISHEYE_START_DEG,
 } from './sky-dome-projection';
 import {celestialGlyphUrl, zodiacGlyphUrl} from './astrological-glyphs';
@@ -1153,7 +1153,7 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     // radial lens and viewport so tight zoom cannot select distant dots.
     const radialScreenDistance=Math.hypot(ndc.x*this.camera.aspect,ndc.y);
     const pointThreshold=skyStarPickThreshold(
-      this.camera.fov,bounds.height,radialScreenDistance,
+      this.camera.fov,bounds.height,radialScreenDistance,skyLensTheta,
     );
     if(pointThreshold===null){this.clearSelection();return;}
     ray.params.Points.threshold=pointThreshold;
