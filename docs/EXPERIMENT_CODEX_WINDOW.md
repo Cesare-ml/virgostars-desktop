@@ -166,3 +166,16 @@ experiment.
 
 The runtime on an actual Windows machine and the complete Angular/native
 build are still pending; do not merge this branch yet.
+
+### Native scale event → wheel backing buffer
+
+The same Windows-only `onScaleChanged` subscription now emits an Angular
+output to the workspace. It calls the existing `fitStage()` without changing
+the graph geometry; if CSS dimensions do not change, it still dispatches a
+single renderer `resize` event to refresh device-pixel-ratio-dependent canvas
+backing pixels. If `fitStage()` already resized the canvas, it does not send a
+second redundant event.
+
+Additional source guard tests cover native event wiring and this redraw
+fallback. Actual multi-monitor/high-DPI testing is still required before
+a release.
