@@ -1,4 +1,31 @@
 :host { display:block; position:fixed; inset:0; width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }
+
+/* Windows-only Codex-like frame experiment. Chart sizing still follows .workspace bounds. */
+.desktop-app.chrome-active {
+  --vs-chrome-bar:rgba(252,251,255,.76);
+  --vs-chrome-divider:rgba(72,53,105,.13);
+  background:rgba(248,247,252,.93);
+}
+.desktop-app.chrome-active[data-theme="dark"] {
+  --vs-chrome-bar:rgba(26,24,39,.79);
+  --vs-chrome-divider:rgba(211,203,233,.14);
+  background:rgba(18,18,28,.95);
+}
+.desktop-app.chrome-active .workspace {
+  top:42px;
+  height:calc(100% - 42px);
+}
+.desktop-app.chrome-active .sidebar {
+  background:linear-gradient(155deg,rgba(48,42,71,.97),rgba(43,35,65,.92));
+}
+.desktop-app.chrome-active[data-theme="dark"] .sidebar {
+  background:linear-gradient(155deg,rgba(27,23,43,.96),rgba(23,21,37,.92));
+}
+.desktop-app.chrome-active .inspector {
+  background:color-mix(in srgb,var(--vs-surface) 92%,transparent);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+}
 /* WebView2 native scrollbars/form widgets follow the app's explicit saved theme. */
 .desktop-app {
   color-scheme: light;
