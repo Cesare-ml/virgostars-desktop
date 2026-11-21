@@ -14,7 +14,8 @@ const common = [
 ];
 const afterBuild = [
   'npm run prepare:icon',
-  'tauri build --config .local/places/tauri-places.conf.json'
+  'npm run events:prepare:local',
+  'tauri build --config .local/places/tauri-places.conf.json --config .local/event-ephemeris/tauri-events.conf.json'
 ];
 
 test('Windows city build checks IPC and resource override before synthetic UI and Tauri packaging', () => {

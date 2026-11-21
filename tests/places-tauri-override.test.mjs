@@ -98,6 +98,7 @@ test('both Windows city build scripts verify native and override config before p
     assert.equal(parts[generate+1],'npm run verify:ipc',key);
     assert.equal(parts[generate+2],'npm run verify:places-override',key);
     assert.equal(parts[generate+3],ui,key);
-    assert.equal(parts.at(-1),'tauri build --config .local/places/tauri-places.conf.json',key);
+    assert.equal(parts.at(-2),'npm run events:prepare:local',key);
+    assert.equal(parts.at(-1),'tauri build --config .local/places/tauri-places.conf.json --config .local/event-ephemeris/tauri-events.conf.json',key);
   }
 });

@@ -12,7 +12,8 @@ function expectStandaloneBuild(command, uiBuild) {
     nativeGate,
     uiBuild,
     'npm run prepare:icon',
-    'tauri build',
+    'npm run events:prepare:local',
+    'tauri build --config .local/event-ephemeris/tauri-events.conf.json',
   ]);
 }
 
@@ -34,7 +35,8 @@ test('city-enabled Windows Tauri builds retain their independent IPC and overrid
     const native = stages.indexOf(nativeGate);
     const override = stages.indexOf('npm run verify:places-override');
     const ui = stages.indexOf(uiBuild);
-    const build = stages.indexOf('tauri build --config .local/places/tauri-places.conf.json');
+    const build = stages.indexOf('tauri build --config .local/places/tauri-places.conf.json --config .local/event-ephemeris/tauri-events.conf.json');
+    assert.equal(stages[build - 1], 'npm run events:prepare:local', command);
     assert.ok(native >= 0 && override === native + 1 && ui === override + 1 &&
       build === stages.length - 1 && ui < build, command);
   }

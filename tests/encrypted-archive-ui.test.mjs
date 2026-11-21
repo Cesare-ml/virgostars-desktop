@@ -11,11 +11,9 @@ const vault = read('src-tauri/src/archive_vault.rs');
 const keys = read('src-tauri/src/archive_keys.rs');
 const cargo = read('src-tauri/Cargo.toml');
 
-test('archive keeps concise private photo guidance without the former long technical note', () => {
+test('archive omits the removed photo notice and retains locked-archive guidance', () => {
   for (const locale of ['it', 'en']) {
-    const note = STRINGS[locale]['archive.photos.private'];
-    assert.match(note, /cifrat|encrypted/i);
-    assert.doesNotMatch(note, /non cifrato|not encrypted/i);
+    assert.equal(STRINGS[locale]['archive.photos.private'], undefined);
     assert.equal(STRINGS[locale]['archive.note'], undefined);
     assert.doesNotMatch(STRINGS[locale]['footer.real'], /non cifrato|not encrypted/i);
     assert.match(STRINGS[locale]['archive.locked'], /cifrat|encrypted/i);

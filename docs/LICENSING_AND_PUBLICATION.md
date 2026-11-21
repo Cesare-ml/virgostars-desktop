@@ -12,6 +12,12 @@ CPAL permissions are not a trademark license for the VirgoStars name, visual ide
 
 ## Maintainer rights decisions (2026-11-17)
 
+**2026-11-20 Desktop event archive:** the maintainer requested that the synodic
+archive always be included in Desktop installations. This authorizes the
+bundling integration for Desktop; it does not select a general-purpose data
+license, establish third-party provenance, or certify the archive's coverage.
+The separate dataset publication and notice review remain open.
+
 Recorded as the maintainer stated them in the project chat; this repository cannot verify them and they are not legal advice.
 
 **2026-11-19 update:** the maintainer states that he authored the 360 monomeri texts and holds their redistribution rights. He also identified NASA/JPL as the source of the DE441 slices and approved their publication. These statements do not replace the independent review of other scientific datasets or third-party software notices.

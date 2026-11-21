@@ -16,7 +16,7 @@ test('archive hides decorative portraits and moves photo visibility to app setti
   const archive=html.match(/<section class="sheet archive-sheet"[\s\S]*?<section class="drawer" \*ngIf="view==='directions'"/)?.[0] ?? '';
   const settings=html.match(/<section class="drawer" \[hidden\]="view!=='settings'"[\s\S]*?<\/section>/)?.[0] ?? '';
   assert.doesNotMatch(archive,/archive\.intro\.title|archive\.intro\.subtitle|archive-photo-toggle|session\.partner/);
-  assert.match(archive,/\[class\.archive-list\]="!showArchivePhotos"/);
+  assert.match(archive,/class="archive-grid archive-list"/);
   assert.match(archive,/class="archive-portrait" \*ngIf="showArchivePhotos"/);
   assert.match(settings,/toggleArchivePhotos\(\)/);
 });

@@ -9,6 +9,7 @@ import {createReadStream, copyFileSync, existsSync, lstatSync, mkdirSync,
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {macTarget, parseBuildOptions, PINNED, releaseCredentialsPresent, DOWNLOADS} from './release-common.mjs';
+import {EVENT_ARCHIVE_SHA256} from '../prepare-local-event-archive.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PARENT=dirname(ROOT);
@@ -96,6 +97,7 @@ async function main() {
   command('npm',['run','verify:ipc']);
   log('Staging independently hashed city data and public DE441 base');
   command(process.execPath,['scripts/mac/prepare-public-data.mjs']);
+  command(process.execPath,['scripts/prepare-local-event-archive.mjs']);
   command('npm',['run',OPTIONS.original?'build:ui:private':'build:ui']);
   // Check the emitted Angular bundle, not only the source CSS. This catches a
   // large blank band if the pinned macOS WKWebView build loses viewport rules.
@@ -118,6 +120,7 @@ async function main() {
   tauriArgs.push('--bundles','app,dmg','--config','src-tauri/tauri.macos.conf.json',
     '--config','.local/places/tauri-places.conf.json',
     '--config','.local/ephemeris/tauri-ephemeris.conf.json',
+    '--config','.local/event-ephemeris/tauri-events.conf.json',
     '--config','.local/release-licenses/tauri-license.conf.json');
   const environment={...process.env,VIRGOSTARS_DE441_CATALOG_SHA256:DOWNLOADS.catalog.sha256};
   if(!OPTIONS.release) {
@@ -154,7 +157,7 @@ async function main() {
     nativeTarget:TARGET,
     dependencyCommits:PINNED,
     artwork:OPTIONS.original?(OPTIONS.release?'rights-cleared-original':'original-uncleared'):'synthetic',
-    datasets:{cityArchiveSha256:DOWNLOADS.cities.sha256,de441BaseSha256:DOWNLOADS.de441.sha256},
+    datasets:{cityArchiveSha256:DOWNLOADS.cities.sha256,de441BaseSha256:DOWNLOADS.de441.sha256,eventArchiveSha256:EVENT_ARCHIVE_SHA256},
     signing:OPTIONS.release?'apple-developer-notarized':'ad-hoc',
     releaseEligible:OPTIONS.release,
     artifacts:[{file:filename,sha256:sum,bytes:statSync(finalPath).size}],

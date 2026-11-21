@@ -1033,6 +1033,33 @@ mod tests {
         assert!(VirgoStarsEphemeris.solar_day(&polar).unwrap().is_none());
     }
 
+    #[test]
+    #[ignore = "requires local DE441 and USNO data"]
+    fn solar_ascendant_contact_is_near_the_same_morning_sunrise() {
+        let noon=request(2000,3,20,12.0);
+        let midnight=julian_day_ut(&request(2000,3,20,0.0));
+        let rise=VirgoStarsEphemeris.solar_day(&noon).unwrap().unwrap().sunrise_jd_ut;
+        let rise_hour=(rise-midnight)*24.0;
+        let delta=|hour:f64| {
+            let chart=VirgoStarsEphemeris.chart(&request(2000,3,20,hour)).unwrap();
+            let sun=chart.bodies.iter().find(|body|body.id=="Sun").unwrap();
+            (sun.longitude_deg-chart.houses[0].ascendant_deg+180.0).rem_euclid(360.0)-180.0
+        };
+        let (mut left,mut right)=(rise_hour-1.0,rise_hour+1.0);
+        let mut at_left=delta(left);
+        assert!(at_left*delta(right)<0.0,"sunrise must bracket the zodiac ascendant contact");
+        for _ in 0..30 {
+            let middle=(left+right)/2.0;let value=delta(middle);
+            if at_left*value<=0.0 {right=middle;} else {left=middle;at_left=value;}
+        }
+        let event=(left+right)/2.0;
+        assert!(delta(event).abs()<0.001);
+        // Sunrise uses the refracted upper limb; an exact ecliptic longitude
+        // conjunction is close, but the two definitions are not identical.
+        assert!((event-rise_hour).abs()<0.25);
+        assert!(event<noon.hour);
+    }
+
     fn request(year: i32, month: u32, day: u32, hour: f64) -> ValidatedRequest {
         ValidatedRequest { year, month, day, hour, latitude_deg: 41.8928, longitude_deg: 12.4837 }
     }

@@ -71,6 +71,11 @@ pub fn run() {
                     virgostars_provider::configure(folder, _app.path().resource_dir().ok());
                 }
             }
+            #[cfg(feature = "virgostars-event-ephemeris")]
+            {
+                use tauri::Manager;
+                synod_events::configure(_app.path().resource_dir().ok(),_app.path().app_local_data_dir().ok());
+            }
             Ok(())
         })
         .manage(offline_places::PlaceSearchGate::default())

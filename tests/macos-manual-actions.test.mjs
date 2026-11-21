@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {validateCiReport} from '../scripts/mac/verify-ci-artifact.mjs';
+import {EVENT_ARCHIVE_SHA256} from '../scripts/prepare-local-event-archive.mjs';
 import {DOWNLOADS,macTarget} from '../scripts/mac/release-common.mjs';
 
 const workflow=readFileSync(new URL('../.github/workflows/build-macos.yml',import.meta.url),'utf8');
@@ -18,7 +19,7 @@ const build=(overrides={})=>({
   releaseEligible:false,
   datasets:{
     cityArchiveSha256:DOWNLOADS.cities.sha256,
-    de441BaseSha256:DOWNLOADS.de441.sha256
+    de441BaseSha256:DOWNLOADS.de441.sha256,eventArchiveSha256:EVENT_ARCHIVE_SHA256
   },
   artifacts:[{file:'VirgoStars-Desktop-0.0.2-macos-arm64.dmg',bytes:512,sha256:'b'.repeat(64)}],
   ...overrides
@@ -53,6 +54,7 @@ test('only matching ad-hoc, original-glyph, read-only artifacts pass the CI repo
     {artwork:'synthetic'},
     {sourceCommit:'c'.repeat(40)},
     {datasets:{...valid.datasets,de441BaseSha256:'0'.repeat(64)}},
+    {datasets:{...valid.datasets,eventArchiveSha256:'0'.repeat(64)}},
     {artifacts:[{...valid.artifacts[0],file:'../../bad.dmg'}]},
     {arch:'x64'},
     {nativeTarget:'x86_64-apple-darwin'}

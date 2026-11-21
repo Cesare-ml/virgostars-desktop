@@ -86,7 +86,7 @@ test('browser and Tauri development commands fail closed on source drift before 
   assert.equal(scripts['start:synthetic'],
     'node scripts/verify-angular-source-config.mjs && npm run prepare:frontend && ng serve desktop --host 127.0.0.1 --port 4200');
   assert.equal(scripts['tauri:dev'],
-    'npm run verify:version && node scripts/verify-angular-source-config.mjs && node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && node scripts/run-tauri-with-local-stars.mjs dev');
+    'npm run verify:version && node scripts/verify-angular-source-config.mjs && node scripts/verify-tauri-security-config.mjs && npm run prepare:icon && npm run events:prepare:local && node scripts/run-tauri-with-local-stars.mjs dev');
 });
 
 

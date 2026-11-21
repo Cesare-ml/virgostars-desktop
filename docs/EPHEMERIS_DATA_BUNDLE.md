@@ -1,5 +1,11 @@
 # Ephemeris data bundle and Windows installer
 
+**2026-11-20 event archive:** Windows and macOS installer preparation now
+includes the pinned recorded-event archive under `ephemeris/events/`; the
+owner requested its inclusion in Desktop installations. The file hash and all
+blocks are checked before use. This is local integration, not a claim that an
+installer was published or that all astronomical dates have complete data.
+
 **Update, 2026-11-19:** a private, unsigned installer with the 1000–2200
 base and multipack runtime has since been built and tested locally. The
 Desktop data release is published separately. The build now stages the
