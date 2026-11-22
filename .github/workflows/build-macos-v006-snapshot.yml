@@ -1,6 +1,5 @@
-# One-time macOS v0.0.6 test builds from the exact public v0.0.6 source snapshot.
-# No signing/notarization, no GitHub Release upload, no privileged secrets.
-# This workflow exists ONLY on the isolated snapshot branch, not on main.
+# Isolated v0.0.6 source snapshot diagnostic builds, never a public Mac release.
+# Full npm test suite runs; known failures are logged and included in the report.
 name: macOS v0.0.6 snapshot · diagnostic DMG
 
 on:
@@ -19,7 +18,7 @@ concurrency:
 
 jobs:
   build-macos-dmg:
-    name: v0.0.6 test DMG ${{ matrix.arch }}
+    name: v0.0.6 diagnostic DMG ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -35,28 +34,34 @@ jobs:
             runner: macos-15-intel
 
     steps:
-      - name: Checkout pinned v0.0.6 source snapshot
+      - name: Checkout v0.0.6-based source
         uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 10
 
-      - name: Ensure branch only adds this workflow to the v0.0.6 release source
+      - name: Validate v0.0.6 ancestry and isolated diagnostic changes
         shell: bash
         run: |
           set -euo pipefail
           test "${{ github.ref_name }}" = "build/macos-v0.0.6-snapshot-20261122"
           git merge-base --is-ancestor aea1bcd248ba742e142ae666cc8de8fc6536978d HEAD
-          unexpected="$(git diff --name-only aea1bcd248ba742e142ae666cc8de8fc6536978d HEAD | grep -Ev '^(.github/workflows/build-macos-v006-snapshot.yml|scripts/mac/build.mjs)
+          git diff --name-only aea1bcd248ba742e142ae666cc8de8fc6536978d HEAD > /tmp/modified-mac.txt
+          while IFS= read -r name; do
+            case "$name" in
+              .github/workflows/build-macos-v006-snapshot.yml|scripts/mac/build.mjs) ;;
+              *) echo "Unauthorized source change: $name"; exit 1 ;;
+            esac
+          done < /tmp/modified-mac.txt
           test "$(node -p 'require("./package.json").version')" = "0.0.6"
 
-      - name: Set up native Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           architecture: ${{ matrix.arch }}
 
-      - name: Set up macOS toolchain
+      - name: Setup native toolchain
         shell: bash
         run: |
           set -euo pipefail
@@ -73,7 +78,7 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Build UNSIGNED DIAGNOSTIC macOS DMG (full tests run; failures recorded, never released)
+      - name: Build unsigned diagnostic DMG (full failing tests disclosed)
         shell: bash
         env:
           CI: 'true'
@@ -83,7 +88,7 @@ jobs:
           set -euo pipefail
           npm run build:mac:original
 
-      - name: Verify source, glyphs, SHA-256 and architecture report
+      - name: Validate test report and checksum
         shell: bash
         env:
           EXPECTED_MAC_ARCH: ${{ matrix.arch }}
@@ -91,60 +96,7 @@ jobs:
           set -euo pipefail
           node scripts/mac/verify-ci-artifact.mjs
 
-      - name: Upload unsigned TEST-ONLY DMG, checksum and report (not for public release)
-        uses: actions/upload-artifact@v4
-        with:
-          name: virgostars-macos-v0.0.6-${{ matrix.arch }}-test-${{ github.run_number }}
-          path: .local/mac/output/
-          include-hidden-files: true
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
- || true)"
-          test -z "$unexpected"
-          test "$(node -p 'require("./package.json").version')" = "0.0.6"
-
-      - name: Set up native Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          architecture: ${{ matrix.arch }}
-
-      - name: Set up macOS toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(uname -s)" = Darwin
-          test "$(node -p 'process.arch')" = "${{ matrix.arch }}"
-          xcode-select -p
-          xcrun --find clang
-          rustup default stable
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            rustup target add aarch64-apple-darwin
-          else
-            rustup target add x86_64-apple-darwin
-          fi
-          rustc --version
-          cargo --version
-
-      - name: Build unsigned macOS DMG with original astrological glyphs
-        shell: bash
-        env:
-          CI: 'true'
-          CARGO_TERM_COLOR: always
-        run: |
-          set -euo pipefail
-          npm run build:mac:original
-
-      - name: Verify source, glyphs, SHA-256 and architecture report
-        shell: bash
-        env:
-          EXPECTED_MAC_ARCH: ${{ matrix.arch }}
-        run: |
-          set -euo pipefail
-          node scripts/mac/verify-ci-artifact.mjs
-
-      - name: Upload test-only DMG, checksum and build report
+      - name: Upload test-only artifacts (NOT for public release)
         uses: actions/upload-artifact@v4
         with:
           name: virgostars-macos-v0.0.6-${{ matrix.arch }}-test-${{ github.run_number }}
