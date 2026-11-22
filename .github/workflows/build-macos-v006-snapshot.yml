@@ -1,5 +1,5 @@
 # Isolated v0.0.6 source snapshot diagnostic builds, never a public Mac release.
-# Full npm test suite runs; known failures are logged and included in the report.
+# Full npm test suite runs; failures are reported; pinned v0.0.6 Tauri catalog script is audited.
 name: macOS v0.0.6 snapshot · diagnostic DMG
 
 on:
