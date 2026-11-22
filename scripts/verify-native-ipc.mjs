@@ -173,8 +173,12 @@ if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))
     assert(process.argv.length===2, 'No CLI arguments are supported');
     const result=auditCheckout();
     console.log('Verified '+result.commands.length+' reviewed native IPC commands and '+result.adapters.length+' Tauri adapters.');
-  } catch {
+  } catch (error) {
     console.error('NATIVE IPC CONTRACT AUDIT FAILED. Review the command registry, adapters and Tauri capabilities.');
+    // Expose the failed *guard*, never source material or secrets. The gate
+    // remains fail-closed, including on diagnostic builds.
+    if (process.env.VIRGOSTARS_MAC_SNAPSHOT_TEST_ONLY === '1')
+      console.error('Snapshot diagnosis: ' + String(error?.message ?? error));
     process.exitCode=1;
   }
 }
