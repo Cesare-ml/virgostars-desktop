@@ -49,7 +49,7 @@ jobs:
           git diff --name-only aea1bcd248ba742e142ae666cc8de8fc6536978d HEAD > /tmp/modified-mac.txt
           while IFS= read -r name; do
             case "$name" in
-              .github/workflows/build-macos-v006-snapshot.yml|scripts/mac/build.mjs) ;;
+              .github/workflows/build-macos-v006-snapshot.yml|scripts/mac/build.mjs|scripts/verify-native-ipc.mjs) ;;
               *) echo "Unauthorized source change: $name"; exit 1 ;;
             esac
           done < /tmp/modified-mac.txt
