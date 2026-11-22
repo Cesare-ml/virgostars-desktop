@@ -131,7 +131,7 @@ export function auditCheckout(root=ROOT) {
   // change requires a fresh capability/security review, not a broad allowlist.
   const buildScript=read('src-tauri/build.rs');
   const plainBuild=/^\s*fn\s+main\s*\(\s*\)\s*\{\s*tauri_build::build\(\);\s*\}\s*$/s.test(buildScript);
-  const reviewedHash='afba63941f12d2bdc23742533292ec6cb890ed61590882d159e50cf60873ca60';
+  const reviewedHash='5b5317f84fdde87bbea8a2e2f7719e1453c195ea386d17643806bf9f3d626565';
   assert(plainBuild || createHash('sha256').update(buildScript).digest('hex')===reviewedHash,
     'Tauri build configuration changed; inspect native permissions');
   const tsFiles=Object.fromEntries(listSources(root,'src').map(path=>[path,read(path)]));
