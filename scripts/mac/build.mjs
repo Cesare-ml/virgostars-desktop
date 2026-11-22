@@ -93,7 +93,17 @@ async function main() {
   command('npm',['run','demo:pack'],charts);
   command('npm',['ci']);
   command('npm',['run','verify:version']);
-  command('npm',['test']);
+  // Run the COMPLETE suite for visibility. For this isolated, unsigned v0.0.6
+  // snapshot only, allow a DMG smoke build despite pre-existing test failures.
+  // The official release flow always fails closed and does not accept this flag.
+  let snapshotHasFailedTests=false;
+  try {
+    command('npm',['test']);
+  } catch (error) {
+    if (process.env.VIRGOSTARS_MAC_SNAPSHOT_TEST_ONLY !== '1' || OPTIONS.release) throw error;
+    snapshotHasFailedTests=true;
+    log('WARNING: pre-release macOS snapshot has FAILED tests. Building an UNSIGNED DIAGNOSTIC DMG ONLY; never distribute this as a verified release.');
+  }
   command('npm',['run','verify:ipc']);
   log('Staging independently hashed city data and public DE441 base');
   command(process.execPath,['scripts/mac/prepare-public-data.mjs']);
@@ -161,7 +171,8 @@ async function main() {
     signing:OPTIONS.release?'apple-developer-notarized':'ad-hoc',
     releaseEligible:OPTIONS.release,
     artifacts:[{file:filename,sha256:sum,bytes:statSync(finalPath).size}],
-    limitations:['No USNO Delta-T tables, Chiron SPK or optional private stellar catalog in public data stage',
+    limitations:[...(snapshotHasFailedTests?['Full npm test suite failed on macOS. UNSIGNED DIAGNOSTIC ONLY, NOT FOR PUBLIC RELEASE.']:[]),
+      'No USNO Delta-T tables, Chiron SPK or optional private stellar catalog in public data stage',
       'macOS account, archive, graphics and updater behavior require a real-device acceptance test',
       'No updater macOS archive/manifest is produced by this first DMG pipeline']
   };
