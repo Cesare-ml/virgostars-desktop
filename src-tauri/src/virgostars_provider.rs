@@ -34,7 +34,10 @@ use virgostars_ephemeris_core::de441::{Body, De441, JulianDateTdb};
 use virgostars_ephemeris_core::de441_pack_manager::De441PackManager;
 use virgostars_ephemeris_core::delta_t_table::DeltaTTable;
 use virgostars_ephemeris_core::house_angles::house_angles;
-use virgostars_ephemeris_core::fixed_star::{calculate_star_with_provider, calculate_star_with_solar_deflection, FixedStarCatalogEntry, StellarSolarDeflection};
+use virgostars_ephemeris_core::fixed_star::{experimental_long_term_star_direction_with_provider, star_direction_with_provider, FixedStarCatalogEntry, FixedStarError, StarStateProvider, StellarSolarDeflection};
+use virgostars_ephemeris_core::earth_orientation::gast_iau2006;
+use virgostars_ephemeris_core::historical_orientation::experimental_gast;
+use virgostars_ephemeris_core::mvp_planets::experimental_equatorial_from_ecliptic;
 use virgostars_ephemeris_core::horizon::{ecliptic_to_equatorial, equatorial_to_horizontal};
 use virgostars_ephemeris_core::rise_transit::{find_event, Atmosphere, Disc, Event, Limb, Request, Site, SkyPosition};
 use virgostars_ephemeris_core::lunar_points::{lunar_point, lunar_point_with_provider, LunarPoint};
@@ -45,7 +48,7 @@ use virgostars_ephemeris_core::mvp_snapshot::{experimental_snapshot_from_civil, 
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-38befb2";
+pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-28f4ce8";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
@@ -406,7 +409,10 @@ fn with_engine<T>(action: impl FnOnce(&mut Engine) -> T) -> Option<T> {
 fn fixed_stars_at(engine: &mut Engine, jd: f64, tt: f64, tdb: JulianDateTdb,
     latitude_deg: f64, longitude_deg: f64) -> Result<Option<Vec<FixedStarV1>>, ProviderError> {
             engine.require_logical_coverage(tdb)?;
-            let angles = house_angles(jd, tt, latitude_deg, longitude_deg).map_err(|_| ProviderError)?;
+            let modern_sidereal = gast_iau2006(jd, tt).ok();
+            let long_term = modern_sidereal.is_none();
+            let sidereal = match modern_sidereal {Some(value)=>value, None=>experimental_gast(jd,tt).map_err(|_| ProviderError)?};
+            let armc = (sidereal.to_degrees()+longitude_deg).rem_euclid(360.0);
             // Hipparcos I/239 HIP 32349, ICRS J1991.25; radial velocity zero is assumed.
             let sirius = FixedStarRecord {id:102, name:"Sirius".into(), magnitude:Some(-1.44), epoch_tdb_jd:2_448_349.0625,
                 ra_deg:Some(101.28854105), dec_deg:Some(-16.71314306), pm_ra_mas_year:Some(-546.01), pm_dec_mas_year:Some(-1223.08),
@@ -415,7 +421,7 @@ fn fixed_stars_at(engine: &mut Engine, jd: f64, tt: f64, tdb: JulianDateTdb,
             if catalog.is_empty() { return Ok(None); }
             let mut output = Vec::with_capacity(catalog.len());
             for entry in catalog {
-                let approximate = entry.approximate_ecliptic.is_some();
+                let mut approximate = long_term || entry.approximate_ecliptic.is_some();
                 let (ra,dec,pmra,pmdec,parallax,rv) = if let Some(p) = &entry.approximate_ecliptic {
                     let Ok((ra,dec)) = ecliptic_to_equatorial(entry.epoch_tdb_jd,p.longitude_deg,p.latitude_deg) else {continue;};
                     // Distance and motion unavailable in the source: an explicitly approximate distant fixed direction.
@@ -425,14 +431,25 @@ fn fixed_stars_at(engine: &mut Engine, jd: f64, tt: f64, tdb: JulianDateTdb,
                 let source = FixedStarCatalogEntry { epoch_tdb:JulianDateTdb(entry.epoch_tdb_jd), right_ascension_deg:ra,
                     declination_deg:dec, proper_motion_ra_cos_dec_mas_per_year:pmra,
                     proper_motion_dec_mas_per_year:pmdec, parallax_mas:parallax, radial_velocity_km_per_second:rv };
-                let star = if let Some(manager) = engine.multipack.as_mut() {
-                    calculate_star_with_provider(manager, source, tt, tdb, StellarSolarDeflection::PointMass)
-                } else {
-                    calculate_star_with_solar_deflection(&mut engine.ephemeris, source, tt, tdb, StellarSolarDeflection::PointMass)
+                let provider: &mut dyn StarStateProvider = if let Some(manager) = engine.multipack.as_mut() {
+                    manager
+                } else { &mut engine.ephemeris };
+                let calculate = |provider:&mut dyn StarStateProvider, correction| {
+                    if long_term { experimental_long_term_star_direction_with_provider(provider,source,tt,tdb,correction) }
+                    else { star_direction_with_provider(provider,source,tt,tdb,correction) }
                 };
+                let mut star = calculate(provider,StellarSolarDeflection::PointMass);
+                if matches!(star,Err(FixedStarError::OccultedBySun)) {
+                    approximate=true;
+                    star=calculate(provider,StellarSolarDeflection::Omit);
+                }
                 let Ok(star) = star else { continue; };
-                let Ok((ra, dec)) = ecliptic_to_equatorial(tt, star.longitude_deg, star.latitude_deg) else { continue; };
-                let Ok(horizontal) = equatorial_to_horizontal(ra, dec, angles.armc_deg, latitude_deg) else { continue; };
+                let equatorial = if long_term {
+                    experimental_equatorial_from_ecliptic(star.longitude_deg,star.latitude_deg,tt)
+                        .ok().map(|value|(value.right_ascension_deg,value.declination_deg))
+                } else { ecliptic_to_equatorial(tt, star.longitude_deg, star.latitude_deg).ok() };
+                let Some((ra, dec)) = equatorial else { continue; };
+                let Ok(horizontal) = equatorial_to_horizontal(ra, dec, armc, latitude_deg) else { continue; };
                 output.push(FixedStarV1 {id:entry.id, name:entry.name, longitude_deg:star.longitude_deg,
                     latitude_deg:star.latitude_deg, magnitude:entry.magnitude, true_altitude_deg:horizontal.true_altitude_deg, approximate,
                     azimuth_south_west_deg:(horizontal.azimuth_north_east_deg + 180.0).rem_euclid(360.0), constellation:entry.constellation, interpretations:entry.interpretations});

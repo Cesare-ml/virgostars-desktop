@@ -39,16 +39,14 @@ test('star labels come only from actual bright stars in the local provider respo
   assert.deepEqual(labeledCatalogStars([{id:' ',magnitude:1}],26),[]);
 });
 
-test('3D markers use original generated portraits and approved asset glyphs in different sizes',()=>{
+test('3D markers use generated portraits without placing glyph badges over planets',()=>{
   const source=read('src/app/sky-dome.component.ts');
   const visuals=read('src/app/sky-dome-planet-portraits.ts');
   const html=read('src/app/sky-dome.component.html');
   const rust=read('src-tauri/src/sky_dome.rs');
   assert.match(source,/const portrait=this\.portraitTexture\(point\.id\)/);
   assert.match(source,/createPlanetPortrait\(id\)/);
-  assert.match(source,/celestialGlyphUrl\(point\.id\)/);
-  assert.match(source,/spec\.labelDiameter,spec\.labelDiameter/);
-  assert.match(source,/anchorX:0\.10,anchorY:0\.10/);
+  assert.doesNotMatch(source,/celestialGlyphUrl\(point\.id\)/);
   assert.match(source,/skyFacingPlane\(portrait/);
   assert.match(source,/this\.vec\(star\.azimuthNorthEastDeg,star\.altitudeDeg,99\.2\)/);
   assert.match(source,/skyFacingPlane\(texture/);

@@ -70,14 +70,14 @@
     <span class="update-notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m-3.5-3.5L12 13l3.5-3.5"/><path d="M5 14v3.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V14"/></svg></span>
     <span class="update-notice-label">{{locale==='it' ? 'Aggiornamento disponibile' : 'Update available'}}</span>
   </button>
-  <div class="workspace" #workspace [attr.inert]="welcomeLoading || welcomeVisible ? '' : null" [class.nav-collapsed]="navCollapsed" [class.inspector-collapsed]="inspectorCollapsed" [class.inspector-narrow]="inspectorTab==='navigate' || inspectorTab==='transits'">
+  <div class="workspace" #workspace [attr.inert]="welcomeLoading || welcomeVisible ? '' : null" [class.nav-collapsed]="navCollapsed || (view==='chart' && chartPresentation==='sky3d')" [class.inspector-collapsed]="inspectorCollapsed || (view==='chart' && chartPresentation==='sky3d')" [class.inspector-narrow]="inspectorTab==='navigate' || inspectorTab==='transits'">
     <nav class="sidebar" [attr.aria-label]="t('navigation')">
       <div class="sidebar-heading">
         <div class="brand" aria-label="VirgoStars">
           <span class="brand-symbol" aria-hidden="true">✦</span>
           <span class="brand-name nav-label">VirgoStars</span>
         </div>
-        <button type="button" class="sidebar-toggle" [attr.title]="t('navigation.toggle')" [attr.aria-label]="t('navigation.toggle')" [attr.aria-expanded]="!navCollapsed" (click)="toggleNavigation()">☷</button>
+        <button type="button" class="sidebar-toggle" [attr.title]="t('navigation.toggle')" [attr.aria-label]="t('navigation.toggle')" [attr.aria-expanded]="!navCollapsed && !(view==='chart' && chartPresentation==='sky3d')" [disabled]="view==='chart' && chartPresentation==='sky3d'" (click)="toggleNavigation()">☷</button>
       </div>
       <div class="nav-scroll">
         <div class="nav-list">
@@ -147,11 +147,31 @@
         [class.chart-dark]="(view==='chart' || view==='settings') && chartPresentation==='wheel' && activeChart && (chartSkin==='dark' || chartSkin==='dark-bn')">
         <canvas #canvas class="chart-canvas" aria-hidden="true" (wheel)="zoomAtPointer($event)" [style.visibility]="view==='chart' && chartPresentation==='sky3d' ? 'hidden' : null"></canvas>
         <vs-sky-dome *ngIf="view==='chart' && chartPresentation==='sky3d' && activeChart"
-          [utcIso]="activeChart.utcIso" [latMicro]="activeChart.latMicro"
+          [utcIso]="skyDomeUtcIso" [latMicro]="activeChart.latMicro"
           [lngMicro]="activeChart.lngMicro" [locale]="locale"
+          [timeZone]="nav?.current?.timeZone || activeChart.timeZone || 'UTC'"
           [houseSystem]="houseSystem" [houseSystemName]="houseSystemLabel(houseSystem)"
           (houseSystemSelected)="setSkyHouseSystem($event)"
-          (closed)="toggleSkyDome()"></vs-sky-dome>
+          (settingsRequested)="openUpdateSettings()"
+          (closed)="toggleSkyDome()">
+          <section sky-navigation class="sky3d-nav" *ngIf="nav" [attr.aria-label]="t('nav.title')">
+            <h3>{{t('nav.title')}}</h3>
+            <div class="sky3d-nav-clock" role="group" [attr.aria-label]="t('nav.title')">
+              <div class="sky3d-nav-field" *ngFor="let field of navFields; trackBy:trackNavField">
+                <label [attr.for]="'sky3d-field-'+field.key">{{field.label}}</label>
+                <button type="button" [attr.aria-label]="t('nav.field.up')+' '+field.label" (pointerdown)="holdField($event,field.key,1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event,field.key,1)">▴</button>
+                <input [id]="'sky3d-field-'+field.key" type="text" inputmode="numeric" [attr.maxlength]="field.key==='year' ? 4 : 2" [value]="field.text" (focus)="$any($event.target).select()" (change)="editClockField(field.key,$event)" (keydown.enter)="finishClockEdit($event)">
+                <button type="button" [attr.aria-label]="t('nav.field.down')+' '+field.label" (pointerdown)="holdField($event,field.key,-1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickField($event,field.key,-1)">▾</button>
+              </div>
+            </div>
+            <p class="sky3d-nav-place">{{navPlaceLabel}}</p>
+            <div class="sky3d-nav-moves"><button type="button" (pointerdown)="holdStep($event,-1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickStep($event,-1)">‹ {{t('nav.back')}}</button><button type="button" (pointerdown)="holdStep($event,1)" (pointerup)="stopHold()" (pointercancel)="stopHold()" (lostpointercapture)="stopHold()" (click)="clickStep($event,1)">{{t('nav.forward')}} ›</button></div>
+            <div class="sky3d-step-row" *ngFor="let row of stepRows"><span>{{stepUnitLabel(row.unit)}}</span><button type="button" *ngFor="let value of row.values" [class.selected]="navStepUnit===row.unit && navStepValue===value" [attr.aria-pressed]="navStepUnit===row.unit && navStepValue===value" (click)="selectStep(row.unit,value)">{{value}}</button></div>
+            <div class="sky3d-nav-moves"><button type="button" (click)="navNow()">{{t('nav.now.short')}}</button><button type="button" (click)="toggleCityChange()" [attr.aria-expanded]="cityChangeOpen">{{t('nav.city.short')}}</button><button type="button" [disabled]="!navDirty" (click)="navRestore()">{{t('nav.restore')}}</button></div>
+            <vs-offline-city-picker *ngIf="cityChangeOpen" [locale]="locale" (locationSelected)="onNavCitySelected($event)"></vs-offline-city-picker>
+            <p class="sky3d-nav-status" role="status" *ngIf="navStatus">{{t(navStatus)}} <button type="button" *ngIf="navStatus==='calc.ephemerisRange'" (click)="openUpdateSettings()">{{locale==='it' ? 'Apri impostazioni' : 'Open settings'}}</button></p>
+          </section>
+        </vs-sky-dome>
         <div class="monomero-overlay monomero-tip" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'"
           *ngIf="view==='chart' && activeChart && mode==='natal' && chartPresentation==='wheel' && monomeriEnabled && !monomero && !busy" role="status">{{t('monomeri.help')}}</div>
         <div class="monomero-overlay" [class.monomero-dark]="chartSkin==='dark' || chartSkin==='dark-bn'" *ngIf="view==='chart' && mode==='natal' && chartPresentation==='wheel' && !busy && monomero as item" aria-live="polite">
@@ -764,7 +784,7 @@
       </div>
     </main>
 
-    <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed">
+    <aside class="inspector" [attr.aria-label]="t('inspector')" *ngIf="!inspectorCollapsed && !(view==='chart' && chartPresentation==='sky3d')">
       <div class="inspector-head">
         <h2 class="inspector-title" id="inspector-title">{{t(inspectorTitleKey)}}</h2>
         <button type="button" class="toolbar-button" [attr.aria-label]="t('inspector.toggle')" (click)="toggleInspector()">×</button>

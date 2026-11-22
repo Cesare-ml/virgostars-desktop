@@ -74,7 +74,7 @@ enum HistoricalDeltaT {
 #[serde(rename_all = "camelCase")]
 pub struct HistoricalChartTime {
     jd_ut1: f64,
-    jd_tt: f64,
+    pub(crate) jd_tt: f64,
     delta_t_seconds: f64,
     delta_t_uncertainty_seconds: Option<f64>,
     delta_t_source: String,
@@ -87,11 +87,11 @@ pub struct HistoricalChartTime {
 #[serde(rename_all = "camelCase")]
 pub struct HistoricalChartResponse {
     protocol_version: u8,
-    status: &'static str,
-    provider: Option<ProviderInfoV1>,
-    chart: Option<ChartSnapshotV1>,
-    time: Option<HistoricalChartTime>,
-    fixed_stars: Option<Vec<FixedStarV1>>,
+    pub(crate) status: &'static str,
+    pub(crate) provider: Option<ProviderInfoV1>,
+    pub(crate) chart: Option<ChartSnapshotV1>,
+    pub(crate) time: Option<HistoricalChartTime>,
+    pub(crate) fixed_stars: Option<Vec<FixedStarV1>>,
 }
 
 fn failure(status: &'static str) -> HistoricalChartResponse {
@@ -106,6 +106,24 @@ fn failure(status: &'static str) -> HistoricalChartResponse {
 }
 
 impl HistoricalChartRequest {
+    /// Convert the validated UTC instant used by sky navigation to the same
+    /// automatic UT/TT policy used by historical chart navigation.
+    pub(crate) fn for_sky_utc(request: &crate::chart_calculation::ChartRequestV1) -> Option<Self> {
+        let valid = crate::chart_calculation::validate_archive(request)?;
+        let text = &request.utc_iso;
+        let hour = text[11..13].parse().ok()?;
+        let minute = text[14..16].parse().ok()?;
+        let second = text[17..text.len()-1].parse().ok()?;
+        Some(Self {
+            protocol_version:1,
+            civil:HistoricalCivil { year:valid.year, month:valid.month as u8, day:valid.day as u8,
+                hour, minute, second, calendar:CalendarChoice::Gregorian,
+                offset:OffsetChoice::Supplied { seconds_east:0.0, source:"UTC".to_string() },
+                uncertainty_seconds:0.0 },
+            delta_t:HistoricalDeltaT::EspenakMeeus2006Unquantified,
+            lat_micro:request.lat_micro, lng_micro:request.lng_micro, include_fixed_stars:true,
+        })
+    }
     /// Navigation's automatic estimate is transient until archive migration is defined.
     pub(crate) fn archivable(&self) -> bool {
         !matches!(self.delta_t, HistoricalDeltaT::EspenakMeeus2006Unquantified)
@@ -302,6 +320,24 @@ fn calculate(request: HistoricalChartRequest) -> HistoricalChartResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sky_navigation_uses_the_validated_utc_instant_for_historical_dates() {
+        let request = crate::chart_calculation::ChartRequestV1 {
+            protocol_version:1,utc_iso:"1800-05-06T12:34:56.123Z".to_owned(),
+            lat_micro:41_000_000,lng_micro:12_000_000,
+            include_solar_events:false,include_previous_new_moon:false,include_fixed_stars:false,
+        };
+        let historical=HistoricalChartRequest::for_sky_utc(&request).unwrap();
+        assert!(historical.valid());
+        assert_eq!(historical.civil.year,1800);
+        assert_eq!((historical.civil.month,historical.civil.day,historical.civil.hour,historical.civil.minute),(5,6,12,34));
+        assert!((historical.civil.second-56.123).abs()<1e-9);
+        assert!(matches!(historical.civil.offset,OffsetChoice::Supplied {seconds_east:0.0,..}));
+        assert!(matches!(historical.delta_t,HistoricalDeltaT::EspenakMeeus2006Unquantified));
+        assert!(historical.include_fixed_stars);
+        let mut invalid=request;invalid.utc_iso="1800-02-30T12:00:00Z".to_owned();
+        assert!(HistoricalChartRequest::for_sky_utc(&invalid).is_none());
+    }
     fn request(year: i32) -> HistoricalChartRequest {
         serde_json::from_value(serde_json::json!({
             "protocolVersion": 1, "latMicro": 41900000, "lngMicro": 12500000,
@@ -401,11 +437,8 @@ mod tests {
             let result = calculate_historical_chart(automatic);
             assert_eq!(result.status, "ok", "automatic year {year}");
             assert_eq!(result.time.unwrap().delta_t_uncertainty_seconds, None);
-            if std::env::var_os("VIRGOSTARS_FIXED_STARS").is_some() && year == 2034 {
+            if std::env::var_os("VIRGOSTARS_FIXED_STARS").is_some() {
                 assert!(result.fixed_stars.unwrap().len() > 700);
-            } else if std::env::var_os("VIRGOSTARS_FIXED_STARS").is_some() {
-                // The stellar orientation model is bounded to 1900–2100.
-                assert!(result.fixed_stars.is_none());
             }
         }
     }

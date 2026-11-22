@@ -48,7 +48,7 @@ const WORDS={
     close:'Chiudi',loading:'Calcolo astronomico in corso…',
     not_native:'Il cielo 3D con dati astronomici è disponibile nell’app Desktop.',
     provider_unavailable:'Dati DE441 non disponibili. Configura le effemeridi nelle impostazioni.',
-    out_of_range:'Questo istante non è supportato dal calcolo 3D. Il supporto storico arriverà dopo la convalida.',
+    out_of_range:'Data non disponibile. Controlla le effemeridi installate.',
     invalid_request:'Data o posizione geografica non valide per questa versione.',
     calculation_failed:'Non è stato possibile calcolare il cielo per questo istante.',
     unavailable:'Il calcolo del cielo 3D non è disponibile.',
@@ -95,7 +95,7 @@ const WORDS={
     close:'Close',loading:'Calculating astronomical positions…',
     not_native:'The 3D sky with astronomical data is available in the Desktop app.',
     provider_unavailable:'DE441 data are unavailable. Configure the ephemerides in Settings.',
-    out_of_range:'This instant is not supported in 3D yet. Historical support requires separate validation.',
+    out_of_range:'Date unavailable. Check the installed ephemerides.',
     invalid_request:'Invalid date or observer location for this version.',
     calculation_failed:'Could not calculate the sky for this instant.',
     unavailable:'The 3D sky calculation is unavailable.',
@@ -138,12 +138,14 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
   @Input({required:true}) latMicro=0;
   @Input({required:true}) lngMicro=0;
   @Input() locale:'it'|'en'='it';
+  @Input() timeZone='UTC';
   @Input() houseSystem='egizia';
   @Input() houseSystemName='';
   @Output() houseSystemSelected=new EventEmitter<string>();
   /** Future natal zodiac/house/primary direction curves: never synthesized in the renderer. */
   @Input() overlays:readonly SkyOverlayPolyline[]=[];
   @Output() closed=new EventEmitter<void>();
+  @Output() settingsRequested=new EventEmitter<void>();
   @ViewChild('viewport',{static:true}) private viewport!:ElementRef<HTMLDivElement>;
   private readonly cd=inject(ChangeDetectorRef);
   private scene:THREE.Scene|null=null;
@@ -339,8 +341,8 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
     if(!Number.isFinite(instant.getTime()))return this.utcIso;
     try {
       return new Intl.DateTimeFormat(this.locale==='it'?'it-IT':'en-GB',{
-        dateStyle:'medium',timeStyle:'short',timeZone:'UTC',
-      }).format(instant)+' UTC';
+        dateStyle:'medium',timeStyle:'short',timeZone:this.timeZone || 'UTC',
+      }).format(instant)+' '+(this.timeZone || 'UTC');
     }catch{return this.utcIso;}
   }
 
@@ -530,8 +532,6 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
       canvas.width=128;canvas.height=128;
       const ctx=canvas.getContext('2d');
       if(!ctx)continue;
-      ctx.fillStyle='rgba(6,17,31,.75)';
-      ctx.beginPath();ctx.arc(64,64,36,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#e4f1f9';ctx.font='700 62px sans-serif';
       ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(letter,64,68);
       const texture=new THREE.CanvasTexture(canvas);
@@ -900,18 +900,6 @@ export class SkyDomeComponent implements AfterViewInit,OnChanges,OnDestroy {
             this.markerTextures.push(realTexture);
           }
 
-          // The official glyph is deliberately a small badge, not the body.
-          const texture=loader.load(celestialGlyphUrl(point.id),()=>{
-            if(this.destroyed||generation!==this.markerGeneration)return;
-            const glyph=skyFacingPlane(texture,position.clone().multiplyScalar(0.915),
-              spec.labelDiameter,spec.labelDiameter,
-              {anchorX:0.10,anchorY:0.10,renderOrder:2});
-            glyph.userData['skyPoint']={point,kind:'planet'} as PointWithKind;
-            group.add(glyph);
-            this.targets.push(glyph);
-            this.draw();
-          },undefined,()=>{ /* Portrait remains present without glyph artwork. */ });
-          this.markerTextures.push(texture);
         }
       }
       if(this.showStars){

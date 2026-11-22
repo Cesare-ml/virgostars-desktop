@@ -4630,7 +4630,7 @@ dependencies = [
 [[package]]
 name = "virgostars-ephemeris-core"
 version = "0.1.0"
-source = "git+https://github.com/Cesare-ml/VirgoStars-Ephemeris?rev=85a29e886b6e7a4d89eb7859b8a0821f0570fa34#85a29e886b6e7a4d89eb7859b8a0821f0570fa34"
+source = "git+https://github.com/Cesare-ml/VirgoStars-Ephemeris?rev=28f4ce81fd5bf9a0434faec8fcb5aecdde378856#28f4ce81fd5bf9a0434faec8fcb5aecdde378856"
 
 [[package]]
 name = "virgostars-event-ephemeris"

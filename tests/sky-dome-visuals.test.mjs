@@ -34,13 +34,13 @@ test('stellar magnitudes have clear, bounded visual hierarchy',()=>{
   }
 });
 
-test('planet colors are presentation-only and never substitutes for official glyphs',()=>{
+test('planet colors remain presentation-only and signs use approved glyphs',()=>{
   for(const id of ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto','Chiron']){
     assert.match(planetAccent(id),/^#[\da-f]{6}$/i);
   }
   assert.equal(planetAccent('unknown'),'#d5dbea');
   const viewer=read('src/app/sky-dome.component.ts');
-  assert.match(viewer,/celestialGlyphUrl\(point\.id\)/);
+  assert.doesNotMatch(viewer,/celestialGlyphUrl\(point\.id\)/);
   assert.match(viewer,/zodiacGlyphUrl\(sign\.signIndex\)/);
   assert.match(viewer,/data\.stars\.filter\(star=>starAppearance\(star\.magnitude\)\.bin===bin\)/);
   assert.doesNotMatch(viewer,/Math\.random\(|syntheticStar|fakeStar|placeholderStar/);

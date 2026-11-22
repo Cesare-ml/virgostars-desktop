@@ -19,7 +19,8 @@ test('holding Indietro or Avanti keeps stepping: one step on press, then a stead
 
 test('the repeat ends when the button is released, at the edge of the years, or when the panel goes away', () => {
   assert.match(hold, /setPointerCapture\(event\.pointerId\)/, 'letting go anywhere is seen');
-  assert.match(hold, /this\.destroyed \|\| this\.inspectorCollapsed \|\| !\['navigate','transits'\]\.includes\(this\.inspectorTab\) \|\| !move\(\)/);
+  assert.match(hold, /sky3dActive=this\.view==='chart' && this\.chartPresentation==='sky3d'/);
+  assert.match(hold, /this\.destroyed \|\| \(!sky3dActive && \(this\.inspectorCollapsed \|\| !\['navigate','transits'\]\.includes\(this\.inspectorTab\)\)\) \|\| !move\(\)/);
   for (const handler of ['(pointerup)="stopHold()"', '(pointercancel)="stopHold()"', '(lostpointercapture)="stopHold()"']) {
     assert.ok(html.includes(handler), handler);
   }

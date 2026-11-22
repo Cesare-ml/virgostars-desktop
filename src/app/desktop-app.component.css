@@ -249,6 +249,24 @@
 .nav-tool.pending { color:var(--vs-accent); }
 .nav-tool.pending::after { content:""; position:absolute; top:5px; right:calc(50% - 17px); width:6px; height:6px; border-radius:50%; background:var(--vs-accent); }
 .nav-status { margin:0; font-size:12px; font-weight:600; color:var(--vs-accent); text-align:center; }
+.sky3d-nav { margin:14px 0 16px; padding-bottom:14px; border-bottom:1px solid rgba(192,205,240,.15); color:#ecf2ff; }
+.sky3d-nav h3 { margin:0 0 10px; font-size:12px; }
+.sky3d-nav-clock { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3px; }
+.sky3d-nav-field { display:grid; grid-template-rows:16px 22px 30px 22px; min-width:0; text-align:center; }
+.sky3d-nav-field label { overflow:hidden; font-size:9px; color:#b5c5de; }
+.sky3d-nav-field input { box-sizing:border-box; width:100%; min-width:0; padding:3px 0; border:1px solid rgba(192,205,240,.25); border-radius:5px; background:#101d33; color:#fff; text-align:center; font:inherit; font-variant-numeric:tabular-nums; }
+.sky3d-nav button { color:#e9eaff; font:inherit; cursor:pointer; }
+.sky3d-nav-field button { border:0; background:transparent; color:#cdb8ff; }
+.sky3d-nav-place { margin:8px 0; color:#b5c5de; font-size:11px; overflow-wrap:anywhere; }
+.sky3d-nav-moves { display:flex; gap:5px; margin:8px 0; }
+.sky3d-nav-moves button { flex:1; min-width:0; padding:7px 4px; border:1px solid rgba(192,205,240,.2); border-radius:7px; background:rgba(154,170,210,.08); font-size:10px; }
+.sky3d-nav-moves button:disabled { opacity:.45; }
+.sky3d-step-row { display:flex; align-items:center; gap:3px; margin:4px 0; }
+.sky3d-step-row span { width:42px; flex:none; color:#b5c5de; font-size:10px; }
+.sky3d-step-row button { flex:1; padding:5px 1px; border:1px solid transparent; border-radius:5px; background:rgba(154,170,210,.08); font-size:10px; }
+.sky3d-step-row button.selected { border-color:#c8aeff; background:rgba(139,119,190,.35); }
+.sky3d-nav-status { color:#f3d2a3; line-height:1.4; font-size:11px; }
+.sky3d-nav button:focus-visible,.sky3d-nav input:focus-visible { outline:2px solid #d3baff; outline-offset:1px; }
 /* Erigi elettiva: a small dialog over the whole window. */
 .overlay { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.5); }
 .overlay-card { width:min(420px,calc(100vw - 32px)); padding:22px; border-radius:14px; background:var(--vs-surface); color:var(--vs-text);

@@ -15,9 +15,6 @@
       <div class="sky3d-epoch">
         <div class="sky3d-epoch-date">{{dateLabel}}</div>
         <div class="sky3d-epoch-place">{{(latMicro / 1000000).toFixed(3)}}° · {{(lngMicro / 1000000).toFixed(3)}}°</div>
-        <div class="sky3d-computation" *ngIf="status==='ready'">
-          <span class="sky3d-computation-dot" aria-hidden="true"></span>{{word('statusReady')}}
-        </div>
       </div>
       <button type="button" class="sky3d-exit" (click)="close()" [attr.aria-label]="word('backToChart')">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -32,6 +29,7 @@
       <strong>{{word('layers')}}</strong>
       <span class="sky3d-panel-ornament" aria-hidden="true">✦</span>
     </header>
+    <ng-content select="[sky-navigation]"></ng-content>
     <details class="sky3d-accordion" open>
       <summary>{{word('geometry')}}</summary>
       <div class="sky3d-layer-grid" role="group" [attr.aria-label]="word('geometry')">
@@ -193,7 +191,9 @@
     <p class="sky3d-approximate" *ngIf="selection.point.altitudeDeg<0 && showGround">{{word('belowHorizon')}}</p>
   </article>
 
-  <p class="sky3d-status" role="status" *ngIf="warning">{{warning}}</p>
+  <p class="sky3d-status" role="status" *ngIf="warning">{{warning}}
+    <button type="button" *ngIf="status==='out_of_range' || status==='provider_unavailable'" (click)="settingsRequested.emit()">{{locale==='it' ? 'Apri impostazioni' : 'Open settings'}}</button>
+  </p>
   <p class="sky3d-fisheye-warning" role="status" *ngIf="fisheyeUnavailable">
     {{word('lensUnavailable')}}
   </p>
@@ -232,15 +232,6 @@
     </button>
   </div>
 
-  <footer class="sky3d-footer">
-    <p>{{word('note')}} <span>{{planetTextureNote}}</span>
-      <a *ngIf="hasRealPlanetTextures" href="https://www.solarsystemscope.com/textures/"
-        target="_blank" rel="noopener noreferrer">Solar System Scope · CC BY 4.0</a>
-    </p>
-    <p class="sky3d-footer-count" *ngIf="status==='ready'">
-      {{visiblePlanetCount}} {{word('planets')}} · {{starCount}} {{word('stars')}}
-      <span *ngIf="starCount===0">{{word('noStars')}}</span>
-      <span *ngIf="approximateStars">{{word('approximate')}}</span>
-    </p>
-  </footer>
+  <a *ngIf="hasRealPlanetTextures" class="sky3d-attribution" href="https://www.solarsystemscope.com/textures/"
+    target="_blank" rel="noopener noreferrer">Solar System Scope · CC BY 4.0</a>
 </section>

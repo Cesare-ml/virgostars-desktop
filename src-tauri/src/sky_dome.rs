@@ -169,7 +169,7 @@ fn ecliptic_to_equatorial(
     longitude_deg:f64,latitude_deg:f64,true_obliquity_deg:f64
 )->Option<(f64,f64)> {
     if ![longitude_deg,latitude_deg,true_obliquity_deg].iter().all(|v|v.is_finite())
-        || latitude_deg.abs()>90.0 || !(0.0..90.0).contains(&true_obliquity_deg) {
+        || latitude_deg.abs()>90.0 || true_obliquity_deg<=0.0 || true_obliquity_deg>=90.0 {
         return None;
     }
     let longitude=longitude_deg.to_radians();
@@ -364,6 +364,10 @@ pub fn respond(
     request.include_previous_new_moon = false;
     request.include_solar_events = false;
     let calculated = chart_calculation::respond(provider,&request);
+    from_chart(calculated,request.lat_micro)
+}
+
+fn from_chart(calculated:chart_calculation::ChartResponseV1,lat_micro:i32) -> SkyDomeV1 {
     if calculated.status != "ok" { return failure(calculated.status); }
     let Some(chart) = calculated.chart else { return failure("calculation_failed"); };
     let Some(house) = chart.houses.first() else {
@@ -371,7 +375,7 @@ pub fn respond(
         return failure("calculation_failed");
     };
     let armc = house.armc_deg;
-    let latitude = f64::from(request.lat_micro) / 1e6;
+    let latitude = f64::from(lat_micro) / 1e6;
     let Some(ref context) = chart.house_angle_context else {
         return failure("calculation_failed");
     };
@@ -454,12 +458,59 @@ pub fn respond(
 
 #[tauri::command]
 pub fn calculate_sky_dome(request:ChartRequestV1) -> SkyDomeV1 {
-    respond(chart_calculation::active_provider(),request)
+    let initial=respond(chart_calculation::active_provider(),request.clone());
+    if !matches!(initial.status,"invalid_request" | "out_of_range") { return initial; }
+    let Some(historical)=crate::historical_chart::HistoricalChartRequest::for_sky_utc(&request) else { return initial; };
+    let result=crate::historical_chart::calculate_historical_chart(historical);
+    #[cfg(feature = "virgostars-ephemeris")]
+    let result={
+        let mut result=result;
+        if let (Some(chart),Some(time))=(&mut result.chart,&result.time) {
+            if let Ok(angles)=virgostars_ephemeris_core::historical_orientation::experimental_house_angles(
+                chart.julian_day_ut,time.jd_tt,f64::from(request.lat_micro)/1e6,f64::from(request.lng_micro)/1e6) {
+                chart.house_angle_context=Some(chart_calculation::HouseAngleContextV1 {
+                    tt_julian_day:time.jd_tt,true_obliquity_deg:angles.true_obliquity_deg,
+                });
+            }
+        }
+        result
+    };
+    let status=match result.status {
+        "ephemeris_out_of_range" | "time_source_out_of_range" => "out_of_range",
+        "ok" | "provider_unavailable" | "invalid_request" | "calculation_failed" => result.status,
+        _ => "calculation_failed",
+    };
+    from_chart(chart_calculation::ChartResponseV1 {
+        protocol_version:1,status,provider:result.provider,chart:result.chart,
+        solar_day:None,previous_new_moon_longitude_deg:None,fixed_stars:result.fixed_stars,
+    },request.lat_micro)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(feature = "virgostars-ephemeris")]
+    #[ignore = "requires the local DE441 slice and star catalog"]
+    fn extended_sky_keeps_real_catalog_stars() {
+        for year in [1000, 2034, 2200] {
+            let request=ChartRequestV1 {
+                protocol_version:1,utc_iso:format!("{year:04}-06-15T12:00:00Z"),
+                lat_micro:41_900_000,lng_micro:12_500_000,
+                include_solar_events:false,include_previous_new_moon:false,include_fixed_stars:false,
+            };
+            let historical=crate::historical_chart::HistoricalChartRequest::for_sky_utc(&request).unwrap();
+            let source=crate::historical_chart::calculate_historical_chart(historical);
+            assert_eq!(source.status,"ok","historical source year {year}");
+            let chart=source.chart.as_ref().unwrap();
+            assert!(!chart.houses.is_empty(),"missing houses year {year}");
+            let result=calculate_sky_dome(request);
+            assert_eq!(result.status,"ok","year {year}");
+            assert!(result.stars.len()>700,"year {year}");
+            assert!(result.stars.iter().all(|star|star.altitude_deg.is_finite()
+                && (0.0..360.0).contains(&star.azimuth_north_east_deg)));
+        }
+    }
     fn horizontal(ra:f64,dec:f64,distance:f64,armc:f64,lat:f64)->(f64,f64) {
         topocentric_horizontal(ra,dec,distance,armc,lat).unwrap()
     }

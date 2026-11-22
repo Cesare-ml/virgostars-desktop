@@ -9,6 +9,7 @@
   color:#f0f4ff;
 }
 .sky3d {
+  --sky3d-sidebar-width:280px;
   position:relative;
   isolation:isolate;
   width:100%;
@@ -38,7 +39,7 @@
     radial-gradient(ellipse 60% 50% at 80% 84%,rgba(215,235,236,.35),transparent 90%),
     linear-gradient(180deg,#183a62 0%,#3d6a95 54%,#7babbf 100%);
 }
-.sky3d-viewport { position:absolute; inset:0; z-index:0; cursor:grab; touch-action:none; outline:none; }
+.sky3d-viewport { position:absolute; inset:0 0 0 var(--sky3d-sidebar-width); z-index:0; cursor:grab; touch-action:none; outline:none; }
 .sky3d-viewport:active { cursor:grabbing; }
 .sky3d-viewport:focus-visible { outline:2px solid #cfb8ff; outline-offset:-4px; }
 .sky3d-viewport canvas { display:block; width:100%; height:100%; }
@@ -52,7 +53,7 @@
 .sky3d-header {
   position:absolute;
   z-index:3;
-  top:0;left:0;right:0;
+  top:0;left:var(--sky3d-sidebar-width);right:0;
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
@@ -112,16 +113,17 @@
 .sky3d-controls {
   position:absolute;
   z-index:3;
-  top:148px;
-  left:20px;
+  top:0;
+  bottom:0;
+  left:0;
   box-sizing:border-box;
-  width:224px;
-  max-height:calc(100% - 240px);
+  width:var(--sky3d-sidebar-width);
+  max-height:100%;
   overflow-y:auto;overflow-x:hidden;
   border:1px solid rgba(192,205,240,.14);
-  border-radius:16px;
+  border-radius:0;
   padding:14px;
-  background:rgba(10,18,35,.70);
+  background:rgba(10,18,35,.96);
   box-shadow:0 14px 43px rgba(2,5,16,.26);
   backdrop-filter:blur(18px);
   scrollbar-width:thin;
@@ -374,7 +376,7 @@
 
 .sky3d-approximate {margin:11px 0 0;font-size:10px;line-height:1.5;color:#e9d3a9;}
 .sky3d-status {
-  position:absolute;z-index:3;top:50%;left:50%;transform:translate(-50%,-50%);
+  position:absolute;z-index:3;top:50%;left:calc(50% + var(--sky3d-sidebar-width) / 2);transform:translate(-50%,-50%);
   box-sizing:border-box;width:min(400px,calc(100% - 40px));
   border:1px solid rgba(181,205,238,.28);border-radius:15px;
   padding:20px;background:rgba(8,17,35,.90);backdrop-filter:blur(16px);
@@ -459,6 +461,8 @@
 .sky3d-allsky-icon {font-size:19px;line-height:1;font-weight:450;}
 .sky3d-directions .sky3d-reset {color:#c7b2eb;}
 .sky3d-reset svg {width:15px;height:15px;}
+.sky3d-attribution { position:absolute; right:12px; bottom:8px; z-index:3; color:#a8c3d2; font-size:9px; }
+.sky3d-planet-dock,.sky3d-directions { left:calc(50% + var(--sky3d-sidebar-width) / 2); max-width:calc(100% - var(--sky3d-sidebar-width) - 20px); }
 .sky3d-footer {
   position:absolute;z-index:3;bottom:12px;left:20px;right:20px;
   display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
@@ -468,14 +472,15 @@
 .sky3d-footer p span {color:#a8c3d2;}
 .sky3d-footer .sky3d-footer-count {text-align:right;font-variant-numeric:tabular-nums;}
 @media(max-width:1000px) {
-  .sky3d-controls {width:194px;left:12px;top:140px;padding:11px;}
+  .sky3d {--sky3d-sidebar-width:250px;}
+  .sky3d-controls {padding:11px;}
   .sky3d-info-strip {right:12px;top:113px;}
   .sky3d-selection {right:12px;}
   .sky3d-header {padding:18px;}
 }
 @media(max-width:690px) {
   .sky3d-fisheye-warning {right:8px;bottom:152px;max-width:46%;padding:7px;font-size:9px;}
-  .sky3d-planet-dock {bottom:105px;max-width:calc(100% - 20px);padding:5px;}
+  .sky3d-planet-dock {bottom:105px;max-width:calc(100% - var(--sky3d-sidebar-width) - 20px);padding:5px;}
   .sky3d-dock-label {display:none;}
   .sky3d-planet-dock button {flex-basis:34px;width:34px;height:34px;}
   .sky3d-header {padding:15px;gap:9px;}
@@ -486,7 +491,8 @@
   .sky3d-header-actions {gap:5px;}
   .sky3d-exit {padding:6px;min-width:30px;}
   .sky3d-exit span {display:none;}
-  .sky3d-controls {top:106px;max-height:calc(100% - 215px);width:165px;left:10px;padding:9px;}
+  .sky3d {--sky3d-sidebar-width:205px;}
+  .sky3d-controls {padding:9px;}
   .sky3d-layer-grid button {font-size:9px;padding:5px;min-height:31px;}
   .sky3d-info-strip {top:108px;right:9px;padding:7px;gap:6px;}
   .sky3d-info-caption {font-size:8px;}
@@ -500,7 +506,6 @@
 }
 @media(max-height:580px) {
   .sky3d-planet-dock {bottom:83px;}
-  .sky3d-controls {top:104px;max-height:calc(100% - 185px);}
   .sky3d-directions {bottom:37px;}
   .sky3d-footer {display:none;}
 }

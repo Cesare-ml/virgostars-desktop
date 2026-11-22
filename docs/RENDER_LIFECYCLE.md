@@ -1,5 +1,19 @@
 # Renderer lifecycle — latest request wins
 
+## Sky 3D navigation (2026-11-21)
+
+The 3D view presents the existing local-time and location navigator in a
+full-height left rail, temporarily compacting the main navigation. Changes use
+the normal latest-request-wins chart navigation before refreshing the dome.
+Extended UTC instants use the existing historical chart and automatic ΔT path;
+the 3D renderer still consumes only native-calculated coordinates. Historical
+stars use the same long-term orientation as the planetary calculations, with
+catalog-motion and extrapolated-nutation limitations explicitly retained.
+The available range is governed by the installed ephemeris data and the core
+model's supported range. Closing the view keeps
+the navigation state and the user's prior sidebar preference. The texture
+attribution remains visible when optional real planet maps are present.
+
 ## Natal overlays and chart navigation (2026-11-21)
 
 The Desktop can keep natal apogee, Arabic parts and dodecatemoria visible while

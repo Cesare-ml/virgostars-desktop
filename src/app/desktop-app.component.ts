@@ -1392,6 +1392,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const coordinates = (input.latMicro / 1e6).toFixed(4) + '°, ' + (input.lngMicro / 1e6).toFixed(4) + '°';
     return {
       id:this.nextChartId++, kind, name:input.name, utcIso:input.utcIso, timeZone:input.timeZone, historical:input.historical,
+      ...(input.historical ? {navigationInstant:Math.round((result.chart.julianDayUt-2440587.5)*86400000)} : {}),
       timeUnknown:input.timeUnknown, unknownDate:input.unknownDate,
       calculationHistorical:input.historical ? undefined : calculationHistorical,
       archiveId, placeName:input.placeName,
@@ -1581,7 +1582,7 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cityChangeOpen = false;
     this.navStatus = null;
     if (!chart || chart.timeUnknown || !Number.isFinite(utcMs)) { this.nav = null; return; }
-    const point: NavPoint = {utcMs, latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone, placeName:chart.placeName};
+    const point: NavPoint = {utcMs, latMicro:chart.latMicro, lngMicro:chart.lngMicro, timeZone:chart.timeZone || 'UTC', placeName:chart.placeName};
     this.nav = {chartId:chart.id, base:point, current:point};
     this.navShown = point;
   }
@@ -1664,7 +1665,8 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     const repeat = (delay: number): void => {
       this.holdTimer = setTimeout(() => {
         this.holdTimer = null;
-        if (this.destroyed || this.inspectorCollapsed || !['navigate','transits'].includes(this.inspectorTab) || !move()) return;
+        const sky3dActive=this.view==='chart' && this.chartPresentation==='sky3d';
+        if (this.destroyed || (!sky3dActive && (this.inspectorCollapsed || !['navigate','transits'].includes(this.inspectorTab))) || !move()) return;
         repeat(HOLD_REPEAT_MS);
       }, delay);
     };
@@ -2155,12 +2157,19 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     this.cd.markForCheck();
   }
   /** The observer sky uses the active chart's own instant and place. */
+  get skyDomeUtcIso():string {
+    const chart=this.activeChart;
+    if (!chart) return '';
+    return chart.navigationInstant !== undefined ? isoFromMs(chart.navigationInstant) : chart.utcIso;
+  }
   toggleSkyDome(): void {
     if (!this.activeChart || this.activeChart.timeUnknown || this.destroyed || this.busy || this.calcBusy) return;
     this.view = 'chart';
-    if (this.chartPresentation === 'sky3d') this.chartPresentation = 'wheel';
+    if (this.chartPresentation === 'sky3d') { this.stopHold(); this.chartPresentation = 'wheel'; }
     else {
       if (this.mode !== 'natal') this.setMode('natal');
+      if (!this.nav || this.nav.chartId!==this.activeChart?.id) this.initNav();
+      this.skyLive=false;
       this.chartPresentation = 'sky3d';
     }
     this.cd.markForCheck();
