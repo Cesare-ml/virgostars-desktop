@@ -711,7 +711,7 @@
             <option *ngFor="let h of arabicHouses" [value]="h">{{t('arabic.house')}} {{h+1}}</option>
           </select></label>
         </ng-container>
-        <div class="arabic-result" *ngIf="arabicPartsGroup!=='custom' && arabicPartsRows[arabicPartsIndex] as item"><strong>{{item.nome}}</strong><span>{{longitudeText(item.longitude)}}</span><small>{{item.descrizione}}</small></div>
+        <div class="arabic-result" *ngIf="arabicPartsGroup!=='custom' && arabicPartsRows[arabicPartsIndex] as item"><strong>{{item.nome}}</strong><span>{{arabicPartLongitudeText(item)}}</span><small>{{item.descrizione}}</small></div>
         <small class="arabic-note" *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='loading'">{{t('arabic.newMoonLoading')}}</small>
         <small class="arabic-note" *ngIf="(arabicPartsGroup==='4' || arabicPartsGroup==='8') && arabicNewMoon?.status==='unavailable'">{{t('arabic.newMoonUnavailable')}}</small>
       </aside>
