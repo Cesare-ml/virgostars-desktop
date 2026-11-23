@@ -1337,6 +1337,27 @@ export class DesktopAppComponent implements AfterViewInit, OnDestroy {
     if (label) label.hidden = false;
   }
   longitudeText(longitude:number): string { return formatLongitudeDms(longitude, this.locale); }
+  /** Regolo parts provide an offset and a reference coordinate, not a precomputed longitude. */
+  arabicPartLongitudeText(part:RegoloPart):string {
+    const chart=this.activeChart, house=chart?.data.houses[this.houseSystem];
+    if(!chart || !house || !Number.isFinite(part.lngOffs)) return '—';
+    const name=part.nomePianetaHighlight;
+    let reference:number|undefined;
+    if (name.startsWith('LNG-')) {
+      const raw=name.slice(4);
+      if(raw.trim()!=='') reference=Number(raw);
+    } else if(name.startsWith('ASSE-')) {
+      const axis=name.slice(5);
+      reference=axis==='ascendant' ? house.ascendant : axis==='mc' ? house.mc :
+        axis==='ds' ? house.ds : axis==='ic' ? house.ic : undefined;
+    } else if(name.startsWith('CUSP-')) {
+      const idx=Number(name.slice(5));
+      if(Number.isInteger(idx) && idx>=0 && idx<12) reference=house.house[idx];
+    } else {
+      reference=chart.data.planets[name]?.longitude ?? this.kleroi?.[name];
+    }
+    return Number.isFinite(reference) ? this.longitudeText(((part.lngOffs+reference!)%360+360)%360) : '—';
+  }
   latitudeText(latitude:number): string { return formatLatitudeDms(latitude); }
   starAzimuthText(azimuthSouthWestDeg:number): string { return formatLatitudeDms(starAzimuthNorthEast(azimuthSouthWestDeg)); }
   speedText(speed:number): string { return formatSpeed(speed, this.locale); }
