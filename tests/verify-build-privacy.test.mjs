@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { auditBuildPrivacy } from '../scripts/verify-build-privacy.mjs';
@@ -71,9 +71,16 @@ test('rejects a symlink directory pointing outside the output', t => withBundle(
   assert.throws(() => auditBuildPrivacy(bundle), /symbolic link/);
 }));
 
-test('rejects Windows case-insensitive output path collisions on a case-sensitive host', { skip: process.platform === 'win32' ? 'Requires a case-sensitive filesystem' : false }, () => withBundle(({ bundle, add }) => {
+test('rejects Windows case-insensitive output path collisions on a case-sensitive host', { skip: process.platform === 'win32' ? 'Requires a case-sensitive filesystem' : false }, t => withBundle(({ bundle, add }) => {
   add('assets/img/fictional.jpg');
   add('assets/img/FICTIONAL.jpg');
+  // Typical macOS APFS volumes are case-insensitive: the second create overwrites
+  // the first file. An identical spelling collision cannot be constructed there.
+  const names=readdirSync(join(bundle, 'assets', 'img'));
+  if (!names.includes('fictional.jpg') || !names.includes('FICTIONAL.jpg')) {
+    t.skip('Requires a case-sensitive filesystem; the actual bundle audit remains enabled');
+    return;
+  }
   assert.throws(() => auditBuildPrivacy(bundle), /case-insensitive duplicate/);
 }));
 
