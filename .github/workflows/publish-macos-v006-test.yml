@@ -40,11 +40,12 @@ jobs:
           test "$(gh api repos/Cesare-ml/virgostars-desktop/actions/runs/45271186416 --jq .head_sha)" = "40c8f9055c9035eb10472d8c4b07bc613d8c9b51"
           test "$(gh api repos/Cesare-ml/virgostars-desktop/actions/runs/45271186416 --jq .conclusion)" = "success"
           if gh release view v0.0.6-macos-test1 >/dev/null 2>&1; then
-            echo "A test prerelease already exists: refuse to overwrite it"
-            exit 1
+            echo "Existing test prerelease detected: verify in final step; never overwrite"
+            echo "ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
           fi
 
       - name: Download exact arm64 test artifact from successful build
+        if: env.ALREADY_PUBLISHED != 'true'
         uses: actions/download-artifact@v4
         with:
           name: virgostars-macos-v0.0.6-arm64-test-11
@@ -53,6 +54,7 @@ jobs:
           path: .local/mac/publish-in/arm64
 
       - name: Download exact Intel test artifact from successful build
+        if: env.ALREADY_PUBLISHED != 'true'
         uses: actions/download-artifact@v4
         with:
           name: virgostars-macos-v0.0.6-x64-test-11
@@ -61,6 +63,7 @@ jobs:
           path: .local/mac/publish-in/x64
 
       - name: Verify original reports, source SHA, checksum and unnotarized status
+        if: env.ALREADY_PUBLISHED != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -69,6 +72,7 @@ jobs:
           sha256sum --check SHA256SUMS-macos.txt
 
       - name: Create draft with verified DMGs, SHA256 and build reports
+        if: env.ALREADY_PUBLISHED != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -88,4 +92,19 @@ jobs:
           test "$count" = 5
           # Only make it visible after both files and their reports have arrived.
           gh release edit v0.0.6-macos-test1 --draft=false
-          gh release view v0.0.6-macos-test1 --json url,assets,prerelease --jq '{url, prerelease, assetNames: [.assets[].name]}'
+          echo 'Uploaded both architectures; final independent published-release verification follows'
+
+      - name: Independently confirm public test prerelease and exact DMG hashes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="repos/Cesare-ml/virgostars-desktop/releases/tags/v0.0.6-macos-test1"
+          test "$(gh api "$api" --jq .draft)" = false
+          test "$(gh api "$api" --jq .prerelease)" = true
+          test "$(gh api "$api" --jq .target_commitish)" = "40c8f9055c9035eb10472d8c4b07bc613d8c9b51"
+          test "$(gh api "$api" --jq '.assets | length')" = 5
+          test "$(gh api "$api" --jq '.assets[] | select(.name=="VirgoStars-Desktop-0.0.6-macos-arm64.dmg") | .digest')" = "sha256:b6dc01ff60c461d444c4dd6d1da41a03686ea12dc5ad0edbde288b157bd64e67"
+          test "$(gh api "$api" --jq '.assets[] | select(.name=="VirgoStars-Desktop-0.0.6-macos-x64.dmg") | .digest')" = "sha256:5a13cba10338e654556843d408c6cc5d4cc01bcf4e6f78c0620e40f40acd4dbc"
+          gh release view v0.0.6-macos-test1 --json url,isPrerelease,assets --jq '{url, isPrerelease, assetNames: [.assets[].name]}'
