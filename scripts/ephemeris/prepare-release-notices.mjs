@@ -34,6 +34,7 @@ const localLicenseFiles = dir => readdirSync(dir, {withFileTypes:true})
   .filter(entry => entry.isFile() && filename(entry.name)).map(entry => join(dir, entry.name)).sort();
 const sections = [platformLabel + ' Cargo dependency notices',
   'This inventory conservatively includes the resolved '+platformLabel+' dependency graph, including build-time dependencies.'];
+const missing = [];
 for (const pkg of packages) {
   const key = `${pkg.name}@${pkg.version}`;
   let dir = dirname(pkg.manifest_path);
@@ -47,7 +48,7 @@ for (const pkg of packages) {
       throw Error('block2 declared license changed; review its upstream terms.');
     files = [join(fallbackDir, fallbacks.get(key))];
   }
-  if (!files.length) throw Error(`No license text found for ${key}; review the dependency before release.`);
+  if (!files.length) { missing.push(key); continue; }
   sections.push(`\n${'='.repeat(72)}\n${key}\nDeclared license: ${pkg.license || 'project license'}`);
   if (key === 'tauri-plugin@2.7.4') sections.push('Copyright 2019-2024 Tauri Programme within The Commons Conservancy.');
   for (const file of files) {
@@ -55,6 +56,8 @@ for (const pkg of packages) {
     sections.push(readFileSync(file, 'utf8').trim());
   }
 }
+if (missing.length) throw Error('Missing license text for '+missing.length+
+  ' Cargo packages: '+missing.join(', ')+'. Review all missing notices before release.');
 const gsap = readFileSync('node_modules/gsap/gsap-core.js', 'utf8');
 const gsapNotice = gsap.match(/\/\*![\s\S]*?\*\//)?.[0];
 if (!gsapNotice?.includes('gsap.com/standard-license') || !gsapNotice.includes('@license'))
