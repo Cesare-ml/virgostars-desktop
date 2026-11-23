@@ -7,6 +7,9 @@ import {dirname, join, resolve} from 'node:path';
 
 const fallbackDir = resolve('third-party/cargo-license-fallbacks');
 const fallbacks = new Map([
+  // block2 0.6.2 declares MIT but its published crate omits a LICENSE file.
+  // Original MIT text from https://github.com/madsmtm/objc2/blob/main/LICENSE-MIT.txt
+  ['block2@0.6.2', 'block2-MIT.txt'],
   ['alloc-stdlib@0.3.0', 'alloc-BSD-3-Clause.txt'],
   ['selectors@0.38.0', 'selectors-MPL-2.0.txt'],
   ['tauri-plugin@2.7.4', 'tauri-plugin-Apache-2.0.txt'],
@@ -38,7 +41,12 @@ for (const pkg of packages) {
   if (!files.length && pkg.name.startsWith('virgostars-')) {
     for (let i=0; i<3 && !files.length; i++) { dir=dirname(dir); files=localLicenseFiles(dir); }
   }
-  if (!files.length && fallbacks.has(key)) files = [join(fallbackDir, fallbacks.get(key))];
+  if (!files.length && fallbacks.has(key)) {
+    // Never silently substitute an incompatible license notice.
+    if (key === 'block2@0.6.2' && pkg.license !== 'MIT')
+      throw Error('block2 declared license changed; review its upstream terms.');
+    files = [join(fallbackDir, fallbacks.get(key))];
+  }
   if (!files.length) throw Error(`No license text found for ${key}; review the dependency before release.`);
   sections.push(`\n${'='.repeat(72)}\n${key}\nDeclared license: ${pkg.license || 'project license'}`);
   if (key === 'tauri-plugin@2.7.4') sections.push('Copyright 2019-2024 Tauri Programme within The Commons Conservancy.');
