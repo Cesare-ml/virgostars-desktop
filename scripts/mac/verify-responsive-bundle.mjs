@@ -22,7 +22,7 @@ function includesDeclarations(body, rules) {
 }
 export function hasFixedDesktopHost(css) {
   if(typeof css!=='string')return false;
-  const rules=[...css.matchAll(/(?:^|\})\s*vs-desktop-app\s*\{([^{}]{1,1200})\}/g)];
+  const rules=[...css.matchAll(/(?:^|\}|\*\/)\s*vs-desktop-app\s*\{([^{}]{1,1200})\}/g)];
   return rules.some(([,body])=>includesDeclarations(body,[
     ['display','block'],['position','fixed'],['inset','0(?:px)?']
   ]));
