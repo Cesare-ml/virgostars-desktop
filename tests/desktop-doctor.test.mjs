@@ -24,7 +24,10 @@ function dependencies({stage='setup', platform='linux', additional=[], versions=
     if(name==='reg.exe') return 'registry present';
     return null;
   };
-  return diagnoseEnvironment({root,charts,stage,platform,nodeVersion:'v22.16.0',exists:file=>files.has(file),json:file=>map[file]??null,command});
+  return diagnoseEnvironment({root,charts,stage,platform,
+    // Simulate native Windows x64 even when this test runs on an Apple Silicon host.
+    nodeArch:platform==='win32'?'x64':process.arch,
+    nodeVersion:'v22.16.0',exists:file=>files.has(file),json:file=>map[file]??null,command});
 }
 const find=(report,key)=>report.checks.find(item=>item.id===key);
 
