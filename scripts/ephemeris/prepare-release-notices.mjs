@@ -10,6 +10,20 @@ const fallbacks = new Map([
   // block2 0.6.2 declares MIT but its published crate omits a LICENSE file.
   // Original MIT text from https://github.com/madsmtm/objc2/blob/main/LICENSE-MIT.txt
   ['block2@0.6.2', 'block2-MIT.txt'],
+  // Approved, exact versions from the same upstream objc2 repository.
+  // Their Cargo SPDX declarations include MIT as an allowed license choice.
+  ['dispatch2@0.3.1', 'objc2-project-MIT.txt'],
+  ['objc2@0.6.5', 'objc2-project-MIT.txt'],
+  ['objc2-app-kit@0.3.2', 'objc2-project-MIT.txt'],
+  ['objc2-core-foundation@0.3.2', 'objc2-project-MIT.txt'],
+  ['objc2-core-graphics@0.3.2', 'objc2-project-MIT.txt'],
+  ['objc2-encode@4.1.0', 'objc2-project-MIT.txt'],
+  ['objc2-exception-helper@0.1.1', 'objc2-project-MIT.txt'],
+  ['objc2-foundation@0.3.2', 'objc2-project-MIT.txt'],
+  ['objc2-io-surface@0.3.2', 'objc2-project-MIT.txt'],
+  ['objc2-osa-kit@0.3.2', 'objc2-project-MIT.txt'],
+  ['objc2-quartz-core@0.3.2', 'objc2-project-MIT.txt'],
+  ['objc2-web-kit@0.3.2', 'objc2-project-MIT.txt'],
   ['alloc-stdlib@0.3.0', 'alloc-BSD-3-Clause.txt'],
   ['selectors@0.38.0', 'selectors-MPL-2.0.txt'],
   ['tauri-plugin@2.7.4', 'tauri-plugin-Apache-2.0.txt'],
@@ -46,6 +60,9 @@ for (const pkg of packages) {
     // Never silently substitute an incompatible license notice.
     if (key === 'block2@0.6.2' && pkg.license !== 'MIT')
       throw Error('block2 declared license changed; review its upstream terms.');
+    if (fallbacks.get(key) === 'objc2-project-MIT.txt' &&
+        pkg.license !== 'MIT' && pkg.license !== 'Zlib OR Apache-2.0 OR MIT')
+      throw Error('objc2 family declared license changed; review upstream before packaging.');
     files = [join(fallbackDir, fallbacks.get(key))];
   }
   if (!files.length) { missing.push(key); continue; }
