@@ -1,8 +1,8 @@
 // Cross-platform, pure macOS release rules. No network, filesystem writes or secrets.
 export const REPO = 'Cesare-ml/virgostars-desktop';
 export const PINNED = Object.freeze({
-  'astrological-charts': '85fc091ec7afc87e7979f0f399b105d47bf89ef7',
-  'astrological-functions': '266aa7165e94196c37c5293d903630260aefe2b7',
+  'astrological-charts': 'd85cf7000be49c5fb2a1549f7f8d005a475b5be4',
+  'astrological-functions': 'e9b87011178bd2f4ae6795c5d92480e3d659afd1',
   'astrological-assets': '03e5671fd45595f7560e1a779e8b92c66a9922c6'
 });
 export const DOWNLOADS = Object.freeze({
