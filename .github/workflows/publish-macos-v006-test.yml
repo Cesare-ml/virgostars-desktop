@@ -1,0 +1,91 @@
+# One-time promotion of the verified unsigned v0.0.6 macOS DMGs.
+# A separate test prerelease, not the official Windows v0.0.6 and never a stable Mac release.
+name: Publish macOS v0.0.6 test prerelease
+on:
+  push:
+    branches:
+      - build/macos-v0.0.6-snapshot-20261122
+    paths:
+      - .github/workflows/publish-macos-v006-test.yml
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: macos-v006-test-prerelease-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout audited diagnostic branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify exact successful source, tag and artifacts run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.ref_name }}" = "build/macos-v0.0.6-snapshot-20261122"
+          test "$(git rev-parse refs/tags/v0.0.6)" = "aea1bcd248ba742e142ae666cc8de8fc6536978d"
+          git merge-base --is-ancestor aea1bcd248ba742e142ae666cc8de8fc6536978d 40c8f9055c9035eb10472d8c4b07bc613d8c9b51
+          test "$(git show 40c8f9055c9035eb10472d8c4b07bc613d8c9b51:package.json | jq -r .version)" = "0.0.6"
+          test "$(gh api repos/Cesare-ml/virgostars-desktop/actions/runs/45271186416 --jq .head_sha)" = "40c8f9055c9035eb10472d8c4b07bc613d8c9b51"
+          test "$(gh api repos/Cesare-ml/virgostars-desktop/actions/runs/45271186416 --jq .conclusion)" = "success"
+          if gh release view v0.0.6-macos-test1 >/dev/null 2>&1; then
+            echo "A test prerelease already exists: refuse to overwrite it"
+            exit 1
+          fi
+
+      - name: Download exact arm64 test artifact from successful build
+        uses: actions/download-artifact@v4
+        with:
+          name: virgostars-macos-v0.0.6-arm64-test-11
+          run-id: 45271186416
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .local/mac/publish-in/arm64
+
+      - name: Download exact Intel test artifact from successful build
+        uses: actions/download-artifact@v4
+        with:
+          name: virgostars-macos-v0.0.6-x64-test-11
+          run-id: 45271186416
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .local/mac/publish-in/x64
+
+      - name: Verify original reports, source SHA, checksum and unnotarized status
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/mac/promote-diagnostic-v006.mjs
+          cd .local/mac/publish-v006
+          sha256sum --check SHA256SUMS-macos.txt
+
+      - name: Create draft with verified DMGs, SHA256 and build reports
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create v0.0.6-macos-test1 \
+            .local/mac/publish-v006/VirgoStars-Desktop-0.0.6-macos-arm64.dmg \
+            .local/mac/publish-v006/VirgoStars-Desktop-0.0.6-macos-x64.dmg \
+            .local/mac/publish-v006/SHA256SUMS-macos.txt \
+            .local/mac/publish-v006/arm64-build-report.json \
+            .local/mac/publish-v006/x64-build-report.json \
+            --target 40c8f9055c9035eb10472d8c4b07bc613d8c9b51 \
+            --title "VirgoStars Desktop v0.0.6 — macOS unsigned test builds" \
+            --notes-file .local/mac/publish-v006/RELEASE-NOTES.md \
+            --draft --prerelease
+          count="$(gh release view v0.0.6-macos-test1 --json assets --jq '.assets | length')"
+          test "$count" = 5
+          # Only make it visible after both files and their reports have arrived.
+          gh release edit v0.0.6-macos-test1 --draft=false
+          gh release view v0.0.6-macos-test1 --json url,assets,prerelease --jq '{url, prerelease, assetNames: [.assets[].name]}'
