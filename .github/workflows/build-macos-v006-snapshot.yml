@@ -1,6 +1,6 @@
 # Isolated v0.0.6 source snapshot diagnostic builds, never a public Mac release.
 # Full npm test suite runs; failures are reported; pinned v0.0.6 Tauri catalog script is audited.
-# Retry with reviewed upstream MIT notice for block2 and cross-architecture doctor fixture; tag untouched.
+# Native macOS Cargo crates now use audited upstream MIT notices; version tag remains untouched.
 name: macOS v0.0.6 snapshot · diagnostic DMG
 
 on:
@@ -50,7 +50,7 @@ jobs:
           git diff --name-only aea1bcd248ba742e142ae666cc8de8fc6536978d HEAD > /tmp/modified-mac.txt
           while IFS= read -r name; do
             case "$name" in
-              .github/workflows/build-macos-v006-snapshot.yml|scripts/mac/build.mjs|scripts/mac/release-common.mjs|scripts/mac/verify-responsive-bundle.mjs|scripts/verify-native-ipc.mjs|src/app/desktop-app.component.ts|src/app/desktop-app.component.html|tests/update-restore.test.mjs|tests/verify-build-privacy.test.mjs|scripts/ephemeris/prepare-release-notices.mjs|tests/desktop-doctor.test.mjs|third-party/cargo-license-fallbacks/block2-MIT.txt) ;;
+              .github/workflows/build-macos-v006-snapshot.yml|scripts/mac/build.mjs|scripts/mac/release-common.mjs|scripts/mac/verify-responsive-bundle.mjs|scripts/verify-native-ipc.mjs|src/app/desktop-app.component.ts|src/app/desktop-app.component.html|tests/update-restore.test.mjs|tests/verify-build-privacy.test.mjs|scripts/ephemeris/prepare-release-notices.mjs|tests/desktop-doctor.test.mjs|third-party/cargo-license-fallbacks/block2-MIT.txt|third-party/cargo-license-fallbacks/objc2-project-MIT.txt) ;;
               *) echo "Unauthorized source change: $name"; exit 1 ;;
             esac
           done < /tmp/modified-mac.txt
