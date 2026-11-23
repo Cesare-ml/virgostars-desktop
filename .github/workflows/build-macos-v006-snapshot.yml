@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 10
+          fetch-depth: 0
 
       - name: Validate v0.0.6 ancestry and isolated diagnostic changes
         shell: bash
