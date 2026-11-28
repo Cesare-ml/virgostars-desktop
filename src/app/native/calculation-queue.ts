@@ -39,9 +39,28 @@ function validIanaZone(zone: string): boolean {
   return true;
 }
 
-/** Reject unsupported time/location inputs before scheduling an expensive Rust request. */
-export function validCalculationDraft(draft: CalculationDraftV1): boolean {
-  if (!isObject(draft) || !['now','scrub','preview','committed','transit'].includes(draft.intent)) return false;
+/**
+ * Detach the six request fields exactly once from potentially mutable UI input.
+ * Accessors/proxies can throw or change values between validation and enqueue;
+ * neither behavior may bypass preflight or cancel an existing valid request.
+ */
+function snapshotCalculationDraft(draft: CalculationDraftV1): CalculationDraftV1 | null {
+  try {
+    // Array.isArray throws on revoked proxies; even the object guard is untrusted.
+    if (!isObject(draft)) return null;
+    return {
+      intent: draft.intent, utcIso: draft.utcIso, latMicro: draft.latMicro,
+      lngMicro: draft.lngMicro, timeZone: draft.timeZone,
+      calculationKey: draft.calculationKey,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Validate only detached primitives, never read original draft fields again. */
+function validDraftSnapshot(draft: CalculationDraftV1): boolean {
+  if (!['now','scrub','preview','committed','transit'].includes(draft.intent)) return false;
   if (typeof draft.utcIso !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(draft.utcIso)) return false;
   const epoch = Date.parse(draft.utcIso);
   if (!Number.isFinite(epoch) || new Date(epoch).toISOString() !== draft.utcIso) return false;
@@ -53,6 +72,12 @@ export function validCalculationDraft(draft: CalculationDraftV1): boolean {
   if (typeof draft.calculationKey !== 'string' || draft.calculationKey.length < 1 ||
       draft.calculationKey.length > 128 || !/^[A-Za-z0-9_.:\-]+$/.test(draft.calculationKey)) return false;
   return true;
+}
+
+/** Reject unsupported time/location inputs before scheduling native work. */
+export function validCalculationDraft(draft: CalculationDraftV1): boolean {
+  const snapshot = snapshotCalculationDraft(draft);
+  return snapshot !== null && validDraftSnapshot(snapshot);
 }
 
 /** Verify correlation metadata and status before exposing an untrusted port reply. */
@@ -101,11 +126,14 @@ export class LatestCalculationQueue<T> {
 
   /** Invalid drafts do not affect an existing valid request. */
   submit(draft: CalculationDraftV1): number | null {
-    if (this.disposed || !validCalculationDraft(draft) || this.nextSeq >= Number.MAX_SAFE_INTEGER) return null;
+    if (this.disposed || this.nextSeq >= Number.MAX_SAFE_INTEGER) return null;
+    const snapshot = snapshotCalculationDraft(draft);
+    if (snapshot === null || !validDraftSnapshot(snapshot)) return null;
     const request: CalculationRequestV1 = {
       protocolVersion: 1, sessionId: this.sessionId, requestSeq: ++this.nextSeq,
-      intent: draft.intent, utcIso: draft.utcIso, latMicro: draft.latMicro,
-      lngMicro: draft.lngMicro, timeZone: draft.timeZone, calculationKey: draft.calculationKey,
+      intent: snapshot.intent, utcIso: snapshot.utcIso, latMicro: snapshot.latMicro,
+      lngMicro: snapshot.lngMicro, timeZone: snapshot.timeZone,
+      calculationKey: snapshot.calculationKey,
     };
     this.generation++;
     if (this.active) {
