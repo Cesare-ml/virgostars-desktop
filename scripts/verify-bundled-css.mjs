@@ -2,10 +2,12 @@
  * Verify the Angular-generated entrypoint references a real local global stylesheet.
  * This is a build-artifact guard, NOT a WebView2 network or CSP runtime test.
  */
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNoCssImports } from './verify-css-imports.mjs';
+import { assertNoCssResourceFunctions } from './verify-css-resource-functions.mjs';
+import { readBoundedUiText } from './read-bounded-ui-text.mjs';
 
 const fail = (message) => { throw new Error('DESKTOP CSS BUNDLE: ' + message); };
 
@@ -104,7 +106,7 @@ function linkAttributes(tag) {
 
 export function inspectDesktopStyles(bundleDir) {
   const dir = resolve(bundleDir);
-  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  const html = readBoundedUiText(join(dir, 'index.html'), 'HTML');
   const stylesheetLinks = extractLinkTags(html)
     .map(tag => ({tag, attrs: linkAttributes(tag)}))
     .filter(({attrs}) => (attrs.get('rel') ?? '').toLowerCase().split(/\s+/).includes('stylesheet'));
@@ -147,13 +149,20 @@ export function inspectDesktopStyles(bundleDir) {
       fail('Unexpected or nonlocal stylesheet reference');
     }
     const cssFile = join(dir, href.replace(/^\.\//, ''));
-    const stat = lstatSync(cssFile, {throwIfNoEntry:false});
+    // Normalize OS errors here as well as in the bounded reader: do not
+    // include private checkout paths in build diagnostics.
+    let stat;
+    try { stat = lstatSync(cssFile, {throwIfNoEntry:false}); }
+    catch { fail('Local global stylesheet missing or not a regular file'); }
     if (!stat || !stat.isFile() || stat.isSymbolicLink()) {
       fail('Local global stylesheet missing or not a regular file');
     }
-    const css = readFileSync(cssFile, 'utf8');
+    const css = readBoundedUiText(cssFile, 'CSS');
     // Angular must inline imported CSS before an offline Tauri build.
     assertNoCssImports(css);
+    // For the current synthetic desktop global CSS, external and local
+    // CSS resource functions both require a future approved asset policy.
+    assertNoCssResourceFunctions(css);
     // Both selectors are in the committed global src/styles.css and survive CSS minification.
     if (!css.includes('vs-desktop-app') || !css.includes('box-sizing')) {
       fail('Global stylesheet is incomplete or does not match VirgoStars Desktop');
