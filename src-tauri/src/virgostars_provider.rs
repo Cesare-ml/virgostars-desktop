@@ -45,7 +45,7 @@ use virgostars_ephemeris_core::mvp_snapshot::{experimental_snapshot_from_civil, 
 
 /// The core crate version and the commit this build is pinned to (see `Cargo.toml`). The WebView contract
 /// accepts only `[A-Za-z0-9._-]{1,40}` here.
-pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-38befb2";
+pub(crate) const ENGINE_VERSION: &str = "core-0.1.0-61e4bf9";
 /// NAIF id JPL uses for 2060 Chiron in its small-body SPK files.
 const CHIRON_NAIF_ID: i32 = 20_002_060;
 const CONFIG_FILE: &str = "ephemeris.json";
@@ -830,6 +830,97 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires a pinned Desktop catalog, DE441 base and 800–999 adjacent slice"]
+    fn historical_planets_match_verified_multipack_at_real_boundaries() {
+        use virgostars_ephemeris_core::calendar::TimeScale;
+        use virgostars_ephemeris_core::calendar_decimal_hours::{julday_f64, DecimalHourDateTime};
+        use virgostars_ephemeris_core::calendar::Calendar;
+        let base = PathBuf::from(std::env::var_os("VIRGOSTARS_DE441_PATH").expect("base required"));
+        let catalog = PathBuf::from(std::env::var_os("DE441_CATALOG_PATH").expect("catalog required"));
+        let adjacent = PathBuf::from(std::env::var_os("DE441_ADJACENT_PATH").expect("adjacent slice required"));
+        let temp = tempfile::tempdir().unwrap();
+        let resource = temp.path().join("resources");
+        let ephemeris = resource.join(BUNDLED_FOLDER);
+        let data = temp.path().join("data");
+        let packs = data.join("de441-packs");
+        std::fs::create_dir_all(&ephemeris).unwrap();
+        std::fs::create_dir_all(&packs).unwrap();
+        let link = |source: &Path, destination: &Path| {
+            std::fs::hard_link(source, destination).unwrap_or_else(|_| { std::fs::copy(source, destination).unwrap(); });
+        };
+        let staged_base = ephemeris.join(BUNDLED_DE441);
+        link(&base, &staged_base);
+        link(&adjacent, &packs.join("de441-history-0800-0999.eph"));
+        std::fs::copy(catalog, ephemeris.join("de441-release-catalog-v1.json")).unwrap();
+        let paths = DataPaths {de441: staged_base, usno_directory: None, chiron_spk: None, fixed_star_catalog: None};
+        let pin = "ad80ef75b5f3984947a6dc04d4de184c35701600ca587aff155d7228fd03667b";
+        assert!(pinned_manager(&paths, &resource, &data, &"0".repeat(64)).is_none());
+        let mut actual = Engine::open(&paths).unwrap();
+        let (logical, sampling) = pinned_manager(&paths, &resource, &data, pin).expect("verified catalog and slices");
+        actual.logical_multipack = Some(logical);
+        actual.multipack = Some(sampling);
+        for (year, source) in [(900, adjacent), (1000, base.clone()), (2000, base)] {
+            let mut expected = Engine::open(&DataPaths {de441: source, ..paths.clone()}).unwrap();
+            let jd = julday_f64(DecimalHourDateTime {year, month: 1, day: 1, decimal_hour: 0.0,
+                scale: TimeScale::Ut1}, Calendar::ProlepticGregorian).unwrap();
+            for (body, _) in PLANETS {
+                let request = serde_json::from_value(serde_json::json!({
+                    "protocolVersion": 1, "body": body, "jdUt1": jd,
+                    "deltaTSeconds": 69.0, "uncertaintySeconds": 2.0, "deltaTSource": "synthetic test",
+                    "includeScenarios": true
+                })).unwrap();
+                let a = actual.historical_planet(&request).unwrap();
+                let b = expected.historical_planet(&request).unwrap();
+                assert_eq!(a.longitude_deg, b.longitude_deg, "{body} {year}");
+                assert_eq!(a.latitude_deg, b.latitude_deg, "{body} {year}");
+                assert_eq!(a.longitude_speed_deg_per_tdb_day, b.longitude_speed_deg_per_tdb_day, "{body} {year}");
+                let a = a.sensitivity.unwrap();
+                let b = b.sensitivity.unwrap();
+                assert_eq!(a.lower.longitude_deg, b.lower.longitude_deg, "{body} {year}");
+                assert_eq!(a.upper.longitude_deg, b.upper.longitude_deg, "{body} {year}");
+            }
+        }
+        for year in [799, 2201] {
+            let jd = julday_f64(DecimalHourDateTime {year, month: 1, day: 1, decimal_hour: 12.0,
+                scale: TimeScale::Ut1}, Calendar::ProlepticGregorian).unwrap();
+            let request = serde_json::from_value(serde_json::json!({
+                "protocolVersion": 1, "body": "Sun", "jdUt1": jd,
+                "deltaTSeconds": 69.0, "uncertaintySeconds": 2.0, "deltaTSource": "synthetic test"
+            })).unwrap();
+            assert!(actual.historical_planet(&request).is_err(), "outside installed coverage: {year}");
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a caller-supplied classic DE441 covering J2000"]
+    fn historical_planets_match_the_core_mvp_on_a_real_slice() {
+        use virgostars_ephemeris_core::mvp_planets::{planets_ut1, PlanetaryTime, MVP_PLANETS};
+        let path = PathBuf::from(std::env::var_os("VIRGOSTARS_DE441_PATH").expect("DE441 path required"));
+        let paths = DataPaths {de441: path.clone(), usno_directory: None, chiron_spk: None, fixed_star_catalog: None};
+        let mut engine = Engine::open(&paths).expect("classic DE441 required");
+        let mut core = De441::open(path).expect("classic DE441 required");
+        let time = PlanetaryTime {jd_ut1: 2_451_545.0, delta_t_seconds: 64.0,
+            uncertainty_seconds: 2.0, source: "synthetic test"};
+        let expected = planets_ut1(&mut core, &MVP_PLANETS, time).unwrap();
+        for ((name, body), reference) in PLANETS.iter().zip(&expected.positions) {
+            assert_eq!(*body, reference.body);
+            let request = serde_json::from_value(serde_json::json!({
+                "protocolVersion": 1, "body": name, "jdUt1": time.jd_ut1,
+                "deltaTSeconds": time.delta_t_seconds, "uncertaintySeconds": time.uncertainty_seconds,
+                "deltaTSource": time.source
+            })).unwrap();
+            let result = engine.historical_planet(&request).unwrap();
+            assert_eq!(result.jd_ut1, expected.epoch.jd_ut1);
+            assert_eq!(result.delta_t_source, expected.delta_t_source);
+            assert_eq!(result.longitude_deg, reference.rates.base.longitude_deg);
+            assert_eq!(result.latitude_deg, reference.rates.base.latitude_deg);
+            assert_eq!(result.longitude_speed_deg_per_tdb_day, reference.rates.longitude_deg_per_tdb_day);
+            assert_eq!(result.latitude_speed_deg_per_tdb_day, reference.rates.latitude_deg_per_tdb_day);
+            assert_eq!(result.radial_speed_au_per_tdb_day, reference.rates.radial_au_per_tdb_day);
+        }
+    }
+
+    #[test]
     #[ignore = "requires private DE441 source, release catalog and generated slices"]
     fn authenticated_local_multipack_matches_full_source_in_desktop_provider() {
         use sha2::{Digest, Sha256};
@@ -1071,6 +1162,14 @@ mod tests {
         assert!((1..=40).contains(&info.engine_version.len()), "{}", info.engine_version);
         assert!(info.engine_version.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-'));
         assert!(info.id.len() <= 40 && info.id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'));
+        let dependency = include_str!("../Cargo.toml").lines()
+            .find(|line| line.starts_with("virgostars-ephemeris-core = "))
+            .expect("pinned ephemeris dependency");
+        let revision = dependency.split("rev = \"").nth(1)
+            .and_then(|rest| rest.split('"').next()).expect("explicit ephemeris revision");
+        assert_eq!(revision.len(), 40);
+        assert!(revision.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(info.engine_version, format!("core-0.1.0-{}", &revision[..7]));
     }
 
     #[test]

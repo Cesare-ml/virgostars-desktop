@@ -15,8 +15,8 @@ const good = () => ({
   exceptions: [],
   console: [],
   resize: {
-    '1280x720': {canvas: [712, 712], overflowX: false, overflowY: false},
-    '1920x1080': {canvas: [1072, 1072], overflowX: false, overflowY: false}
+    '1280x720': {stage: [540, 720], canvas: [524, 524], overflowX: false, overflowY: false},
+    '1920x1080': {stage: [1032, 1080], canvas: [1016, 1016], overflowX: false, overflowY: false}
   },
   runtimeInfo: {protocolVersion: 1, fixtureKind: 'synthetic_demo', accountConnected: false, cloudSyncAvailable: false},
   calculation: {status: 'provider_unavailable', provider: null, chart: null},
@@ -39,7 +39,8 @@ test('each observable regression is reported by a stable identifier', () => {
     ['PAGE_EXCEPTION', o => { o.exceptions.push('boom'); }],
     ['RESIZE_1280x720', o => { o.resize['1280x720'].overflowX = true; }],
     [['RESIZE_1920x1080', 'CHART_NOT_TALL_1920x1080'], o => { delete o.resize['1920x1080']; }],
-    ['CHART_NOT_TALL_1280x720', o => { o.resize['1280x720'].canvas = [600, 600]; }],
+    ['CHART_NOT_TALL_1280x720', o => { o.resize['1280x720'].canvas = [450, 450]; }],
+    ['CHART_NOT_TALL_1280x720', o => { delete o.resize['1280x720'].stage; }],
     ['IPC_RUNTIME_INFO', o => { o.runtimeInfo = null; }],
     ['IPC_INVALID_REQUEST_ACCEPTED', o => { o.invalidCalculation = {status: 'ok'}; }],
     ['PNG_EXPORT', o => { o.calculation = {status: 'ok', provider: {name: 'x'}, chart: {}}; o.png = {bytes: 12, signatureOk: false}; }],
