@@ -69,6 +69,27 @@ test('nonzero styled canvas with zero or tiny backing buffer is not healthy', ()
     element => element === largerBuffer ? inspect(canvas) : inspect(element)), 'active');
 });
 
+test('severely undersampled canvas is detected independently for both axes', () => {
+  for (const [width,height] of [[32,602],[602,32],[150,602],[602,150]]) {
+    const underSampled = {...canvas,width,height};
+    const inspectCanvas = element => element === underSampled ? inspect(canvas) : inspect(element);
+    assert.equal(probeDesktopLayout({...elements,canvas:underSampled},inspectCanvas),
+      'collapsed', `backing ${width}x${height} for 602x602 CSS`);
+  }
+  for (const [width,height] of [[151,151],[602,602],[1204,1204]]) {
+    const usable = {...canvas,width,height};
+    const inspectCanvas = element => element === usable ? inspect(canvas) : inspect(element);
+    assert.equal(probeDesktopLayout({...elements,canvas:usable},inspectCanvas),
+      'active', `backing ${width}x${height} for 602x602 CSS`);
+  }
+});
+
+test('canvas backing ratio uses canvas dimensions, not unused stage whitespace', () => {
+  const inset = {...elements,canvas:{...canvas,width:151,height:151}};
+  const read = element => element === inset.canvas ? inspect(canvas) : inspect(element);
+  assert.equal(probeDesktopLayout(inset,read),'active');
+});
+
 test('invalid canvas drawing-buffer metadata never reports healthy', () => {
   for (const size of [NaN,Infinity,-1,12.5,undefined,null]) {
     const invalid = {...canvas,width:size};
