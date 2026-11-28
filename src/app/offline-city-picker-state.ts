@@ -74,12 +74,12 @@ export class OfflineCityPickerState {
         if (!fired) this.invalidateDebounce(ticket);
       }
     }
-    this.changed();
+    this.notifyChanged();
   }
 
   private async perform(ticket: number, query: string): Promise<void> {
     this.status = 'loading';
-    this.changed();
+    this.notifyChanged();
     // A synchronous view notification may re-enter input() or dispose this
     // picker. Do not launch the superseded native query after that callback.
     if (ticket !== this.seq || this.disposed) return;
@@ -98,7 +98,7 @@ export class OfflineCityPickerState {
       this.results = [];
       this.status = 'unavailable';
     }
-    if (ticket === this.seq && !this.disposed) this.changed();
+    if (ticket === this.seq && !this.disposed) this.notifyChanged();
   }
 
   move(delta: -1 | 1): void {
@@ -106,7 +106,7 @@ export class OfflineCityPickerState {
     this.activeIndex = this.activeIndex < 0
       ? (delta === 1 ? 0 : this.results.length - 1)
       : (this.activeIndex + delta + this.results.length) % this.results.length;
-    this.changed();
+    this.notifyChanged();
   }
 
   choose(index: number): OfflinePlaceV1 | null {
@@ -118,7 +118,7 @@ export class OfflineCityPickerState {
     this.status = 'selected';
     this.results = [];
     this.activeIndex = -1;
-    this.changed();
+    this.notifyChanged();
     return chosen;
   }
 
@@ -130,7 +130,7 @@ export class OfflineCityPickerState {
     this.results = [];
     this.activeIndex = -1;
     if (this.status !== 'selected') this.status = 'idle';
-    this.changed();
+    this.notifyChanged();
   }
 
   restore(place: OfflinePlaceV1): void {
@@ -141,7 +141,7 @@ export class OfflineCityPickerState {
     this.results = [];
     this.activeIndex = -1;
     this.status = 'selected';
-    this.changed();
+    this.notifyChanged();
   }
 
   dispose(): void {
@@ -158,6 +158,13 @@ export class OfflineCityPickerState {
     this.pending = null;
     this.status = 'unavailable';
     try { this.lookup.clear(); } catch { /* stale lookups are generation guarded */ }
+  }
+
+  /** UI notifications are best-effort: observers may throw during teardown.
+   * Never let an observer error suppress a valid search, city choice or cleanup.
+   */
+  private notifyChanged(): void {
+    try { this.changed(); } catch { /* Keep UI observer failures out of state transitions. */ }
   }
 
   private abortPending(): void {
