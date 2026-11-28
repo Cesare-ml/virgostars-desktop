@@ -461,6 +461,31 @@ mod tests {
 
     #[cfg(feature = "virgostars-ephemeris")]
     #[test]
+    #[ignore = "requires VIRGOSTARS_DE441_PATH with a classic DE441 file covering J2000"]
+    fn native_command_serializes_all_planets_from_a_real_slice() {
+        assert!(std::env::var_os("VIRGOSTARS_DE441_PATH").is_some());
+        for body in ["Sun", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"] {
+            let response = calculate_historical_planet(HistoricalPlanetRequest {
+                body: body.into(), include_scenarios: true, ..request()
+            });
+            assert_eq!(response.status, "ok", "{body}");
+            let wire = serde_json::to_value(response).unwrap();
+            assert_eq!(wire["protocolVersion"], 1);
+            assert_eq!(wire["result"]["body"], body);
+            assert_eq!(wire["result"]["jdUt1"], 2_451_545.0);
+            assert_eq!(wire["result"]["deltaTSource"], "test source");
+            assert!(wire["result"]["longitudeDeg"].is_number());
+            assert!(wire["result"]["longitudeSpeedDegPerTdbDay"].is_number());
+            assert!(wire["result"]["sensitivity"]["lower"]["longitudeDeg"].is_number());
+        }
+        let input = r#"{"protocolVersion":1,"body":"Moon","year":2000,"month":1,"day":1,"hour":12,"minute":0,"second":0,"deltaT":{"kind":"espenakMeeus2006","uncertaintySeconds":2}}"#;
+        let response = calculate_historical_planet_calendar(serde_json::from_str(input).unwrap());
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.result.unwrap().jd_ut1, 2_451_545.0);
+    }
+
+    #[cfg(feature = "virgostars-ephemeris")]
+    #[test]
     #[ignore = "requires VIRGOSTARS_DE441_PATH pointing to a local full DE441 file"]
     fn native_bridge_matches_core_with_local_de441() {
         use virgostars_ephemeris_core::calendar::{Calendar, TimeScale};

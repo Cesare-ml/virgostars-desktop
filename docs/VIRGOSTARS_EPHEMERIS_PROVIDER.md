@@ -4,7 +4,17 @@
 
 ## What it does
 
-- This draft pins `virgostars-ephemeris-core` to `8e4b44f56a2e425e3427ffdc09e68d80fe9f31b2` from the unmerged [Ephemeris PR #651](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/651). The existing chart adapter still uses a single DE441 file; this pin does not activate multipack calculation. The dependency needs network access the first time it is fetched.
+- This integration pins `virgostars-ephemeris-core` to `61e4bf9860f0fbfb78cfa30c8d117a8979520962`, merged in [Ephemeris PR #660](https://github.com/Cesare-ml/VirgoStars-Ephemeris/pull/660). The host supports an explicitly selected single file and a pinned, verified multipack configuration; see [the multipack runtime checkpoint](DE441_MULTIPACK_RUNTIME_CANDIDATE_2026-11-19.md). The dependency needs network access the first time it is fetched. Desktop still calls experimental core APIs directly; the separate planetary v1 contract does not make the Desktop application stable or release it.
+
+On Windows (2026-11-28), the pinned host passed its Rust and JavaScript suites,
+real-file native tests and a WebView2 smoke using an isolated app identifier.
+The latter sent 30 historical planet requests (ten bodies at years −12999,
+2000 and 3999) with synthetic ΔT through native IPC, and checked the chart at
+1280×720 and 1920×1080. The fallback to `postMessage` when CSP blocks
+`ipc.localhost` remained visible as a warning. Separate base/adjacent-pack
+tests covered years 900, 1000 and 2000 and rejected a bad catalog pin and
+out-of-coverage epochs. These are integration checks, not independent
+astronomical validation, an installer test or a Desktop release.
 
 The normal new-chart form has an opt-in **historical date** mode. A separate
 versioned Tauri command sends the chosen Julian/proleptic Gregorian calendar,

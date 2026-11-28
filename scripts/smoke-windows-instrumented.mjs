@@ -18,7 +18,7 @@ import {fileURLToPath} from 'node:url';
 
 export const DEVTOOLS_PORT = 9339;
 export const MIN_PNG_BYTES = 10_000;
-/** The wheel must take at least this share of the window height (the navigation may fold to a 60 px rail). */
+/** The square wheel must take at least this share of its stage's shorter side. */
 export const MIN_CHART_HEIGHT_SHARE = 0.95;
 const MIN_NAV_WIDTH_PX = 40;
 const LOCAL_URL = /^(https?:\/\/(tauri|ipc|asset)\.localhost(?:[:/]|$)|tauri:|ipc:|data:|blob:|about:)/;
@@ -43,8 +43,9 @@ export function evaluateSmoke(observed) {
   for (const size of ['1280x720', '1920x1080']) {
     const resized = observed.resize?.[size];
     fail(`RESIZE_${size}`, !resized || resized.overflowX || resized.overflowY || !(resized.canvas?.[0] >= 200));
-    const height = Number(size.split('x')[1]);
-    fail(`CHART_NOT_TALL_${size}`, !resized || !(resized.canvas?.[1] >= MIN_CHART_HEIGHT_SHARE * height));
+    const stageSide = Math.min(...(resized?.stage ?? []));
+    fail(`CHART_NOT_TALL_${size}`, !Number.isFinite(stageSide) || stageSide <= 0
+      || !(resized?.canvas?.[1] >= MIN_CHART_HEIGHT_SHARE * stageSide));
   }
   const info = observed.runtimeInfo;
   fail('IPC_RUNTIME_INFO', !(info?.protocolVersion === 1 && info.fixtureKind === 'synthetic_demo'
@@ -159,7 +160,7 @@ export async function runSmoke(root) {
     for (const [width, height] of [[1280, 720], [1920, 1080]]) {
       await cdp.send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor: 1, mobile: false});
       await sleep(1500);
-      observed.resize[`${width}x${height}`] = await evaluate(`(() => { const b = document.querySelector('canvas.chart-canvas')?.getBoundingClientRect(); const d = document.documentElement; return {canvas: b && [Math.round(b.width), Math.round(b.height)], overflowX: d.scrollWidth > d.clientWidth, overflowY: d.scrollHeight > d.clientHeight}; })()`);
+      observed.resize[`${width}x${height}`] = await evaluate(`(() => { const b = document.querySelector('canvas.chart-canvas')?.getBoundingClientRect(); const s = document.querySelector('.chart-stage')?.getBoundingClientRect(); const d = document.documentElement; return {stage: s && [Math.round(s.width), Math.round(s.height)], canvas: b && [Math.round(b.width), Math.round(b.height)], overflowX: d.scrollWidth > d.clientWidth, overflowY: d.scrollHeight > d.clientHeight}; })()`);
     }
     await cdp.send('Emulation.clearDeviceMetricsOverride');
     await sleep(800);

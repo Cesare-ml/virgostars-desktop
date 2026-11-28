@@ -169,7 +169,7 @@ fn ecliptic_to_equatorial(
     longitude_deg:f64,latitude_deg:f64,true_obliquity_deg:f64
 )->Option<(f64,f64)> {
     if ![longitude_deg,latitude_deg,true_obliquity_deg].iter().all(|v|v.is_finite())
-        || latitude_deg.abs()>90.0 || !(0.0..90.0).contains(&true_obliquity_deg) {
+        || latitude_deg.abs()>90.0 || true_obliquity_deg <= 0.0 || true_obliquity_deg >= 90.0 {
         return None;
     }
     let longitude=longitude_deg.to_radians();
@@ -649,6 +649,7 @@ mod tests {
         assert!(ecliptic_to_equatorial(12.0,f64::NAN,23.4).is_none());
         assert!(ecliptic_to_equatorial(12.0,91.0,23.4).is_none());
         assert!(ecliptic_to_equatorial(12.0,45.0,0.0).is_none());
+        assert!(ecliptic_to_equatorial(12.0,45.0,90.0).is_none());
     }
     #[test]
     fn zodiac_grid_is_twelve_signs_with_a_didactic_ecliptic_latitude_band() {
