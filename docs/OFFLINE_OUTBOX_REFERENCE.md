@@ -13,7 +13,7 @@ The future VirgoStars Desktop **Rust/Tauri host** owns SQLite transactions, cred
 
 - **Profile scope:** each mutation is bound to one local profile; a cross-profile enqueue is rejected.
 - **Stable mutation IDs:** exact retry with identical content is idempotent, but reusing an ID with different data raises an error.
-- **Immutable FIFO outbox:** payloads are validated as JSON, size-limited, cloned and frozen before enqueue; unsupported operations or unsafe payloads are rejected.
+- **Immutable FIFO outbox:** payloads are validated as JSON, limited to **256 KiB (262,144 UTF-8 bytes of serialized JSON, including JSON delimiters and escaping)**, cloned and frozen before enqueue; unsupported operations or unsafe payloads are rejected. The cap is on bytes rather than JavaScript UTF-16 string length, preventing multi-byte Unicode from exceeding the intended envelope.
 - **Batching:** bounded batches (1–500) select the oldest unresolved change for each entity. Two pending changes to one record cannot be sent in the same batch.
 - **Receipts:** accepted / already-applied receipts remove the specified entry in the *pure model*. No receipt or retry leaves it pending; unknown, duplicate or out-of-order receipts fail closed.
 - **Conflicts:** conflict receipts preserve the local change and server revision; later changes on that entity are blocked while unrelated records can continue.
@@ -53,3 +53,7 @@ tsc --target es2022 --module nodenext --moduleResolution nodenext --lib es2022,d
 7. Only after all gates: wire the Angular UI to a typed, narrowly authorized Tauri IPC surface with correct Pending / Syncing / Conflict status.
 
 Repository visibility, licensing and release approval remain unchanged. Do not use GitHub Actions or merge to main without review.
+
+## 2026-11-13 UTF-8 envelope follow-up (proposed)
+
+The reference model now rejects JSON payloads whose UTF-8 encoding exceeds 262,144 bytes, even when their JavaScript string length is shorter. A fast UTF-16 code-unit check avoids encoding obviously oversized JSON; the final byte measurement uses `TextEncoder`. Exact ASCII and non-ASCII size-boundary regressions were added. This is **only an in-memory synthetic reference guard**, not a limit enforced by a live IPC endpoint, Rust database, or server.

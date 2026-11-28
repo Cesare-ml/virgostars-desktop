@@ -117,3 +117,27 @@ test('serialization is fail-closed for accessors, symbols, non-index array prope
   assert.throws(() => enqueueMutation(createOutbox('synthetic-owner'),change('bad-3','sample-1', {createdAtUtc:'2026-02-30T12:00:00Z'})),/Invalid UTC timestamp/);
   assert.throws(() => enqueueMutation(createOutbox('synthetic-owner'),change('bad-4','sample-1', {payload:'x'.repeat(262145)})), /Payload exceeds reference-model limit/);
 });
+
+test('enforces 256 KiB on serialized UTF-8 payload, not UTF-16 code units', () => {
+  // JSON string quotes count toward the limit, including for ASCII.
+  const max = 262144;
+  const ascii = enqueueMutation(createOutbox('synthetic-owner'),
+    change('ascii-exact', 'sample-1', {payload:'x'.repeat(max - 2)}));
+  assert.equal(nextSyncBatch(ascii)[0].payload.length, max - 2);
+  assert.throws(() => enqueueMutation(createOutbox('synthetic-owner'),
+    change('ascii-over', 'sample-1', {payload:'x'.repeat(max - 1)})),
+    /Payload exceeds reference-model limit/);
+
+  // A single non-ASCII BMP scalar takes two UTF-8 bytes but one JS code unit.
+  const bmpExact = enqueueMutation(createOutbox('synthetic-owner'),
+    change('bmp-exact', 'sample-1', {payload:'é'.repeat((max - 2) / 2)}));
+  assert.equal(nextSyncBatch(bmpExact)[0].payload.length, (max - 2) / 2);
+  assert.throws(() => enqueueMutation(createOutbox('synthetic-owner'),
+    change('bmp-over', 'sample-1', {payload:'é'.repeat(max / 2)})),
+    /Payload exceeds reference-model limit/);
+
+  // Astral Unicode is two JS code units but four UTF-8 bytes per scalar.
+  assert.throws(() => enqueueMutation(createOutbox('synthetic-owner'),
+    change('emoji-over', 'sample-1', {payload:'🔭'.repeat(80000)})),
+    /Payload exceeds reference-model limit/);
+});
