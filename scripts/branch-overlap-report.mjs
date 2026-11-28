@@ -2,6 +2,8 @@
 // Read-only local branch path overlaps, not proof of textual conflicts.
 import {spawnSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
+import {findBranchPrefixOverlaps, findBasePrefixOverlaps,
+  MAX_PREFIX_COLLISION_PAIRS, PREFIX_COLLISION_BUDGET_ERROR} from './branch-path-collisions.mjs';
 
 export function safeRef(s) {
   return typeof s === 'string' && s.length > 0 && s.length <= 240 &&
@@ -71,6 +73,7 @@ export function report(base, branches) {
   const files=new Map();
   const stats=[];
   const baseOverlaps=[];
+  const basePrefixOverlaps=[];
   for (const {branch,paths} of branches) {
     const unique=new Set(paths);
     const drift = branches.find(b=>b.branch===branch);
@@ -88,6 +91,10 @@ export function report(base, branches) {
           throw new Error('Invalid base-side path');
         if (unique.has(path)) baseOverlaps.push({branch,path});
       }
+      const baseCandidates = findBasePrefixOverlaps(branch, unique, otherSide);
+      if (basePrefixOverlaps.length + baseCandidates.length > MAX_PREFIX_COLLISION_PAIRS)
+        throw new Error(PREFIX_COLLISION_BUDGET_ERROR);
+      basePrefixOverlaps.push(...baseCandidates);
     }
   }
   baseOverlaps.sort((a,b)=>a.branch<b.branch?-1:a.branch>b.branch?1:
@@ -95,11 +102,19 @@ export function report(base, branches) {
   const overlaps=[...files].filter(([,owners])=>owners.length>1)
     .map(([path,owners])=>({path,branches:owners.sort()}))
     .sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
+  const prefixOverlaps=findBranchPrefixOverlaps(files);
+  if (basePrefixOverlaps.length + prefixOverlaps.length > MAX_PREFIX_COLLISION_PAIRS)
+    throw new Error(PREFIX_COLLISION_BUDGET_ERROR);
+  basePrefixOverlaps.sort((a,b)=>a.branch<b.branch?-1:a.branch>b.branch?1:
+    a.basePath<b.basePath?-1:a.basePath>b.basePath?1:
+    a.branchPath<b.branchPath?-1:a.branchPath>b.branchPath?1:0);
   const staleBranches=haveDrift ? stats.filter(s=>s.behindBy>0).map(s=>s.branch) : [];
   return {base,branches:stats,freshnessChecked:haveDrift,staleBranches,
     baseFilesChecked,baseOverlapFiles:baseOverlaps.length,baseOverlaps,
+    basePrefixOverlapFiles:basePrefixOverlaps.length,basePrefixOverlaps,
     overlapFiles:overlaps.length,overlaps,
-    note:'Shared paths, base-side overlaps and stale refs require review; none proves a merge conflict.'};
+    prefixOverlapFiles:prefixOverlaps.length,prefixOverlaps,
+    note:'Shared paths, file/directory prefix candidates, base-side overlaps and stale refs require review; none proves a merge conflict.'};
 }
 
 export function parseArgs(args) {
@@ -157,6 +172,10 @@ if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
       for (const row of result.overlaps) console.log(`${JSON.stringify(row.path)}: ${row.branches.join(', ')}`);
       for (const row of result.baseOverlaps)
         console.log(`BASE REVIEW: ${row.branch} and ${base} both changed ${JSON.stringify(row.path)}`);
+      for (const row of result.prefixOverlaps)
+        console.log(`PREFIX REVIEW: ${JSON.stringify(row.ancestorPath)} (${row.ancestorBranches.join(', ')}) / ${JSON.stringify(row.nestedPath)} (${row.nestedBranches.join(', ')})`);
+      for (const row of result.basePrefixOverlaps)
+        console.log(`BASE PREFIX REVIEW: ${row.branch} changed ${JSON.stringify(row.branchPath)}; ${base} changed ${JSON.stringify(row.basePath)}`);
       for (const row of result.branches)
         console.log(`${row.branch}: ${row.behindBy} behind, ${row.aheadBy} ahead of ${base}`);
       if (result.staleBranches.length)
